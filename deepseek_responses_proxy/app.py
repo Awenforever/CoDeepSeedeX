@@ -53,6 +53,40 @@ def _normalize_chat_role(role: str | None) -> str:
     return "user"
 
 
+def _deepseek_thinking_config() -> dict[str, str]:
+    """Return DeepSeek thinking config.
+
+    Default is disabled because the stable v0.4 path depends on avoiding
+    reasoning_content replay requirements. Set DEEPSEEK_THINKING=enabled
+    only for experimental thinking-mode runs.
+    """
+    value = os.environ.get("DEEPSEEK_THINKING", "disabled").strip().lower()
+    if value in {"1", "true", "yes", "on", "enabled"}:
+        return {"type": "enabled"}
+    return {"type": "disabled"}
+
+
+def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prepare ChatCompletions messages for DeepSeek.
+
+    In thinking mode, DeepSeek requires assistant history messages to carry
+    `reasoning_content`. Codex may send assistant history items in Responses
+    input without that field, so we normalize immediately before the upstream
+    DeepSeek request.
+
+    This intentionally works on a deepcopy to avoid mutating stored state or
+    request-derived state unexpectedly.
+    """
+    prepared = deepcopy(messages)
+
+    if _deepseek_thinking_config().get("type") == "enabled":
+        for msg in prepared:
+            if msg.get("role") == "assistant" and "reasoning_content" not in msg:
+                msg["reasoning_content"] = ""
+
+    return prepared
+
+
 @dataclass
 class StoredResponse:
     response: dict[str, Any]
@@ -626,7 +660,7 @@ def _build_chat_payload(
         "model": model,
         "messages": messages,
         "stream": False,
-        "thinking": {"type": "disabled"},
+        "thinking": _deepseek_thinking_config(),
     }
     if tools:
         payload["tools"] = tools
@@ -701,7 +735,8 @@ def create_app(
 
         messages.extend(_input_items_to_messages(input_value))
 
-        chat_payload = _build_chat_payload(model=model, messages=messages, tools=deepseek_tools)
+        messages_for_deepseek = _prepare_messages_for_deepseek(messages)
+        chat_payload = _build_chat_payload(model=model, messages=messages_for_deepseek, tools=deepseek_tools)
         try:
             deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)
         except Exception as exc:
@@ -726,6 +761,13 @@ def create_app(
         assistant_history_item = {"role": "assistant", "content": assistant_message.get("content") or ""}
         if assistant_message.get("tool_calls"):
             assistant_history_item["tool_calls"] = deepcopy(assistant_message["tool_calls"])
+        if "reasoning_content" in assistant_message:
+            assistant_history_item["reasoning_content"] = assistant_message.get("reasoning_content") or ""
+        elif _deepseek_thinking_config().get("type") == "enabled":
+            # DeepSeek thinking mode requires assistant history to carry
+            # reasoning_content on follow-up turns. Preserve an explicit empty
+            # value when the upstream response omits it.
+            assistant_history_item["reasoning_content"] = ""
         next_history.append(assistant_history_item)
         app.state.store.save(response_body, next_history)
 
