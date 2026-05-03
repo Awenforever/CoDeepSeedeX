@@ -219,3 +219,33 @@ A release tag should only be created after:
 6. Real Codex regression passes.
 7. Commit message clearly describes the change.
 8. Tag name matches the version chain.
+
+## Pricing configuration
+
+The proxy estimates local usage cost from a pricing table.
+
+Default file:
+
+```bash
+config/pricing.json
+```
+
+Override with:
+
+```bash
+export DEEPSEEK_PROXY_PRICING_PATH=/path/to/pricing.json
+```
+
+Expected format:
+
+```json
+{
+  "deepseek-v4-flash": {
+    "input_cache_hit": 0.0028,
+    "input_cache_miss": 0.14,
+    "output": 0.28
+  }
+}
+```
+
+Values are USD per 1M tokens. If the file is missing or invalid, the proxy falls back to the built-in default table.

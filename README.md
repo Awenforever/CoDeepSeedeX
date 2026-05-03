@@ -292,3 +292,25 @@ OPERATIONS.md
 REGRESSION.md
 TROUBLESHOOTING.md
 ```
+
+## Pricing configuration
+
+Local estimated cost is calculated from config/pricing.json.
+
+```json
+{
+  "deepseek-v4-flash": {
+    "input_cache_hit": 0.0028,
+    "input_cache_miss": 0.14,
+    "output": 0.28
+  }
+}
+```
+
+Override the path with:
+
+```json
+export DEEPSEEK_PROXY_PRICING_PATH=/path/to/pricing.json
+```
+
+Values are USD per 1M tokens. If the config is missing or invalid, the proxy falls back to the built-in default pricing table.

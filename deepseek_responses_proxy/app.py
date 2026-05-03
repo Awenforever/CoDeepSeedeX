@@ -16,16 +16,16 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v1.1-usage-summary-filters"
+PROXY_VERSION = "v1.2-external-pricing-config"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
-MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+DEFAULT_MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
     "deepseek-v4-flash": {
         "input_cache_hit": 0.0028,
         "input_cache_miss": 0.14,
         "output": 0.28,
-    }
+    },
 }
 
 
@@ -101,8 +101,59 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _pricing_config_path() -> Path:
+    return Path(
+        os.environ.get(
+            "DEEPSEEK_PROXY_PRICING_PATH",
+            str(Path(__file__).resolve().parent.parent / "config" / "pricing.json"),
+        )
+    ).expanduser()
+
+
+def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
+    path = _pricing_config_path()
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to load pricing config {path}: {exc}")
+        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+
+    if not isinstance(data, dict):
+        print(f"[deepseek-responses-proxy] invalid pricing config root in {path}: expected object")
+        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+
+    pricing: dict[str, dict[str, float]] = {}
+    required_keys = {"input_cache_hit", "input_cache_miss", "output"}
+
+    for model, raw_prices in data.items():
+        if not isinstance(model, str) or not isinstance(raw_prices, dict):
+            print(f"[deepseek-responses-proxy] ignored invalid pricing entry for model={model!r}")
+            continue
+
+        if not required_keys.issubset(raw_prices):
+            print(f"[deepseek-responses-proxy] ignored incomplete pricing entry for model={model!r}")
+            continue
+
+        try:
+            pricing[model] = {
+                "input_cache_hit": float(raw_prices["input_cache_hit"]),
+                "input_cache_miss": float(raw_prices["input_cache_miss"]),
+                "output": float(raw_prices["output"]),
+            }
+        except (TypeError, ValueError):
+            print(f"[deepseek-responses-proxy] ignored non-numeric pricing entry for model={model!r}")
+
+    if not pricing:
+        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+
+    return pricing
+
+
 def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
-    pricing = MODEL_PRICING_USD_PER_1M.get(model)
+    pricing = _load_model_pricing_usd_per_1m().get(model)
     if pricing is None:
         return 0.0
 
@@ -118,6 +169,7 @@ def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
     ) / 1_000_000
 
     return float(cost)
+
 
 def _normalize_chat_role(role: str | None) -> str:
     """Map Responses/Codex roles to DeepSeek ChatCompletions roles."""
@@ -1245,7 +1297,7 @@ def create_app(
                 model=model,
             ),
             "filters": filters,
-            "pricing_usd_per_1m": MODEL_PRICING_USD_PER_1M,
+            "pricing_usd_per_1m": _load_model_pricing_usd_per_1m(),
         }
 
     @app.get("/v1/models")
