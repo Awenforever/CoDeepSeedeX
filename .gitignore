@@ -26,3 +26,7 @@ proxy.pid
 *.sqlite
 *.sqlite3
 *.db
+
+# Thinking proxy runtime files
+proxy-thinking.log
+proxy-thinking.pid
