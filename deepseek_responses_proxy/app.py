@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v1.0a4-thinking-tool-transcript"
+PROXY_VERSION = "v1.1-usage-summary-filters"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -506,23 +506,99 @@ class SQLiteResponseStore:
                 ),
             )
 
-    def usage_events(self, limit: int = 100) -> list[dict[str, Any]]:
+    @staticmethod
+    def _usage_filter_where(
+        *,
+        since: int | None = None,
+        until: int | None = None,
+        thinking: bool | None = None,
+        model: str | None = None,
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if since is not None:
+            clauses.append("created_at >= ?")
+            params.append(int(since))
+
+        if until is not None:
+            clauses.append("created_at <= ?")
+            params.append(int(until))
+
+        if thinking is not None:
+            clauses.append("thinking_enabled = ?")
+            params.append(1 if thinking else 0)
+
+        if model:
+            clauses.append("model = ?")
+            params.append(model)
+
+        if not clauses:
+            return "", params
+
+        return " WHERE " + " AND ".join(clauses), params
+
+    def usage_events(
+        self,
+        limit: int = 100,
+        *,
+        since: int | None = None,
+        until: int | None = None,
+        thinking: bool | None = None,
+        model: str | None = None,
+    ) -> list[dict[str, Any]]:
+        where_sql, params = self._usage_filter_where(
+            since=since,
+            until=until,
+            thinking=thinking,
+            model=model,
+        )
+
+        safe_limit = max(1, min(int(limit), 1000))
+
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT *
+                f"""
+                SELECT
+                    created_at,
+                    response_id,
+                    previous_response_id,
+                    model,
+                    thinking_enabled,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    cached_tokens,
+                    reasoning_tokens,
+                    estimated_cost_usd
                 FROM usage_events
-                ORDER BY id DESC
+                {where_sql}
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                [*params, safe_limit],
             ).fetchall()
+
         return [dict(row) for row in rows]
 
-    def usage_summary(self) -> dict[str, Any]:
+    def usage_summary(
+        self,
+        *,
+        since: int | None = None,
+        until: int | None = None,
+        thinking: bool | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        where_sql, params = self._usage_filter_where(
+            since=since,
+            until=until,
+            thinking=thinking,
+            model=model,
+        )
+
         with self._connect() as conn:
             row = conn.execute(
-                """
+                f"""
                 SELECT
                     COUNT(*) AS request_count,
                     COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
@@ -532,41 +608,12 @@ class SQLiteResponseStore:
                     COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                     COALESCE(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
                 FROM usage_events
-                """
+                {where_sql}
+                """,
+                params,
             ).fetchone()
 
-            by_model_rows = conn.execute(
-                """
-                SELECT
-                    model,
-                    COUNT(*) AS request_count,
-                    COALESCE(SUM(total_tokens), 0) AS total_tokens,
-                    COALESCE(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
-                FROM usage_events
-                GROUP BY model
-                ORDER BY estimated_cost_usd DESC
-                """
-            ).fetchall()
-
-        return {
-            "request_count": int(row["request_count"]),
-            "prompt_tokens": int(row["prompt_tokens"]),
-            "completion_tokens": int(row["completion_tokens"]),
-            "total_tokens": int(row["total_tokens"]),
-            "cached_tokens": int(row["cached_tokens"]),
-            "reasoning_tokens": int(row["reasoning_tokens"]),
-            "estimated_cost_usd": float(row["estimated_cost_usd"]),
-            "by_model": [dict(r) for r in by_model_rows],
-        }
-
-    def cleanup_older_than(self, cutoff_created_at: int) -> int:
-        """Delete rows older than cutoff_created_at. Returns deleted row count."""
-        with self._connect() as conn:
-            cur = conn.execute(
-                "DELETE FROM responses WHERE created_at < ?",
-                (cutoff_created_at,),
-            )
-            return int(cur.rowcount or 0)
+        return dict(row)
 
 
 class DeepSeekClient:
@@ -1123,22 +1170,61 @@ def create_app(
         }
 
     @app.get("/v1/proxy/usage")
-    async def proxy_usage(limit: int = 100) -> dict[str, Any]:
+    async def proxy_usage(
+        limit: int = 100,
+        since: int | None = None,
+        until: int | None = None,
+        thinking: bool | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        if since is not None and until is not None and until < since:
+            raise HTTPException(status_code=400, detail="until must be greater than or equal to since")
+
+        filters = {
+            "since": since,
+            "until": until,
+            "thinking": thinking,
+            "model": model,
+        }
+
         if not hasattr(app.state.store, "usage_events"):
             return {
                 "status": "ok",
                 "usage_events": [],
+                "filters": filters,
                 "note": "current store does not support usage ledger",
             }
 
         safe_limit = max(1, min(int(limit), 1000))
         return {
             "status": "ok",
-            "usage_events": app.state.store.usage_events(limit=safe_limit),
+            "filters": filters,
+            "usage_events": app.state.store.usage_events(
+                limit=safe_limit,
+                since=since,
+                until=until,
+                thinking=thinking,
+                model=model,
+            ),
         }
 
     @app.get("/v1/proxy/usage/summary")
-    async def proxy_usage_summary() -> dict[str, Any]:
+    async def proxy_usage_summary(
+        since: int | None = None,
+        until: int | None = None,
+        thinking: bool | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        if since is not None and until is not None and until < since:
+            raise HTTPException(status_code=400, detail="until must be greater than or equal to since")
+
+        filters = {
+            "since": since,
+            "until": until,
+            "thinking": thinking,
+            "model": model,
+        }
+
         if not hasattr(app.state.store, "usage_summary"):
             return {
                 "status": "ok",
@@ -1146,12 +1232,19 @@ def create_app(
                     "request_count": 0,
                     "estimated_cost_usd": 0.0,
                 },
+                "filters": filters,
                 "note": "current store does not support usage ledger",
             }
 
         return {
             "status": "ok",
-            "summary": app.state.store.usage_summary(),
+            "summary": app.state.store.usage_summary(
+                since=since,
+                until=until,
+                thinking=thinking,
+                model=model,
+            ),
+            "filters": filters,
             "pricing_usd_per_1m": MODEL_PRICING_USD_PER_1M,
         }
 

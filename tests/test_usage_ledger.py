@@ -96,3 +96,237 @@ async def test_usage_summary_endpoint_returns_totals(tmp_path):
     assert events.status_code == 200
     events_data = events.json()
     assert len(events_data["usage_events"]) == 2
+
+
+def _record_usage_event(
+    store,
+    *,
+    response_id,
+    created_at,
+    model="deepseek-v4-flash",
+    thinking_enabled=False,
+    prompt_tokens=100,
+    completion_tokens=10,
+    total_tokens=110,
+    cached_tokens=20,
+    reasoning_tokens=0,
+    estimated_cost_usd=0.001,
+):
+    store.record_usage(
+        response_id=response_id,
+        previous_response_id=None,
+        model=model,
+        thinking_enabled=thinking_enabled,
+        usage_numbers={
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cached_tokens": cached_tokens,
+            "reasoning_tokens": reasoning_tokens,
+        },
+        estimated_cost_usd=estimated_cost_usd,
+    )
+
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE usage_events SET created_at = ? WHERE response_id = ?",
+            (created_at, response_id),
+        )
+
+
+def test_usage_events_can_filter_by_time_thinking_and_model(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+
+    _record_usage_event(
+        store,
+        response_id="stable_old",
+        created_at=100,
+        thinking_enabled=False,
+        model="deepseek-v4-flash",
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_mid",
+        created_at=200,
+        thinking_enabled=True,
+        model="deepseek-v4-flash",
+        reasoning_tokens=33,
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_other_model",
+        created_at=300,
+        thinking_enabled=True,
+        model="other-model",
+    )
+    _record_usage_event(
+        store,
+        response_id="stable_new",
+        created_at=400,
+        thinking_enabled=False,
+        model="deepseek-v4-flash",
+    )
+
+    events = store.usage_events(
+        limit=10,
+        since=150,
+        until=350,
+        thinking=True,
+        model="deepseek-v4-flash",
+    )
+
+    assert [event["response_id"] for event in events] == ["thinking_mid"]
+    assert events[0]["thinking_enabled"] == 1
+    assert events[0]["reasoning_tokens"] == 33
+
+
+def test_usage_summary_can_filter_by_time_thinking_and_model(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+
+    _record_usage_event(
+        store,
+        response_id="stable_old",
+        created_at=100,
+        thinking_enabled=False,
+        model="deepseek-v4-flash",
+        prompt_tokens=100,
+        completion_tokens=10,
+        total_tokens=110,
+        cached_tokens=20,
+        reasoning_tokens=0,
+        estimated_cost_usd=0.001,
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_mid",
+        created_at=200,
+        thinking_enabled=True,
+        model="deepseek-v4-flash",
+        prompt_tokens=200,
+        completion_tokens=20,
+        total_tokens=220,
+        cached_tokens=40,
+        reasoning_tokens=12,
+        estimated_cost_usd=0.002,
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_new",
+        created_at=300,
+        thinking_enabled=True,
+        model="deepseek-v4-flash",
+        prompt_tokens=300,
+        completion_tokens=30,
+        total_tokens=330,
+        cached_tokens=60,
+        reasoning_tokens=18,
+        estimated_cost_usd=0.003,
+    )
+    _record_usage_event(
+        store,
+        response_id="other_model",
+        created_at=300,
+        thinking_enabled=True,
+        model="other-model",
+        prompt_tokens=999,
+        completion_tokens=999,
+        total_tokens=1998,
+        cached_tokens=0,
+        reasoning_tokens=999,
+        estimated_cost_usd=9.999,
+    )
+
+    summary = store.usage_summary(
+        since=150,
+        until=350,
+        thinking=True,
+        model="deepseek-v4-flash",
+    )
+
+    assert summary["request_count"] == 2
+    assert summary["prompt_tokens"] == 500
+    assert summary["completion_tokens"] == 50
+    assert summary["total_tokens"] == 550
+    assert summary["cached_tokens"] == 100
+    assert summary["reasoning_tokens"] == 30
+    assert abs(summary["estimated_cost_usd"] - 0.005) < 1e-12
+
+
+@pytest.mark.asyncio
+async def test_usage_endpoints_accept_filters(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    app = create_app(deepseek_client=UsageDeepSeekClient(), store=store)
+
+    _record_usage_event(
+        store,
+        response_id="stable_old",
+        created_at=100,
+        thinking_enabled=False,
+        model="deepseek-v4-flash",
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_mid",
+        created_at=200,
+        thinking_enabled=True,
+        model="deepseek-v4-flash",
+        prompt_tokens=200,
+        completion_tokens=20,
+        total_tokens=220,
+        cached_tokens=40,
+        reasoning_tokens=12,
+        estimated_cost_usd=0.002,
+    )
+    _record_usage_event(
+        store,
+        response_id="thinking_other_model",
+        created_at=300,
+        thinking_enabled=True,
+        model="other-model",
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        summary_response = await client.get(
+            "/v1/proxy/usage/summary",
+            params={
+                "since": 150,
+                "until": 250,
+                "thinking": "true",
+                "model": "deepseek-v4-flash",
+            },
+        )
+        events_response = await client.get(
+            "/v1/proxy/usage",
+            params={
+                "limit": 10,
+                "since": 150,
+                "until": 250,
+                "thinking": "true",
+                "model": "deepseek-v4-flash",
+            },
+        )
+        bad_range_response = await client.get(
+            "/v1/proxy/usage/summary",
+            params={
+                "since": 300,
+                "until": 200,
+            },
+        )
+
+    assert summary_response.status_code == 200
+    summary_data = summary_response.json()
+    assert summary_data["filters"] == {
+        "since": 150,
+        "until": 250,
+        "thinking": True,
+        "model": "deepseek-v4-flash",
+    }
+    assert summary_data["summary"]["request_count"] == 1
+    assert summary_data["summary"]["prompt_tokens"] == 200
+
+    assert events_response.status_code == 200
+    events_data = events_response.json()
+    assert events_data["filters"]["thinking"] is True
+    assert [event["response_id"] for event in events_data["usage_events"]] == ["thinking_mid"]
+
+    assert bad_range_response.status_code == 400
