@@ -21,3 +21,8 @@ proxy.pid
 
 *.bak
 *.bak.*
+
+# Local persistent state
+*.sqlite
+*.sqlite3
+*.db

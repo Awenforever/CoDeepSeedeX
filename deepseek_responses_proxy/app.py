@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -34,6 +36,13 @@ def _stringify_content(value: Any) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
+
+
+def _default_db_path() -> Path:
+    configured = os.environ.get("DEEPSEEK_PROXY_DB_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".local" / "state" / "deepseek-responses-proxy" / "responses.sqlite3"
 
 def _normalize_chat_role(role: str | None) -> str:
     """Map Responses/Codex roles to DeepSeek ChatCompletions roles."""
@@ -65,6 +74,93 @@ class InMemoryResponseStore:
         if stored is None:
             return None
         return StoredResponse(response=deepcopy(stored.response), chat_messages=deepcopy(stored.chat_messages))
+
+
+class SQLiteResponseStore:
+    """Persistent response store backed by SQLite.
+
+    This preserves response_id -> response/chat_messages state across proxy
+    restarts, which is required for previous_response_id continuations after
+    a local proxy restart.
+    """
+
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self.db_path = Path(db_path).expanduser() if db_path is not None else _default_db_path()
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS responses (
+                    response_id TEXT PRIMARY KEY,
+                    created_at INTEGER NOT NULL,
+                    response_json TEXT NOT NULL,
+                    chat_messages_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_responses_created_at ON responses(created_at)"
+            )
+
+    def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
+        response_id = response["id"]
+        created_at = int(response.get("created_at") or _now())
+        response_json = json.dumps(response, ensure_ascii=False)
+        chat_messages_json = json.dumps(chat_messages, ensure_ascii=False)
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO responses (
+                    response_id,
+                    created_at,
+                    response_json,
+                    chat_messages_json
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(response_id) DO UPDATE SET
+                    created_at = excluded.created_at,
+                    response_json = excluded.response_json,
+                    chat_messages_json = excluded.chat_messages_json
+                """,
+                (response_id, created_at, response_json, chat_messages_json),
+            )
+
+    def get(self, response_id: str) -> StoredResponse | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT response_json, chat_messages_json
+                FROM responses
+                WHERE response_id = ?
+                """,
+                (response_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return StoredResponse(
+            response=json.loads(row["response_json"]),
+            chat_messages=json.loads(row["chat_messages_json"]),
+        )
+
+    def cleanup_older_than(self, cutoff_created_at: int) -> int:
+        """Delete rows older than cutoff_created_at. Returns deleted row count."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM responses WHERE created_at < ?",
+                (cutoff_created_at,),
+            )
+            return int(cur.rowcount or 0)
 
 
 class DeepSeekClient:
@@ -481,7 +577,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI()
     app.state.deepseek_client = deepseek_client or DeepSeekClient()
-    app.state.store = store or InMemoryResponseStore()
+    app.state.store = store or SQLiteResponseStore()
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
