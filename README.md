@@ -95,20 +95,3 @@ Optional health check:
 ```bash
 CHECK_DEEPSEEK_BALANCE=1 ./health_check.sh
 ```
-
-## Balance check
-
-The proxy exposes DeepSeek's official balance endpoint:
-
-```bash
-curl -sS http://127.0.0.1:8000/v1/proxy/balance | python3 -m json.tool
-```
-
-This reports current DeepSeek account balance. It is not a full spending ledger. DeepSeek bills API usage by token usage and model pricing, deducting fees from the account balance.
-
-Optional health check:
-
-```bash
-CHECK_DEEPSEEK_BALANCE=1 ./health_check.sh
-```
-
