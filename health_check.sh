@@ -7,6 +7,11 @@ echo "== models =="
 curl -fsS "$BASE_URL/models" | python3 -m json.tool >/dev/null
 echo "models ok"
 
+
+echo "== proxy status =="
+curl -fsS "$BASE_URL/proxy/status" | python3 -m json.tool >/dev/null
+echo "proxy status ok"
+
 echo "== text response =="
 curl -fsS "$BASE_URL/responses" \
   -H "Content-Type: application/json" \
@@ -31,3 +36,10 @@ grep -q "response.completed" /tmp/ds_proxy_health_stream.txt
 echo "stream ok"
 
 echo "All proxy HTTP health checks passed."
+
+if [ "${CHECK_DEEPSEEK_BALANCE:-0}" = "1" ]; then
+  echo "== DeepSeek balance =="
+  curl -fsS "$BASE_URL/proxy/balance" | python3 -m json.tool
+  echo "balance ok"
+fi
+

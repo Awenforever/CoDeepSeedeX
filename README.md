@@ -79,3 +79,19 @@ Known caution:
 - Do not mix disabled-mode sessions and thinking-mode sessions.
 - Do not use resume --last across different profiles.
 - Prefer a fresh session when switching between deepseek and deepseek-thinking.
+
+## Balance check
+
+The proxy exposes DeepSeek's official balance endpoint:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/proxy/balance | python3 -m json.tool
+```
+
+This reports current DeepSeek account balance. It is not a full spending ledger. DeepSeek bills API usage by token usage and model pricing, deducting fees from the account balance.
+
+Optional health check:
+
+```bash
+CHECK_DEEPSEEK_BALANCE=1 ./health_check.sh
+```

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
+PROXY_VERSION = "v0.8-observability"
 
 
 def _now() -> int:
@@ -43,6 +44,20 @@ def _default_db_path() -> Path:
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".local" / "state" / "deepseek-responses-proxy" / "responses.sqlite3"
+
+
+def _store_info(store: Any) -> dict[str, Any]:
+    info: dict[str, Any] = {
+        "type": type(store).__name__,
+    }
+    db_path = getattr(store, "db_path", None)
+    if db_path is not None:
+        info["db_path"] = str(db_path)
+    return info
+
+
+def _thinking_enabled() -> bool:
+    return _deepseek_thinking_config().get("type") == "enabled"
 
 def _normalize_chat_role(role: str | None) -> str:
     """Map Responses/Codex roles to DeepSeek ChatCompletions roles."""
@@ -219,6 +234,42 @@ class DeepSeekClient:
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = (base_url or os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
         self._client = http_client or httpx.AsyncClient(timeout=60.0)
+
+    async def user_balance(self) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        response = await self._client.get(
+            f"{self.base_url}/user/balance",
+            headers=headers,
+        )
+
+        if response.status_code >= 400:
+            body = response.text
+            print("[deepseek-responses-proxy] DeepSeek balance upstream error")
+            print(f"[deepseek-responses-proxy] status={response.status_code}")
+            print(f"[deepseek-responses-proxy] body={body}")
+            raise HTTPException(
+                status_code=502 if response.status_code != 429 else 429,
+                detail={
+                    "upstream": "deepseek",
+                    "status_code": response.status_code,
+                    "body": _truncate_error_body(body),
+                },
+            )
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "upstream": "deepseek",
+                    "error_type": "invalid_json",
+                    "message": str(exc),
+                },
+            ) from exc
 
     async def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
@@ -686,6 +737,44 @@ def create_app(
     app = FastAPI()
     app.state.deepseek_client = deepseek_client or DeepSeekClient()
     app.state.store = store or SQLiteResponseStore()
+    app.state.started_at = _now()
+    app.state.repair_count = 0
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "thinking": _deepseek_thinking_config(),
+        }
+
+    @app.get("/v1/proxy/status")
+    async def proxy_status() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "model_default": DEFAULT_MODEL,
+            "thinking": _deepseek_thinking_config(),
+            "thinking_enabled": _thinking_enabled(),
+            "store": _store_info(app.state.store),
+            "started_at": app.state.started_at,
+            "uptime_seconds": max(0, _now() - app.state.started_at),
+            "repair_count": app.state.repair_count,
+            "deepseek_base_url": getattr(app.state.deepseek_client, "base_url", None),
+        }
+
+    @app.get("/v1/proxy/balance")
+    async def proxy_balance() -> dict[str, Any]:
+        try:
+            balance = await app.state.deepseek_client.user_balance()
+        except Exception as exc:
+            raise _upstream_exception_to_http_exception(exc) from exc
+
+        return {
+            "status": "ok",
+            "upstream": "deepseek",
+            "balance": balance,
+        }
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
@@ -735,6 +824,7 @@ def create_app(
             messages, repaired_history = _repair_thinking_history_messages(messages)
             if repaired_history:
                 app.state.store.save(stored.response, messages)
+                app.state.repair_count += 1
                 print(
                     f"[deepseek-responses-proxy] repaired missing reasoning_content "
                     f"for previous_response_id={previous_response_id}"
