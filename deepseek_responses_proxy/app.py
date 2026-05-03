@@ -16,7 +16,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v0.8-observability"
+PROXY_VERSION = "v0.9-usage-ledger"
+
+# USD per 1M tokens. Keep this table small and explicit.
+# Source should be periodically checked against DeepSeek official pricing.
+MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "deepseek-v4-flash": {
+        "input_cache_hit": 0.0028,
+        "input_cache_miss": 0.14,
+        "output": 0.28,
+    }
+}
 
 
 def _now() -> int:
@@ -58,6 +68,56 @@ def _store_info(store: Any) -> dict[str, Any]:
 
 def _thinking_enabled() -> bool:
     return _deepseek_thinking_config().get("type") == "enabled"
+
+
+def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
+    usage = deepseek_response.get("usage") or {}
+
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    total_tokens = int(usage.get("total_tokens") or prompt_tokens + completion_tokens)
+
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    completion_details = usage.get("completion_tokens_details") or {}
+
+    cached_tokens = int(
+        prompt_details.get("cached_tokens")
+        or usage.get("prompt_cache_hit_tokens")
+        or 0
+    )
+    reasoning_tokens = int(completion_details.get("reasoning_tokens") or 0)
+
+    if cached_tokens < 0:
+        cached_tokens = 0
+    if cached_tokens > prompt_tokens:
+        cached_tokens = prompt_tokens
+
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "cached_tokens": cached_tokens,
+        "reasoning_tokens": reasoning_tokens,
+    }
+
+
+def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
+    pricing = MODEL_PRICING_USD_PER_1M.get(model)
+    if pricing is None:
+        return 0.0
+
+    prompt_tokens = usage_numbers["prompt_tokens"]
+    cached_tokens = usage_numbers["cached_tokens"]
+    cache_miss_tokens = max(0, prompt_tokens - cached_tokens)
+    completion_tokens = usage_numbers["completion_tokens"]
+
+    cost = (
+        cached_tokens * pricing["input_cache_hit"]
+        + cache_miss_tokens * pricing["input_cache_miss"]
+        + completion_tokens * pricing["output"]
+    ) / 1_000_000
+
+    return float(cost)
 
 def _normalize_chat_role(role: str | None) -> str:
     """Map Responses/Codex roles to DeepSeek ChatCompletions roles."""
@@ -169,6 +229,30 @@ class SQLiteResponseStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_responses_created_at ON responses(created_at)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS usage_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    response_id TEXT,
+                    previous_response_id TEXT,
+                    model TEXT NOT NULL,
+                    thinking_enabled INTEGER NOT NULL,
+                    prompt_tokens INTEGER NOT NULL,
+                    completion_tokens INTEGER NOT NULL,
+                    total_tokens INTEGER NOT NULL,
+                    cached_tokens INTEGER NOT NULL,
+                    reasoning_tokens INTEGER NOT NULL,
+                    estimated_cost_usd REAL NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events(created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_usage_events_response_id ON usage_events(response_id)"
+            )
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         response_id = response["id"]
@@ -212,6 +296,102 @@ class SQLiteResponseStore:
             response=json.loads(row["response_json"]),
             chat_messages=json.loads(row["chat_messages_json"]),
         )
+
+    def record_usage(
+        self,
+        *,
+        response_id: str | None,
+        previous_response_id: str | None,
+        model: str,
+        thinking_enabled: bool,
+        usage_numbers: dict[str, int],
+        estimated_cost_usd: float,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO usage_events (
+                    created_at,
+                    response_id,
+                    previous_response_id,
+                    model,
+                    thinking_enabled,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    cached_tokens,
+                    reasoning_tokens,
+                    estimated_cost_usd
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _now(),
+                    response_id,
+                    previous_response_id,
+                    model,
+                    1 if thinking_enabled else 0,
+                    usage_numbers["prompt_tokens"],
+                    usage_numbers["completion_tokens"],
+                    usage_numbers["total_tokens"],
+                    usage_numbers["cached_tokens"],
+                    usage_numbers["reasoning_tokens"],
+                    estimated_cost_usd,
+                ),
+            )
+
+    def usage_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM usage_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def usage_summary(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS request_count,
+                    COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+                    COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+                    COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(cached_tokens), 0) AS cached_tokens,
+                    COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
+                    COALESCE(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
+                FROM usage_events
+                """
+            ).fetchone()
+
+            by_model_rows = conn.execute(
+                """
+                SELECT
+                    model,
+                    COUNT(*) AS request_count,
+                    COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
+                FROM usage_events
+                GROUP BY model
+                ORDER BY estimated_cost_usd DESC
+                """
+            ).fetchall()
+
+        return {
+            "request_count": int(row["request_count"]),
+            "prompt_tokens": int(row["prompt_tokens"]),
+            "completion_tokens": int(row["completion_tokens"]),
+            "total_tokens": int(row["total_tokens"]),
+            "cached_tokens": int(row["cached_tokens"]),
+            "reasoning_tokens": int(row["reasoning_tokens"]),
+            "estimated_cost_usd": float(row["estimated_cost_usd"]),
+            "by_model": [dict(r) for r in by_model_rows],
+        }
 
     def cleanup_older_than(self, cutoff_created_at: int) -> int:
         """Delete rows older than cutoff_created_at. Returns deleted row count."""
@@ -776,6 +956,39 @@ def create_app(
             "balance": balance,
         }
 
+    @app.get("/v1/proxy/usage")
+    async def proxy_usage(limit: int = 100) -> dict[str, Any]:
+        if not hasattr(app.state.store, "usage_events"):
+            return {
+                "status": "ok",
+                "usage_events": [],
+                "note": "current store does not support usage ledger",
+            }
+
+        safe_limit = max(1, min(int(limit), 1000))
+        return {
+            "status": "ok",
+            "usage_events": app.state.store.usage_events(limit=safe_limit),
+        }
+
+    @app.get("/v1/proxy/usage/summary")
+    async def proxy_usage_summary() -> dict[str, Any]:
+        if not hasattr(app.state.store, "usage_summary"):
+            return {
+                "status": "ok",
+                "summary": {
+                    "request_count": 0,
+                    "estimated_cost_usd": 0.0,
+                },
+                "note": "current store does not support usage ledger",
+            }
+
+        return {
+            "status": "ok",
+            "summary": app.state.store.usage_summary(),
+            "pricing_usd_per_1m": MODEL_PRICING_USD_PER_1M,
+        }
+
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
         created = _now()
@@ -868,6 +1081,18 @@ def create_app(
             output_items=output_items,
             deepseek_response=deepseek_response,
         )
+
+        if hasattr(app.state.store, "record_usage"):
+            usage_numbers = _extract_usage_numbers(deepseek_response)
+            estimated_cost_usd = _estimate_cost_usd(model, usage_numbers)
+            app.state.store.record_usage(
+                response_id=response_id,
+                previous_response_id=previous_response_id,
+                model=model,
+                thinking_enabled=_thinking_enabled(),
+                usage_numbers=usage_numbers,
+                estimated_cost_usd=estimated_cost_usd,
+            )
 
         next_history = deepcopy(messages)
         assistant_history_item = {"role": "assistant", "content": assistant_message.get("content") or ""}

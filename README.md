@@ -95,3 +95,27 @@ Optional health check:
 ```bash
 CHECK_DEEPSEEK_BALANCE=1 ./health_check.sh
 ```
+
+## Usage and estimated cost ledger
+
+The proxy records token usage returned by DeepSeek and estimates local cost.
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/proxy/usage/summary | python3 -m json.tool
+curl -sS http://127.0.0.1:8000/v1/proxy/usage?limit=20 | python3 -m json.tool
+```
+
+Current implementation records:
+
+- response_id
+- previous_response_id
+- model
+- thinking_enabled
+- prompt_tokens
+- completion_tokens
+- total_tokens
+- cached_tokens
+- reasoning_tokens
+- estimated_cost_usd
+
+The estimate uses a local price table for deepseek-v4-flash. Check DeepSeek official pricing regularly because model prices may change.
