@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v1.2-external-pricing-config"
+PROXY_VERSION = "v1.3-deepseek-reasoning-effort"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -68,6 +68,22 @@ def _store_info(store: Any) -> dict[str, Any]:
 
 def _thinking_enabled() -> bool:
     return _deepseek_thinking_config().get("type") == "enabled"
+
+
+def _deepseek_reasoning_effort_config() -> str | None:
+    """Return DeepSeek reasoning_effort for upstream ChatCompletions."""
+    if not _thinking_enabled():
+        return None
+
+    value = os.environ.get("DEEPSEEK_REASONING_EFFORT", "max").strip().lower()
+    if value in {"high", "max"}:
+        return value
+
+    print(
+        "[deepseek-responses-proxy] invalid DEEPSEEK_REASONING_EFFORT="
+        f"{value!r}; falling back to 'max'"
+    )
+    return "max"
 
 
 def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
@@ -1169,8 +1185,14 @@ def _build_chat_payload(
         "stream": False,
         "thinking": _deepseek_thinking_config(),
     }
+
+    reasoning_effort = _deepseek_reasoning_effort_config()
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
+
     if tools:
         payload["tools"] = tools
+
     return payload
 
 
