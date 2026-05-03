@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v0.9-usage-ledger"
+PROXY_VERSION = "v1.0a2-version-metadata"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
