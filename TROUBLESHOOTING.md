@@ -1,0 +1,208 @@
+# Troubleshooting
+
+## Proxy is not reachable
+
+Symptom:
+
+```text
+curl: Failed to connect to 127.0.0.1 port 8000
+```
+
+Check stable proxy:
+
+```bash
+dsproxy-status
+dsproxy-log
+```
+
+Check thinking proxy:
+
+```bash
+dsproxy-status-thinking
+dsproxy-log-thinking
+```
+
+Manual check:
+
+```bash
+curl -sS http://127.0.0.1:8000/healthz | python3 -m json.tool
+curl -sS http://127.0.0.1:8001/healthz | python3 -m json.tool
+```
+
+## Missing DeepSeek API key
+
+Symptom:
+
+```text
+DeepSeek upstream authentication error
+```
+
+Check that `DEEPSEEK_API_KEY` is available in the environment used to start the proxy.
+
+Manual startup example:
+
+```bash
+export DEEPSEEK_API_KEY='your-key'
+PYTHONPATH=. python -m uvicorn deepseek_responses_proxy.app:app --host 127.0.0.1 --port 8000
+```
+
+## Codex says model metadata was not found
+
+Symptom:
+
+```text
+Model metadata for `deepseek-v4-flash` not found. Defaulting to fallback metadata.
+```
+
+Current interpretation:
+
+```text
+Usually harmless for basic text and tool-call workflows.
+```
+
+Watch for context-window, tool-capability, or token-budgeting side effects.
+
+## Unsupported built-in tools are ignored
+
+Expected log examples:
+
+```text
+[deepseek-responses-proxy] ignored unsupported tool type: web_search
+[deepseek-responses-proxy] ignored unsupported tool type: image_generation
+[deepseek-responses-proxy] ignored unsupported tool type: namespace
+```
+
+Reason:
+
+```text
+DeepSeek Chat Completions cannot execute OpenAI-hosted built-in tools.
+```
+
+This is expected unless Codex depends on those tools for the task.
+
+## Thinking mode rejects old history
+
+Possible upstream error:
+
+```text
+The `reasoning_content` in the thinking mode must be passed back to the API.
+```
+
+Current repair behavior:
+
+```text
+The proxy repairs legacy assistant messages by adding empty reasoning_content fields.
+```
+
+If the session still fails, start a fresh thinking session:
+
+```bash
+cd /tmp
+mkdir -p codex-thinking-fresh
+cd codex-thinking-fresh
+codex --profile deepseek-thinking
+```
+
+## Resume opened the wrong profile history
+
+Avoid this pattern when both profiles were recently used:
+
+```bash
+codex --profile deepseek-thinking resume --last
+```
+
+Safer pattern:
+
+```bash
+codex --profile deepseek-thinking resume <session_id>
+```
+
+## Health check text response fails
+
+Run:
+
+```bash
+./health_check.sh
+```
+
+Then inspect temporary output:
+
+```bash
+cat /tmp/ds_proxy_health_text.json
+cat /tmp/ds_proxy_health_stream.txt
+```
+
+Check logs:
+
+```bash
+dsproxy-log
+```
+
+## Balance endpoint fails
+
+Run:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/proxy/status | python3 -m json.tool
+curl -sS http://127.0.0.1:8000/v1/proxy/balance | python3 -m json.tool
+```
+
+Possible causes:
+
+* missing or invalid DeepSeek API key
+* upstream DeepSeek account issue
+* network error
+* upstream endpoint changed
+
+## Usage summary is empty
+
+Usage records are written only after successful proxy requests with usage fields returned by DeepSeek.
+
+Generate one request:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-v4-flash","input":"Reply exactly: ok"}' \
+  | python3 -m json.tool
+```
+
+Then check:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/proxy/usage/summary | python3 -m json.tool
+```
+
+## Pytest cannot import the package
+
+Use:
+
+```bash
+cd ~/projects/deepseek-responses-proxy
+source .venv/bin/activate
+TMPDIR=~/projects/deepseek-responses-proxy/.tmp PYTHONPATH=. python -m pytest -q -s
+```
+
+## Dirty worktree before development
+
+Check:
+
+```bash
+git status --short
+```
+
+If unexpected runtime files appear, confirm `.gitignore` covers them before continuing.
+
+Do not commit:
+
+* `.venv/`
+* `.tmp/`
+* `.debug/`
+* `backups/`
+* `proxy.log`
+* `proxy.pid`
+* `proxy-thinking.log`
+* `proxy-thinking.pid`
+* `*.sqlite`
+* `*.sqlite3`
+* `*.db`
