@@ -47,3 +47,35 @@ codex --profile deepseek
 - In-memory response state
 - DeepSeek thinking mode is disabled
 - Experimental compatibility layer, not a full replacement for official Codex models
+
+## Thinking profile
+
+The stable default profile should keep DeepSeek thinking disabled:
+
+```bash
+codex --profile deepseek
+```
+
+An experimental thinking-enabled profile can run through a separate proxy port and database:
+
+```bash
+codex --profile deepseek-thinking
+```
+
+Recommended separation:
+
+deepseek: port 8000, thinking disabled, default daily use
+deepseek-thinking: port 8001, thinking enabled, separate SQLite database, experimental use
+
+Thinking mode uses:
+
+```bash
+DEEPSEEK_THINKING=enabled
+DEEPSEEK_PROXY_DB_PATH=~/.local/state/deepseek-responses-proxy/responses-thinking.sqlite3
+```
+
+Known caution:
+
+- Do not mix disabled-mode sessions and thinking-mode sessions.
+- Do not use resume --last across different profiles.
+- Prefer a fresh session when switching between deepseek and deepseek-thinking.
