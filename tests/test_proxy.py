@@ -60,7 +60,7 @@ async def test_pure_text_response(client_factory):
     body = response.json()
     assert body["output_text"] == "Hello from DeepSeek"
     assert body["output"][0]["type"] == "message"
-    assert transport.requests[0]["model"] == "deepseek-v4-flash"
+    assert transport.requests[0]["model"] == "deepseek-v4-pro"
     assert transport.requests[0]["thinking"] == {"type": "disabled"}
     assert transport.requests[0]["messages"] == [{"role": "user", "content": "Hi"}]
 
@@ -197,3 +197,30 @@ async def test_previous_response_with_function_call_output_preserves_assistant_t
         "tool_call_id": "call_1",
         "content": "{\"weather\": \"sunny\"}",
     }
+
+
+
+@pytest.mark.asyncio
+async def test_env_proxy_model_overrides_request_model(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_model_override",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={
+            "model": "deepseek-v4-flash",
+            "input": "Reply exactly: ok",
+        },
+    )
+
+    assert response.status_code == 200
+    assert transport.requests[0]["model"] == "deepseek-v4-pro"

@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$HOME/.config/deepseek-responses-proxy/env}"
+CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
+
+mkdir -p "$(dirname "$ENV_FILE")"
+
+ensure_env_file() {
+  if [ ! -f "$ENV_FILE" ]; then
+    cat > "$ENV_FILE" <<'ENVEOF'
+export DEEPSEEK_API_KEY=""
+export DEEPSEEK_PROXY_MODEL="deepseek-v4-pro"
+export DEEPSEEK_REASONING_EFFORT="max"
+ENVEOF
+  fi
+}
+
+set_export_var() {
+  local key="$1"
+  local value="$2"
+
+  ensure_env_file
+
+  if grep -qE "^export ${key}=" "$ENV_FILE"; then
+    python3 - "$ENV_FILE" "$key" "$value" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+
+lines = path.read_text(encoding="utf-8").splitlines()
+out = []
+for line in lines:
+    if line.startswith(f"export {key}="):
+        out.append(f'export {key}="{value}"')
+    else:
+        out.append(line)
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+  else
+    printf 'export %s="%s"\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+codex_effort_for_deepseek_effort() {
+  case "$1" in
+    high) echo "high" ;;
+    max) echo "xhigh" ;;
+    *)
+      echo "ERROR: effort must be high or max" >&2
+      exit 2
+      ;;
+  esac
+}
+
+patch_codex_model() {
+  local model="$1"
+
+  [ -f "$CODEX_CONFIG" ] || return 0
+
+  python3 - "$CODEX_CONFIG" "$model" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+model = sys.argv[2]
+text = path.read_text(encoding="utf-8")
+
+profiles = ["deepseek", "deepseek-thinking"]
+
+def patch_profile(text: str, profile: str) -> str:
+    header = f"[profiles.{profile}]"
+    start = text.find(header)
+    if start == -1:
+        return text
+
+    next_table = text.find("\n[", start + len(header))
+    end = len(text) if next_table == -1 else next_table
+    block = text[start:end]
+
+    lines = block.rstrip().splitlines()
+    out = []
+    found = False
+    for line in lines:
+        if line.strip().startswith("model = "):
+            out.append(f'model = "{model}"')
+            found = True
+        else:
+            out.append(line)
+
+    if not found:
+        out.append(f'model = "{model}"')
+
+    return text[:start] + "\n".join(out) + "\n" + text[end:]
+
+for profile in profiles:
+    text = patch_profile(text, profile)
+
+path.write_text(text, encoding="utf-8")
+PY
+}
+
+patch_codex_effort() {
+  local deepseek_effort="$1"
+  local codex_effort
+  codex_effort="$(codex_effort_for_deepseek_effort "$deepseek_effort")"
+
+  [ -f "$CODEX_CONFIG" ] || return 0
+
+  python3 - "$CODEX_CONFIG" "$codex_effort" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+effort = sys.argv[2]
+text = path.read_text(encoding="utf-8")
+
+profile = "deepseek-thinking"
+header = f"[profiles.{profile}]"
+start = text.find(header)
+if start == -1:
+    path.write_text(text, encoding="utf-8")
+    raise SystemExit(0)
+
+next_table = text.find("\n[", start + len(header))
+end = len(text) if next_table == -1 else next_table
+block = text[start:end]
+
+lines = block.rstrip().splitlines()
+out = []
+found = False
+
+for line in lines:
+    if line.strip().startswith("model_reasoning_effort = "):
+        out.append(f'model_reasoning_effort = "{effort}"')
+        found = True
+    else:
+        out.append(line)
+
+if not found:
+    out.append(f'model_reasoning_effort = "{effort}"')
+
+text = text[:start] + "\n".join(out) + "\n" + text[end:]
+path.write_text(text, encoding="utf-8")
+PY
+}
+
+show_config() {
+  ensure_env_file
+  echo "ENV_FILE=$ENV_FILE"
+  grep -E '^export DEEPSEEK_(PROXY_MODEL|REASONING_EFFORT)=' "$ENV_FILE" || true
+  echo
+  echo "CODEX_CONFIG=$CODEX_CONFIG"
+  if [ -f "$CODEX_CONFIG" ]; then
+    grep -nA12 -E '^\[profiles\.deepseek\]|^\[profiles\.deepseek-thinking\]' "$CODEX_CONFIG" || true
+  else
+    echo "missing"
+  fi
+}
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  dsproxy-config show
+  dsproxy-config set-model deepseek-v4-pro
+  dsproxy-config set-model deepseek-v4-flash
+  dsproxy-config set-effort max
+  dsproxy-config set-effort high
+  dsproxy-config set model <model> effort <high|max>
+USAGE
+}
+
+cmd="${1:-show}"
+
+case "$cmd" in
+  show)
+    show_config
+    ;;
+  set-model)
+    model="${2:-}"
+    [ -n "$model" ] || { usage >&2; exit 2; }
+    set_export_var "DEEPSEEK_PROXY_MODEL" "$model"
+    patch_codex_model "$model"
+    echo "model set to $model"
+    ;;
+  set-effort)
+    effort="${2:-}"
+    [ -n "$effort" ] || { usage >&2; exit 2; }
+    case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
+    set_export_var "DEEPSEEK_REASONING_EFFORT" "$effort"
+    patch_codex_effort "$effort"
+    echo "reasoning effort set to $effort"
+    ;;
+  set)
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        model)
+          shift
+          model="${1:-}"
+          [ -n "$model" ] || { usage >&2; exit 2; }
+          set_export_var "DEEPSEEK_PROXY_MODEL" "$model"
+          patch_codex_model "$model"
+          ;;
+        effort)
+          shift
+          effort="${1:-}"
+          [ -n "$effort" ] || { usage >&2; exit 2; }
+          case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
+          set_export_var "DEEPSEEK_REASONING_EFFORT" "$effort"
+          patch_codex_effort "$effort"
+          ;;
+        *)
+          usage >&2
+          exit 2
+          ;;
+      esac
+      shift
+    done
+    show_config
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

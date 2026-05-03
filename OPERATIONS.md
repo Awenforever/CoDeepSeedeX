@@ -320,3 +320,50 @@ Override reasoning effort with:
 ```bash
 DEEPSEEK_REASONING_EFFORT=high dsproxy-start-thinking
 ```
+
+## Model and reasoning-effort switching
+
+Use `dsproxy-config` to switch the runtime model and DeepSeek reasoning effort.
+
+Examples:
+
+```bash
+dsproxy-config show
+dsproxy-config set-model deepseek-v4-pro
+dsproxy-config set-model deepseek-v4-flash
+dsproxy-config set-effort max
+dsproxy-config set-effort high
+dsproxy-config set model deepseek-v4-pro effort max
+```
+
+`dsproxy-config` updates:
+
+```text
+~/.config/deepseek-responses-proxy/env
+~/.codex/config.toml
+```
+
+Model behavior:
+
+```text
+DEEPSEEK_PROXY_MODEL=deepseek-v4-pro
+```
+
+overrides the incoming Codex model field before forwarding to DeepSeek.
+
+Reasoning effort behavior:
+
+```text
+DEEPSEEK_REASONING_EFFORT=max
+```
+
+makes the thinking proxy send:
+
+```json
+{
+  "thinking": {"type": "enabled"},
+  "reasoning_effort": "max"
+}
+```
+
+Use `max` for the strongest DeepSeek reasoning mode and `high` for the lower thinking effort.

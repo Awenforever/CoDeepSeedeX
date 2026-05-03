@@ -28,6 +28,7 @@ nohup env \
   TMPDIR="$PROJECT/.tmp" \
   PYTHONPATH=. \
   DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
+  DEEPSEEK_PROXY_MODEL="${DEEPSEEK_PROXY_MODEL:-deepseek-v4-pro}" \
   .venv/bin/python -m uvicorn deepseek_responses_proxy.app:app \
     --host 127.0.0.1 \
     --port "$PORT" \

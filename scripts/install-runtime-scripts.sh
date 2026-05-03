@@ -12,7 +12,8 @@ for name in \
   dsproxy-stop \
   dsproxy-stop-thinking \
   dsproxy-status \
-  dsproxy-status-thinking
+  dsproxy-status-thinking \
+  dsproxy-config
 do
   install -m 0755 "$PROJECT/scripts/$name" "$BIN_DIR/$name"
   echo "installed $BIN_DIR/$name"

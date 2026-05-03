@@ -35,7 +35,7 @@ async def test_proxy_status_returns_runtime_metadata(monkeypatch):
 
     assert data["status"] == "ok"
     assert data["version"]
-    assert data["model_default"] == "deepseek-v4-flash"
+    assert data["model_default"] == "deepseek-v4-pro"
     assert data["thinking"] == {"type": "enabled"}
     assert data["thinking_enabled"] is True
     assert data["store"]["type"] == "InMemoryResponseStore"

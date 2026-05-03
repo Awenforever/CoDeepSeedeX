@@ -15,8 +15,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 
-DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v1.4-runtime-ops-hardening"
+DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
+PROXY_VERSION = "v1.5-model-and-effort-control"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1347,7 +1347,7 @@ def create_app(
     @app.post("/v1/responses")
     async def create_response(request: Request):
         payload = await request.json()
-        model = payload.get("model") or DEFAULT_MODEL
+        model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip() or payload.get("model") or DEFAULT_MODEL
         previous_response_id = payload.get("previous_response_id")
         stream = bool(payload.get("stream"))
         tools = payload.get("tools") or []
