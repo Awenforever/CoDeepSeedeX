@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}"
+export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
+
+BASE_URL="http://127.0.0.1:8000/v1"
+
+if curl --noproxy '*' -fsS "$BASE_URL/models" >/dev/null 2>&1; then
+  echo "DeepSeek proxy is reachable at $BASE_URL"
+  exit 0
+fi
+
+echo "DeepSeek proxy is not reachable at $BASE_URL" >&2
+exit 1

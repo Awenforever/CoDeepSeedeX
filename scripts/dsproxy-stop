@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT="${DEEPSEEK_PROXY_PROJECT:-$HOME/projects/deepseek-responses-proxy}"
+PID_FILE="$PROJECT/proxy.pid"
+
+if [ ! -f "$PID_FILE" ]; then
+  echo "No running DeepSeek proxy found."
+  exit 0
+fi
+
+pid="$(cat "$PID_FILE")"
+if kill "$pid" >/dev/null 2>&1; then
+  rm -f "$PID_FILE"
+  echo "DeepSeek proxy stopped."
+else
+  rm -f "$PID_FILE"
+  echo "No running DeepSeek proxy found."
+fi

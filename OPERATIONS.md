@@ -249,3 +249,74 @@ Expected format:
 ```
 
 Values are USD per 1M tokens. If the file is missing or invalid, the proxy falls back to the built-in default table.
+
+## Runtime scripts and Codex wrapper
+
+Runtime script templates are tracked under `scripts/`.
+
+Install or refresh local scripts:
+
+```bash
+cd ~/projects/deepseek-responses-proxy
+scripts/install-runtime-scripts.sh
+```
+
+Installed commands:
+
+```text
+dsproxy-start
+dsproxy-start-thinking
+dsproxy-stop
+dsproxy-stop-thinking
+dsproxy-status
+dsproxy-status-thinking
+```
+
+The scripts always bypass system HTTP proxies for localhost checks by using:
+
+```bash
+curl --noproxy '*'
+```
+
+They also export:
+
+```bash
+NO_PROXY=127.0.0.1,localhost,...
+no_proxy=127.0.0.1,localhost,...
+```
+
+This is required because system proxy variables can otherwise redirect localhost health checks and produce false 502 Bad Gateway errors.
+
+For Codex auto-start, copy the function from:
+
+```bash
+scripts/codex-wrapper.bash
+```
+
+into ~/.bashrc.
+
+Expected behavior:
+
+```text
+codex --profile deepseek
+  starts stable proxy on port 8000
+
+codex --profile deepseek-thinking
+  starts stable proxy on port 8000
+  starts thinking proxy on port 8001
+```
+
+The thinking wrapper starts both proxies because the DeepSeek account/usage skill queries both profiles by default.
+
+For thinking mode, `dsproxy-start-thinking` sets:
+
+```bash
+DEEPSEEK_THINKING=enabled
+DEEPSEEK_REASONING_EFFORT=max
+```
+
+Override reasoning effort with:
+
+```bash
+DEEPSEEK_REASONING_EFFORT=high dsproxy-start-thinking
+```

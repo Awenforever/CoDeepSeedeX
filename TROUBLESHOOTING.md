@@ -206,3 +206,36 @@ Do not commit:
 * `*.sqlite`
 * `*.sqlite3`
 * `*.db`
+
+## Codex starts but proxy is unreachable
+
+If `codex --profile deepseek-thinking` opens the TUI but `/healthz` fails, separate Codex startup from proxy startup.
+
+Check host-side runtime status:
+
+```bash
+dsproxy-status
+dsproxy-status-thinking
+curl --noproxy '*' -sS http://127.0.0.1:8000/healthz | python3 -m json.tool
+curl --noproxy '*' -sS http://127.0.0.1:8001/healthz | python3 -m json.tool
+```
+
+If ports are down, start explicitly:
+
+```bash
+dsproxy-start
+dsproxy-start-thinking
+```
+
+If `curl` returns `502 Bad Gateway` for localhost, check proxy variables. Local checks must bypass system proxies:
+
+```bash
+curl --noproxy '*' -sS http://127.0.0.1:8000/healthz
+curl --noproxy '*' -sS http://127.0.0.1:8001/healthz
+```
+
+The tracked script templates in `scripts/` already apply this behavior. Reinstall them with:
+
+```bash
+scripts/install-runtime-scripts.sh
+```
