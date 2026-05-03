@@ -329,3 +329,111 @@ async def test_large_tool_output_is_preserved():
     tool_messages = [m for m in second_payload["messages"] if m["role"] == "tool"]
 
     assert tool_messages[0]["content"] == large_output
+
+
+@pytest.mark.asyncio
+async def test_dangling_tool_call_history_is_repaired_before_new_user_message():
+    fake = FakeDeepSeekClient([deepseek_text_response("continued")])
+    store = InMemoryResponseStore()
+    app = create_app(deepseek_client=fake, store=store)
+
+    previous_response = {
+        "id": "resp_dangling",
+        "object": "response",
+        "created_at": 123,
+        "status": "completed",
+        "model": "deepseek-v4-flash",
+        "previous_response_id": None,
+        "output": [],
+        "output_text": "",
+        "usage": {},
+    }
+    dangling_history = [
+        {"role": "user", "content": "Run pwd."},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [tool_call("call_1", "pwd", {})],
+        },
+    ]
+    store.save(previous_response, dangling_history)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "previous_response_id": "resp_dangling",
+                "input": "Continue without a tool result.",
+            },
+        )
+
+    assert response.status_code == 200
+
+    sent_messages = fake.payloads[0]["messages"]
+    assert sent_messages[1]["role"] == "assistant"
+    assert sent_messages[1]["tool_calls"][0]["id"] == "call_1"
+    assert sent_messages[2]["role"] == "tool"
+    assert sent_messages[2]["tool_call_id"] == "call_1"
+    assert "not completed" in sent_messages[2]["content"]
+    assert sent_messages[3]["role"] == "user"
+    assert sent_messages[3]["content"] == "Continue without a tool result."
+
+    stored = store.get(response.json()["id"])
+    assert stored is not None
+    assert stored.chat_messages[2]["role"] == "tool"
+    assert stored.chat_messages[2]["tool_call_id"] == "call_1"
+
+
+@pytest.mark.asyncio
+async def test_matching_tool_output_does_not_get_synthetic_repair_message():
+    fake = FakeDeepSeekClient([deepseek_text_response("received")])
+    store = InMemoryResponseStore()
+    app = create_app(deepseek_client=fake, store=store)
+
+    previous_response = {
+        "id": "resp_tool_pending",
+        "object": "response",
+        "created_at": 123,
+        "status": "completed",
+        "model": "deepseek-v4-flash",
+        "previous_response_id": None,
+        "output": [],
+        "output_text": "",
+        "usage": {},
+    }
+    pending_history = [
+        {"role": "user", "content": "Run pwd."},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [tool_call("call_1", "pwd", {})],
+        },
+    ]
+    store.save(previous_response, pending_history)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "previous_response_id": "resp_tool_pending",
+                "input": [
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": "/tmp",
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+
+    sent_messages = fake.payloads[0]["messages"]
+    tool_messages = [m for m in sent_messages if m["role"] == "tool"]
+
+    assert len(tool_messages) == 1
+    assert tool_messages[0]["tool_call_id"] == "call_1"
+    assert tool_messages[0]["content"] == "/tmp"
+    assert "not completed" not in tool_messages[0]["content"]

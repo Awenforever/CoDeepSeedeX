@@ -173,6 +173,101 @@ def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[
     return prepared
 
 
+
+def _repair_tool_call_message_order(
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Repair ChatCompletions tool-call ordering before sending to DeepSeek.
+
+    ChatCompletions requires every assistant message with tool_calls to be
+    immediately followed by tool messages for each tool_call_id. Codex can leave
+    a previous response at an intermediate state where the assistant requested a
+    tool call, but the next request does not provide the matching
+    function_call_output. Instead of sending invalid history upstream, insert a
+    synthetic tool message that explicitly marks the call as incomplete.
+
+    This is a protocol repair only. It does not fabricate a successful tool
+    result.
+    """
+    repaired = False
+    repaired_messages: list[dict[str, Any]] = []
+
+    i = 0
+    while i < len(messages):
+        message = deepcopy(messages[i])
+        role = message.get("role")
+
+        if role == "assistant" and message.get("tool_calls"):
+            tool_calls = message.get("tool_calls") or []
+            expected_call_ids = [
+                tool_call.get("id")
+                for tool_call in tool_calls
+                if tool_call.get("id")
+            ]
+
+            repaired_messages.append(message)
+            i += 1
+
+            seen_call_ids: set[str] = set()
+
+            while i < len(messages) and messages[i].get("role") == "tool":
+                tool_message = deepcopy(messages[i])
+                tool_call_id = tool_message.get("tool_call_id")
+
+                if tool_call_id in expected_call_ids and tool_call_id not in seen_call_ids:
+                    repaired_messages.append(tool_message)
+                    seen_call_ids.add(tool_call_id)
+                else:
+                    repaired = True
+                    repaired_messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "[orphaned tool output ignored by protocol repair]\n"
+                                f"tool_call_id={tool_call_id or 'unknown'}\n"
+                                f"{_stringify_content(tool_message.get('content', ''))}"
+                            ),
+                        }
+                    )
+
+                i += 1
+
+            for call_id in expected_call_ids:
+                if call_id not in seen_call_ids:
+                    repaired = True
+                    repaired_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "content": (
+                                "[tool call was not completed before the conversation "
+                                "continued; no tool output is available]"
+                            ),
+                        }
+                    )
+
+            continue
+
+        if role == "tool":
+            repaired = True
+            repaired_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "[orphaned tool output ignored by protocol repair]\n"
+                        f"tool_call_id={message.get('tool_call_id') or 'unknown'}\n"
+                        f"{_stringify_content(message.get('content', ''))}"
+                    ),
+                }
+            )
+            i += 1
+            continue
+
+        repaired_messages.append(message)
+        i += 1
+
+    return repaired_messages, repaired
+
 @dataclass
 class StoredResponse:
     response: dict[str, Any]
@@ -1059,6 +1154,14 @@ def create_app(
             ]
 
         messages.extend(_input_items_to_messages(input_value))
+
+        messages, repaired_tool_history = _repair_tool_call_message_order(messages)
+        if repaired_tool_history:
+            app.state.repair_count += 1
+            print(
+                f"[deepseek-responses-proxy] repaired tool_call message order "
+                f"for previous_response_id={previous_response_id}"
+            )
 
         messages_for_deepseek = _prepare_messages_for_deepseek(messages)
         chat_payload = _build_chat_payload(model=model, messages=messages_for_deepseek, tools=deepseek_tools)
