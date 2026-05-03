@@ -193,3 +193,92 @@ async def test_thinking_enabled_adds_reasoning_content_to_request_assistant_mess
     assert assistant_messages
     assert all("reasoning_content" in msg for msg in assistant_messages)
     assert assistant_messages[0]["reasoning_content"] == ""
+
+
+@pytest.mark.asyncio
+async def test_thinking_enabled_repairs_legacy_disabled_history_and_persists_it(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+
+    legacy_response = {
+        "id": "resp_legacy",
+        "object": "response",
+        "created_at": 123,
+        "status": "completed",
+        "model": "deepseek-v4-flash",
+        "previous_response_id": None,
+        "output": [],
+        "output_text": "",
+        "usage": {},
+    }
+
+    legacy_messages = [
+        {"role": "user", "content": "Reply exactly: ok"},
+        {"role": "assistant", "content": "ok"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "pwd", "arguments": "{}"},
+                }
+            ],
+        },
+    ]
+
+    final_response = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "continued",
+                    "reasoning_content": "new reasoning",
+                }
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+    store = InMemoryResponseStore()
+    store.save(legacy_response, legacy_messages)
+
+    fake = RecordingDeepSeekClient(final_response)
+    app = create_app(deepseek_client=fake, store=store)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "previous_response_id": "resp_legacy",
+                "input": [
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": "/tmp",
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+
+    assistant_messages_sent = [
+        msg for msg in fake.payloads[0]["messages"]
+        if msg["role"] == "assistant"
+    ]
+
+    assert assistant_messages_sent
+    assert all("reasoning_content" in msg for msg in assistant_messages_sent)
+
+    repaired = store.get("resp_legacy")
+    assert repaired is not None
+
+    repaired_assistant_messages = [
+        msg for msg in repaired.chat_messages
+        if msg["role"] == "assistant"
+    ]
+
+    assert repaired_assistant_messages
+    assert all("reasoning_content" in msg for msg in repaired_assistant_messages)

@@ -66,6 +66,26 @@ def _deepseek_thinking_config() -> dict[str, str]:
     return {"type": "disabled"}
 
 
+def _repair_thinking_history_messages(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
+    """Patch legacy non-thinking assistant history for DeepSeek thinking mode.
+
+    This is a compatibility repair. It cannot reconstruct real reasoning
+    generated in a previous disabled-thinking session. It only guarantees the
+    DeepSeek-required `reasoning_content` field is present on assistant history
+    messages so that thinking-mode continuations do not fail immediately.
+    """
+    repaired = deepcopy(messages)
+    changed = False
+
+    if _deepseek_thinking_config().get("type") == "enabled":
+        for msg in repaired:
+            if msg.get("role") == "assistant" and "reasoning_content" not in msg:
+                msg["reasoning_content"] = ""
+                changed = True
+
+    return repaired, changed
+
+
 def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Prepare ChatCompletions messages for DeepSeek.
 
@@ -73,17 +93,8 @@ def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[
     `reasoning_content`. Codex may send assistant history items in Responses
     input without that field, so we normalize immediately before the upstream
     DeepSeek request.
-
-    This intentionally works on a deepcopy to avoid mutating stored state or
-    request-derived state unexpectedly.
     """
-    prepared = deepcopy(messages)
-
-    if _deepseek_thinking_config().get("type") == "enabled":
-        for msg in prepared:
-            if msg.get("role") == "assistant" and "reasoning_content" not in msg:
-                msg["reasoning_content"] = ""
-
+    prepared, _changed = _repair_thinking_history_messages(messages)
     return prepared
 
 
@@ -717,6 +728,17 @@ def create_app(
             if stored is None:
                 raise HTTPException(status_code=404, detail="previous_response_id not found")
             messages = stored.chat_messages
+
+            # If a thinking-mode session resumes from legacy disabled-mode
+            # history, patch assistant messages that lack reasoning_content and
+            # persist the repaired history back to the response store.
+            messages, repaired_history = _repair_thinking_history_messages(messages)
+            if repaired_history:
+                app.state.store.save(stored.response, messages)
+                print(
+                    f"[deepseek-responses-proxy] repaired missing reasoning_content "
+                    f"for previous_response_id={previous_response_id}"
+                )
         else:
             messages = []
 
