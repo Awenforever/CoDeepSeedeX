@@ -399,6 +399,69 @@ def _response_output_text(output_items: list[dict[str, Any]]) -> str:
     return "".join(chunks)
 
 
+def _truncate_error_body(body: str, limit: int = 4000) -> str:
+    if len(body) <= limit:
+        return body
+    return body[:limit] + "...[truncated]"
+
+
+def _upstream_exception_to_http_exception(exc: Exception) -> HTTPException:
+    """Convert upstream DeepSeek/httpx failures into clean proxy errors.
+
+    The route should not leak Python tracebacks to Codex. Keep the upstream
+    status/body in detail so the client and logs remain debuggable.
+    """
+    if isinstance(exc, HTTPException):
+        return exc
+
+    if isinstance(exc, httpx.TimeoutException):
+        return HTTPException(
+            status_code=504,
+            detail={
+                "upstream": "deepseek",
+                "error_type": "timeout",
+                "message": str(exc),
+            },
+        )
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        status_code = response.status_code
+        body = _truncate_error_body(response.text)
+
+        # 429 is useful for callers to distinguish from generic upstream
+        # failures. Other upstream HTTP failures are exposed as bad gateway.
+        proxy_status = 429 if status_code == 429 else 502
+
+        return HTTPException(
+            status_code=proxy_status,
+            detail={
+                "upstream": "deepseek",
+                "status_code": status_code,
+                "body": body,
+            },
+        )
+
+    if isinstance(exc, httpx.RequestError):
+        return HTTPException(
+            status_code=502,
+            detail={
+                "upstream": "deepseek",
+                "error_type": "network",
+                "message": str(exc),
+            },
+        )
+
+    return HTTPException(
+        status_code=502,
+        detail={
+            "upstream": "deepseek",
+            "error_type": "unexpected",
+            "message": str(exc),
+        },
+    )
+
+
 def _build_response_envelope(
     *,
     response_id: str,
@@ -639,7 +702,11 @@ def create_app(
         messages.extend(_input_items_to_messages(input_value))
 
         chat_payload = _build_chat_payload(model=model, messages=messages, tools=deepseek_tools)
-        deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)
+        try:
+            deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)
+        except Exception as exc:
+            raise _upstream_exception_to_http_exception(exc) from exc
+
         try:
             assistant_message = deepseek_response["choices"][0]["message"]
         except (KeyError, IndexError) as exc:
