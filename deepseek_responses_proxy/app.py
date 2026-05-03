@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-PROXY_VERSION = "v1.0a2-version-metadata"
+PROXY_VERSION = "v1.0a4-thinking-tool-transcript"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -267,6 +267,77 @@ def _repair_tool_call_message_order(
         i += 1
 
     return repaired_messages, repaired
+
+
+def _flatten_self_contained_tool_messages(
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Convert self-contained tool protocol fragments into plain text.
+
+    Codex can send function_call and function_call_output items in the same
+    request without a previous_response_id. If no function tools are available
+    for DeepSeek in that request, sending assistant tool_calls/tool messages as
+    ChatCompletions protocol can be rejected by DeepSeek. In that case, preserve
+    the information as normal text transcript instead of protocol messages.
+    """
+    flattened = False
+    flattened_messages: list[dict[str, Any]] = []
+
+    i = 0
+    while i < len(messages):
+        message = messages[i]
+        role = message.get("role")
+        tool_calls = message.get("tool_calls") or []
+
+        if role == "assistant" and tool_calls:
+            flattened = True
+            transcript_parts: list[str] = []
+
+            content = _stringify_content(message.get("content", ""))
+            if content:
+                transcript_parts.append(f"assistant_content:\n{content}")
+
+            transcript_parts.append("assistant_requested_tool_calls:")
+            for tool_call in tool_calls:
+                function = tool_call.get("function") or {}
+                transcript_parts.append(
+                    "\n".join(
+                        [
+                            f"- tool_call_id: {tool_call.get('id') or 'unknown'}",
+                            f"  name: {function.get('name') or ''}",
+                            f"  arguments: {function.get('arguments') or ''}",
+                        ]
+                    )
+                )
+
+            flattened_messages.append(
+                {
+                    "role": "user",
+                    "content": "[tool call transcript]\n" + "\n".join(transcript_parts),
+                }
+            )
+            i += 1
+            continue
+
+        if role == "tool":
+            flattened = True
+            flattened_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "[tool output transcript]\n"
+                        f"tool_call_id: {message.get('tool_call_id') or 'unknown'}\n"
+                        f"output:\n{_stringify_content(message.get('content', ''))}"
+                    ),
+                }
+            )
+            i += 1
+            continue
+
+        flattened_messages.append(deepcopy(message))
+        i += 1
+
+    return flattened_messages, flattened
 
 @dataclass
 class StoredResponse:
@@ -1162,6 +1233,25 @@ def create_app(
                 f"[deepseek-responses-proxy] repaired tool_call message order "
                 f"for previous_response_id={previous_response_id}"
             )
+
+        should_flatten_tool_transcripts = (
+            _thinking_enabled()
+            or (previous_response_id is None and deepseek_tools is None)
+        )
+        if should_flatten_tool_transcripts:
+            messages, flattened_tool_history = _flatten_self_contained_tool_messages(messages)
+            if flattened_tool_history:
+                app.state.repair_count += 1
+                if _thinking_enabled():
+                    print(
+                        "[deepseek-responses-proxy] flattened tool messages "
+                        "for thinking-mode compatibility"
+                    )
+                else:
+                    print(
+                        "[deepseek-responses-proxy] flattened self-contained "
+                        "tool messages because no DeepSeek tools were available"
+                    )
 
         messages_for_deepseek = _prepare_messages_for_deepseek(messages)
         chat_payload = _build_chat_payload(model=model, messages=messages_for_deepseek, tools=deepseek_tools)

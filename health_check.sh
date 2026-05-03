@@ -18,23 +18,23 @@ STREAM_OUT="$(mktemp -t ds_proxy_health_stream.XXXXXX.txt)"
 trap 'rm -f "$TEXT_OUT" "$STREAM_OUT"' EXIT
 
 echo "== healthz =="
-curl -fsS "$ROOT_URL/healthz" | python3 -m json.tool >/dev/null
+curl --noproxy '*' -fsS "$ROOT_URL/healthz" | python3 -m json.tool >/dev/null
 echo "healthz ok"
 
 echo "== models =="
-curl -fsS "$BASE_URL/models" | python3 -m json.tool >/dev/null
+curl --noproxy '*' -fsS "$BASE_URL/models" | python3 -m json.tool >/dev/null
 echo "models ok"
 
 echo "== proxy status =="
-curl -fsS "$BASE_URL/proxy/status" | python3 -m json.tool >/dev/null
+curl --noproxy '*' -fsS "$BASE_URL/proxy/status" | python3 -m json.tool >/dev/null
 echo "proxy status ok"
 
 echo "== usage summary =="
-curl -fsS "$BASE_URL/proxy/usage/summary" | python3 -m json.tool >/dev/null
+curl --noproxy '*' -fsS "$BASE_URL/proxy/usage/summary" | python3 -m json.tool >/dev/null
 echo "usage summary ok"
 
 echo "== text response =="
-curl -fsS "$BASE_URL/responses" \
+curl --noproxy '*' -fsS "$BASE_URL/responses" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-v4-flash",
@@ -45,7 +45,7 @@ grep -q "ok" "$TEXT_OUT"
 echo "text ok"
 
 echo "== stream response =="
-curl -fsS -N "$BASE_URL/responses" \
+curl --noproxy '*' -fsS -N "$BASE_URL/responses" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-v4-flash",
@@ -60,6 +60,6 @@ echo "All proxy HTTP health checks passed."
 
 if [ "${CHECK_DEEPSEEK_BALANCE:-0}" = "1" ]; then
   echo "== DeepSeek balance =="
-  curl -fsS "$BASE_URL/proxy/balance" | python3 -m json.tool
+  curl --noproxy '*' -fsS "$BASE_URL/proxy/balance" | python3 -m json.tool
   echo "balance ok"
 fi

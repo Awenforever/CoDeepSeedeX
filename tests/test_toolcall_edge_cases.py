@@ -437,3 +437,164 @@ async def test_matching_tool_output_does_not_get_synthetic_repair_message():
     assert tool_messages[0]["tool_call_id"] == "call_1"
     assert tool_messages[0]["content"] == "/tmp"
     assert "not completed" not in tool_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_self_contained_tool_fragments_are_flattened_when_no_tools_are_available():
+    fake = FakeDeepSeekClient([deepseek_text_response("weather summarized")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "What is the weather?",
+                            }
+                        ],
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "{\"city\":\"Shanghai\"}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": "{\"weather\":\"sunny\"}",
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+
+    sent_messages = fake.payloads[0]["messages"]
+
+    assert all("tool_calls" not in message for message in sent_messages)
+    assert all(message["role"] != "tool" for message in sent_messages)
+
+    transcript = "\n".join(message.get("content", "") for message in sent_messages)
+    assert "tool call transcript" in transcript
+    assert "get_weather" in transcript
+    assert "tool output transcript" in transcript
+    assert '{"weather":"sunny"}' in transcript
+
+
+@pytest.mark.asyncio
+async def test_self_contained_tool_fragments_keep_protocol_when_tools_are_available():
+    fake = FakeDeepSeekClient([deepseek_text_response("weather summarized")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "get_weather",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "What is the weather?",
+                            }
+                        ],
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "{\"city\":\"Shanghai\"}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": "{\"weather\":\"sunny\"}",
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+
+    sent_messages = fake.payloads[0]["messages"]
+    assert any(message.get("tool_calls") for message in sent_messages)
+    assert any(message["role"] == "tool" for message in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_thinking_mode_flattens_completed_tool_fragments_even_when_tools_are_available(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+
+    fake = FakeDeepSeekClient([deepseek_text_response("weather summarized")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "get_weather",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "What is the weather?",
+                            }
+                        ],
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "{\"city\":\"Shanghai\"}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": "{\"weather\":\"sunny\"}",
+                    },
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+
+    sent_payload = fake.payloads[0]
+    sent_messages = sent_payload["messages"]
+
+    assert sent_payload.get("tools")
+    assert all("tool_calls" not in message for message in sent_messages)
+    assert all(message["role"] != "tool" for message in sent_messages)
+
+    transcript = "\n".join(message.get("content", "") for message in sent_messages)
+    assert "tool call transcript" in transcript
+    assert "get_weather" in transcript
+    assert "tool output transcript" in transcript
+    assert '{"weather":"sunny"}' in transcript
