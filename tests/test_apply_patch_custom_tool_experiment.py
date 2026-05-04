@@ -35,7 +35,12 @@ def test_apply_patch_custom_tool_can_be_experimentally_mapped(monkeypatch):
     assert normalized is not None
     assert normalized["type"] == "function"
     assert normalized["function"]["name"] == "apply_patch"
-    assert normalized["function"]["parameters"]["required"] == ["patch"]
+    assert "input" in normalized["function"]["parameters"]["properties"]
+    assert normalized["function"]["parameters"]["required"] == ["input"]
+    assert "*** Begin Patch" in normalized["function"]["description"]
+    assert "*** Update File: relative/path" in normalized["function"]["description"]
+    assert "*** End Patch" in normalized["function"]["description"]
+    assert "Codex apply_patch format" in normalized["function"]["parameters"]["properties"]["input"]["description"]
 
     assert warnings[0]["kind"] == "mapped_custom_tool"
     assert warnings[0]["tool_type"] == "custom"

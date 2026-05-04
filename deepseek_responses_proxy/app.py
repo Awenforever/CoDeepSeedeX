@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.1a3-apply-patch-custom-tool-experiment"
+PROXY_VERSION = "v2.1a3a2-apply-patch-description-guidance"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1033,16 +1033,31 @@ def _normalize_response_tool(
                 "type": "function",
                 "function": {
                     "name": "apply_patch",
-                    "description": str(tool.get("description") or "Apply a patch to local files."),
+                    "description": (
+                        str(tool.get("description") or "Apply a patch to local files.")
+                        + "\n\nUse Codex apply_patch format exactly:\n"
+                        + "*** Begin Patch\n"
+                        + "*** Update File: relative/path\n"
+                        + " context lines start with a single space\n"
+                        + "+added lines start with plus\n"
+                        + "-removed lines start with minus\n"
+                        + "*** End Patch"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "patch": {
+                            "input": {
                                 "type": "string",
-                                "description": "Patch text to apply to the working tree.",
+                                "description": (
+                                    "Patch text in Codex apply_patch format. "
+                                    "It must start with '*** Begin Patch', use directives such as "
+                                    "'*** Update File: relative/path', and end with '*** End Patch'. "
+                                    "Inside update hunks, context lines start with a single space, "
+                                    "added lines start with '+', and removed lines start with '-'."
+                                ),
                             }
                         },
-                        "required": ["patch"],
+                        "required": ["input"],
                         "additionalProperties": False,
                     },
                 },
