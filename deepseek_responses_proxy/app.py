@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.6a1-context-window-1m"
+PROXY_VERSION = "v1.7a2-responses-options-mapping"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -754,6 +754,25 @@ class SQLiteResponseStore:
         return dict(row)
 
 
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"[deepseek-responses-proxy] invalid {name}={raw!r}; using {default}")
+        return default
+
+    if value <= 0:
+        print(f"[deepseek-responses-proxy] non-positive {name}={raw!r}; using {default}")
+        return default
+
+    return value
+
+
 class DeepSeekClient:
     def __init__(
         self,
@@ -764,7 +783,8 @@ class DeepSeekClient:
     ) -> None:
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = (base_url or os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
-        self._client = http_client or httpx.AsyncClient(timeout=60.0)
+        timeout_seconds = _env_float("DEEPSEEK_PROXY_UPSTREAM_TIMEOUT_SECONDS", 180.0)
+        self._client = http_client or httpx.AsyncClient(timeout=timeout_seconds)
 
     async def user_balance(self) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
@@ -845,17 +865,26 @@ class DeepSeekClient:
         return response.json()
 
 
-def _normalize_response_tool(tool: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_response_tool(
+    tool: dict[str, Any],
+    compat_warnings: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """Convert a Responses function tool into a DeepSeek ChatCompletions tool.
 
     Codex may include built-in Responses tools such as web_search.
     DeepSeek ChatCompletions cannot execute these built-in tools.
-    Unsupported non-function tools are intentionally ignored instead of
-    failing the whole request.
+    Unsupported non-function tools are dropped but recorded for audit.
     """
     tool_type = tool.get("type")
 
     if tool_type != "function":
+        warning = {
+            "kind": "unsupported_tool_type",
+            "tool_type": tool_type,
+            "tool": tool,
+        }
+        if compat_warnings is not None:
+            compat_warnings.append(warning)
         print(f"[deepseek-responses-proxy] ignored unsupported tool type: {tool_type}")
         return None
 
@@ -870,6 +899,13 @@ def _normalize_response_tool(tool: dict[str, Any]) -> dict[str, Any] | None:
         parameters = tool.get("parameters", {"type": "object", "properties": {}})
 
     if not name:
+        warning = {
+            "kind": "function_tool_missing_name",
+            "tool_type": tool_type,
+            "tool": tool,
+        }
+        if compat_warnings is not None:
+            compat_warnings.append(warning)
         print("[deepseek-responses-proxy] ignored function tool with missing name")
         return None
 
@@ -883,19 +919,17 @@ def _normalize_response_tool(tool: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _message_from_response_content(role: str, content: Any) -> dict[str, Any]:
-    role = _normalize_chat_role(role)
-    if isinstance(content, str):
-        return {"role": role, "content": content}
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        for part in content:
-            part_type = part.get("type")
-            if part_type in {"input_text", "output_text", "text"}:
-                text_parts.append(part.get("text", ""))
-        return {"role": role, "content": "".join(text_parts)}
-    raise HTTPException(status_code=400, detail=f"Unsupported message content: {content!r}")
 
+def _message_from_response_content(role: str, content: Any) -> dict[str, Any]:
+    message = {
+        "role": role,
+        "content": _stringify_content(content),
+    }
+
+    if _thinking_enabled() and role == "assistant":
+        message.setdefault("reasoning_content", "")
+
+    return message
 
 def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
     """Convert Responses input items to DeepSeek ChatCompletions messages.
@@ -1249,6 +1283,7 @@ def _build_chat_payload(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     reasoning_effort: str | None = None,
+    request_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -1259,6 +1294,17 @@ def _build_chat_payload(
 
     if reasoning_effort is not None:
         payload["reasoning_effort"] = reasoning_effort
+
+    if request_payload is not None:
+        max_tokens = request_payload.get("max_output_tokens")
+        if max_tokens is None:
+            max_tokens = request_payload.get("max_tokens")
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+
+        for key in ["temperature", "top_p", "stop", "response_format"]:
+            if key in request_payload and request_payload[key] is not None:
+                payload[key] = request_payload[key]
 
     if tools:
         payload["tools"] = tools
@@ -1432,12 +1478,23 @@ def create_app(
         previous_response_id = payload.get("previous_response_id")
         stream = bool(payload.get("stream"))
         tools = payload.get("tools") or []
+        compat_warnings: list[dict[str, Any]] = []
         deepseek_tools_list: list[dict[str, Any]] = []
         for tool in tools:
-            normalized_tool = _normalize_response_tool(tool)
+            normalized_tool = _normalize_response_tool(tool, compat_warnings)
             if normalized_tool is not None:
                 deepseek_tools_list.append(normalized_tool)
         deepseek_tools = deepseek_tools_list or None
+
+        try:
+            debug_dir = Path(".debug")
+            debug_dir.mkdir(exist_ok=True)
+            (debug_dir / "last_compat_warnings.json").write_text(
+                json.dumps(compat_warnings, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[deepseek-responses-proxy] failed to write compat warnings: {exc}")
 
         if previous_response_id:
             stored = app.state.store.get(previous_response_id)
@@ -1508,6 +1565,7 @@ def create_app(
             messages=messages_for_deepseek,
             tools=deepseek_tools,
             reasoning_effort=reasoning_effort,
+            request_payload=payload,
         )
         try:
             deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)

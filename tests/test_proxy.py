@@ -252,3 +252,74 @@ async def test_env_proxy_model_can_force_override_request_model(monkeypatch, cli
 
     assert response.status_code == 200
     assert transport.requests[0]["model"] == "deepseek-v4-pro"
+
+
+@pytest.mark.asyncio
+async def test_responses_options_are_mapped_to_deepseek_payload(client_factory):
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_options",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={
+            "model": "deepseek-v4-pro",
+            "input": "Reply exactly: ok",
+            "max_output_tokens": 64,
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    assert response.status_code == 200
+    upstream = transport.requests[0]
+    assert upstream["max_tokens"] == 64
+    assert upstream["temperature"] == 0.2
+    assert upstream["top_p"] == 0.9
+    assert upstream["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatch, client_factory):
+    monkeypatch.chdir(tmp_path)
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_unsupported_tools",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={
+            "model": "deepseek-v4-pro",
+            "input": "Reply exactly: ok",
+            "tools": [
+                {"type": "web_search"},
+                {"type": "image_generation"},
+                {"type": "namespace", "namespace": "deepseek_proxy_account"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "tools" not in transport.requests[0]
+
+    warnings_path = tmp_path / ".debug" / "last_compat_warnings.json"
+    warnings = json.loads(warnings_path.read_text(encoding="utf-8"))
+    assert [item["tool_type"] for item in warnings] == [
+        "web_search",
+        "image_generation",
+        "namespace",
+    ]

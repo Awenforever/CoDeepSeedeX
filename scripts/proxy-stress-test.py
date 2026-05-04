@@ -34,6 +34,8 @@ class CaseResult:
     upstream_has_temperature: bool
     upstream_has_top_p: bool
     upstream_has_max_tokens: bool
+    compat_warning_count: int
+    compat_warning_kinds: list[str]
 
 
 def http_json(method: str, url: str, payload: dict[str, Any] | None = None, timeout: int = 120) -> tuple[int, Any]:
@@ -178,7 +180,7 @@ def build_cases(scale: str) -> list[tuple[str, dict[str, Any], bool]]:
             "responses_options",
             {
                 "model": "deepseek-v4-pro",
-                "input": "Reply exactly: options-ok",
+                "input": "Return a JSON object exactly like {\\\"status\\\":\\\"options-ok\\\"}.",
                 "max_output_tokens": 64,
                 "temperature": 0.2,
                 "top_p": 0.9,
@@ -248,6 +250,8 @@ def run_case(base_url: str, name: str, payload: dict[str, Any], stream: bool) ->
 
     request_payload = read_debug_payload("last_responses_payload.json")
     upstream = read_debug_payload("last_deepseek_payload.json")
+    compat_warnings_raw = read_debug_payload("last_compat_warnings.json")
+    compat_warnings = compat_warnings_raw if isinstance(compat_warnings_raw, list) else []
 
     return CaseResult(
         name=name,
@@ -267,6 +271,10 @@ def run_case(base_url: str, name: str, payload: dict[str, Any], stream: bool) ->
         upstream_has_temperature="temperature" in upstream,
         upstream_has_top_p="top_p" in upstream,
         upstream_has_max_tokens="max_tokens" in upstream,
+        compat_warning_count=len(compat_warnings),
+        compat_warning_kinds=[
+            str(item.get("kind")) for item in compat_warnings if isinstance(item, dict)
+        ],
     )
 
 
@@ -324,7 +332,7 @@ def main() -> int:
             print(
                 f"{result.name}: status={result.status} ok={result.ok} "
                 f"model={result.upstream_model} effort={result.upstream_reasoning_effort} "
-                f"tools={result.upstream_tools_count} upstream_keys={result.upstream_keys}"
+                f"tools={result.upstream_tools_count} warnings={result.compat_warning_count} upstream_keys={result.upstream_keys}"
             )
 
         for result in run_previous_response_case(base_url):
