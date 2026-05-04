@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.9a3-image-artifact-retention"
+PROXY_VERSION = "v2.0a2-codex-tool-history-repair"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -336,20 +336,40 @@ def _repair_tool_call_message_order(
     """Repair ChatCompletions tool-call ordering before sending to DeepSeek.
 
     ChatCompletions requires every assistant message with tool_calls to be
-    immediately followed by tool messages for each tool_call_id. Codex can leave
-    a previous response at an intermediate state where the assistant requested a
-    tool call, but the next request does not provide the matching
-    function_call_output. Instead of sending invalid history upstream, insert a
-    synthetic tool message that explicitly marks the call as incomplete.
+    immediately followed by tool messages for each tool_call_id. Codex can emit
+    real Responses input where a non-tool message, often a reminder/user item,
+    is inserted between an assistant tool call and its matching tool output.
+    DeepSeek rejects that history.
 
-    This is a protocol repair only. It does not fabricate a successful tool
-    result.
+    This repair moves matching later tool outputs directly after the assistant
+    tool-call message. If no matching output exists, it inserts a synthetic
+    incomplete-tool result. Orphan tool messages are converted to user messages
+    so they do not violate the protocol.
     """
     repaired = False
     repaired_messages: list[dict[str, Any]] = []
+    consumed_tool_indexes: set[int] = set()
+
+    def _synthetic_tool_message(call_id: str) -> dict[str, Any]:
+        return {
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": json.dumps(
+                {
+                    "ok": False,
+                    "error": "missing_tool_result_repaired",
+                    "message": "Tool call was not completed; inserted by protocol repair.",
+                    "tool_call_id": call_id,
+                }
+            ),
+        }
 
     i = 0
     while i < len(messages):
+        if i in consumed_tool_indexes:
+            i += 1
+            continue
+
         message = deepcopy(messages[i])
         role = message.get("role")
 
@@ -366,6 +386,7 @@ def _repair_tool_call_message_order(
 
             seen_call_ids: set[str] = set()
 
+            # First consume immediately following matching tool messages.
             while i < len(messages) and messages[i].get("role") == "tool":
                 tool_message = deepcopy(messages[i])
                 tool_call_id = tool_message.get("tool_call_id")
@@ -373,6 +394,7 @@ def _repair_tool_call_message_order(
                 if tool_call_id in expected_call_ids and tool_call_id not in seen_call_ids:
                     repaired_messages.append(tool_message)
                     seen_call_ids.add(tool_call_id)
+                    consumed_tool_indexes.add(i)
                 else:
                     repaired = True
                     repaired_messages.append(
@@ -381,26 +403,48 @@ def _repair_tool_call_message_order(
                             "content": (
                                 "[orphaned tool output ignored by protocol repair]\n"
                                 f"tool_call_id={tool_call_id or 'unknown'}\n"
-                                f"{_stringify_content(tool_message.get('content', ''))}"
+                                f"content={tool_message.get('content', '')}"
                             ),
                         }
                     )
-
+                    consumed_tool_indexes.add(i)
                 i += 1
 
+            # Codex may place a user/reminder item before the matching tool
+            # output. Search ahead and move matching tool outputs immediately
+            # after the assistant tool_call message.
             for call_id in expected_call_ids:
-                if call_id not in seen_call_ids:
+                if call_id in seen_call_ids:
+                    continue
+
+                found_index: int | None = None
+                for j in range(i, len(messages)):
+                    if j in consumed_tool_indexes:
+                        continue
+                    candidate = messages[j]
+
+                    # Do not move a tool result across a later assistant
+                    # tool_call. That would risk crossing turn boundaries.
+                    if candidate.get("role") == "assistant" and candidate.get("tool_calls"):
+                        break
+
+                    if (
+                        candidate.get("role") == "tool"
+                        and candidate.get("tool_call_id") == call_id
+                    ):
+                        found_index = j
+                        break
+
+                if found_index is not None:
+                    repaired_messages.append(deepcopy(messages[found_index]))
+                    consumed_tool_indexes.add(found_index)
+                    seen_call_ids.add(call_id)
                     repaired = True
-                    repaired_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call_id,
-                            "content": (
-                                "[tool call was not completed before the conversation "
-                                "continued; no tool output is available]"
-                            ),
-                        }
-                    )
+                    continue
+
+                repaired_messages.append(_synthetic_tool_message(call_id))
+                seen_call_ids.add(call_id)
+                repaired = True
 
             continue
 
@@ -412,7 +456,7 @@ def _repair_tool_call_message_order(
                     "content": (
                         "[orphaned tool output ignored by protocol repair]\n"
                         f"tool_call_id={message.get('tool_call_id') or 'unknown'}\n"
-                        f"{_stringify_content(message.get('content', ''))}"
+                        f"content={message.get('content', '')}"
                     ),
                 }
             )
