@@ -312,7 +312,7 @@ For thinking mode, `dsproxy-start-thinking` sets:
 
 ```bash
 DEEPSEEK_THINKING=enabled
-DEEPSEEK_REASONING_EFFORT=max
+DEEPSEEK_REASONING_EFFORT=high
 ```
 
 Override reasoning effort with:
@@ -333,7 +333,7 @@ dsproxy-config set-model deepseek-v4-pro
 dsproxy-config set-model deepseek-v4-flash
 dsproxy-config set-effort max
 dsproxy-config set-effort high
-dsproxy-config set model deepseek-v4-pro effort max
+dsproxy-config set model deepseek-v4-pro effort high
 ```
 
 `dsproxy-config` updates:
@@ -354,7 +354,7 @@ overrides the incoming Codex model field before forwarding to DeepSeek.
 Reasoning effort behavior:
 
 ```text
-DEEPSEEK_REASONING_EFFORT=max
+DEEPSEEK_REASONING_EFFORT=high
 ```
 
 makes the thinking proxy send:
@@ -367,3 +367,29 @@ makes the thinking proxy send:
 ```
 
 Use `max` for the strongest DeepSeek reasoning mode and `high` for the lower thinking effort.
+
+### Applying model and effort changes immediately
+
+Configuration-changing `dsproxy-config` commands automatically restart the thinking proxy.
+
+This command:
+
+```bash
+dsproxy-config set model deepseek-v4-pro effort max
+```
+
+is equivalent to:
+
+```bash
+dsproxy-config set model deepseek-v4-pro effort max
+dsproxy-stop-thinking
+dsproxy-start-thinking
+```
+
+Use this only when you want the new model or reasoning effort to affect the currently running thinking proxy.
+
+To update config files without restarting the thinking proxy:
+
+```bash
+DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 dsproxy-config set model deepseek-v4-pro effort max
+```

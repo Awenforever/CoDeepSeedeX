@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.5-model-and-effort-control"
+PROXY_VERSION = "v1.5a1-allow-codex-model-effort-override"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -70,21 +70,91 @@ def _thinking_enabled() -> bool:
     return _deepseek_thinking_config().get("type") == "enabled"
 
 
-def _deepseek_reasoning_effort_config() -> str | None:
+def _normalize_deepseek_reasoning_effort(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return None
+
+    if normalized in {"max", "xhigh"}:
+        return "max"
+
+    if normalized in {"minimal", "low", "medium", "high"}:
+        return "high"
+
+    return None
+
+
+def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
+    direct = _normalize_deepseek_reasoning_effort(payload.get("reasoning_effort"))
+    if direct is not None:
+        return direct
+
+    codex_direct = _normalize_deepseek_reasoning_effort(payload.get("model_reasoning_effort"))
+    if codex_direct is not None:
+        return codex_direct
+
+    reasoning = payload.get("reasoning")
+    if isinstance(reasoning, dict):
+        for key in ["effort", "reasoning_effort", "model_reasoning_effort"]:
+            value = _normalize_deepseek_reasoning_effort(reasoning.get(key))
+            if value is not None:
+                return value
+    else:
+        value = _normalize_deepseek_reasoning_effort(reasoning)
+        if value is not None:
+            return value
+
+    return None
+
+
+def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> str | None:
     """Return DeepSeek reasoning_effort for upstream ChatCompletions."""
     if not _thinking_enabled():
         return None
 
-    value = os.environ.get("DEEPSEEK_REASONING_EFFORT", "max").strip().lower()
-    if value in {"high", "max"}:
-        return value
+    if payload is not None:
+        request_effort = _extract_request_reasoning_effort(payload)
+        if request_effort is not None:
+            return request_effort
+
+    env_effort = _normalize_deepseek_reasoning_effort(
+        os.environ.get("DEEPSEEK_REASONING_EFFORT", "high")
+    )
+    if env_effort is not None:
+        return env_effort
 
     print(
         "[deepseek-responses-proxy] invalid DEEPSEEK_REASONING_EFFORT="
-        f"{value!r}; falling back to 'max'"
+        f"{os.environ.get('DEEPSEEK_REASONING_EFFORT')!r}; falling back to 'high'"
     )
-    return "max"
+    return "high"
 
+
+def _force_proxy_model_enabled() -> bool:
+    return os.environ.get("DEEPSEEK_PROXY_FORCE_MODEL", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _select_upstream_model(request_model: str | None) -> str:
+    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+
+    if _force_proxy_model_enabled() and env_model:
+        return env_model
+
+    if request_model:
+        return request_model
+
+    if env_model:
+        return env_model
+
+    return DEFAULT_MODEL
 
 def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     usage = deepseek_response.get("usage") or {}
@@ -1178,6 +1248,7 @@ def _build_chat_payload(
     model: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -1186,7 +1257,6 @@ def _build_chat_payload(
         "thinking": _deepseek_thinking_config(),
     }
 
-    reasoning_effort = _deepseek_reasoning_effort_config()
     if reasoning_effort is not None:
         payload["reasoning_effort"] = reasoning_effort
 
@@ -1347,7 +1417,18 @@ def create_app(
     @app.post("/v1/responses")
     async def create_response(request: Request):
         payload = await request.json()
-        model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip() or payload.get("model") or DEFAULT_MODEL
+
+        try:
+            debug_dir = Path(".debug")
+            debug_dir.mkdir(exist_ok=True)
+            (debug_dir / "last_responses_payload.json").write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[deepseek-responses-proxy] failed to write responses debug payload: {exc}")
+
+        model = _select_upstream_model(payload.get("model"))
         previous_response_id = payload.get("previous_response_id")
         stream = bool(payload.get("stream"))
         tools = payload.get("tools") or []
@@ -1421,7 +1502,13 @@ def create_app(
                     )
 
         messages_for_deepseek = _prepare_messages_for_deepseek(messages)
-        chat_payload = _build_chat_payload(model=model, messages=messages_for_deepseek, tools=deepseek_tools)
+        reasoning_effort = _deepseek_reasoning_effort_config(payload)
+        chat_payload = _build_chat_payload(
+            model=model,
+            messages=messages_for_deepseek,
+            tools=deepseek_tools,
+            reasoning_effort=reasoning_effort,
+        )
         try:
             deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)
         except Exception as exc:

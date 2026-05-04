@@ -11,7 +11,7 @@ ensure_env_file() {
     cat > "$ENV_FILE" <<'ENVEOF'
 export DEEPSEEK_API_KEY=""
 export DEEPSEEK_PROXY_MODEL="deepseek-v4-pro"
-export DEEPSEEK_REASONING_EFFORT="max"
+export DEEPSEEK_REASONING_EFFORT="high"
 ENVEOF
   fi
 }
@@ -161,6 +161,35 @@ show_config() {
   fi
 }
 
+restart_thinking_proxy() {
+  if [ "${DEEPSEEK_PROXY_CONFIG_RESTART_THINKING:-1}" = "0" ]; then
+    echo "thinking proxy restart skipped because DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0"
+    return 0
+  fi
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  echo "restarting DeepSeek thinking proxy..."
+
+  if command -v dsproxy-stop-thinking >/dev/null 2>&1; then
+    dsproxy-stop-thinking || true
+  elif [ -x "$script_dir/dsproxy-stop-thinking" ]; then
+    "$script_dir/dsproxy-stop-thinking" || true
+  else
+    echo "WARNING: dsproxy-stop-thinking not found; skipping stop step" >&2
+  fi
+
+  if command -v dsproxy-start-thinking >/dev/null 2>&1; then
+    dsproxy-start-thinking
+  elif [ -x "$script_dir/dsproxy-start-thinking" ]; then
+    "$script_dir/dsproxy-start-thinking"
+  else
+    echo "ERROR: dsproxy-start-thinking not found" >&2
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -170,6 +199,9 @@ Usage:
   dsproxy-config set-effort max
   dsproxy-config set-effort high
   dsproxy-config set model <model> effort <high|max>
+
+Configuration-changing commands automatically restart the thinking proxy.
+Set DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 to skip the restart.
 USAGE
 }
 
@@ -178,6 +210,7 @@ cmd="${1:-show}"
 case "$cmd" in
   show)
     show_config
+    restart_thinking_proxy
     ;;
   set-model)
     model="${2:-}"
@@ -185,6 +218,7 @@ case "$cmd" in
     set_export_var "DEEPSEEK_PROXY_MODEL" "$model"
     patch_codex_model "$model"
     echo "model set to $model"
+    restart_thinking_proxy
     ;;
   set-effort)
     effort="${2:-}"
@@ -193,6 +227,7 @@ case "$cmd" in
     set_export_var "DEEPSEEK_REASONING_EFFORT" "$effort"
     patch_codex_effort "$effort"
     echo "reasoning effort set to $effort"
+    restart_thinking_proxy
     ;;
   set)
     shift

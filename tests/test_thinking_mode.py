@@ -285,7 +285,7 @@ async def test_thinking_enabled_repairs_legacy_disabled_history_and_persists_it(
 
 
 @pytest.mark.asyncio
-async def test_thinking_enabled_defaults_deepseek_reasoning_effort_to_max(monkeypatch):
+async def test_thinking_enabled_defaults_deepseek_reasoning_effort_to_high(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
     monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
 
@@ -303,7 +303,7 @@ async def test_thinking_enabled_defaults_deepseek_reasoning_effort_to_max(monkey
 
     assert response.status_code == 200
     assert fake.payloads[0]["thinking"] == {"type": "enabled"}
-    assert fake.payloads[0]["reasoning_effort"] == "max"
+    assert fake.payloads[0]["reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio
@@ -329,7 +329,7 @@ async def test_thinking_enabled_allows_high_reasoning_effort_override(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_thinking_enabled_invalid_reasoning_effort_falls_back_to_max(monkeypatch):
+async def test_thinking_enabled_xhigh_reasoning_effort_maps_to_max(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
     monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "xhigh")
 
@@ -370,3 +370,48 @@ async def test_thinking_disabled_does_not_send_reasoning_effort(monkeypatch):
     assert response.status_code == 200
     assert fake.payloads[0]["thinking"] == {"type": "disabled"}
     assert "reasoning_effort" not in fake.payloads[0]
+
+
+
+@pytest.mark.asyncio
+async def test_request_reasoning_effort_overrides_env_reasoning_effort(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "high")
+
+    fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "model_reasoning_effort": "xhigh",
+                "input": "Reply exactly: ok",
+            },
+        )
+
+    assert response.status_code == 200
+    assert fake.payloads[0]["reasoning_effort"] == "max"
+
+
+@pytest.mark.asyncio
+async def test_request_reasoning_dict_effort_is_supported(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "max")
+
+    fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "reasoning": {"effort": "high"},
+                "input": "Reply exactly: ok",
+            },
+        )
+
+    assert response.status_code == 200
+    assert fake.payloads[0]["reasoning_effort"] == "high"

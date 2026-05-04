@@ -201,13 +201,41 @@ async def test_previous_response_with_function_call_output_preserves_assistant_t
 
 
 @pytest.mark.asyncio
-async def test_env_proxy_model_overrides_request_model(monkeypatch, client_factory):
+async def test_request_model_overrides_env_proxy_model_by_default(monkeypatch, client_factory):
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
 
     client, transport = await client_factory(
         [
             {
                 "id": "chatcmpl_model_override",
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={
+            "model": "deepseek-v4-flash",
+            "input": "Reply exactly: ok",
+        },
+    )
+
+    assert response.status_code == 200
+    assert transport.requests[0]["model"] == "deepseek-v4-flash"
+
+
+
+@pytest.mark.asyncio
+async def test_env_proxy_model_can_force_override_request_model(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_force_model_override",
                 "choices": [{"message": {"role": "assistant", "content": "ok"}}],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
