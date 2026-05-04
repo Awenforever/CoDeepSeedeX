@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.0a3-codex-custom-tool-classification"
+PROXY_VERSION = "v2.0a4-mcp-namespace-warning-compression"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -978,6 +978,25 @@ def _normalize_response_tool(
                     }
                 )
             return namespace_tools
+
+        nested_tools = tool.get("tools") or []
+        if namespace.startswith("mcp__"):
+            warning = {
+                "kind": "ignored_mcp_namespace",
+                "tool_type": tool_type,
+                "namespace": namespace,
+                "tool_count": len(nested_tools),
+                "tool_names": [
+                    str(item.get("name") or "")
+                    for item in nested_tools
+                    if item.get("name")
+                ],
+                "reason": "MCP tools are owned by Codex local MCP runtime and are not forwarded to DeepSeek",
+            }
+            if compat_warnings is not None:
+                compat_warnings.append(warning)
+            print(f"[deepseek-responses-proxy] ignored MCP namespace tool: {namespace}")
+            return None
 
         warning = {
             "kind": "unsupported_tool_namespace",
