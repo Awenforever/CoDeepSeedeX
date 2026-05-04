@@ -425,3 +425,25 @@ When xhigh is selected, the proxy maps it to the DeepSeek upstream value:
 ```
 
 `summary off`in Codex status means OpenAI-style reasoning summaries are disabled. It does not disable DeepSeek thinking mode.
+
+## DeepSeek V4 context window
+
+DeepSeek V4 Pro and DeepSeek V4 Flash are configured with a 1M-token context window.
+
+Repository catalog values:
+
+```text
+context_window = 1000000
+max_context_window = 1000000
+auto_compact_token_limit = 750000
+```
+
+Local Codex profile values should match:
+
+```toml
+model_context_window = 1000000
+model_auto_compact_token_limit = 750000
+tool_output_token_limit = 12000
+```
+
+The auto-compact threshold is intentionally below the full model context window to leave room for system instructions, tool results, and multi-turn growth.
