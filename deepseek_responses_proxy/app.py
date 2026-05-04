@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.0a4-mcp-namespace-warning-compression"
+PROXY_VERSION = "v2.1a2a1-parallel-function-call-coalescing"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1086,10 +1086,11 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
     """Convert Responses input items to DeepSeek ChatCompletions messages.
 
     Codex may send both `function_call` and `function_call_output` items
-    during tool continuation. When `previous_response_id` is present, the
-    stored history should already contain the assistant tool_call message.
-    Still, we support `function_call` here for robustness and for cases where
-    Codex sends a self-contained continuation input.
+    during tool continuation. Consecutive Responses `function_call` items can
+    represent parallel tool calls from one assistant turn. ChatCompletions
+    requires those parallel calls to be represented as one assistant message
+    with multiple `tool_calls`, followed immediately by the matching tool
+    outputs.
     """
     if input_value is None:
         return []
@@ -1100,48 +1101,62 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
 
     messages: list[dict[str, Any]] = []
 
-    for item in input_value:
+    i = 0
+    while i < len(input_value):
+        item = input_value[i]
         item_type = item.get("type")
 
         if item_type == "message":
             role = item.get("role", "user")
             messages.append(_message_from_response_content(role, item.get("content", [])))
+            i += 1
             continue
 
         if item_type in {"input_text", "output_text", "text"}:
             role = _normalize_chat_role(item.get("role", "user"))
             messages.append({"role": role, "content": item.get("text", "")})
+            i += 1
             continue
 
         if item_type == "function_call":
-            # Responses function_call item:
-            # {"type":"function_call","call_id":"...","name":"...","arguments":"..."}
-            # ChatCompletions equivalent:
-            # assistant message with tool_calls.
-            call_id = item.get("call_id") or item.get("id") or _item_id("call")
-            name = item.get("name", "")
-            arguments = item.get("arguments", "")
+            tool_calls: list[dict[str, Any]] = []
+            content_parts: list[str] = []
 
-            if not name:
-                print("[deepseek-responses-proxy] ignored function_call input with missing name")
-                continue
+            while i < len(input_value) and input_value[i].get("type") == "function_call":
+                call_item = input_value[i]
+                call_id = call_item.get("call_id") or call_item.get("id") or _item_id("call")
+                name = call_item.get("name", "")
+                arguments = call_item.get("arguments", "")
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": item.get("content") or "",
-                    "tool_calls": [
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": name,
-                                "arguments": arguments,
-                            },
-                        }
-                    ],
-                }
-            )
+                if not name:
+                    print("[deepseek-responses-proxy] ignored function_call input with missing name")
+                    i += 1
+                    continue
+
+                content = _stringify_content(call_item.get("content") or "")
+                if content:
+                    content_parts.append(content)
+
+                tool_calls.append(
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": arguments,
+                        },
+                    }
+                )
+                i += 1
+
+            if tool_calls:
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "\n".join(content_parts),
+                        "tool_calls": tool_calls,
+                    }
+                )
             continue
 
         if item_type == "function_call_output":
@@ -1152,20 +1167,17 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
                     "content": _stringify_content(item.get("output", "")),
                 }
             )
+            i += 1
             continue
 
-        # Some Responses streams may include bookkeeping items that DeepSeek
-        # cannot consume directly. Ignore known non-message items rather than
-        # failing the whole request.
         if item_type in {"reasoning", "summary_text"}:
             print(f"[deepseek-responses-proxy] ignored unsupported input item type: {item_type}")
+            i += 1
             continue
 
         raise HTTPException(status_code=400, detail=f"Unsupported input item type: {item_type}")
 
     return messages
-
-
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
