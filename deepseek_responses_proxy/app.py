@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.8-tool-bridge-foundation"
+PROXY_VERSION = "v1.8a1-web-search-bridge"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -877,6 +877,17 @@ def _normalize_response_tool(
     """
     tool_type = tool.get("type")
 
+    if tool_type == "web_search":
+        if compat_warnings is not None:
+            compat_warnings.append(
+                {
+                    "kind": "mapped_tool_type",
+                    "tool_type": tool_type,
+                    "mapped_to": "proxy_web_search",
+                }
+            )
+        return _web_search_tool_schema()
+
     if tool_type != "function":
         warning = {
             "kind": "unsupported_tool_type",
@@ -1038,6 +1049,181 @@ def _env_int(name: str, default: int) -> int:
     return value
 
 
+def _web_search_tool_schema() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": "proxy_web_search",
+            "description": "Search the web using the configured DeepSeek proxy search provider.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer"},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _web_search_provider() -> str:
+    provider = (
+        os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER")
+        or os.environ.get("SEARCH_PROVIDER")
+        or "mock"
+    )
+    return provider.strip().lower() or "mock"
+
+
+def _web_search_max_results(value: Any = None) -> int:
+    if value is None:
+        value = os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "5")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 5
+    return max(1, min(parsed, 10))
+
+
+def _web_search_timeout_seconds() -> float:
+    return _env_float("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", 20.0)
+
+
+def _serpapi_api_key() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_SERPAPI_API_KEY")
+        or os.environ.get("SERPAPI_API_KEY")
+        or ""
+    )
+
+
+def _normalize_search_result(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": item.get("title") or "",
+        "url": item.get("link") or item.get("url") or "",
+        "snippet": item.get("snippet") or item.get("description") or "",
+        "published_at": item.get("date"),
+    }
+
+
+async def _mock_web_search(query: str, max_results: int) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "provider": "mock",
+        "query": query,
+        "results": [
+            {
+                "title": f"Mock search result for {query}",
+                "url": "https://example.com/mock-search-result",
+                "snippet": "This is a deterministic mock web search result from the DeepSeek proxy.",
+                "published_at": None,
+            }
+        ][:max_results],
+    }
+
+
+async def _serpapi_web_search(query: str, max_results: int) -> dict[str, Any]:
+    api_key = _serpapi_api_key()
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": "serpapi",
+            "query": query,
+            "error": "missing_api_key",
+            "message": "SERPAPI_API_KEY or DEEPSEEK_PROXY_SERPAPI_API_KEY is required.",
+            "results": [],
+        }
+
+    params: dict[str, Any] = {
+        "engine": os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_ENGINE", "google"),
+        "q": query,
+        "api_key": api_key,
+        "num": max_results,
+    }
+
+    for env_name, param_name in [
+        ("DEEPSEEK_PROXY_WEB_SEARCH_GL", "gl"),
+        ("DEEPSEEK_PROXY_WEB_SEARCH_HL", "hl"),
+        ("DEEPSEEK_PROXY_WEB_SEARCH_LOCATION", "location"),
+    ]:
+        value = os.environ.get(env_name)
+        if value:
+            params[param_name] = value
+
+    try:
+        async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
+            response = await client.get("https://serpapi.com/search.json", params=params)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": "serpapi",
+            "query": query,
+            "error": "web_search_failed",
+            "message": str(exc),
+            "results": [],
+        }
+
+    organic_results = data.get("organic_results") or []
+    results = [
+        _normalize_search_result(item)
+        for item in organic_results[:max_results]
+        if isinstance(item, dict)
+    ]
+
+    return {
+        "ok": True,
+        "provider": "serpapi",
+        "query": query,
+        "results": results,
+    }
+
+
+async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    max_results = _web_search_max_results(arguments.get("max_results"))
+
+    if not query:
+        return {
+            "ok": False,
+            "provider": _web_search_provider(),
+            "query": query,
+            "error": "missing_query",
+            "message": "proxy_web_search requires a non-empty query.",
+            "results": [],
+        }
+
+    provider = _web_search_provider()
+
+    if provider in {"disabled", "off", "none"}:
+        return {
+            "ok": False,
+            "provider": provider,
+            "query": query,
+            "error": "web_search_disabled",
+            "message": "Web search provider is disabled.",
+            "results": [],
+        }
+
+    if provider == "mock":
+        return await _mock_web_search(query, max_results)
+
+    if provider == "serpapi":
+        return await _serpapi_web_search(query, max_results)
+
+    return {
+        "ok": False,
+        "provider": provider,
+        "query": query,
+        "error": "unsupported_web_search_provider",
+        "message": "Supported providers: mock, serpapi, disabled.",
+        "results": [],
+    }
+
+
 def _proxy_tool_schemas() -> list[dict[str, Any]]:
     return [
         {
@@ -1088,7 +1274,7 @@ def _decode_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
     return {"_raw": value}
 
 
-def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+async def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
     function = tool_call.get("function") or {}
     name = function.get("name", "")
     arguments = _decode_tool_arguments(function.get("arguments", ""))
@@ -1106,6 +1292,9 @@ def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
             "tool": name,
             "unix_time": _now(),
         }
+
+    if name == "proxy_web_search":
+        return await _proxy_web_search(arguments)
 
     return {
         "ok": False,
@@ -1171,7 +1360,7 @@ async def _run_chat_with_tool_bridge(
 
         tool_messages: list[dict[str, Any]] = []
         for tool_call in tool_calls:
-            result = _execute_proxy_tool_call(tool_call)
+            result = await _execute_proxy_tool_call(tool_call)
             tool_message = _tool_result_message(tool_call, result)
             tool_messages.append(tool_message)
             tool_trace.append(

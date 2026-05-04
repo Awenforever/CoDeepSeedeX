@@ -201,3 +201,143 @@ async def test_non_proxy_tool_calls_keep_existing_function_call_output_behavior(
     assert len(calls) == 1
     assert calls[0]["name"] == "get_weather"
     assert len(fake.payloads) == 1
+
+
+@pytest.mark.asyncio
+async def test_web_search_tool_is_mapped_to_proxy_web_search(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+
+    fake = FakeDeepSeekClient([deepseek_text_response("search tool available")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Search if needed.",
+                "tools": [{"type": "web_search"}],
+            },
+        )
+
+    assert response.status_code == 200
+    tool_names = [
+        (tool.get("function") or {}).get("name")
+        for tool in fake.payloads[0].get("tools", [])
+    ]
+    assert "proxy_web_search" in tool_names
+
+    warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
+    assert warnings == [
+        {
+            "kind": "mapped_tool_type",
+            "tool_type": "web_search",
+            "mapped_to": "proxy_web_search",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_mock_provider_executes(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "mock")
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_web_search",
+                {"query": "deepseek proxy", "max_results": 2},
+            ),
+            deepseek_text_response("search summarized"),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Search the web.",
+                "tools": [{"type": "web_search"}],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["output_text"] == "search summarized"
+
+    tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_messages) == 1
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is True
+    assert result["provider"] == "mock"
+    assert result["query"] == "deepseek proxy"
+    assert result["results"][0]["title"].startswith("Mock search result")
+
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_missing_serpapi_key_returns_structured_error(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "serpapi")
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_SERPAPI_API_KEY", raising=False)
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_web_search",
+                {"query": "deepseek proxy"},
+            ),
+            deepseek_text_response("missing key handled"),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Search the web.",
+                "tools": [{"type": "web_search"}],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["output_text"] == "missing key handled"
+
+    tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is False
+    assert result["provider"] == "serpapi"
+    assert result["error"] == "missing_api_key"
+
+
+@pytest.mark.asyncio
+async def test_image_generation_and_namespace_remain_unsupported(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    fake = FakeDeepSeekClient([deepseek_text_response("unsupported recorded")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Do not use tools.",
+                "tools": [
+                    {"type": "image_generation"},
+                    {"type": "namespace", "namespace": "deepseek_proxy_account"},
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert "tools" not in fake.payloads[0]
+
+    warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
+    assert [item["tool_type"] for item in warnings] == ["image_generation", "namespace"]

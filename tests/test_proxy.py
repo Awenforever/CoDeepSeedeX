@@ -314,12 +314,26 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
     )
 
     assert response.status_code == 200
-    assert "tools" not in transport.requests[0]
+
+    tool_names = [
+        (tool.get("function") or {}).get("name")
+        for tool in transport.requests[0].get("tools", [])
+    ]
+    assert "proxy_web_search" in tool_names
 
     warnings_path = tmp_path / ".debug" / "last_compat_warnings.json"
     warnings = json.loads(warnings_path.read_text(encoding="utf-8"))
-    assert [item["tool_type"] for item in warnings] == [
-        "web_search",
+
+    assert warnings[0] == {
+        "kind": "mapped_tool_type",
+        "tool_type": "web_search",
+        "mapped_to": "proxy_web_search",
+    }
+
+    unsupported = [
+        item for item in warnings if item.get("kind") == "unsupported_tool_type"
+    ]
+    assert [item["tool_type"] for item in unsupported] == [
         "image_generation",
         "namespace",
     ]
