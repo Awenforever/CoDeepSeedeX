@@ -30,3 +30,4 @@ proxy.pid
 # Thinking proxy runtime files
 proxy-thinking.log
 proxy-thinking.pid
+.generated/
