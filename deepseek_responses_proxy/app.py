@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.1a2a1-parallel-function-call-coalescing"
+PROXY_VERSION = "v2.1a3-apply-patch-custom-tool-experiment"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1012,6 +1012,42 @@ def _normalize_response_tool(
     if tool_type == "custom":
         name = str(tool.get("name") or "").strip()
         custom_format = tool.get("format") or {}
+
+        if name == "apply_patch" and _env_bool("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", False):
+            warning = {
+                "kind": "mapped_custom_tool",
+                "tool_type": tool_type,
+                "name": name,
+                "mapped_to": "apply_patch",
+                "description": str(tool.get("description") or ""),
+                "format": {
+                    "type": custom_format.get("type"),
+                    "syntax": custom_format.get("syntax"),
+                },
+                "reason": "experimental custom apply_patch function-tool mapping is enabled",
+            }
+            if compat_warnings is not None:
+                compat_warnings.append(warning)
+            print("[deepseek-responses-proxy] mapped custom apply_patch tool experimentally")
+            return {
+                "type": "function",
+                "function": {
+                    "name": "apply_patch",
+                    "description": str(tool.get("description") or "Apply a patch to local files."),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "patch": {
+                                "type": "string",
+                                "description": "Patch text to apply to the working tree.",
+                            }
+                        },
+                        "required": ["patch"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+
         warning = {
             "kind": "ignored_custom_tool",
             "tool_type": tool_type,
