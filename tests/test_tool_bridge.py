@@ -512,3 +512,58 @@ async def test_proxy_image_generate_result_is_surfaced_in_output_text(monkeypatc
     assert "Model: mock-image" in data["output_text"]
     assert "Prompt: a cat" in data["output_text"]
     assert "Image 1 URL: https://example.com/mock-generated-image.png" in data["output_text"]
+
+@pytest.mark.asyncio
+async def test_proxy_image_generate_mock_download_creates_local_artifact(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_image_generate",
+                {"prompt": "a local artifact test", "size": "1024x1024", "n": 1},
+            ),
+            deepseek_text_response("Image generated with local artifact."),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image.",
+                "tools": [{"type": "image_generation"}],
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "Generated image result:" in data["output_text"]
+    assert "Image 1 URL: https://example.com/mock-generated-image.png" in data["output_text"]
+    assert "Image 1 local path:" in data["output_text"]
+    assert "Image 1 file URI: file://" in data["output_text"]
+
+    tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_messages) == 1
+
+    result = json.loads(tool_messages[0]["content"])
+    image = result["images"][0]
+
+    assert image["url"] == "https://example.com/mock-generated-image.png"
+    assert image["downloaded"] is True
+    assert image["file_path"]
+    assert image["local_path"] == image["file_path"]
+    assert image["file_uri"].startswith("file://")
+
+    local_path = Path(image["file_path"])
+    assert local_path.exists()
+    assert local_path.read_bytes().startswith(b"\x89PNG")
+

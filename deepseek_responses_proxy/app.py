@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.9-namespace-tool-registry"
+PROXY_VERSION = "v1.9a2-image-download-artifacts"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1183,6 +1183,48 @@ def _image_download_enabled() -> bool:
     return _env_bool("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", False)
 
 
+def _image_file_uri(file_path: str | None) -> str | None:
+    if not file_path:
+        return None
+    try:
+        return Path(file_path).resolve().as_uri()
+    except Exception:
+        return None
+
+
+def _image_artifact_fields(file_path: str | None) -> dict[str, Any]:
+    return {
+        "file_path": file_path,
+        "local_path": file_path,
+        "file_uri": _image_file_uri(file_path),
+        "downloaded": bool(file_path),
+    }
+
+
+def _write_mock_image_artifact(*, provider: str) -> str | None:
+    output_dir = _image_output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{provider}_{_now()}_{uuid.uuid4().hex[:8]}.png"
+    path = output_dir / filename
+
+    # 1x1 transparent PNG. This avoids external network access in tests while
+    # still exercising the same local-artifact output path as real downloads.
+    png_bytes = bytes.fromhex(
+        "89504e470d0a1a0a"
+        "0000000d49484452000000010000000108060000001f15c489"
+        "0000000a49444154789c63600000020001e221bc3300000000"
+        "49454e44ae426082"
+    )
+
+    try:
+        path.write_bytes(png_bytes)
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write mock generated image: {exc}")
+        return None
+
+    return str(path.resolve())
+
+
 async def _download_image_url(url: str, *, provider: str) -> str | None:
     if not url:
         return None
@@ -1201,7 +1243,7 @@ async def _download_image_url(url: str, *, provider: str) -> str | None:
         print(f"[deepseek-responses-proxy] failed to download generated image: {exc}")
         return None
 
-    return str(path)
+    return str(path.resolve())
 
 
 async def _mock_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -1209,20 +1251,26 @@ async def _mock_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     size = _image_size(arguments.get("size"))
     n = _image_n(arguments.get("n"))
 
+    images: list[dict[str, Any]] = []
+    for _ in range(n):
+        file_path = None
+        if _image_download_enabled():
+            file_path = _write_mock_image_artifact(provider="mock")
+        images.append(
+            {
+                "url": "https://example.com/mock-generated-image.png",
+                **_image_artifact_fields(file_path),
+                "mime_type": "image/png",
+            }
+        )
+
     return {
         "ok": True,
         "provider": "mock",
         "model": "mock-image",
         "prompt": prompt,
         "size": size,
-        "images": [
-            {
-                "url": "https://example.com/mock-generated-image.png",
-                "file_path": None,
-                "mime_type": "image/png",
-            }
-            for _ in range(n)
-        ],
+        "images": images,
     }
 
 
@@ -1292,7 +1340,7 @@ async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
         images.append(
             {
                 "url": url if url.startswith("http") else None,
-                "file_path": file_path,
+                **_image_artifact_fields(file_path),
                 "mime_type": "image/png",
                 "raw": item,
             }
@@ -2009,6 +2057,11 @@ def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> 
 
             if url:
                 lines.append(f"- Image {index} URL: {url}")
+            if file_path:
+                lines.append(f"- Image {index} local path: {file_path}")
+                file_uri = image.get("file_uri") or _image_file_uri(file_path)
+                if file_uri:
+                    lines.append(f"- Image {index} file URI: {file_uri}")
             if file_path:
                 lines.append(f"- Image {index} file: {file_path}")
 
