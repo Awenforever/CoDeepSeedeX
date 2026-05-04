@@ -393,3 +393,35 @@ To update config files without restarting the thinking proxy:
 ```bash
 DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 dsproxy-config set model deepseek-v4-pro effort max
 ```
+
+## Experimental model catalog
+
+An experimental Codex model catalog is available at:
+
+```text
+experiments/model-catalog/deepseek-proxy-models.json
+```
+
+Use it for one Codex session without writing it into the permanent Codex config:
+
+```bash
+codex --profile deepseek-thinking \
+  -c model_catalog_json='"/home/kelvin/projects/deepseek-responses-proxy/experiments/model-catalog/deepseek-proxy-models.json"'
+```
+
+Expected behavior:
+
+```text
+/model shows DeepSeek V4 Pro and DeepSeek V4 Flash
+/status can show deepseek-v4-pro or deepseek-v4-flash with reasoning high/xhigh
+```
+
+When xhigh is selected, the proxy maps it to the DeepSeek upstream value:
+
+```json
+{
+  "reasoning_effort": "max"
+}
+```
+
+`summary off`in Codex status means OpenAI-style reasoning summaries are disabled. It does not disable DeepSeek thinking mode.
