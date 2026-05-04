@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.1a3a2-apply-patch-description-guidance"
+PROXY_VERSION = "v2.2a3p1-mcp-namespace-aware-output-robust-patch"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -927,9 +927,60 @@ class DeepSeekClient:
         return response.json()
 
 
+def _mcp_readonly_tool_names() -> set[str]:
+    return {
+        "cheap_router_status",
+        "router_list_models",
+        "router_quota_status",
+        "memory_list",
+        "memory_report",
+        "memory_review_duplicates",
+    }
+
+
+def _mcp_tool_proxy_name(namespace: str, tool_name: str) -> str:
+    return f"{namespace}{tool_name}"
+
+
+def _normalize_mcp_nested_tool(
+    namespace: str,
+    nested_tool: dict[str, Any],
+    mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any] | None:
+    name = str(nested_tool.get("name") or "").strip()
+    if not name or name not in _mcp_readonly_tool_names():
+        return None
+
+    mapped_name = _mcp_tool_proxy_name(namespace, name)
+    if mcp_tool_mapping is not None:
+        mcp_tool_mapping[mapped_name] = {
+            "namespace": namespace,
+            "name": name,
+        }
+
+    parameters = nested_tool.get("parameters") or {
+        "type": "object",
+        "properties": {},
+    }
+
+    return {
+        "type": "function",
+        "function": {
+            "name": mapped_name,
+            "description": (
+                str(nested_tool.get("description") or "")
+                + f"\n\nExperimental read-only MCP bridge. "
+                + f"Call will be restored to Responses function_call namespace={namespace} name={name}."
+            ),
+            "parameters": parameters,
+        },
+    }
+
+
 def _normalize_response_tool(
     tool: dict[str, Any],
     compat_warnings: list[dict[str, Any]] | None = None,
+    mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Convert a Responses tool into one or more DeepSeek ChatCompletions tools.
 
@@ -981,6 +1032,30 @@ def _normalize_response_tool(
 
         nested_tools = tool.get("tools") or []
         if namespace.startswith("mcp__"):
+            if _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False):
+                mapped_tools = [
+                    mapped
+                    for nested_tool in nested_tools
+                    if (mapped := _normalize_mcp_nested_tool(namespace, nested_tool, mcp_tool_mapping)) is not None
+                ]
+
+                if mapped_tools:
+                    warning = {
+                        "kind": "mapped_mcp_readonly_namespace",
+                        "tool_type": tool_type,
+                        "namespace": namespace,
+                        "tool_count": len(nested_tools),
+                        "mapped_to": [
+                            (item.get("function") or {}).get("name")
+                            for item in mapped_tools
+                        ],
+                        "reason": "experimental read-only MCP namespace mapping with namespace-aware output is enabled",
+                    }
+                    if compat_warnings is not None:
+                        compat_warnings.append(warning)
+                    print(f"[deepseek-responses-proxy] mapped read-only MCP namespace tool: {namespace}")
+                    return mapped_tools
+
             warning = {
                 "kind": "ignored_mcp_namespace",
                 "tool_type": tool_type,
@@ -2171,11 +2246,15 @@ async def _run_chat_with_tool_bridge(
     return deepseek_response, history_messages
 
 
-def _deepseek_message_to_output_items(message: dict[str, Any]) -> list[dict[str, Any]]:
-    output: list[dict[str, Any]] = []
-    content = message.get("content")
+def _deepseek_message_to_output_items(
+    message: dict[str, Any],
+    mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    output_items: list[dict[str, Any]] = []
+
+    content = _stringify_content(message.get("content", ""))
     if content:
-        output.append(
+        output_items.append(
             {
                 "id": _item_id("msg"),
                 "type": "message",
@@ -2190,20 +2269,27 @@ def _deepseek_message_to_output_items(message: dict[str, Any]) -> list[dict[str,
                 ],
             }
         )
+
     for tool_call in message.get("tool_calls", []) or []:
         function = tool_call.get("function") or {}
-        output.append(
-            {
-                "id": _item_id("fc"),
-                "type": "function_call",
-                "call_id": tool_call["id"],
-                "name": function.get("name", ""),
-                "arguments": function.get("arguments", ""),
-                "status": "completed",
-            }
-        )
-    return output
+        function_name = function.get("name", "")
+        mcp_mapping = (mcp_tool_mapping or {}).get(function_name)
 
+        output_item = {
+            "id": _item_id("fc"),
+            "type": "function_call",
+            "call_id": tool_call.get("id", _item_id("call")),
+            "name": function_name,
+            "arguments": function.get("arguments", "{}"),
+        }
+
+        if mcp_mapping:
+            output_item["name"] = mcp_mapping["name"]
+            output_item["namespace"] = mcp_mapping["namespace"]
+
+        output_items.append(output_item)
+
+    return output_items
 
 
 def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2756,9 +2842,10 @@ def create_app(
         stream = bool(payload.get("stream"))
         tools = payload.get("tools") or []
         compat_warnings: list[dict[str, Any]] = []
+        mcp_tool_mapping: dict[str, dict[str, str]] = {}
         deepseek_tools_list: list[dict[str, Any]] = []
         for tool in tools:
-            normalized_tool = _normalize_response_tool(tool, compat_warnings)
+            normalized_tool = _normalize_response_tool(tool, compat_warnings, mcp_tool_mapping)
             if isinstance(normalized_tool, list):
                 deepseek_tools_list.extend(normalized_tool)
             elif normalized_tool is not None:
@@ -2875,7 +2962,7 @@ def create_app(
         except (KeyError, IndexError) as exc:
             raise HTTPException(status_code=502, detail="invalid DeepSeek response") from exc
 
-        output_items = _deepseek_message_to_output_items(assistant_message)
+        output_items = _deepseek_message_to_output_items(assistant_message, mcp_tool_mapping)
         output_items.extend(_image_result_output_items_from_messages(messages))
         response_id = _response_id()
         response_body = _build_response_envelope(
