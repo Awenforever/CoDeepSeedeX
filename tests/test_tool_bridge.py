@@ -419,7 +419,11 @@ async def test_proxy_image_generate_mock_provider_executes(monkeypatch):
         )
 
     assert response.status_code == 200
-    assert response.json()["output_text"] == "image summarized"
+    output_text = response.json()["output_text"]
+    assert "image summarized" in output_text
+    assert "Generated image result:" in output_text
+    assert "Provider: mock" in output_text
+    assert "Image 1 URL: https://example.com/mock-generated-image.png" in output_text
 
     tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
     assert len(tool_messages) == 1
@@ -470,3 +474,41 @@ async def test_proxy_image_generate_missing_glm_key_returns_structured_error(mon
     assert result["ok"] is False
     assert result["provider"] == "glm"
     assert result["error"] == "missing_api_key"
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generate_result_is_surfaced_in_output_text(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_image_generate",
+                {"prompt": "a cat", "size": "1024x1024", "n": 1},
+            ),
+            deepseek_text_response("Image generated."),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image.",
+                "tools": [{"type": "image_generation"}],
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "Image generated." in data["output_text"]
+    assert "Generated image result:" in data["output_text"]
+    assert "Provider: mock" in data["output_text"]
+    assert "Model: mock-image" in data["output_text"]
+    assert "Prompt: a cat" in data["output_text"]
+    assert "Image 1 URL: https://example.com/mock-generated-image.png" in data["output_text"]

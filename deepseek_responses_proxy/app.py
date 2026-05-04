@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.8a2-image-generation-bridge"
+PROXY_VERSION = "v1.8a2a1-surface-image-results"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -299,6 +299,21 @@ def _repair_thinking_history_messages(messages: list[dict[str, Any]]) -> tuple[l
     return repaired, changed
 
 
+
+def _normalize_deepseek_role(role: Any) -> str:
+    """Normalize OpenAI/Codex message roles to DeepSeek ChatCompletions roles."""
+    role_str = str(role or "user")
+
+    if role_str == "developer":
+        return "system"
+
+    if role_str in {"system", "user", "assistant", "tool", "latest_reminder"}:
+        return role_str
+
+    print(f"[deepseek-responses-proxy] mapped unsupported DeepSeek message role {role_str!r} to 'user'")
+    return "user"
+
+
 def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Prepare ChatCompletions messages for DeepSeek.
 
@@ -308,6 +323,9 @@ def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[
     DeepSeek request.
     """
     prepared, _changed = _repair_thinking_history_messages(messages)
+    for message in prepared if "prepared" in locals() else messages:
+        message["role"] = _normalize_deepseek_role(message.get("role"))
+
     return prepared
 
 
@@ -1689,6 +1707,85 @@ def _deepseek_message_to_output_items(message: dict[str, Any]) -> list[dict[str,
     return output
 
 
+
+def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Surface generated image URLs/file paths in the final Responses output.
+
+    The tool bridge may successfully generate an image, but the final model
+    response may omit the URL. Codex TUI users should not need to inspect
+    .debug/last_tool_bridge_trace.json to find generated assets.
+    """
+    output_items: list[dict[str, Any]] = []
+
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+
+        if not isinstance(result, dict):
+            continue
+
+        if result.get("provider") not in {"mock", "glm", "zai", "zhipu", "zhipuai", "bigmodel"}:
+            continue
+
+        images = result.get("images") or []
+        if not images:
+            continue
+
+        lines = [
+            "Generated image result:",
+            f"- Provider: {result.get('provider')}",
+            f"- Model: {result.get('model')}",
+        ]
+
+        prompt = result.get("prompt")
+        if prompt:
+            lines.append(f"- Prompt: {prompt}")
+
+        size = result.get("size")
+        if size:
+            lines.append(f"- Size: {size}")
+
+        for index, image in enumerate(images, start=1):
+            if not isinstance(image, dict):
+                continue
+
+            url = image.get("url")
+            file_path = image.get("file_path")
+
+            if url:
+                lines.append(f"- Image {index} URL: {url}")
+            if file_path:
+                lines.append(f"- Image {index} file: {file_path}")
+
+        text = "\n".join(lines)
+        output_items.append(
+            {
+                "id": _item_id("msg"),
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": text,
+                        "annotations": [],
+                    }
+                ],
+            }
+        )
+
+    return output_items
+
+
 def _response_output_text(output_items: list[dict[str, Any]]) -> str:
     chunks: list[str] = []
     for item in output_items:
@@ -2236,6 +2333,7 @@ def create_app(
             raise HTTPException(status_code=502, detail="invalid DeepSeek response") from exc
 
         output_items = _deepseek_message_to_output_items(assistant_message)
+        output_items.extend(_image_result_output_items_from_messages(messages))
         response_id = _response_id()
         response_body = _build_response_envelope(
             response_id=response_id,
