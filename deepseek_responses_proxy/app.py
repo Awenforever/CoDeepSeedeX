@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.9a2-image-download-artifacts"
+PROXY_VERSION = "v1.9a3-image-artifact-retention"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1183,6 +1183,63 @@ def _image_download_enabled() -> bool:
     return _env_bool("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", False)
 
 
+def _image_max_artifacts() -> int:
+    return _env_int("DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS", 100)
+
+
+def _image_artifact_patterns() -> list[str]:
+    return [
+        "mock_*.png",
+        "glm_*.png",
+        "zai_*.png",
+        "zhipu_*.png",
+        "zhipuai_*.png",
+        "bigmodel_*.png",
+    ]
+
+
+def _prune_image_artifacts(output_dir: Path | None = None) -> None:
+    limit = _image_max_artifacts()
+    if limit <= 0:
+        return
+
+    root = output_dir or _image_output_dir()
+    if not root.exists() or not root.is_dir():
+        return
+
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    for pattern in _image_artifact_patterns():
+        for path in root.glob(pattern):
+            try:
+                resolved = path.resolve()
+            except Exception:
+                resolved = path
+            if resolved in seen or not path.is_file():
+                continue
+            seen.add(resolved)
+            candidates.append(path)
+
+    if len(candidates) <= limit:
+        return
+
+    def sort_key(path: Path) -> tuple[float, str]:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (mtime, path.name)
+
+    candidates.sort(key=sort_key, reverse=True)
+
+    for path in candidates[limit:]:
+        try:
+            path.unlink()
+        except OSError as exc:
+            print(f"[deepseek-responses-proxy] failed to prune generated image artifact {path}: {exc}")
+
+
 def _image_file_uri(file_path: str | None) -> str | None:
     if not file_path:
         return None
@@ -1222,6 +1279,7 @@ def _write_mock_image_artifact(*, provider: str) -> str | None:
         print(f"[deepseek-responses-proxy] failed to write mock generated image: {exc}")
         return None
 
+    _prune_image_artifacts(output_dir)
     return str(path.resolve())
 
 
@@ -1243,6 +1301,7 @@ async def _download_image_url(url: str, *, provider: str) -> str | None:
         print(f"[deepseek-responses-proxy] failed to download generated image: {exc}")
         return None
 
+    _prune_image_artifacts(output_dir)
     return str(path.resolve())
 
 
@@ -2369,6 +2428,7 @@ def _tool_bridge_status() -> dict[str, Any]:
             "size": _image_size(),
             "n": _image_n(),
             "download_enabled": _image_download_enabled(),
+            "max_artifacts": _image_max_artifacts(),
             "output_dir": str(_image_output_dir()),
             "api_key_configured": bool(_image_api_key()) if image_provider != "mock" else None,
         },
