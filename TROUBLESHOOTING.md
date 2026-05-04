@@ -67,9 +67,9 @@ Watch for context-window, tool-capability, or token-budgeting side effects.
 Expected log examples:
 
 ```text
-[deepseek-responses-proxy] ignored unsupported tool type: web_search
-[deepseek-responses-proxy] ignored unsupported tool type: image_generation
-[deepseek-responses-proxy] ignored unsupported tool type: namespace
+[deepseek-responses-proxy] ignored unsupported namespace tool: unknown_namespace_for_stress_test
+
+`web_search` and `image_generation` should no longer be reported as unsupported when `DEEPSEEK_PROXY_TOOL_BRIDGE=1`; they map to `proxy_web_search` and `proxy_image_generate`. The whitelisted namespace `deepseek_proxy_account` should map to `mapped_tool_namespace`. Unknown namespaces are still dropped and recorded as `unsupported_tool_namespace`.
 ```
 
 Reason:
@@ -239,3 +239,30 @@ The tracked script templates in `scripts/` already apply this behavior. Reinstal
 ```bash
 scripts/install-runtime-scripts.sh
 ```
+
+## Image generation artifacts
+
+If `DEEPSEEK_PROXY_IMAGE_DOWNLOAD=1`, generated image results should include local artifact fields:
+
+```json
+{
+  "file_path": "...",
+  "local_path": "...",
+  "file_uri": "file://...",
+  "downloaded": true
+}
+```
+
+Check runtime configuration with:
+
+```bash
+curl --noproxy '*' -sS http://127.0.0.1:8000/v1/proxy/tool-bridge/status | python3 -m json.tool
+```
+
+If `.generated/images` grows unexpectedly, set:
+
+```bash
+DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS=100
+```
+
+Set it to `0` to disable automatic pruning. The pruning logic only removes proxy-generated filenames with known prefixes and does not delete unrelated user files.

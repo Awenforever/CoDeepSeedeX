@@ -261,7 +261,7 @@ Use the same prompts.
 
 * This is not a complete OpenAI Responses API implementation.
 * OpenAI-hosted built-in tools are not supported.
-* Unsupported tool types such as `web_search`, `image_generation`, and `namespace` are ignored.
+* Built-in `web_search` and `image_generation` tools are mapped to proxy tools when `DEEPSEEK_PROXY_TOOL_BRIDGE=1`. The whitelisted namespace `deepseek_proxy_account` is expanded into `proxy_status`, `proxy_usage_summary`, `proxy_usage_events`, and `proxy_balance`. Unknown namespaces and unsupported tool types are still dropped with structured compatibility warnings.
 * DeepSeek thinking mode is useful but not a full replacement for official Codex models.
 * Model metadata warnings from Codex may be harmless but should be watched.
 * High-risk production refactors should still receive independent review from an official Codex model or GPT-5.5 WebChat.
@@ -314,3 +314,35 @@ export DEEPSEEK_PROXY_PRICING_PATH=/path/to/pricing.json
 ```
 
 Values are USD per 1M tokens. If the config is missing or invalid, the proxy falls back to the built-in default pricing table.
+
+## Tool bridge provider and artifact status
+
+Current versions expose tool bridge status through:
+
+```bash
+curl --noproxy '*' -sS http://127.0.0.1:8000/v1/proxy/status | python3 -m json.tool
+curl --noproxy '*' -sS http://127.0.0.1:8000/v1/proxy/tool-bridge/status | python3 -m json.tool
+```
+
+The status payload reports whether the tool bridge is enabled, web search provider, image provider, image model, image size, image download mode, output directory, and image artifact retention limit. It reports only boolean key presence such as `api_key_configured`, never raw API keys.
+
+Supported bridge mappings:
+
+* `{"type":"web_search"}` maps to `proxy_web_search`.
+* `{"type":"image_generation"}` maps to `proxy_image_generate`.
+* `{"type":"namespace","namespace":"deepseek_proxy_account"}` expands to `proxy_status`, `proxy_usage_summary`, `proxy_usage_events`, and `proxy_balance`.
+
+Unknown namespaces remain unsupported and are recorded as `unsupported_tool_namespace`.
+
+Image artifact controls:
+
+```bash
+DEEPSEEK_PROXY_IMAGE_PROVIDER=mock|glm|zai|zhipu|zhipuai|bigmodel
+DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304
+DEEPSEEK_PROXY_IMAGE_SIZE=1024x1024
+DEEPSEEK_PROXY_IMAGE_DOWNLOAD=0|1
+DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR=.generated/images
+DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS=100
+```
+
+When `DEEPSEEK_PROXY_IMAGE_DOWNLOAD=1`, generated image results include `file_path`, `local_path`, `file_uri`, and `downloaded`. The proxy prunes only known proxy-generated image filenames, such as `mock_*.png`, `glm_*.png`, and `zai_*.png`, leaving unrelated user files in the output directory untouched.

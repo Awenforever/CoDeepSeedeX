@@ -447,3 +447,54 @@ tool_output_token_limit = 12000
 ```
 
 The auto-compact threshold is intentionally below the full model context window to leave room for system instructions, tool results, and multi-turn growth.
+
+## Tool bridge, namespace, and image artifact operations
+
+Current stable behavior:
+
+* `DEEPSEEK_PROXY_TOOL_BRIDGE=1` enables local execution of proxy tools returned by DeepSeek.
+* `web_search` is mapped to `proxy_web_search`.
+* `image_generation` is mapped to `proxy_image_generate`.
+* `namespace=deepseek_proxy_account` is expanded into `proxy_status`, `proxy_usage_summary`, `proxy_usage_events`, and `proxy_balance`.
+* Unknown namespaces remain unsupported and are recorded as `unsupported_tool_namespace`.
+
+Provider status endpoints:
+
+```bash
+curl --noproxy '*' -sS http://127.0.0.1:8000/v1/proxy/status | python3 -m json.tool
+curl --noproxy '*' -sS http://127.0.0.1:8000/v1/proxy/tool-bridge/status | python3 -m json.tool
+```
+
+Image generation environment:
+
+```bash
+DEEPSEEK_PROXY_IMAGE_PROVIDER=mock
+DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304
+DEEPSEEK_PROXY_IMAGE_SIZE=1024x1024
+DEEPSEEK_PROXY_IMAGE_DOWNLOAD=0
+DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR=.generated/images
+DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS=100
+```
+
+Use `DEEPSEEK_PROXY_IMAGE_DOWNLOAD=1` to store generated image artifacts locally. Returned image records include `url`, `file_path`, `local_path`, `file_uri`, `downloaded`, and `mime_type` when available.
+
+Operational smoke tests:
+
+```bash
+scripts/proxy-stress-test.py --profile stable --scale small || true
+
+python3 - <<'CHECK'
+from pathlib import Path
+import json
+latest = sorted(Path(".debug").glob("stress_report_*.json"), reverse=True)[0]
+data = json.loads(latest.read_text(encoding="utf-8"))
+for r in data["results"]:
+    if "namespace" in r["name"]:
+        print(r["name"], r["ok"], r.get("compat_warning_kinds"), r.get("upstream_tools_count"))
+CHECK
+```
+
+Expected namespace stress semantics:
+
+* `supported_namespace_tool` reports `mapped_tool_namespace`.
+* `unsupported_namespace_tool` reports `unsupported_tool_namespace`.
