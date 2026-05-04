@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.7a2-responses-options-mapping"
+PROXY_VERSION = "v1.8-tool-bridge-foundation"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1015,6 +1015,199 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
     return messages
 
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"[deepseek-responses-proxy] invalid {name}={raw!r}; using {default}")
+        return default
+    if value < 0:
+        print(f"[deepseek-responses-proxy] negative {name}={raw!r}; using {default}")
+        return default
+    return value
+
+
+def _proxy_tool_schemas() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "proxy_echo",
+                "description": "Echo a value for DeepSeek proxy tool-loop testing.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string"},
+                    },
+                    "required": ["value"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "proxy_time",
+                "description": "Return the current Unix timestamp from the proxy.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+        },
+    ]
+
+
+def _decode_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
+    if raw_arguments is None or raw_arguments == "":
+        return {}
+    if isinstance(raw_arguments, dict):
+        return raw_arguments
+    if not isinstance(raw_arguments, str):
+        return {"_raw": raw_arguments}
+
+    try:
+        value = json.loads(raw_arguments)
+    except json.JSONDecodeError:
+        return {"_raw": raw_arguments, "_parse_error": "invalid_json"}
+
+    if isinstance(value, dict):
+        return value
+    return {"_raw": value}
+
+
+def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+    function = tool_call.get("function") or {}
+    name = function.get("name", "")
+    arguments = _decode_tool_arguments(function.get("arguments", ""))
+
+    if name == "proxy_echo":
+        return {
+            "ok": True,
+            "tool": name,
+            "value": arguments.get("value", ""),
+        }
+
+    if name == "proxy_time":
+        return {
+            "ok": True,
+            "tool": name,
+            "unix_time": _now(),
+        }
+
+    return {
+        "ok": False,
+        "tool": name,
+        "error": "unsupported_proxy_tool",
+    }
+
+
+def _is_proxy_tool_call(tool_call: dict[str, Any]) -> bool:
+    function = tool_call.get("function") or {}
+    name = function.get("name", "")
+    return name.startswith("proxy_")
+
+
+def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "role": "tool",
+        "tool_call_id": tool_call.get("id", _item_id("call")),
+        "content": json.dumps(result, ensure_ascii=False),
+    }
+
+
+async def _run_chat_with_tool_bridge(
+    *,
+    deepseek_client: DeepSeekClient,
+    chat_payload: dict[str, Any],
+    messages_for_deepseek: list[dict[str, Any]],
+    history_messages: list[dict[str, Any]],
+    model: str,
+    deepseek_tools: list[dict[str, Any]] | None,
+    reasoning_effort: str | None,
+    request_payload: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    deepseek_response = await deepseek_client.chat_completions(chat_payload)
+
+    if not _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True):
+        return deepseek_response, history_messages
+
+    max_rounds = _env_int("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", 3)
+    if max_rounds <= 0:
+        return deepseek_response, history_messages
+
+    tool_trace: list[dict[str, Any]] = []
+
+    for round_index in range(max_rounds):
+        choices = deepseek_response.get("choices") or []
+        if not choices:
+            return deepseek_response, history_messages
+
+        assistant_message = choices[0].get("message") or {}
+        tool_calls = assistant_message.get("tool_calls") or []
+        if not tool_calls:
+            return deepseek_response, history_messages
+
+        if not all(_is_proxy_tool_call(tool_call) for tool_call in tool_calls):
+            return deepseek_response, history_messages
+
+        assistant_history_item = deepcopy(assistant_message)
+        if _thinking_enabled():
+            assistant_history_item.setdefault("reasoning_content", "")
+        messages_for_deepseek.append(assistant_history_item)
+        history_messages.append(deepcopy(assistant_history_item))
+
+        tool_messages: list[dict[str, Any]] = []
+        for tool_call in tool_calls:
+            result = _execute_proxy_tool_call(tool_call)
+            tool_message = _tool_result_message(tool_call, result)
+            tool_messages.append(tool_message)
+            tool_trace.append(
+                {
+                    "round": round_index + 1,
+                    "tool_call_id": tool_call.get("id"),
+                    "tool_name": (tool_call.get("function") or {}).get("name"),
+                    "result": result,
+                }
+            )
+
+        messages_for_deepseek.extend(tool_messages)
+        history_messages.extend(deepcopy(tool_messages))
+
+        try:
+            debug_dir = Path(".debug")
+            debug_dir.mkdir(exist_ok=True)
+            (debug_dir / "last_tool_bridge_trace.json").write_text(
+                json.dumps(tool_trace, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[deepseek-responses-proxy] failed to write tool bridge trace: {exc}")
+
+        chat_payload = _build_chat_payload(
+            model=model,
+            messages=messages_for_deepseek,
+            tools=deepseek_tools,
+            reasoning_effort=reasoning_effort,
+            request_payload=request_payload,
+        )
+        deepseek_response = await deepseek_client.chat_completions(chat_payload)
+
+    return deepseek_response, history_messages
+
+
 def _deepseek_message_to_output_items(message: dict[str, Any]) -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
     content = message.get("content")
@@ -1484,6 +1677,15 @@ def create_app(
             normalized_tool = _normalize_response_tool(tool, compat_warnings)
             if normalized_tool is not None:
                 deepseek_tools_list.append(normalized_tool)
+        if _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True) and deepseek_tools_list:
+            existing_tool_names = {
+                ((tool.get("function") or {}).get("name"))
+                for tool in deepseek_tools_list
+            }
+            for proxy_tool in _proxy_tool_schemas():
+                proxy_name = (proxy_tool.get("function") or {}).get("name")
+                if proxy_name not in existing_tool_names:
+                    deepseek_tools_list.append(proxy_tool)
         deepseek_tools = deepseek_tools_list or None
 
         try:
@@ -1568,7 +1770,16 @@ def create_app(
             request_payload=payload,
         )
         try:
-            deepseek_response = await app.state.deepseek_client.chat_completions(chat_payload)
+            deepseek_response, messages = await _run_chat_with_tool_bridge(
+                deepseek_client=app.state.deepseek_client,
+                chat_payload=chat_payload,
+                messages_for_deepseek=messages_for_deepseek,
+                history_messages=messages,
+                model=model,
+                deepseek_tools=deepseek_tools,
+                reasoning_effort=reasoning_effort,
+                request_payload=payload,
+            )
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc
 
