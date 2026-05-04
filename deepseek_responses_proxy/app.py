@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.8a2a1-surface-image-results"
+PROXY_VERSION = "v1.8a3-provider-config-hardening"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -2049,6 +2049,33 @@ def _build_chat_payload(
     return payload
 
 
+def _tool_bridge_status() -> dict[str, Any]:
+    web_provider = _web_search_provider()
+    image_provider = _image_provider()
+
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True),
+        "max_rounds": _env_int("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", 3),
+        "web_search": {
+            "provider": web_provider,
+            "is_mock": web_provider == "mock",
+            "max_results": _web_search_max_results(),
+            "timeout_seconds": _web_search_timeout_seconds(),
+            "api_key_configured": bool(_serpapi_api_key()) if web_provider == "serpapi" else None,
+        },
+        "image_generation": {
+            "provider": image_provider,
+            "is_mock": image_provider == "mock",
+            "model": _image_model(),
+            "size": _image_size(),
+            "n": _image_n(),
+            "download_enabled": _image_download_enabled(),
+            "output_dir": str(_image_output_dir()),
+            "api_key_configured": bool(_image_api_key()) if image_provider != "mock" else None,
+        },
+    }
+
+
 def create_app(
     *,
     deepseek_client: DeepSeekClient | None = None,
@@ -2076,11 +2103,20 @@ def create_app(
             "model_default": DEFAULT_MODEL,
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
+            "tool_bridge": _tool_bridge_status(),
             "store": _store_info(app.state.store),
             "started_at": app.state.started_at,
             "uptime_seconds": max(0, _now() - app.state.started_at),
             "repair_count": app.state.repair_count,
             "deepseek_base_url": getattr(app.state.deepseek_client, "base_url", None),
+        }
+
+    @app.get("/v1/proxy/tool-bridge/status")
+    async def proxy_tool_bridge_status() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "tool_bridge": _tool_bridge_status(),
         }
 
     @app.get("/v1/proxy/balance")
