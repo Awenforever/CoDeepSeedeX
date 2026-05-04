@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.8a1-web-search-bridge"
+PROXY_VERSION = "v1.8a2-image-generation-bridge"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -888,6 +888,17 @@ def _normalize_response_tool(
             )
         return _web_search_tool_schema()
 
+    if tool_type == "image_generation":
+        if compat_warnings is not None:
+            compat_warnings.append(
+                {
+                    "kind": "mapped_tool_type",
+                    "tool_type": tool_type,
+                    "mapped_to": "proxy_image_generate",
+                }
+            )
+        return _image_generation_tool_schema()
+
     if tool_type != "function":
         warning = {
             "kind": "unsupported_tool_type",
@@ -1047,6 +1058,250 @@ def _env_int(name: str, default: int) -> int:
         print(f"[deepseek-responses-proxy] negative {name}={raw!r}; using {default}")
         return default
     return value
+
+
+def _image_generation_tool_schema() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": "proxy_image_generate",
+            "description": "Generate an image using the configured DeepSeek proxy image provider.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string"},
+                    "size": {"type": "string"},
+                    "n": {"type": "integer"},
+                    "quality": {"type": "string"},
+                    "style": {"type": "string"},
+                },
+                "required": ["prompt"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _image_provider() -> str:
+    provider = (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_PROVIDER")
+        or os.environ.get("IMAGE_PROVIDER")
+        or "mock"
+    )
+    return provider.strip().lower() or "mock"
+
+
+def _image_api_key() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("ZAI_API_KEY")
+        or os.environ.get("ZHIPUAI_API_KEY")
+        or os.environ.get("ZHIPU_API_KEY")
+        or os.environ.get("GLM_API_KEY")
+        or ""
+    )
+
+
+def _image_model() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+        or os.environ.get("ZAI_IMAGE_MODEL")
+        or "cogView-4-250304"
+    )
+
+
+def _image_size(value: Any = None) -> str:
+    raw = str(value or os.environ.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")).strip()
+    if not raw:
+        return "1024x1024"
+    return raw.replace("*", "x")
+
+
+def _image_n(value: Any = None) -> int:
+    if value is None:
+        value = os.environ.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 1
+    return max(1, min(parsed, 4))
+
+
+def _image_output_dir() -> Path:
+    raw = os.environ.get("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR") or ".generated/images"
+    return Path(raw)
+
+
+def _image_download_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", False)
+
+
+async def _download_image_url(url: str, *, provider: str) -> str | None:
+    if not url:
+        return None
+
+    output_dir = _image_output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{provider}_{_now()}_{uuid.uuid4().hex[:8]}.png"
+    path = output_dir / filename
+
+    try:
+        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_DOWNLOAD_TIMEOUT_SECONDS", 60.0)) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            path.write_bytes(response.content)
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to download generated image: {exc}")
+        return None
+
+    return str(path)
+
+
+async def _mock_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    prompt = str(arguments.get("prompt") or "").strip()
+    size = _image_size(arguments.get("size"))
+    n = _image_n(arguments.get("n"))
+
+    return {
+        "ok": True,
+        "provider": "mock",
+        "model": "mock-image",
+        "prompt": prompt,
+        "size": size,
+        "images": [
+            {
+                "url": "https://example.com/mock-generated-image.png",
+                "file_path": None,
+                "mime_type": "image/png",
+            }
+            for _ in range(n)
+        ],
+    }
+
+
+async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    api_key = _image_api_key()
+    provider = _image_provider()
+    prompt = str(arguments.get("prompt") or "").strip()
+    size = _image_size(arguments.get("size"))
+    n = _image_n(arguments.get("n"))
+
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "missing_api_key",
+            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, ZAI_API_KEY, ZHIPUAI_API_KEY, ZHIPU_API_KEY, or GLM_API_KEY.",
+            "images": [],
+        }
+
+    body: dict[str, Any] = {
+        "model": _image_model(),
+        "prompt": prompt,
+        "size": size,
+    }
+    if n != 1:
+        body["n"] = n
+
+    endpoint = os.environ.get(
+        "DEEPSEEK_PROXY_IMAGE_BASE_URL",
+        "https://api.z.ai/api/paas/v4/images/generations",
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "image_generation_failed",
+            "message": str(exc),
+            "images": [],
+        }
+
+    raw_images = data.get("data") or []
+    images: list[dict[str, Any]] = []
+    for item in raw_images:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("b64_json") or ""
+        file_path = None
+        if url and url.startswith("http") and _image_download_enabled():
+            file_path = await _download_image_url(url, provider=provider)
+        images.append(
+            {
+                "url": url if url.startswith("http") else None,
+                "file_path": file_path,
+                "mime_type": "image/png",
+                "raw": item,
+            }
+        )
+
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": _image_model(),
+        "prompt": prompt,
+        "size": size,
+        "images": images,
+    }
+
+
+async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    prompt = str(arguments.get("prompt") or "").strip()
+    if not prompt:
+        return {
+            "ok": False,
+            "provider": _image_provider(),
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "missing_prompt",
+            "message": "proxy_image_generate requires a non-empty prompt.",
+            "images": [],
+        }
+
+    provider = _image_provider()
+
+    if provider in {"disabled", "off", "none"}:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "image_generation_disabled",
+            "message": "Image generation provider is disabled.",
+            "images": [],
+        }
+
+    if provider == "mock":
+        return await _mock_image_generate(arguments)
+
+    if provider in {"glm", "zai", "zhipu", "zhipuai", "bigmodel"}:
+        return await _zai_image_generate(arguments)
+
+    return {
+        "ok": False,
+        "provider": provider,
+        "model": _image_model(),
+        "prompt": prompt,
+        "error": "unsupported_image_provider",
+        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, disabled.",
+        "images": [],
+    }
 
 
 def _web_search_tool_schema() -> dict[str, Any]:
@@ -1295,6 +1550,9 @@ async def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
 
     if name == "proxy_web_search":
         return await _proxy_web_search(arguments)
+
+    if name == "proxy_image_generate":
+        return await _proxy_image_generate(arguments)
 
     return {
         "ok": False,

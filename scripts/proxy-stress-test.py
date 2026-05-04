@@ -124,9 +124,12 @@ def web_search_tool() -> dict[str, Any]:
     return {"type": "web_search"}
 
 
+def image_generation_tool() -> dict[str, Any]:
+    return {"type": "image_generation"}
+
+
 def unsupported_tools() -> list[dict[str, Any]]:
     return [
-        {"type": "image_generation"},
         {"type": "namespace", "namespace": "deepseek_proxy_account"},
     ]
 
@@ -175,6 +178,16 @@ def build_cases(scale: str) -> list[tuple[str, dict[str, Any], bool]]:
                 "model": "deepseek-v4-pro",
                 "input": "Reply exactly: web-search-ok",
                 "tools": [web_search_tool()],
+                "tool_choice": "auto",
+            },
+            False,
+        ),
+        (
+            "image_generation_tool",
+            {
+                "model": "deepseek-v4-pro",
+                "input": "Reply exactly: image-generation-ok",
+                "tools": [image_generation_tool()],
                 "tool_choice": "auto",
             },
             False,

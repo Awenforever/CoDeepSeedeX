@@ -330,10 +330,15 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
         "mapped_to": "proxy_web_search",
     }
 
+    assert {
+        "kind": "mapped_tool_type",
+        "tool_type": "image_generation",
+        "mapped_to": "proxy_image_generate",
+    } in warnings
+
     unsupported = [
         item for item in warnings if item.get("kind") == "unsupported_tool_type"
     ]
     assert [item["tool_type"] for item in unsupported] == [
-        "image_generation",
         "namespace",
     ]

@@ -317,7 +317,7 @@ async def test_proxy_web_search_missing_serpapi_key_returns_structured_error(mon
 
 
 @pytest.mark.asyncio
-async def test_image_generation_and_namespace_remain_unsupported(monkeypatch, tmp_path):
+async def test_namespace_remains_unsupported_while_image_generation_is_mapped(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     fake = FakeDeepSeekClient([deepseek_text_response("unsupported recorded")])
@@ -337,7 +337,136 @@ async def test_image_generation_and_namespace_remain_unsupported(monkeypatch, tm
         )
 
     assert response.status_code == 200
-    assert "tools" not in fake.payloads[0]
+
+    tool_names = [
+        (tool.get("function") or {}).get("name")
+        for tool in fake.payloads[0].get("tools", [])
+    ]
+    assert "proxy_image_generate" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
-    assert [item["tool_type"] for item in warnings] == ["image_generation", "namespace"]
+    assert warnings[0] == {
+        "kind": "mapped_tool_type",
+        "tool_type": "image_generation",
+        "mapped_to": "proxy_image_generate",
+    }
+    unsupported = [
+        item for item in warnings if item.get("kind") == "unsupported_tool_type"
+    ]
+    assert [item["tool_type"] for item in unsupported] == ["namespace"]
+
+
+@pytest.mark.asyncio
+async def test_image_generation_tool_is_mapped_to_proxy_image_generate(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+
+    fake = FakeDeepSeekClient([deepseek_text_response("image tool available")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image if needed.",
+                "tools": [{"type": "image_generation"}],
+            },
+        )
+
+    assert response.status_code == 200
+    tool_names = [
+        (tool.get("function") or {}).get("name")
+        for tool in fake.payloads[0].get("tools", [])
+    ]
+    assert "proxy_image_generate" in tool_names
+
+    warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
+    assert warnings == [
+        {
+            "kind": "mapped_tool_type",
+            "tool_type": "image_generation",
+            "mapped_to": "proxy_image_generate",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generate_mock_provider_executes(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_image_generate",
+                {"prompt": "a cute orange cat", "size": "1024x1024", "n": 1},
+            ),
+            deepseek_text_response("image summarized"),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image.",
+                "tools": [{"type": "image_generation"}],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["output_text"] == "image summarized"
+
+    tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_messages) == 1
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is True
+    assert result["provider"] == "mock"
+    assert result["prompt"] == "a cute orange cat"
+    assert result["images"][0]["url"] == "https://example.com/mock-generated-image.png"
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generate_missing_glm_key_returns_structured_error(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "glm")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_API_KEY", raising=False)
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+    monkeypatch.delenv("ZHIPUAI_API_KEY", raising=False)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLM_API_KEY", raising=False)
+
+    fake = FakeDeepSeekClient(
+        [
+            deepseek_tool_call_response(
+                "call_1",
+                "proxy_image_generate",
+                {"prompt": "a cat"},
+            ),
+            deepseek_text_response("missing image key handled"),
+        ]
+    )
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image.",
+                "tools": [{"type": "image_generation"}],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["output_text"] == "missing image key handled"
+
+    tool_messages = [m for m in fake.payloads[1]["messages"] if m["role"] == "tool"]
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is False
+    assert result["provider"] == "glm"
+    assert result["error"] == "missing_api_key"
