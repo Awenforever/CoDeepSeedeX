@@ -346,3 +346,13 @@ DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS=100
 ```
 
 When `DEEPSEEK_PROXY_IMAGE_DOWNLOAD=1`, generated image results include `file_path`, `local_path`, `file_uri`, and `downloaded`. The proxy prunes only known proxy-generated image filenames, such as `mock_*.png`, `glm_*.png`, and `zai_*.png`, leaving unrelated user files in the output directory untouched.
+
+## Codex custom tool and MCP compatibility
+
+Codex may send `apply_patch` as a Responses `custom` tool. By default, the proxy keeps this tool ignored and records it as `ignored_custom_tool`. To experimentally forward it to DeepSeek as a function tool, enable:
+
+    DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1
+
+When enabled, the proxy maps `custom apply_patch` to a function tool named `apply_patch` with the Codex-required `input` argument. The exposed description instructs the model to use Codex apply_patch format with `*** Begin Patch`, `*** Update File: relative/path`, and `*** End Patch`.
+
+MCP namespaces are not executed by the proxy. They are compressed into audit warnings such as `ignored_mcp_namespace` so debug files remain small. Experiments showed that flattening MCP tools into function names such as `cheap_router_status` or `mcp__cheap_llm__cheap_router_status` results in Codex returning `unsupported call`. Therefore MCP tool execution remains disabled unless a future Codex-native MCP call protocol or explicit proxy-side MCP executor is implemented.

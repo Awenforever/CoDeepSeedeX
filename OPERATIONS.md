@@ -498,3 +498,26 @@ Expected namespace stress semantics:
 
 * `supported_namespace_tool` reports `mapped_tool_namespace`.
 * `unsupported_namespace_tool` reports `unsupported_tool_namespace`.
+
+## Codex apply_patch and MCP compatibility operations
+
+Stable default behavior:
+
+    DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=0
+
+With the default setting, Codex `custom apply_patch` is ignored and recorded as `ignored_custom_tool`.
+
+Experimental apply_patch bridge:
+
+    DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1
+
+This exposes `apply_patch` to DeepSeek as a function tool using the Codex-required `input` argument. It has been verified in a real Codex session to modify a file through Codex's local apply_patch executor.
+
+MCP namespace policy:
+
+    MCP namespaces are audit-only.
+    MCP tools are not executed through function-tool flattening.
+    `cheap_router_status` failed with `unsupported call`.
+    `mcp__cheap_llm__cheap_router_status` failed with `unsupported call`.
+
+Do not enable MCP execution by mapping namespace tools into plain function tools. Future work should either use Codex's native MCP calling protocol, if exposed, or implement an explicit proxy-side MCP executor with a strict allowlist and separate write-permission gate.

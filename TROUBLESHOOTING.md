@@ -266,3 +266,22 @@ DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS=100
 ```
 
 Set it to `0` to disable automatic pruning. The pruning logic only removes proxy-generated filenames with known prefixes and does not delete unrelated user files.
+
+## Codex apply_patch or MCP tool issues
+
+If DeepSeek does not call `apply_patch`, confirm that the proxy was started with:
+
+    DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1
+
+If `apply_patch` returns an argument error such as `missing field input`, the proxy is running an older build that exposed `patch` instead of Codex's required `input` argument. Restart the proxy on a build at or after `v2.1a3a2-apply-patch-description-guidance`.
+
+If `apply_patch` returns patch-format errors, check that the model used Codex apply_patch format:
+
+    *** Begin Patch
+    *** Update File: relative/path
+     context lines start with a single space
+    +added lines start with plus
+    -removed lines start with minus
+    *** End Patch
+
+If MCP tools such as `cheap_router_status` or `mcp__cheap_llm__cheap_router_status` return `unsupported call`, this is expected. MCP namespace tools are currently compressed for audit but not executable through function-tool flattening.
