@@ -317,7 +317,7 @@ async def test_proxy_web_search_missing_serpapi_key_returns_structured_error(mon
 
 
 @pytest.mark.asyncio
-async def test_namespace_remains_unsupported_while_image_generation_is_mapped(monkeypatch, tmp_path):
+async def test_deepseek_proxy_account_namespace_is_mapped_while_image_generation_is_mapped(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     fake = FakeDeepSeekClient([deepseek_text_response("unsupported recorded")])
@@ -353,7 +353,7 @@ async def test_namespace_remains_unsupported_while_image_generation_is_mapped(mo
     unsupported = [
         item for item in warnings if item.get("kind") == "unsupported_tool_type"
     ]
-    assert [item["tool_type"] for item in unsupported] == ["namespace"]
+    assert unsupported == []
 
 
 @pytest.mark.asyncio

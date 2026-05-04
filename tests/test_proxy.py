@@ -337,8 +337,18 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
     } in warnings
 
     unsupported = [
-        item for item in warnings if item.get("kind") == "unsupported_tool_type"
+        item for item in warnings if item.get("kind", "").startswith("unsupported")
     ]
-    assert [item["tool_type"] for item in unsupported] == [
-        "namespace",
+    assert unsupported == []
+
+    mapped_namespaces = [
+        item for item in warnings if item.get("kind") == "mapped_tool_namespace"
     ]
+    assert mapped_namespaces
+    assert mapped_namespaces[0]["namespace"] == "deepseek_proxy_account"
+    assert {
+        "proxy_status",
+        "proxy_usage_summary",
+        "proxy_usage_events",
+        "proxy_balance",
+    }.issubset(set(mapped_namespaces[0]["mapped_to"]))

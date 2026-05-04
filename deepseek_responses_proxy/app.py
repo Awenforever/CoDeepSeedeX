@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v1.8a3-provider-config-hardening"
+PROXY_VERSION = "v1.9-namespace-tool-registry"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -886,8 +886,8 @@ class DeepSeekClient:
 def _normalize_response_tool(
     tool: dict[str, Any],
     compat_warnings: list[dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
-    """Convert a Responses function tool into a DeepSeek ChatCompletions tool.
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Convert a Responses tool into one or more DeepSeek ChatCompletions tools.
 
     Codex may include built-in Responses tools such as web_search.
     DeepSeek ChatCompletions cannot execute these built-in tools.
@@ -916,6 +916,35 @@ def _normalize_response_tool(
                 }
             )
         return _image_generation_tool_schema()
+
+    if tool_type == "namespace":
+        namespace = str(tool.get("namespace") or tool.get("name") or "").strip()
+        namespace_tools = _namespace_tool_schemas(namespace)
+        if namespace_tools is not None:
+            if compat_warnings is not None:
+                compat_warnings.append(
+                    {
+                        "kind": "mapped_tool_namespace",
+                        "tool_type": tool_type,
+                        "namespace": namespace,
+                        "mapped_to": [
+                            (item.get("function") or {}).get("name")
+                            for item in namespace_tools
+                        ],
+                    }
+                )
+            return namespace_tools
+
+        warning = {
+            "kind": "unsupported_tool_namespace",
+            "tool_type": tool_type,
+            "namespace": namespace,
+            "tool": tool,
+        }
+        if compat_warnings is not None:
+            compat_warnings.append(warning)
+        print(f"[deepseek-responses-proxy] ignored unsupported namespace tool: {namespace}")
+        return None
 
     if tool_type != "function":
         warning = {
@@ -1497,6 +1526,67 @@ async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _proxy_function_tool_schema(
+    name: str,
+    description: str,
+    properties: dict[str, Any] | None = None,
+    required: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": properties or {},
+                "required": required or [],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _deepseek_proxy_account_tool_schemas() -> list[dict[str, Any]]:
+    usage_filter_properties = {
+        "since": {"type": "integer"},
+        "until": {"type": "integer"},
+        "thinking": {"type": "boolean"},
+        "model": {"type": "string"},
+    }
+    usage_events_properties = {
+        **usage_filter_properties,
+        "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
+    }
+
+    return [
+        _proxy_function_tool_schema(
+            "proxy_status",
+            "Return DeepSeek proxy runtime status without exposing secrets.",
+        ),
+        _proxy_function_tool_schema(
+            "proxy_usage_summary",
+            "Return DeepSeek proxy usage summary with optional filters.",
+            usage_filter_properties,
+        ),
+        _proxy_function_tool_schema(
+            "proxy_usage_events",
+            "Return recent DeepSeek proxy usage ledger events with optional filters.",
+            usage_events_properties,
+        ),
+        _proxy_function_tool_schema(
+            "proxy_balance",
+            "Return DeepSeek account balance through the configured upstream client.",
+        ),
+    ]
+
+
+def _namespace_tool_schemas(namespace: str) -> list[dict[str, Any]] | None:
+    if namespace == "deepseek_proxy_account":
+        return _deepseek_proxy_account_tool_schemas()
+    return None
+
+
 def _proxy_tool_schemas() -> list[dict[str, Any]]:
     return [
         {
@@ -1547,10 +1637,161 @@ def _decode_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
     return {"_raw": value}
 
 
-async def _execute_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+def _coerce_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _proxy_usage_filters(arguments: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    since = _coerce_optional_int(arguments.get("since"))
+    until = _coerce_optional_int(arguments.get("until"))
+    thinking = _coerce_optional_bool(arguments.get("thinking"))
+
+    model_value = arguments.get("model")
+    model = model_value.strip() if isinstance(model_value, str) and model_value.strip() else None
+
+    filters = {
+        "since": since,
+        "until": until,
+        "thinking": thinking,
+        "model": model,
+    }
+
+    if since is not None and until is not None and until < since:
+        return filters, "until must be greater than or equal to since"
+
+    return filters, None
+
+
+async def _execute_proxy_tool_call(
+    tool_call: dict[str, Any],
+    *,
+    deepseek_client: DeepSeekClient | None = None,
+    store: Any | None = None,
+) -> dict[str, Any]:
     function = tool_call.get("function") or {}
     name = function.get("name", "")
     arguments = _decode_tool_arguments(function.get("arguments", ""))
+
+    if name == "proxy_status":
+        return {
+            "ok": True,
+            "tool": name,
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "model_default": DEFAULT_MODEL,
+            "thinking": _deepseek_thinking_config(),
+            "thinking_enabled": _thinking_enabled(),
+            "tool_bridge": _tool_bridge_status(),
+            "store": _store_info(store) if store is not None else None,
+            "deepseek_base_url": getattr(deepseek_client, "base_url", None) if deepseek_client is not None else None,
+        }
+
+    if name == "proxy_usage_summary":
+        filters, error = _proxy_usage_filters(arguments)
+        if error is not None:
+            return {
+                "ok": False,
+                "tool": name,
+                "error": "invalid_usage_filters",
+                "message": error,
+                "filters": filters,
+            }
+        if store is None or not hasattr(store, "usage_summary"):
+            return {
+                "ok": True,
+                "tool": name,
+                "summary": {
+                    "request_count": 0,
+                    "estimated_cost_usd": 0.0,
+                },
+                "filters": filters,
+                "note": "current store does not support usage ledger",
+            }
+        return {
+            "ok": True,
+            "tool": name,
+            "summary": store.usage_summary(
+                since=filters["since"],
+                until=filters["until"],
+                thinking=filters["thinking"],
+                model=filters["model"],
+            ),
+            "filters": filters,
+            "pricing_usd_per_1m": _load_model_pricing_usd_per_1m(),
+        }
+
+    if name == "proxy_usage_events":
+        filters, error = _proxy_usage_filters(arguments)
+        if error is not None:
+            return {
+                "ok": False,
+                "tool": name,
+                "error": "invalid_usage_filters",
+                "message": error,
+                "filters": filters,
+            }
+        if store is None or not hasattr(store, "usage_events"):
+            return {
+                "ok": True,
+                "tool": name,
+                "usage_events": [],
+                "filters": filters,
+                "note": "current store does not support usage ledger",
+            }
+        raw_limit = _coerce_optional_int(arguments.get("limit"))
+        safe_limit = max(1, min(raw_limit if raw_limit is not None else 100, 1000))
+        return {
+            "ok": True,
+            "tool": name,
+            "filters": filters,
+            "usage_events": store.usage_events(
+                limit=safe_limit,
+                since=filters["since"],
+                until=filters["until"],
+                thinking=filters["thinking"],
+                model=filters["model"],
+            ),
+        }
+
+    if name == "proxy_balance":
+        if deepseek_client is None or not hasattr(deepseek_client, "user_balance"):
+            return {
+                "ok": False,
+                "tool": name,
+                "error": "balance_client_unavailable",
+            }
+        try:
+            balance = await deepseek_client.user_balance()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "tool": name,
+                "error": "balance_request_failed",
+                "message": str(exc),
+            }
+        return {
+            "ok": True,
+            "tool": name,
+            "upstream": "deepseek",
+            "balance": balance,
+        }
 
     if name == "proxy_echo":
         return {
@@ -1603,6 +1844,7 @@ async def _run_chat_with_tool_bridge(
     deepseek_tools: list[dict[str, Any]] | None,
     reasoning_effort: str | None,
     request_payload: dict[str, Any],
+    store: Any | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     deepseek_response = await deepseek_client.chat_completions(chat_payload)
 
@@ -1636,7 +1878,11 @@ async def _run_chat_with_tool_bridge(
 
         tool_messages: list[dict[str, Any]] = []
         for tool_call in tool_calls:
-            result = await _execute_proxy_tool_call(tool_call)
+            result = await _execute_proxy_tool_call(
+                tool_call,
+                deepseek_client=deepseek_client,
+                store=store,
+            )
             tool_message = _tool_result_message(tool_call, result)
             tool_messages.append(tool_message)
             tool_trace.append(
@@ -2255,7 +2501,9 @@ def create_app(
         deepseek_tools_list: list[dict[str, Any]] = []
         for tool in tools:
             normalized_tool = _normalize_response_tool(tool, compat_warnings)
-            if normalized_tool is not None:
+            if isinstance(normalized_tool, list):
+                deepseek_tools_list.extend(normalized_tool)
+            elif normalized_tool is not None:
                 deepseek_tools_list.append(normalized_tool)
         if _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True) and deepseek_tools_list:
             existing_tool_names = {
@@ -2359,6 +2607,7 @@ def create_app(
                 deepseek_tools=deepseek_tools,
                 reasoning_effort=reasoning_effort,
                 request_payload=payload,
+            store=app.state.store,
             )
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc
