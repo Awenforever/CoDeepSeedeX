@@ -128,9 +128,13 @@ def image_generation_tool() -> dict[str, Any]:
     return {"type": "image_generation"}
 
 
+def supported_namespace_tool() -> dict[str, Any]:
+    return {"type": "namespace", "namespace": "deepseek_proxy_account"}
+
+
 def unsupported_tools() -> list[dict[str, Any]]:
     return [
-        {"type": "namespace", "namespace": "deepseek_proxy_account"},
+        {"type": "namespace", "namespace": "unknown_namespace_for_stress_test"},
     ]
 
 
@@ -193,7 +197,17 @@ def build_cases(scale: str) -> list[tuple[str, dict[str, Any], bool]]:
             False,
         ),
         (
-            "unsupported_builtin_tools",
+            "supported_namespace_tool",
+            {
+                "model": "deepseek-v4-pro",
+                "input": "Use the proxy_status tool if useful, then reply exactly: namespace-ok",
+                "tools": [supported_namespace_tool()],
+                "tool_choice": "auto",
+            },
+            False,
+        ),
+        (
+            "unsupported_namespace_tool",
             {
                 "model": "deepseek-v4-pro",
                 "input": "Reply exactly: unsupported-ok",
