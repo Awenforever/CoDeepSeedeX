@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.2a3p1-mcp-namespace-aware-output-robust-patch"
+PROXY_VERSION = "v2.2a5p1-mcp-write-tool-forwarding"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -938,8 +938,27 @@ def _mcp_readonly_tool_names() -> set[str]:
     }
 
 
+def _mcp_write_tool_names() -> set[str]:
+    return {
+        "router_add_model",
+        "router_set_default_model",
+        "router_record_review",
+        "memory_remember",
+        "memory_update",
+        "memory_forget",
+    }
+
+
 def _mcp_tool_proxy_name(namespace: str, tool_name: str) -> str:
     return f"{namespace}{tool_name}"
+
+
+def _mcp_tool_forwarding_class(tool_name: str) -> str | None:
+    if tool_name in _mcp_readonly_tool_names():
+        return "readonly"
+    if tool_name in _mcp_write_tool_names():
+        return "write"
+    return None
 
 
 def _normalize_mcp_nested_tool(
@@ -948,30 +967,52 @@ def _normalize_mcp_nested_tool(
     mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any] | None:
     name = str(nested_tool.get("name") or "").strip()
-    if not name or name not in _mcp_readonly_tool_names():
+    if not name:
+        return None
+
+    forwarding_class = _mcp_tool_forwarding_class(name)
+    if forwarding_class == "readonly":
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False)
+    elif forwarding_class == "write":
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", False)
+    else:
+        enabled = False
+
+    if not enabled:
         return None
 
     mapped_name = _mcp_tool_proxy_name(namespace, name)
     if mcp_tool_mapping is not None:
-        mcp_tool_mapping[mapped_name] = {
+        mapping = {
             "namespace": namespace,
             "name": name,
         }
+        if forwarding_class == "write":
+            mapping["forwarding_class"] = "write"
+        mcp_tool_mapping[mapped_name] = mapping
 
     parameters = nested_tool.get("parameters") or {
         "type": "object",
         "properties": {},
     }
 
+    if forwarding_class == "write":
+        risk_note = (
+            "Experimental write-capable MCP bridge. The proxy only restores the "
+            "Responses function_call namespace and does not grant approval. Codex "
+            "local MCP permissions, AGENTS.md, and approval policy still apply."
+        )
+    else:
+        risk_note = (
+            "Experimental read-only MCP bridge. Call will be restored to Responses "
+            f"function_call namespace={namespace} name={name}."
+        )
+
     return {
         "type": "function",
         "function": {
             "name": mapped_name,
-            "description": (
-                str(nested_tool.get("description") or "")
-                + f"\n\nExperimental read-only MCP bridge. "
-                + f"Call will be restored to Responses function_call namespace={namespace} name={name}."
-            ),
+            "description": str(nested_tool.get("description") or "") + "\\n\\n" + risk_note,
             "parameters": parameters,
         },
     }
