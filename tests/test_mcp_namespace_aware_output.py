@@ -53,7 +53,7 @@ def test_mcp_readonly_namespace_builds_mapping(monkeypatch):
             "name": "cheap_router_status",
         }
     }
-    assert warnings[0]["kind"] == "mapped_mcp_readonly_namespace"
+    assert warnings[0]["kind"] == "mapped_mcp_namespace"
 
 
 def test_mcp_tool_call_output_item_restores_namespace():

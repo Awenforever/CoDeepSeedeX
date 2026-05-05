@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.2a5p1-mcp-write-tool-forwarding"
+PROXY_VERSION = "v2.2a6p2-follow-online-tutorial-namespace-gate"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -949,6 +949,20 @@ def _mcp_write_tool_names() -> set[str]:
     }
 
 
+def _mcp_tutorial_tool_names() -> set[str]:
+    return {
+        "start_tutorial_run",
+        "search_instructions",
+        "read_source",
+        "make_execution_plan",
+        "revise_plan",
+        "synthesize_options",
+        "evaluate_sources",
+        "record_feedback",
+        "final_report",
+    }
+
+
 def _mcp_tool_proxy_name(namespace: str, tool_name: str) -> str:
     return f"{namespace}{tool_name}"
 
@@ -958,6 +972,8 @@ def _mcp_tool_forwarding_class(tool_name: str) -> str | None:
         return "readonly"
     if tool_name in _mcp_write_tool_names():
         return "write"
+    if tool_name in _mcp_tutorial_tool_names():
+        return "tutorial"
     return None
 
 
@@ -975,6 +991,8 @@ def _normalize_mcp_nested_tool(
         enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False)
     elif forwarding_class == "write":
         enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", False)
+    elif forwarding_class == "tutorial":
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", False)
     else:
         enabled = False
 
@@ -987,8 +1005,8 @@ def _normalize_mcp_nested_tool(
             "namespace": namespace,
             "name": name,
         }
-        if forwarding_class == "write":
-            mapping["forwarding_class"] = "write"
+        if forwarding_class != "readonly":
+            mapping["forwarding_class"] = forwarding_class
         mcp_tool_mapping[mapped_name] = mapping
 
     parameters = nested_tool.get("parameters") or {
@@ -1001,6 +1019,12 @@ def _normalize_mcp_nested_tool(
             "Experimental write-capable MCP bridge. The proxy only restores the "
             "Responses function_call namespace and does not grant approval. Codex "
             "local MCP permissions, AGENTS.md, and approval policy still apply."
+        )
+    elif forwarding_class == "tutorial":
+        risk_note = (
+            "Experimental tutorial MCP bridge. The proxy only restores the Responses "
+            "function_call namespace and does not grant approval. Codex local MCP "
+            "permissions, AGENTS.md, and approval policy still apply."
         )
     else:
         risk_note = (
@@ -1073,7 +1097,11 @@ def _normalize_response_tool(
 
         nested_tools = tool.get("tools") or []
         if namespace.startswith("mcp__"):
-            if _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False):
+            if (
+                _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False)
+                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", False)
+                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", False)
+            ):
                 mapped_tools = [
                     mapped
                     for nested_tool in nested_tools
@@ -1082,7 +1110,7 @@ def _normalize_response_tool(
 
                 if mapped_tools:
                     warning = {
-                        "kind": "mapped_mcp_readonly_namespace",
+                        "kind": "mapped_mcp_namespace",
                         "tool_type": tool_type,
                         "namespace": namespace,
                         "tool_count": len(nested_tools),
@@ -1094,7 +1122,7 @@ def _normalize_response_tool(
                     }
                     if compat_warnings is not None:
                         compat_warnings.append(warning)
-                    print(f"[deepseek-responses-proxy] mapped read-only MCP namespace tool: {namespace}")
+                    print(f"[deepseek-responses-proxy] mapped MCP namespace tool: {namespace}")
                     return mapped_tools
 
             warning = {
