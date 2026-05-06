@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.4a1-cli-and-config-foundation" in out
+    assert "v2.4a1a1-cli-start-version-and-port-guard" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.4a1-")
+    assert data["proxy_version"].startswith("v2.4a1a1-")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -59,3 +59,64 @@ def test_cli_logs_reads_tail(tmp_path, capsys):
 
     out = capsys.readouterr().out.strip().splitlines()
     assert out == ["b", "c"]
+
+
+
+def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    monkeypatch.setattr(cli, "_healthz_for_port", lambda port, timeout=1.0: (200, {"version": "v0.old"}, None))
+    monkeypatch.setattr(cli, "_tcp_port_open", lambda host, port: True)
+
+    rc = cli.main([
+        "start",
+        "--thinking",
+        "--port",
+        "8765",
+        "--pid-file",
+        str(tmp_path / "missing.pid"),
+    ])
+
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["error"] == "port_in_use_by_different_proxy_version"
+    assert data["expected_version"].startswith("v2.4a1a1-")
+    assert data["running_version"] == "v0.old"
+
+
+def test_cli_start_accepts_matching_running_proxy_version(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    monkeypatch.setattr(
+        cli,
+        "_healthz_for_port",
+        lambda port, timeout=1.0: (200, {"version": cli.PROXY_VERSION}, None),
+    )
+
+    rc = cli.main(["start", "--thinking", "--port", "8766"])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "already_running" in out
+    assert cli.PROXY_VERSION in out
+
+
+def test_cli_doctor_reports_version_mismatch(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_CONFIG", str(tmp_path / "config.toml"))
+
+    def fake_http_json(url, timeout=3.0):
+        if url.endswith("/healthz"):
+            return 200, {"version": "v0.old"}, None
+        return 200, {"version": "v0.old", "store": {"type": "fake"}}, None
+
+    monkeypatch.setattr(cli, "_http_json", fake_http_json)
+
+    rc = cli.main(["doctor", "--thinking", "--port", "8767", "--allow-down"])
+
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is False
+    assert data["healthz"]["version_match"] is False
+    assert data["proxy_status"]["version_match"] is False

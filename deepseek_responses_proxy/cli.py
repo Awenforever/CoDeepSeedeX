@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -77,6 +78,25 @@ def _http_json(url: str, *, timeout: float = 3.0) -> tuple[int | None, dict[str,
         return None, None, f"{type(exc).__name__}: {exc}"
 
 
+def _tcp_port_open(host: str, port: int, *, timeout: float = 0.25) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _healthz_for_port(port: int, *, timeout: float = 1.0) -> tuple[int | None, dict[str, Any] | None, str | None]:
+    return _http_json(f"http://{DEFAULT_HOST}:{port}/healthz", timeout=timeout)
+
+
+def _version_from_healthz(data: dict[str, Any] | None) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    value = data.get("version")
+    return str(value) if value is not None else None
+
+
 def _write_default_config(path: Path, *, force: bool = False) -> bool:
     if path.exists() and not force:
         return False
@@ -147,8 +167,66 @@ def _start_proxy(args: argparse.Namespace) -> int:
 
     existing_pid = _read_pid(pid_path)
     if _pid_alive(existing_pid):
-        print(f"already_running pid={existing_pid} port={port} pid_file={pid_path}")
-        return 0
+        status, data, error = _healthz_for_port(port, timeout=1.0)
+        running_version = _version_from_healthz(data)
+        if status == 200 and running_version == PROXY_VERSION:
+            print(f"already_running pid={existing_pid} port={port} version={running_version} pid_file={pid_path}")
+            return 0
+        print(
+            json.dumps(
+                {
+                    "error": "pid_file_points_to_different_or_unhealthy_service",
+                    "pid": existing_pid,
+                    "port": port,
+                    "expected_version": PROXY_VERSION,
+                    "running_version": running_version,
+                    "http_status": status,
+                    "healthz_error": error,
+                    "pid_file": str(pid_path),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
+    status, data, error = _healthz_for_port(port, timeout=1.0)
+    running_version = _version_from_healthz(data)
+    if status == 200:
+        if running_version == PROXY_VERSION:
+            print(f"already_running port={port} version={running_version}")
+            return 0
+        print(
+            json.dumps(
+                {
+                    "error": "port_in_use_by_different_proxy_version",
+                    "port": port,
+                    "expected_version": PROXY_VERSION,
+                    "running_version": running_version,
+                    "hint": "Stop the old proxy process or choose another port.",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
+    if _tcp_port_open(DEFAULT_HOST, port):
+        print(
+            json.dumps(
+                {
+                    "error": "port_in_use_by_unrecognized_service",
+                    "port": port,
+                    "expected_version": PROXY_VERSION,
+                    "healthz_status": status,
+                    "healthz_error": error,
+                    "hint": "Stop the process that owns this port or choose another port.",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
 
     env = os.environ.copy()
     env.setdefault("NO_PROXY", "127.0.0.1,localhost,::1")
@@ -193,14 +271,56 @@ def _start_proxy(args: argparse.Namespace) -> int:
     print(f"db={db_path}")
 
     for _ in range(20):
-        status, data, _error = _http_json(f"{_base_url(thinking=thinking, port=port)}/healthz", timeout=1.0)
-        if status == 200 and isinstance(data, dict):
-            print(f"ready version={data.get('version')}")
+        if process.poll() is not None:
+            print(
+                json.dumps(
+                    {
+                        "error": "process_exited_before_ready",
+                        "exit_code": process.returncode,
+                        "port": port,
+                        "log": str(log_path),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
+
+        status, data, _error = _healthz_for_port(port, timeout=1.0)
+        running_version = _version_from_healthz(data)
+        if status == 200 and running_version == PROXY_VERSION:
+            print(f"ready version={running_version}")
             return 0
+        if status == 200 and running_version and running_version != PROXY_VERSION:
+            print(
+                json.dumps(
+                    {
+                        "error": "ready_version_mismatch",
+                        "port": port,
+                        "expected_version": PROXY_VERSION,
+                        "running_version": running_version,
+                        "log": str(log_path),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
         time.sleep(0.25)
 
-    print("warning=started_but_not_ready")
-    return 0
+    print(
+        json.dumps(
+            {
+                "error": "started_but_not_ready",
+                "port": port,
+                "expected_version": PROXY_VERSION,
+                "log": str(log_path),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 1
 
 
 def _stop_proxy(args: argparse.Namespace) -> int:
@@ -295,21 +415,31 @@ def _doctor(args: argparse.Namespace) -> int:
     health_status, health_data, health_error = _http_json(f"{_base_url(thinking=thinking, port=port)}/healthz", timeout=args.timeout)
     status_code, status_data, status_error = _http_json(f"{_base_url(thinking=thinking, port=port)}/v1/proxy/status", timeout=args.timeout)
 
+    health_version = health_data.get("version") if isinstance(health_data, dict) else None
+    proxy_version = status_data.get("version") if isinstance(status_data, dict) else None
+
     checks["healthz"] = {
         "ok": health_status == 200,
         "http_status": health_status,
-        "version": health_data.get("version") if isinstance(health_data, dict) else None,
+        "version": health_version,
+        "version_match": health_version == PROXY_VERSION,
         "error": health_error,
     }
     checks["proxy_status"] = {
         "ok": status_code == 200,
         "http_status": status_code,
-        "version": status_data.get("version") if isinstance(status_data, dict) else None,
+        "version": proxy_version,
+        "version_match": proxy_version == PROXY_VERSION,
         "store": status_data.get("store") if isinstance(status_data, dict) else None,
         "error": status_error,
     }
 
-    ok = bool(checks["healthz"]["ok"] and checks["proxy_status"]["ok"])
+    ok = bool(
+        checks["healthz"]["ok"]
+        and checks["proxy_status"]["ok"]
+        and checks["healthz"]["version_match"]
+        and checks["proxy_status"]["version_match"]
+    )
     checks["ok"] = ok
     print(json.dumps(checks, ensure_ascii=False, indent=2))
     return 0 if ok or args.allow_down else 1
