@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.2a6p2-follow-online-tutorial-namespace-gate"
+PROXY_VERSION = "v2.3a1-output-text-content-normalization"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -493,7 +493,7 @@ def _flatten_self_contained_tool_messages(
             flattened = True
             transcript_parts: list[str] = []
 
-            content = _stringify_content(message.get("content", ""))
+            content = _plain_text_from_content(message.get("content", ""))
             if content:
                 transcript_parts.append(f"assistant_content:\n{content}")
 
@@ -1269,13 +1269,73 @@ def _normalize_response_tool(
 def _message_from_response_content(role: str, content: Any) -> dict[str, Any]:
     message = {
         "role": role,
-        "content": _stringify_content(content),
+        "content": _plain_text_from_content(content),
     }
 
     if _thinking_enabled() and role == "assistant":
         message.setdefault("reasoning_content", "")
 
     return message
+
+
+_TEXT_PART_TYPES = frozenset({"output_text", "input_text", "text"})
+
+
+def _plain_text_from_content(content: Any) -> str:
+    """Normalize Responses-style text content into plain text.
+
+    Codex/Responses content may appear as:
+    - a plain string
+    - a JSON-encoded list of text parts
+    - a list of {"type": "output_text"|"input_text"|"text", "text": "..."}
+    - a single dict containing a text field
+
+    Unknown structures degrade safely to JSON/string representations.
+    """
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        stripped = content.strip()
+        if stripped.startswith("[") and any(part_type in stripped for part_type in _TEXT_PART_TYPES):
+            try:
+                parsed = json.loads(stripped)
+            except (TypeError, json.JSONDecodeError):
+                return content
+            if isinstance(parsed, list):
+                return _plain_text_from_content(parsed)
+        return content
+
+    if isinstance(content, list):
+        chunks: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                chunks.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+
+            item_type = item.get("type")
+            if item_type in _TEXT_PART_TYPES or "text" in item:
+                value = item.get("text", "")
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    chunks.append(value)
+                else:
+                    chunks.append(json.dumps(value, ensure_ascii=False))
+        return "".join(chunks)
+
+    if isinstance(content, dict):
+        item_type = content.get("type")
+        if item_type in _TEXT_PART_TYPES or "text" in content:
+            value = content.get("text", "")
+            if value is None:
+                return ""
+            return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        return json.dumps(content, ensure_ascii=False)
+
+    return str(content)
 
 def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
     """Convert Responses input items to DeepSeek ChatCompletions messages.
@@ -2321,7 +2381,7 @@ def _deepseek_message_to_output_items(
 ) -> list[dict[str, Any]]:
     output_items: list[dict[str, Any]] = []
 
-    content = _stringify_content(message.get("content", ""))
+    content = _plain_text_from_content(message.get("content", ""))
     if content:
         output_items.append(
             {
@@ -2374,7 +2434,7 @@ def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> 
         if message.get("role") != "tool":
             continue
 
-        content = message.get("content")
+        content = _plain_text_from_content(message.get("content"))
         if not isinstance(content, str) or not content.strip():
             continue
 
@@ -2449,9 +2509,9 @@ def _response_output_text(output_items: list[dict[str, Any]]) -> str:
     for item in output_items:
         if item.get("type") != "message":
             continue
-        for content in item.get("content", []):
-            if content.get("type") == "output_text":
-                chunks.append(content.get("text", ""))
+        text = _plain_text_from_content(item.get("content", []))
+        if text:
+            chunks.append(text)
     return "".join(chunks)
 
 
