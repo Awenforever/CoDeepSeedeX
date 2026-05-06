@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a4-codex-like-persistent-local-compaction"
+PROXY_VERSION = "v2.3a5-compaction-controls-and-runtime-observability"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -3542,6 +3542,95 @@ def _build_chat_payload(
     return payload
 
 
+def _context_report_summary(filename: str) -> dict[str, Any]:
+    path = Path(".debug") / filename
+    summary: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+    }
+    if not path.exists():
+        return summary
+
+    try:
+        stat = path.stat()
+        summary["size_bytes"] = stat.st_size
+        summary["mtime"] = int(stat.st_mtime)
+    except Exception as exc:
+        summary["stat_error"] = str(exc)[:500]
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        summary["read_error"] = str(exc)[:500]
+        return summary
+
+    for key in [
+        "version",
+        "enabled",
+        "compacted",
+        "trimmed",
+        "reason",
+        "summary_source",
+        "before_chars",
+        "after_chars",
+        "chars_removed",
+        "message_count_before",
+        "message_count_after",
+        "trigger_chars",
+        "target_chars",
+        "max_context_chars",
+        "max_tool_output_chars",
+        "keep_recent_messages",
+    ]:
+        if key in data:
+            summary[key] = data[key]
+
+    material = data.get("material")
+    if isinstance(material, dict):
+        summary["material"] = {
+            key: material.get(key)
+            for key in [
+                "compactable_message_count",
+                "recent_message_count",
+                "recent_start",
+                "material_chars",
+                "recent_material_chars",
+            ]
+            if key in material
+        }
+
+    build = data.get("build")
+    if isinstance(build, dict):
+        summary["build"] = {
+            key: build.get(key)
+            for key in [
+                "leading_message_count",
+                "recent_message_count",
+                "recent_start",
+                "summary_chars",
+                "summary_was_trimmed",
+                "before_final_shrink_chars",
+                "after_final_shrink_chars",
+            ]
+            if key in build
+        }
+
+    return summary
+
+
+def _proxy_context_status() -> dict[str, Any]:
+    return {
+        "compaction": {
+            "config": _context_compaction_env_config(),
+            "last_report": _context_report_summary("context_compaction_report.json"),
+        },
+        "trimming": {
+            "config": _context_trim_env_config(),
+            "last_report": _context_report_summary("context_trimming_report.json"),
+        },
+    }
+
+
 def _tool_bridge_status() -> dict[str, Any]:
     web_provider = _web_search_provider()
     image_provider = _image_provider()
@@ -3598,6 +3687,7 @@ def create_app(
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
             "tool_bridge": _tool_bridge_status(),
+            "context": _proxy_context_status(),
             "store": _store_info(app.state.store),
             "started_at": app.state.started_at,
             "uptime_seconds": max(0, _now() - app.state.started_at),
