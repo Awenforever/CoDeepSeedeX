@@ -34,7 +34,7 @@ def _mixed_namespace_tool():
 
 def test_mcp_write_tools_are_not_forwarded_by_default(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "1")
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "0")
 
     warnings = []
     mapping = {}

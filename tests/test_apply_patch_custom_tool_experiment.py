@@ -15,7 +15,7 @@ def _apply_patch_tool():
 
 
 def test_apply_patch_custom_tool_is_ignored_by_default(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", "0")
 
     warnings = []
     normalized = _normalize_response_tool(_apply_patch_tool(), warnings)

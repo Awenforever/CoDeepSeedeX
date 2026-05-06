@@ -356,3 +356,16 @@ Codex may send `apply_patch` as a Responses `custom` tool. By default, the proxy
 When enabled, the proxy maps `custom apply_patch` to a function tool named `apply_patch` with the Codex-required `input` argument. The exposed description instructs the model to use Codex apply_patch format with `*** Begin Patch`, `*** Update File: relative/path`, and `*** End Patch`.
 
 MCP namespaces are not executed by the proxy. They are compressed into audit warnings such as `ignored_mcp_namespace` so debug files remain small. Experiments showed that flattening MCP tools into function names such as `cheap_router_status` or `mcp__cheap_llm__cheap_router_status` results in Codex returning `unsupported call`. Therefore MCP tool execution remains disabled unless a future Codex-native MCP call protocol or explicit proxy-side MCP executor is implemented.
+
+## Codex tool forwarding defaults
+
+As of v2.3a2, Codex tool forwarding is default-open for DeepSeek profiles:
+
+- `DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS=1`
+
+Set any flag to `0` to disable that forwarding class.
+
+This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.

@@ -285,3 +285,16 @@ If `apply_patch` returns patch-format errors, check that the model used Codex ap
     *** End Patch
 
 If MCP tools such as `cheap_router_status` or `mcp__cheap_llm__cheap_router_status` return `unsupported call`, this is expected. MCP namespace tools are currently compressed for audit but not executable through function-tool flattening.
+
+## Codex tool forwarding defaults
+
+As of v2.3a2, Codex tool forwarding is default-open for DeepSeek profiles:
+
+- `DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS=1`
+
+Set any flag to `0` to disable that forwarding class.
+
+This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a1-output-text-content-normalization"
+PROXY_VERSION = "v2.3a2-default-open-codex-tool-forwarding"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -988,11 +988,11 @@ def _normalize_mcp_nested_tool(
 
     forwarding_class = _mcp_tool_forwarding_class(name)
     if forwarding_class == "readonly":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False)
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", True)
     elif forwarding_class == "write":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", False)
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", True)
     elif forwarding_class == "tutorial":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", False)
+        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", True)
     else:
         enabled = False
 
@@ -1098,9 +1098,9 @@ def _normalize_response_tool(
         nested_tools = tool.get("tools") or []
         if namespace.startswith("mcp__"):
             if (
-                _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", False)
-                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", False)
-                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", False)
+                _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", True)
+                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", True)
+                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", True)
             ):
                 mapped_tools = [
                     mapped
@@ -1157,7 +1157,7 @@ def _normalize_response_tool(
         name = str(tool.get("name") or "").strip()
         custom_format = tool.get("format") or {}
 
-        if name == "apply_patch" and _env_bool("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", False):
+        if name == "apply_patch" and _env_bool("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", True):
             warning = {
                 "kind": "mapped_custom_tool",
                 "tool_type": tool_type,

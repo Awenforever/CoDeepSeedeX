@@ -521,3 +521,16 @@ MCP namespace policy:
     `mcp__cheap_llm__cheap_router_status` failed with `unsupported call`.
 
 Do not enable MCP execution by mapping namespace tools into plain function tools. Future work should either use Codex's native MCP calling protocol, if exposed, or implement an explicit proxy-side MCP executor with a strict allowlist and separate write-permission gate.
+
+## Codex tool forwarding defaults
+
+As of v2.3a2, Codex tool forwarding is default-open for DeepSeek profiles:
+
+- `DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS=1`
+- `DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS=1`
+
+Set any flag to `0` to disable that forwarding class.
+
+This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.

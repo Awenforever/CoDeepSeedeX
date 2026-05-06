@@ -20,7 +20,7 @@ def _tutorial_namespace_tool():
 
 
 def test_tutorial_tools_are_not_forwarded_by_default(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "0")
 
     warnings = []
     mapping = {}
