@@ -13,7 +13,7 @@ Requirements:
 
 ## Install from source
 
-    git clone <repo-url> ~/deepseek-responses-proxy
+    git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
     cd ~/deepseek-responses-proxy
     python3 -m venv .venv
     .venv/bin/python -m pip install -e .

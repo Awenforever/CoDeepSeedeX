@@ -34,7 +34,7 @@ It is not intended to be a generic model gateway. The priority is improving the 
 
 ## Pre-release checklist
 
-- Replace the placeholder GitHub repository URL in scripts/install.sh
+- Confirm scripts/install.sh points to the public GitHub repository URL
 - Check README links
 - Test fresh clone installation
 - Test WSL

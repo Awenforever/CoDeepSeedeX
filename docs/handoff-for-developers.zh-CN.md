@@ -34,7 +34,7 @@ deepseek-responses-proxy是面向Codex的本地Responses兼容代理。
 
 ## 发布前待办
 
-- 替换scripts/install.sh中的真实GitHub仓库地址
+- 确认scripts/install.sh指向公开GitHub仓库地址
 - 完成README链接检查
 - 测试fresh clone安装
 - 测试WSL

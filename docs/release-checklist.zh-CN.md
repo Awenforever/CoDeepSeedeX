@@ -17,7 +17,7 @@
 - 确认scripts/install.sh通过bash -n
 - 确认scripts/secret-scan.py无发现
 - 确认README.md和README.zh-CN.md没有把私人路径作为安装默认值
-- 公开一行安装前，必须替换scripts/install.sh中的占位仓库地址
+- 公开一行安装前，必须确认scripts/install.sh中的仓库地址正确
 - 测试fresh clone安装
 - 测试WSL安装
 - 测试缺失DEEPSEEK_API_KEY时的诊断提示

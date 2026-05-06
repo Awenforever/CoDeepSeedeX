@@ -2,7 +2,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${DEEPSEEK_PROXY_INSTALL_DIR:-$HOME/.local/share/deepseek-responses-proxy}"
-REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/your-org/deepseek-responses-proxy.git}"
+REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/.local/bin}"
 DRY_RUN=0
 INSTALL_CODEX_PROFILE=1
