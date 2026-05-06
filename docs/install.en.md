@@ -53,4 +53,3 @@ Generated profile:
     bash scripts/install.sh
 
 Before public release, replace the placeholder repository URL in scripts/install.sh.
-

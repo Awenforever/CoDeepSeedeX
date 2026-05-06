@@ -65,4 +65,3 @@ compaction: context compaction summarization calls.
 liveness_judge: lightweight calls that decide whether a response should continue with tool calls.
 
 liveness_retry: retry calls triggered by the liveness guard.
-

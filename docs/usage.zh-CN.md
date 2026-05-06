@@ -65,4 +65,3 @@ compaction表示上下文压缩摘要调用。
 liveness_judge表示判断模型是否应该继续调用工具的轻量判定调用。
 
 liveness_retry表示活性守卫触发后的重试调用。
-

@@ -61,4 +61,3 @@ If tool_bridge is high, reduce max tool rounds.
 If compaction is high, inspect:
 
     python3 -m json.tool .debug/context_compaction_report.json
-

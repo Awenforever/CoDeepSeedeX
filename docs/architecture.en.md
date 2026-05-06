@@ -45,4 +45,3 @@ Important fields:
 - prompt_tokens
 - completion_tokens
 - total_tokens
-

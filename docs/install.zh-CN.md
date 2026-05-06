@@ -53,4 +53,3 @@
     bash scripts/install.sh
 
 正式公开前，需要替换scripts/install.sh中的占位仓库地址。
-

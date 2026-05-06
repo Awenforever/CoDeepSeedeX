@@ -25,4 +25,3 @@ The .debug directory and SQLite usage database may contain request summaries, pa
 - Be careful with danger-full-access
 - Review .debug and logs regularly
 - Check for leaked secrets before release
-

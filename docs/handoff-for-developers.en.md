@@ -41,4 +41,3 @@ It is not intended to be a generic model gateway. The priority is improving the 
 - Test missing API key diagnostics
 - Test Codex profile install and uninstall
 - Run a secret scan
-

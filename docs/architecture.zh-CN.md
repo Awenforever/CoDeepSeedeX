@@ -45,4 +45,3 @@ v2.3a9后，每次上游DeepSeek调用都会记录usage event。
 - prompt_tokens
 - completion_tokens
 - total_tokens
-
