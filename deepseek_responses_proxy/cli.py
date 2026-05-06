@@ -854,6 +854,7 @@ def build_parser() -> argparse.ArgumentParser:
     stop.add_argument("--thinking", action="store_true")
     stop.add_argument("--state-dir")
     stop.add_argument("--pid-file")
+    stop.add_argument("--port", type=int, help="accepted for consistency with start/status; stop uses the recorded pid file")
     stop.set_defaults(func=_stop_proxy)
 
     status = sub.add_parser("status", help="print /v1/proxy/status")

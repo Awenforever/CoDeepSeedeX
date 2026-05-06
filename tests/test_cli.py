@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.4a8-installer-rewrite-and-output-polish" in out
+    assert "v2.4a8a1-stop-port-consistency" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.4a8-installer-rewrite-and-output-polish")
+    assert data["proxy_version"].startswith("v2.4a8a1-stop-port-consistency")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.4a8-installer-rewrite-and-output-polish")
+    assert data["expected_version"].startswith("v2.4a8a1-stop-port-consistency")
     assert data["running_version"] == "v0.old"
 
 
