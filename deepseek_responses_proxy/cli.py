@@ -656,6 +656,7 @@ def _config(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dsproxy", description="DeepSeek Responses Proxy command line tools")
     parser.add_argument("--version", action="store_true", help="print proxy version and exit")
+    parser.add_argument("-H", "--help-all", action="help", help="show this help message and exit")
 
     sub = parser.add_subparsers(dest="command")
 
