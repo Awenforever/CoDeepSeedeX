@@ -65,3 +65,7 @@ compaction: context compaction summarization calls.
 liveness_judge: lightweight calls that decide whether a response should continue with tool calls.
 
 liveness_retry: retry calls triggered by the liveness guard.
+
+## Codex TUI commands
+
+After entering Codex with `codex --profile deepseek-thinking`, use `/status` to inspect status, `/model` to switch model or reasoning effort, and `/plan` to use planning mode before implementation work.

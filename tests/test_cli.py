@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.4a6-interactive-installer-and-help-alias" in out
+    assert "v2.4a6a1-operator-cli-and-readme-fix" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.4a6-interactive-installer-and-help-alias")
+    assert data["proxy_version"].startswith("v2.4a6a1-")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.4a6-interactive-installer-and-help-alias")
+    assert data["expected_version"].startswith("v2.4a6a1-")
     assert data["running_version"] == "v0.old"
 
 
@@ -194,3 +194,34 @@ def test_cli_uninstall_codex_profile_removes_profile_and_provider(tmp_path, caps
     text = config_path.read_text(encoding="utf-8")
     assert "[profiles.deepseek-thinking]" not in text
     assert "[model_providers.deepseek-thinking-proxy]" not in text
+
+
+def test_cli_config_set_model_updates_env_and_codex_profile(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\nmodel_provider = \"deepseek-thinking-proxy\"\n", encoding="utf-8")
+    assert main(["config", "set-model", "deepseek-v4-flash", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["model"] == "deepseek-v4-flash"
+    assert result["codex_profile_patched"] is True
+    assert "DEEPSEEK_PROXY_MODEL=deepseek-v4-flash" in env_file.read_text(encoding="utf-8")
+    assert 'model = "deepseek-v4-flash"' in config_path.read_text(encoding="utf-8")
+
+
+def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["effort"] == "high"
+    assert result["codex_profile_patched"] is True
+    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in config_path.read_text(encoding="utf-8")
+
+
+def test_cli_balance_missing_api_key(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    assert main(["balance", "--env-file", str(tmp_path / "missing.env")]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["error"] == "missing_deepseek_api_key"

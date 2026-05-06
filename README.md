@@ -1,81 +1,48 @@
-# deepseek-responses-proxy
+# CoDeepSeedeX
 
-A local experimental OpenAI Responses-compatible proxy for using Codex with DeepSeek upstream models.
+[中文文档](README.zh-CN.md) | [English](README.md)
 
-The project focuses on making:
+Local OpenAI Responses-compatible proxy for running Codex with DeepSeek models.
 
+## One-line install
+
+    curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
+
+The installer asks for the stable proxy port, thinking proxy port and DeepSeek API key. The API key is entered with hidden input and stored in a chmod 600 local env file. This is not cryptographic encryption.
+
+After installation:
+
+    dsproxy start --thinking
     codex --profile deepseek-thinking
 
-closer to the native Codex experience.
+Continue a previous Codex conversation:
 
-## Status
+    codex --profile deepseek-thinking resume
 
-Technical preview. Recommended public release label:
+## What this project does
 
-    v0.1.0-alpha
+CoDeepSeedeX is a local experimental OpenAI Responses-compatible proxy for using Codex with DeepSeek upstream models.
 
-This is not a production-stable replacement for native Codex.
-
-## Features
+It provides:
 
 - Responses-compatible local API for Codex
 - DeepSeek ChatCompletions upstream bridge
 - Codex tool-call normalization and protocol hardening
 - Default-open Codex tool forwarding
 - Context trimming and persistent local compaction
-- Agent-loop liveness guard
+- Agent-loop liveness recovery
 - Lightweight LLM liveness judge
-- Internal usage attribution by purpose
+- Usage attribution by internal call purpose
 - Adaptive compaction budget policy
 - dsproxy CLI for start, stop, status, doctor, logs, usage and Codex profile bootstrap
 
-## Security notice
+## Daily shell commands
 
-Run only on localhost. Do not expose the proxy to a public network.
+Check proxy health:
 
-Codex may call tools, modify files, execute commands and access MCP servers depending on your Codex configuration.
+    dsproxy doctor --thinking
 
-Read:
-
-    docs/security.en.md
-    docs/security.zh-CN.md
-
-## Requirements
-
-- Linux, macOS or WSL
-- Python 3.11+
-- Git
-- Codex CLI
-- DEEPSEEK_API_KEY
-
-Windows native support is experimental. WSL is recommended.
-
-## Install from source
-
-    git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
-    cd ~/deepseek-responses-proxy
-    python3 -m venv .venv
-    .venv/bin/python -m pip install -e .
-
-## Initialize
-
-    .venv/bin/dsproxy config init
-    .venv/bin/dsproxy install-codex-profile
-
-## Start
-
-    export DEEPSEEK_API_KEY="..."
-    .venv/bin/dsproxy start --thinking
-    .venv/bin/dsproxy doctor --thinking
-
-## Use with Codex
-
-    codex --profile deepseek-thinking
-
-
-## Daily operations
-
-Check balance:
+Check DeepSeek balance:
 
     dsproxy balance
 
@@ -94,33 +61,78 @@ Change Codex reasoning effort:
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
 
-Start the thinking proxy:
+Start or stop the thinking proxy:
 
     dsproxy start --thinking
+    dsproxy stop --thinking
 
-Continue a previous Codex conversation:
+View usage ledger:
 
-    codex --profile deepseek-thinking resume
+    dsproxy usage --thinking --summary
+    dsproxy usage --thinking --summary --purpose primary
+    dsproxy usage --thinking --summary --purpose tool_bridge
+    dsproxy usage --thinking --summary --purpose compaction
+    dsproxy usage --thinking --summary --purpose liveness_judge
 
-Full help:
+Show full CLI help:
 
     dsproxy -H
 
-## Usage ledger
+## Codex TUI commands
 
-    .venv/bin/dsproxy usage --thinking --summary
-    .venv/bin/dsproxy usage --thinking --summary --purpose primary
-    .venv/bin/dsproxy usage --thinking --summary --purpose tool_bridge
-    .venv/bin/dsproxy usage --thinking --summary --purpose compaction
-    .venv/bin/dsproxy usage --thinking --summary --purpose liveness_judge
+After entering Codex with:
 
-## Documentation
+    codex --profile deepseek-thinking
 
-- English install guide: docs/install.en.md
-- Chinese install guide: docs/install.zh-CN.md
-- English usage guide: docs/usage.en.md
-- Chinese usage guide: docs/usage.zh-CN.md
-- Troubleshooting: docs/troubleshooting.en.md and docs/troubleshooting.zh-CN.md
-- Security: docs/security.en.md and docs/security.zh-CN.md
-- Architecture: docs/architecture.en.md and docs/architecture.zh-CN.md
-- Developer handoff: docs/handoff-for-developers.en.md and docs/handoff-for-developers.zh-CN.md
+you can also use Codex TUI slash commands.
+
+Check current session and runtime status:
+
+    /status
+
+Switch model or reasoning effort inside Codex:
+
+    /model
+
+Use planning mode before implementation work:
+
+    /plan
+
+These slash commands are handled by Codex itself. dsproxy provides the local model endpoint and helper configuration, but the TUI commands are Codex-side controls.
+
+## Install from source
+
+    git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
+    cd ~/deepseek-responses-proxy
+    python3 -m venv .venv
+    .venv/bin/python -m pip install -e .
+
+Initialize:
+
+    .venv/bin/dsproxy config init
+    .venv/bin/dsproxy install-codex-profile
+
+Start:
+
+    export DEEPSEEK_API_KEY="..."
+    .venv/bin/dsproxy start --thinking
+    .venv/bin/dsproxy doctor --thinking
+
+## Security notice
+
+Run only on localhost. Do not expose the proxy to a public network.
+
+Codex may call tools, modify files, execute commands and access MCP servers depending on your Codex configuration.
+
+Read:
+
+- docs/security.en.md
+- docs/security.zh-CN.md
+
+## Status
+
+Technical preview. Recommended public release label:
+
+    v0.1.0-alpha
+
+This is not a production-stable replacement for native Codex.
