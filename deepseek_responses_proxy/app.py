@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a3-context-trimming-and-compaction-for-deepseek-codex"
+PROXY_VERSION = "v2.3a4-codex-like-persistent-local-compaction"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1197,6 +1197,411 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
     report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
 
     return trimmed_payload, report
+
+
+def _context_compaction_env_config() -> dict[str, Any]:
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_COMPACT_ENABLED", True),
+        "trigger_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", 900_000),
+        "target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", 280_000),
+        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", 16),
+        "material_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", 260_000),
+        "max_summary_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", 60_000),
+    }
+
+
+def _extract_deepseek_message_text(deepseek_response: dict[str, Any]) -> str:
+    try:
+        choices = deepseek_response.get("choices") or []
+        if not choices:
+            return ""
+        message = choices[0].get("message") or {}
+        return _plain_text_from_content(message.get("content", ""))
+    except Exception:
+        return ""
+
+
+def _summarize_large_tool_output_for_compaction(content: str, *, limit: int = 5000) -> str:
+    if len(content) <= limit:
+        return content
+
+    lower = content.lower()
+    facts: list[str] = []
+    for needle in [
+        "passed",
+        "failed",
+        "error",
+        "traceback",
+        "syntaxerror",
+        "indentationerror",
+        "commit",
+        "tag:",
+        "git status",
+        "git diff",
+        "py_compile",
+        "pytest",
+        "out=",
+    ]:
+        if needle in lower:
+            facts.append(needle)
+
+    marker = (
+        f"\n...[tool output summarized for compaction: original_chars={len(content)}, "
+        f"detected_terms={json.dumps(facts[:20], ensure_ascii=False)}]...\n"
+    )
+    remaining = max(0, limit - len(marker))
+    head_len = remaining // 2
+    tail_len = remaining - head_len
+    return content[:head_len] + marker + content[-tail_len:]
+
+
+def _message_to_compaction_material(message: dict[str, Any], *, index: int) -> str:
+    role = str(message.get("role") or "unknown")
+    lines = [f"### message[{index}] role={role}"]
+
+    if message.get("name"):
+        lines.append(f"name: {message.get('name')}")
+    if message.get("tool_call_id"):
+        lines.append(f"tool_call_id: {message.get('tool_call_id')}")
+
+    content = _plain_text_from_content(message.get("content", ""))
+    if role == "tool":
+        content = _summarize_large_tool_output_for_compaction(content, limit=7000)
+    else:
+        content, _ = _truncate_middle_text(content, 7000)
+    if content:
+        lines.append("content:")
+        lines.append(content)
+
+    reasoning_content = message.get("reasoning_content")
+    if isinstance(reasoning_content, str) and reasoning_content:
+        trimmed_reasoning, _ = _truncate_middle_text(reasoning_content, 3000)
+        lines.append("reasoning_content:")
+        lines.append(trimmed_reasoning)
+
+    tool_calls = message.get("tool_calls") or []
+    if isinstance(tool_calls, list) and tool_calls:
+        lines.append("tool_calls:")
+        for tool_index, tool_call in enumerate(tool_calls):
+            if not isinstance(tool_call, dict):
+                continue
+            function = tool_call.get("function") or {}
+            function_name = function.get("name") if isinstance(function, dict) else None
+            arguments = function.get("arguments") if isinstance(function, dict) else ""
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments, ensure_ascii=False)
+            arguments, _ = _truncate_middle_text(arguments, 3000)
+            lines.append(
+                f"- index={tool_index} id={tool_call.get('id')} "
+                f"type={tool_call.get('type')} function={function_name}"
+            )
+            if arguments:
+                lines.append(f"  arguments: {arguments}")
+
+    return "\n".join(lines)
+
+
+def _build_compaction_material(
+    messages: list[dict[str, Any]],
+    *,
+    material_chars: int,
+    keep_recent_messages: int,
+) -> tuple[str, int]:
+    recent_start = _safe_recent_message_start(messages, keep_recent_messages)
+    compactable = messages[:recent_start]
+    rendered: list[str] = []
+    total = 0
+
+    for index, message in enumerate(compactable):
+        if not isinstance(message, dict):
+            continue
+        chunk = _message_to_compaction_material(message, index=index)
+        if total + len(chunk) > material_chars:
+            remaining = max(0, material_chars - total)
+            if remaining > 500:
+                rendered.append(chunk[:remaining] + "\n...[compaction material truncated]...")
+            break
+        rendered.append(chunk)
+        total += len(chunk) + 2
+
+    return "\n\n".join(rendered), len(compactable)
+
+
+def _compaction_prompt_messages(
+    messages: list[dict[str, Any]],
+    *,
+    material_chars: int,
+    keep_recent_messages: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    material, compactable_count = _build_compaction_material(
+        messages,
+        material_chars=material_chars,
+        keep_recent_messages=keep_recent_messages,
+    )
+
+    recent_start = _safe_recent_message_start(messages, keep_recent_messages)
+    recent_messages = messages[recent_start:]
+    recent_material = "\n\n".join(
+        _message_to_compaction_material(message, index=recent_start + offset)
+        for offset, message in enumerate(recent_messages)
+        if isinstance(message, dict)
+    )
+
+    system_prompt = (
+        "You are a Codex-like conversation compactor for a coding agent. "
+        "Summarize the older conversation history so the agent can continue "
+        "the same development task after context compaction. Preserve concrete "
+        "repo paths, branch/tag/commit names, files changed, commands run, test "
+        "results, failures, user constraints, and exact next steps. Do not invent."
+    )
+
+    user_prompt = (
+        "Compress the OLD CONVERSATION MATERIAL into a durable handoff summary.\n\n"
+        "Output plain text with these headings exactly:\n"
+        "OBJECTIVE\n"
+        "REPOSITORY_STATE\n"
+        "COMPLETED_CHANGES\n"
+        "FILES_AND_CODE_AREAS\n"
+        "TESTS_AND_VALIDATION\n"
+        "OPEN_ISSUES\n"
+        "USER_CONSTRAINTS\n"
+        "NEXT_STEPS\n\n"
+        "Rules:\n"
+        "- Preserve exact paths, versions, commits, tags, env vars, and command results.\n"
+        "- Preserve why decisions were made, not just what changed.\n"
+        "- Summarize long command output into facts, not raw logs.\n"
+        "- Do not include irrelevant chat.\n"
+        "- Do not claim tests passed unless the material says so.\n\n"
+        f"OLD CONVERSATION MATERIAL compactable_count={compactable_count}:\n"
+        f"{material}\n\n"
+        "RECENT MESSAGES KEPT VERBATIM AFTER SUMMARY. Use these only for continuity, "
+        "do not repeat them fully:\n"
+        f"{recent_material}"
+    )
+
+    meta = {
+        "compactable_message_count": compactable_count,
+        "recent_message_count": len(recent_messages),
+        "recent_start": recent_start,
+        "material_chars": len(material),
+        "recent_material_chars": len(recent_material),
+    }
+
+    return (
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        meta,
+    )
+
+
+def _fallback_compaction_summary(
+    messages: list[dict[str, Any]],
+    *,
+    material_chars: int,
+    keep_recent_messages: int,
+) -> str:
+    material, compactable_count = _build_compaction_material(
+        messages,
+        material_chars=material_chars,
+        keep_recent_messages=keep_recent_messages,
+    )
+    material, _ = _truncate_middle_text(material, 50_000)
+    return (
+        "OBJECTIVE\n"
+        "Continue the existing coding-agent session after local proxy compaction.\n\n"
+        "REPOSITORY_STATE\n"
+        "The proxy could not obtain an LLM-generated compaction summary, so this "
+        "fallback summary preserves compacted older material in truncated form.\n\n"
+        "COMPLETED_CHANGES\n"
+        "See preserved material below.\n\n"
+        "FILES_AND_CODE_AREAS\n"
+        "See preserved material below.\n\n"
+        "TESTS_AND_VALIDATION\n"
+        "See preserved material below.\n\n"
+        "OPEN_ISSUES\n"
+        "Continue from the latest retained messages.\n\n"
+        "USER_CONSTRAINTS\n"
+        "Preserve the user's workflow: write command outputs to /tmp files, show "
+        "paths/line counts/key summaries, run diff checks, compile checks, pytest, "
+        "then commit and tag only after validation.\n\n"
+        "NEXT_STEPS\n"
+        "Use the recent retained messages as the authoritative immediate task.\n\n"
+        f"FALLBACK_COMPACTED_MATERIAL compactable_count={compactable_count}\n"
+        f"{material}"
+    )
+
+
+def _leading_system_developer_messages(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    leading: list[dict[str, Any]] = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        if isinstance(message, dict) and message.get("role") in {"system", "developer"}:
+            leading.append(deepcopy(message))
+            index += 1
+            continue
+        break
+    return leading, index
+
+
+def _build_persistent_compacted_history(
+    messages: list[dict[str, Any]],
+    *,
+    summary_text: str,
+    keep_recent_messages: int,
+    target_chars: int,
+    max_summary_chars: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    leading, leading_end = _leading_system_developer_messages(messages)
+    recent_start = max(leading_end, _safe_recent_message_start(messages, keep_recent_messages))
+    recent = deepcopy(messages[recent_start:])
+
+    summary_text, summary_was_trimmed = _truncate_middle_text(summary_text, max_summary_chars)
+    summary_message = {
+        "role": "user",
+        "content": (
+            "[deepseek-proxy persistent compaction summary]\n"
+            "The older conversation history was compacted to keep the Codex-like "
+            "agent loop within the DeepSeek context budget. Treat this summary as "
+            "authoritative for earlier work, and treat the following recent messages "
+            "as verbatim continuation context.\n\n"
+            f"{summary_text}"
+        ),
+    }
+
+    compacted = leading + [summary_message] + recent
+    report: dict[str, Any] = {
+        "leading_message_count": len(leading),
+        "recent_message_count": len(recent),
+        "recent_start": recent_start,
+        "summary_chars": len(summary_text),
+        "summary_was_trimmed": summary_was_trimmed,
+        "before_final_shrink_chars": _json_char_size({"messages": compacted}),
+        "after_final_shrink_chars": None,
+        "final_shrink_report": None,
+    }
+
+    if _json_char_size({"messages": compacted}) > target_chars:
+        shrink_payload = {"messages": compacted}
+        shrink_report: dict[str, Any] = {
+            "version": PROXY_VERSION,
+            "enabled": True,
+            "trimmed": False,
+            "operations": [],
+        }
+        shrink_payload = _aggressively_shrink_payload_to_limit(
+            shrink_payload,
+            max_context_chars=target_chars,
+            report=shrink_report,
+        )
+        compacted = shrink_payload.get("messages", compacted)
+        report["final_shrink_report"] = shrink_report
+
+    report["after_final_shrink_chars"] = _json_char_size({"messages": compacted})
+    return compacted, report
+
+
+async def _compact_chat_history_for_codex_like_persistence(
+    *,
+    deepseek_client: "DeepSeekClient",
+    messages: list[dict[str, Any]],
+    request_payload: dict[str, Any] | None,
+    previous_response_id: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    config = _context_compaction_env_config()
+    before_chars = _json_char_size({"messages": messages})
+    report: dict[str, Any] = {
+        "version": PROXY_VERSION,
+        "enabled": bool(config["enabled"]),
+        "compacted": False,
+        "reason": "not_triggered",
+        "previous_response_id": previous_response_id,
+        "trigger_chars": config["trigger_chars"],
+        "target_chars": config["target_chars"],
+        "keep_recent_messages": config["keep_recent_messages"],
+        "material_chars_limit": config["material_chars"],
+        "max_summary_chars": config["max_summary_chars"],
+        "before_chars": before_chars,
+        "after_chars": before_chars,
+        "message_count_before": len(messages),
+        "message_count_after": len(messages),
+        "summary_source": None,
+    }
+
+    if not config["enabled"]:
+        report["reason"] = "disabled"
+        return messages, report
+
+    if before_chars <= int(config["trigger_chars"]):
+        return messages, report
+
+    if len(messages) <= max(2, int(config["keep_recent_messages"])):
+        report["reason"] = "too_few_messages"
+        return messages, report
+
+    compaction_messages, material_meta = _compaction_prompt_messages(
+        messages,
+        material_chars=int(config["material_chars"]),
+        keep_recent_messages=int(config["keep_recent_messages"]),
+    )
+    report["material"] = material_meta
+
+    compaction_payload = {
+        "model": _select_upstream_model((request_payload or {}).get("model")),
+        "messages": compaction_messages,
+        "temperature": 0,
+        "stream": False,
+    }
+
+    summary_text = ""
+    try:
+        deepseek_response = await deepseek_client.chat_completions(compaction_payload)
+        summary_text = _extract_deepseek_message_text(deepseek_response)
+        report["summary_source"] = "deepseek"
+    except Exception as exc:
+        report["summary_source"] = "fallback"
+        report["summary_error_type"] = type(exc).__name__
+        report["summary_error"] = str(exc)[:1000]
+
+    if not summary_text.strip():
+        summary_text = _fallback_compaction_summary(
+            messages,
+            material_chars=int(config["material_chars"]),
+            keep_recent_messages=int(config["keep_recent_messages"]),
+        )
+        if report["summary_source"] != "fallback":
+            report["summary_source"] = "fallback_empty_summary"
+
+    compacted_messages, build_report = _build_persistent_compacted_history(
+        messages,
+        summary_text=summary_text,
+        keep_recent_messages=int(config["keep_recent_messages"]),
+        target_chars=int(config["target_chars"]),
+        max_summary_chars=int(config["max_summary_chars"]),
+    )
+
+    report["compacted"] = True
+    report["reason"] = "triggered"
+    report["after_chars"] = _json_char_size({"messages": compacted_messages})
+    report["message_count_after"] = len(compacted_messages)
+    report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
+    report["build"] = build_report
+
+    return compacted_messages, report
+
+
+def _write_context_compaction_report(report: dict[str, Any]) -> None:
+    try:
+        debug_dir = Path(".debug")
+        debug_dir.mkdir(exist_ok=True)
+        (debug_dir / "context_compaction_report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write context compaction report: {exc}")
 
 
 class DeepSeekClient:
@@ -3431,6 +3836,18 @@ def create_app(
                         "[deepseek-responses-proxy] flattened self-contained "
                         "tool messages because no DeepSeek tools were available"
                     )
+
+        messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
+            deepseek_client=app.state.deepseek_client,
+            messages=messages,
+            request_payload=payload,
+            previous_response_id=previous_response_id,
+        )
+        _write_context_compaction_report(context_compaction_report)
+        if context_compaction_report.get("compacted"):
+            messages, _repaired_after_compaction = _repair_tool_call_message_order(messages)
+            if _thinking_enabled():
+                messages, _repaired_thinking_after_compaction = _repair_thinking_history_messages(messages)
 
         messages_for_deepseek = _prepare_messages_for_deepseek(messages)
         reasoning_effort = _deepseek_reasoning_effort_config(payload)
