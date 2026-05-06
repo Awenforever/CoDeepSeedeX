@@ -72,6 +72,40 @@ Windows native support is experimental. WSL is recommended.
 
     codex --profile deepseek-thinking
 
+
+## Daily operations
+
+Check balance:
+
+    dsproxy balance
+
+Show local proxy configuration:
+
+    dsproxy config show
+
+Switch DeepSeek upstream model:
+
+    dsproxy config set-model deepseek-v4-pro
+    dsproxy config set-model deepseek-v4-flash
+
+Change Codex reasoning effort:
+
+    dsproxy config set-effort medium
+    dsproxy config set-effort high
+    dsproxy config set-effort xhigh
+
+Start the thinking proxy:
+
+    dsproxy start --thinking
+
+Continue a previous Codex conversation:
+
+    codex --profile deepseek-thinking resume
+
+Full help:
+
+    dsproxy -H
+
 ## Usage ledger
 
     .venv/bin/dsproxy usage --thinking --summary

@@ -41,8 +41,7 @@ Interactive prompts:
   DeepSeek API key, hidden input
 
 The API key is written to a chmod 600 env file. Input is hidden, but this is
-not cryptographic encryption. Use an OS keyring integration if strict
-encrypted-at-rest storage is required.
+not cryptographic encryption.
 USAGE
       exit 0
       ;;
@@ -126,6 +125,7 @@ write_env_file() {
     printf 'export DEEPSEEK_PROXY_PORT=%q\n' "$stable_port"
     printf 'export DEEPSEEK_PROXY_THINKING_PORT=%q\n' "$thinking_port"
     printf 'export DEEPSEEK_PROXY_MODEL=%q\n' "deepseek-v4-pro"
+    printf 'export DEEPSEEK_REASONING_EFFORT=%q\n' "xhigh"
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q\n' "1"
     printf 'export DEEPSEEK_PROXY_TOOL_MAX_ROUNDS=%q\n' "6"
     printf 'export DEEPSEEK_PROXY_COMPACT_POLICY=%q\n' "adaptive"
@@ -211,6 +211,10 @@ echo "  export PATH=\"$BIN_DIR:\$PATH\""
 echo
 echo "Basic commands:"
 echo "  dsproxy --version"
+echo "  dsproxy balance"
+echo "  dsproxy config show"
+echo "  dsproxy config set-model deepseek-v4-flash"
+echo "  dsproxy config set-effort high"
 echo "  dsproxy doctor --thinking --allow-down"
 echo "  dsproxy start --thinking"
 echo "  codex --profile deepseek-thinking"

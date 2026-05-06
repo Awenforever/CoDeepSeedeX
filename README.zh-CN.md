@@ -71,6 +71,40 @@ Windows原生支持仍处于实验阶段，优先推荐WSL。
 
     codex --profile deepseek-thinking
 
+
+## 日常操作
+
+查看余额：
+
+    dsproxy balance
+
+查看本地proxy配置：
+
+    dsproxy config show
+
+切换DeepSeek上游模型：
+
+    dsproxy config set-model deepseek-v4-pro
+    dsproxy config set-model deepseek-v4-flash
+
+切换Codex推理强度：
+
+    dsproxy config set-effort medium
+    dsproxy config set-effort high
+    dsproxy config set-effort xhigh
+
+启动thinking proxy：
+
+    dsproxy start --thinking
+
+继续已有Codex对话：
+
+    codex --profile deepseek-thinking resume
+
+完整帮助：
+
+    dsproxy -H
+
 ## 查看用量
 
     .venv/bin/dsproxy usage --thinking --summary
