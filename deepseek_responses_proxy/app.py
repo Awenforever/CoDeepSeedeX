@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a5-compaction-controls-and-runtime-observability"
+PROXY_VERSION = "v2.3a6-agent-loop-liveness-guard"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -3065,6 +3065,136 @@ def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> d
     }
 
 
+def _agent_liveness_env_config() -> dict[str, Any]:
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", True),
+        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 1),
+        "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_PREVIEW_CHARS", 600),
+    }
+
+
+def _assistant_message_needs_liveness_guard(
+    assistant_message: dict[str, Any],
+    *,
+    tools_available: bool,
+) -> bool:
+    if not tools_available:
+        return False
+    if assistant_message.get("tool_calls"):
+        return False
+
+    content = _plain_text_from_content(assistant_message.get("content", ""))
+    stripped = content.strip()
+    if len(stripped) < 8:
+        return False
+
+    lowered = stripped.lower()
+
+    intent_markers = [
+        "now let me",
+        "let me ",
+        "i'll ",
+        "i will ",
+        "i’ll ",
+        "i am going to",
+        "i'm going to",
+        "next, i'll",
+        "next i will",
+        "next, i will",
+        "i'll now",
+        "i will now",
+        "let's ",
+        "接下来",
+        "我来",
+        "让我",
+        "我将",
+        "我会",
+    ]
+    action_markers = [
+        "run",
+        "check",
+        "inspect",
+        "dump",
+        "execute",
+        "test",
+        "try",
+        "wake",
+        "open",
+        "read",
+        "look",
+        "verify",
+        "use",
+        "call",
+        "query",
+        "list",
+        "grep",
+        "search",
+        "screenshot",
+        "ui",
+        "adb",
+        "uiautomator",
+        "运行",
+        "检查",
+        "执行",
+        "测试",
+        "读取",
+        "查看",
+        "调用",
+        "截图",
+        "唤醒",
+    ]
+
+    has_intent = any(marker in lowered for marker in intent_markers)
+    has_action = any(marker in lowered for marker in action_markers)
+    ends_like_continuation = stripped.endswith(":") or stripped.endswith("：") or stripped.endswith("—")
+
+    return has_intent and (has_action or ends_like_continuation)
+
+
+def _agent_liveness_guard_prompt(
+    assistant_message: dict[str, Any],
+    *,
+    retry_index: int,
+    max_retries: int,
+    preview_chars: int,
+) -> dict[str, str]:
+    content = _plain_text_from_content(assistant_message.get("content", ""))
+    preview, _changed = _truncate_middle_text(content.strip(), preview_chars)
+
+    return {
+        "role": "user",
+        "content": (
+            "Codex agent-loop protocol correction.\n\n"
+            "You just wrote an intention to continue using tools, but you did not "
+            "emit a tool call. The harness cannot execute narrated intentions.\n\n"
+            f"Your previous assistant text was:\n{preview}\n\n"
+            "If further action is needed, emit the next tool_call now. "
+            "If no further action is needed, provide a final answer to the user. "
+            "Do not narrate future tool use without actually calling a tool.\n\n"
+            f"retry_index={retry_index}; max_retries={max_retries}"
+        ),
+    }
+
+
+def _write_agent_liveness_guard_report(report: dict[str, Any]) -> None:
+    try:
+        debug_dir = Path(".debug")
+        debug_dir.mkdir(exist_ok=True)
+        (debug_dir / "agent_liveness_guard_report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write agent liveness guard report: {exc}")
+
+
+def _proxy_agent_liveness_status() -> dict[str, Any]:
+    return {
+        "config": _agent_liveness_env_config(),
+        "last_report": _context_report_summary("agent_liveness_guard_report.json"),
+    }
+
+
 async def _run_chat_with_tool_bridge(
     *,
     deepseek_client: DeepSeekClient,
@@ -3087,18 +3217,81 @@ async def _run_chat_with_tool_bridge(
         return deepseek_response, history_messages
 
     tool_trace: list[dict[str, Any]] = []
+    liveness_config = _agent_liveness_env_config()
+    liveness_report: dict[str, Any] = {
+        "version": PROXY_VERSION,
+        "enabled": bool(liveness_config["enabled"]),
+        "triggered": False,
+        "retry_count": 0,
+        "max_retries": int(liveness_config["max_retries"]),
+        "tools_available": bool(deepseek_tools),
+        "guard_reason": "not_triggered",
+    }
 
     for round_index in range(max_rounds):
         choices = deepseek_response.get("choices") or []
         if not choices:
+            liveness_report["guard_reason"] = "no_choices"
+            _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
 
         assistant_message = choices[0].get("message") or {}
         tool_calls = assistant_message.get("tool_calls") or []
+
+        while (
+            not tool_calls
+            and bool(liveness_config["enabled"])
+            and int(liveness_report["retry_count"]) < int(liveness_config["max_retries"])
+            and _assistant_message_needs_liveness_guard(
+                assistant_message,
+                tools_available=bool(deepseek_tools),
+            )
+        ):
+            liveness_report["triggered"] = True
+            liveness_report["guard_reason"] = "assistant_narrated_tool_intent_without_tool_call"
+            liveness_report["round_index"] = round_index + 1
+            liveness_report["retry_count"] = int(liveness_report["retry_count"]) + 1
+            content_preview = _plain_text_from_content(assistant_message.get("content", "")).strip()
+            content_preview, _changed = _truncate_middle_text(
+                content_preview,
+                int(liveness_config["content_preview_chars"]),
+            )
+            liveness_report["initial_content_preview"] = content_preview
+
+            guard_messages = deepcopy(messages_for_deepseek)
+            guard_messages.append(deepcopy(assistant_message))
+            guard_messages.append(
+                _agent_liveness_guard_prompt(
+                    assistant_message,
+                    retry_index=int(liveness_report["retry_count"]),
+                    max_retries=int(liveness_config["max_retries"]),
+                    preview_chars=int(liveness_config["content_preview_chars"]),
+                )
+            )
+            guard_payload = _build_chat_payload(
+                model=model,
+                messages=guard_messages,
+                tools=deepseek_tools,
+                reasoning_effort=reasoning_effort,
+                request_payload=request_payload,
+            )
+            deepseek_response = await deepseek_client.chat_completions(guard_payload)
+            choices = deepseek_response.get("choices") or []
+            if not choices:
+                liveness_report["guard_reason"] = "guard_retry_returned_no_choices"
+                break
+            assistant_message = choices[0].get("message") or {}
+            tool_calls = assistant_message.get("tool_calls") or []
+
+        liveness_report["final_has_tool_calls"] = bool(tool_calls)
+        liveness_report["final_tool_call_count"] = len(tool_calls) if isinstance(tool_calls, list) else 0
+
         if not tool_calls:
+            _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
 
         if not all(_is_proxy_tool_call(tool_call) for tool_call in tool_calls):
+            _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
 
         assistant_history_item = deepcopy(assistant_message)
@@ -3147,6 +3340,8 @@ async def _run_chat_with_tool_bridge(
         )
         deepseek_response = await deepseek_client.chat_completions(chat_payload)
 
+    liveness_report["guard_reason"] = "max_tool_bridge_rounds_reached"
+    _write_agent_liveness_guard_report(liveness_report)
     return deepseek_response, history_messages
 
 
@@ -3581,6 +3776,15 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "max_context_chars",
         "max_tool_output_chars",
         "keep_recent_messages",
+        "triggered",
+        "retry_count",
+        "max_retries",
+        "tools_available",
+        "round_index",
+        "initial_content_preview",
+        "final_has_tool_calls",
+        "final_tool_call_count",
+        "guard_reason",
     ]:
         if key in data:
             summary[key] = data[key]
@@ -3688,6 +3892,7 @@ def create_app(
             "thinking_enabled": _thinking_enabled(),
             "tool_bridge": _tool_bridge_status(),
             "context": _proxy_context_status(),
+            "agent_liveness": _proxy_agent_liveness_status(),
             "store": _store_info(app.state.store),
             "started_at": app.state.started_at,
             "uptime_seconds": max(0, _now() - app.state.started_at),
