@@ -70,6 +70,7 @@ class FakeDeepSeekClient:
 async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "0")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "1000000")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "100000")
@@ -135,6 +136,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "2000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "6000")
@@ -182,3 +184,83 @@ async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
     assert compacted[assistant_index + 1]["role"] == "tool"
     assert compacted[assistant_index + 1]["tool_call_id"] == "call_recent"
     assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+
+
+
+@pytest.mark.asyncio
+async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "10000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", "8000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "1000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MIN_CHARS", "1000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MAX_CHARS", "3000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RECENT_GROWTH_MESSAGES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_EXPECTED_GROWTH_TURNS", "3")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "1000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", "3000")
+    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", raising=False)
+
+    fake = FakeDeepSeekClient()
+    messages = [
+        {"role": "user", "content": f"adaptive old material {i} " + ("A" * 2500)}
+        for i in range(7)
+    ]
+
+    compacted, report = await _compact_chat_history_for_codex_like_persistence(
+        deepseek_client=fake,
+        messages=messages,
+        request_payload={"model": "deepseek-v4-pro"},
+        previous_response_id="resp_adaptive",
+    )
+
+    assert report["policy"] == "adaptive"
+    assert report["compacted"] is True
+    assert report["reason"] in {"adaptive_triggered", "adaptive_emergency_triggered"}
+    assert report["effective_trigger_chars"] > 0
+    assert 2000 <= report["effective_target_chars"] <= 8000
+    assert report["policy_decision"]["growth"]["recent_growth_chars_per_turn"] > 0
+    assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "20000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "15000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "15000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "20000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", "4")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", raising=False)
+
+    fake = FakeDeepSeekClient()
+    messages = [
+        {
+            "role": "user",
+            "content": "[deepseek-proxy persistent compaction summary]\nprevious summary " + ("S" * 9000),
+        },
+        {"role": "user", "content": "small follow-up 1 " + ("B" * 500)},
+        {"role": "assistant", "content": "small follow-up 2 " + ("C" * 500)},
+        {"role": "user", "content": "small follow-up 3 " + ("D" * 500)},
+    ]
+
+    compacted, report = await _compact_chat_history_for_codex_like_persistence(
+        deepseek_client=fake,
+        messages=messages,
+        request_payload={"model": "deepseek-v4-pro"},
+        previous_response_id="resp_recent_compacted",
+    )
+
+    assert compacted == messages
+    assert report["compacted"] is False
+    assert report["reason"] == "adaptive_cooldown"
+    assert fake.compaction_calls == 0

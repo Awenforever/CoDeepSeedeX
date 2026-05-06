@@ -86,9 +86,12 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     trimming = data["context"]["trimming"]
 
     assert compaction["config"]["enabled"] is True
+    assert compaction["config"]["policy"] == "adaptive"
     assert compaction["config"]["trigger_chars"] == 12345
     assert compaction["config"]["target_chars"] == 6789
     assert compaction["config"]["keep_recent_messages"] == 11
+    assert "min_target_chars" in compaction["config"]
+    assert "max_target_chars" in compaction["config"]
 
     assert compaction["last_report"]["exists"] is True
     assert compaction["last_report"]["compacted"] is True

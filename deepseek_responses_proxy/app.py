@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a9-usage-ledger-internal-call-attribution"
+PROXY_VERSION = "v2.3a10-adaptive-compaction-budget-policy"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1295,13 +1295,184 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
 
 
 def _context_compaction_env_config() -> dict[str, Any]:
+    policy = os.environ.get("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive").strip().lower()
+    if policy not in {"adaptive", "fixed"}:
+        print(f"[deepseek-responses-proxy] invalid DEEPSEEK_PROXY_COMPACT_POLICY={policy!r}; using adaptive")
+        policy = "adaptive"
+
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_COMPACT_ENABLED", True),
+        "policy": policy,
+        "max_context_chars": _env_int("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", 1_500_000),
         "trigger_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", 900_000),
         "target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", 280_000),
-        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", 16),
+        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", 24),
         "material_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", 260_000),
         "max_summary_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", 60_000),
+        "min_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", 350_000),
+        "max_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", 750_000),
+        "min_new_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", 250_000),
+        "min_turns": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", 4),
+        "emergency_ratio": _env_float("DEEPSEEK_PROXY_COMPACT_EMERGENCY_RATIO", 0.92),
+        "recent_growth_messages": _env_int("DEEPSEEK_PROXY_COMPACT_RECENT_GROWTH_MESSAGES", 8),
+        "expected_growth_turns": _env_int("DEEPSEEK_PROXY_COMPACT_EXPECTED_GROWTH_TURNS", 6),
+        "reserve_before_min_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", 250_000),
+        "reserve_before_max_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", 600_000),
+        "reserve_after_min_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MIN_CHARS", 350_000),
+        "reserve_after_max_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MAX_CHARS", 750_000),
+    }
+
+
+def _clamp_int(value: int, low: int, high: int) -> int:
+    if high < low:
+        low, high = high, low
+    return max(low, min(high, int(value)))
+
+
+def _last_persistent_compaction_summary_index(messages: list[dict[str, Any]]) -> int | None:
+    marker = "[deepseek-proxy persistent compaction summary]"
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, dict):
+            continue
+        content = _plain_text_from_content(message.get("content", ""))
+        if marker in content:
+            return index
+    return None
+
+
+def _recent_growth_stats_for_compaction(
+    messages: list[dict[str, Any]],
+    *,
+    recent_growth_messages: int,
+) -> dict[str, Any]:
+    recent_growth_messages = max(1, int(recent_growth_messages))
+    recent = messages[-recent_growth_messages:] if messages else []
+    recent_chars = _json_char_size({"messages": recent}) if recent else 0
+    recent_count = len(recent)
+    recent_growth_chars_per_turn = int(recent_chars / max(1, recent_count))
+
+    last_summary_index = _last_persistent_compaction_summary_index(messages)
+    if last_summary_index is None:
+        new_messages = messages
+        turns_since_last_compaction = len(messages)
+    else:
+        new_messages = messages[last_summary_index + 1 :]
+        turns_since_last_compaction = len(new_messages)
+
+    new_chars_since_last_compaction = _json_char_size({"messages": new_messages}) if new_messages else 0
+
+    return {
+        "recent_message_count": recent_count,
+        "recent_growth_chars": recent_chars,
+        "recent_growth_chars_per_turn": recent_growth_chars_per_turn,
+        "last_compaction_summary_index": last_summary_index,
+        "new_chars_since_last_compaction": new_chars_since_last_compaction,
+        "turns_since_last_compaction": turns_since_last_compaction,
+    }
+
+
+def _resolve_compaction_budget_policy(
+    *,
+    messages: list[dict[str, Any]],
+    before_chars: int,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    policy = str(config.get("policy") or "adaptive")
+    fixed_trigger = max(1, int(config["trigger_chars"]))
+    fixed_target = max(1, int(config["target_chars"]))
+
+    if policy == "fixed":
+        should_compact = before_chars > fixed_trigger
+        return {
+            "policy": "fixed",
+            "should_compact": should_compact,
+            "reason": "fixed_triggered" if should_compact else "not_triggered",
+            "effective_trigger_chars": fixed_trigger,
+            "effective_target_chars": fixed_target,
+            "emergency_chars": None,
+            "reserve_before_send": None,
+            "reserve_after_compact": None,
+            "growth": _recent_growth_stats_for_compaction(
+                messages,
+                recent_growth_messages=int(config["recent_growth_messages"]),
+            ),
+        }
+
+    max_context_chars = max(1, int(config["max_context_chars"]))
+    min_target_chars = max(1, int(config["min_target_chars"]))
+    max_target_chars = max(min_target_chars, int(config["max_target_chars"]))
+    emergency_ratio = float(config["emergency_ratio"])
+    if emergency_ratio <= 0 or emergency_ratio > 1:
+        emergency_ratio = 0.92
+
+    growth = _recent_growth_stats_for_compaction(
+        messages,
+        recent_growth_messages=int(config["recent_growth_messages"]),
+    )
+    growth_per_turn = max(1, int(growth["recent_growth_chars_per_turn"]))
+
+    reserve_before_send = _clamp_int(
+        4 * growth_per_turn,
+        int(config["reserve_before_min_chars"]),
+        int(config["reserve_before_max_chars"]),
+    )
+    reserve_after_compact = _clamp_int(
+        int(config["expected_growth_turns"]) * growth_per_turn,
+        int(config["reserve_after_min_chars"]),
+        int(config["reserve_after_max_chars"]),
+    )
+
+    adaptive_trigger = max(1, max_context_chars - reserve_before_send)
+    if "DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS" in os.environ:
+        adaptive_trigger = min(adaptive_trigger, fixed_trigger)
+
+    adaptive_target = _clamp_int(
+        max_context_chars - reserve_after_compact,
+        min_target_chars,
+        max_target_chars,
+    )
+    if "DEEPSEEK_PROXY_COMPACT_TARGET_CHARS" in os.environ:
+        adaptive_target = _clamp_int(
+            min(adaptive_target, fixed_target),
+            1,
+            max_target_chars,
+        )
+
+    emergency_chars = max(1, int(max_context_chars * emergency_ratio))
+    is_emergency = before_chars >= emergency_chars
+
+    new_chars = int(growth["new_chars_since_last_compaction"])
+    turns_since = int(growth["turns_since_last_compaction"])
+    min_new_chars = int(config["min_new_chars"])
+    min_turns = int(config["min_turns"])
+    has_previous_compaction = growth["last_compaction_summary_index"] is not None
+
+    if before_chars <= adaptive_trigger and not is_emergency:
+        should_compact = False
+        reason = "not_triggered"
+    elif is_emergency:
+        should_compact = True
+        reason = "adaptive_emergency_triggered"
+    elif has_previous_compaction and new_chars < min_new_chars and turns_since < min_turns:
+        should_compact = False
+        reason = "adaptive_cooldown"
+    else:
+        should_compact = True
+        reason = "adaptive_triggered"
+
+    return {
+        "policy": "adaptive",
+        "should_compact": should_compact,
+        "reason": reason,
+        "effective_trigger_chars": adaptive_trigger,
+        "effective_target_chars": adaptive_target,
+        "emergency_chars": emergency_chars,
+        "reserve_before_send": reserve_before_send,
+        "reserve_after_compact": reserve_after_compact,
+        "min_new_chars": min_new_chars,
+        "min_turns": min_turns,
+        "growth": growth,
     }
 
 
@@ -1610,14 +1781,26 @@ async def _compact_chat_history_for_codex_like_persistence(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     config = _context_compaction_env_config()
     before_chars = _json_char_size({"messages": messages})
+    policy_decision = _resolve_compaction_budget_policy(
+        messages=messages,
+        before_chars=before_chars,
+        config=config,
+    )
+    effective_trigger_chars = int(policy_decision["effective_trigger_chars"])
+    effective_target_chars = int(policy_decision["effective_target_chars"])
+
     report: dict[str, Any] = {
         "version": PROXY_VERSION,
         "enabled": bool(config["enabled"]),
+        "policy": config["policy"],
         "compacted": False,
         "reason": "not_triggered",
         "previous_response_id": previous_response_id,
         "trigger_chars": config["trigger_chars"],
         "target_chars": config["target_chars"],
+        "effective_trigger_chars": effective_trigger_chars,
+        "effective_target_chars": effective_target_chars,
+        "emergency_chars": policy_decision.get("emergency_chars"),
         "keep_recent_messages": config["keep_recent_messages"],
         "material_chars_limit": config["material_chars"],
         "max_summary_chars": config["max_summary_chars"],
@@ -1626,13 +1809,15 @@ async def _compact_chat_history_for_codex_like_persistence(
         "message_count_before": len(messages),
         "message_count_after": len(messages),
         "summary_source": None,
+        "policy_decision": policy_decision,
     }
 
     if not config["enabled"]:
         report["reason"] = "disabled"
         return messages, report
 
-    if before_chars <= int(config["trigger_chars"]):
+    if not policy_decision["should_compact"]:
+        report["reason"] = str(policy_decision["reason"])
         return messages, report
 
     if len(messages) <= max(2, int(config["keep_recent_messages"])):
@@ -1687,12 +1872,12 @@ async def _compact_chat_history_for_codex_like_persistence(
         messages,
         summary_text=summary_text,
         keep_recent_messages=int(config["keep_recent_messages"]),
-        target_chars=int(config["target_chars"]),
+        target_chars=effective_target_chars,
         max_summary_chars=int(config["max_summary_chars"]),
     )
 
     report["compacted"] = True
-    report["reason"] = "triggered"
+    report["reason"] = str(policy_decision["reason"])
     report["after_chars"] = _json_char_size({"messages": compacted_messages})
     report["message_count_after"] = len(compacted_messages)
     report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
@@ -4398,8 +4583,12 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "chars_removed",
         "message_count_before",
         "message_count_after",
+        "policy",
         "trigger_chars",
         "target_chars",
+        "effective_trigger_chars",
+        "effective_target_chars",
+        "emergency_chars",
         "max_context_chars",
         "max_tool_output_chars",
         "keep_recent_messages",
@@ -4431,6 +4620,39 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
             ]
             if key in material
         }
+
+    policy_decision = data.get("policy_decision")
+    if isinstance(policy_decision, dict):
+        growth = policy_decision.get("growth")
+        summary["policy_decision"] = {
+            key: policy_decision.get(key)
+            for key in [
+                "policy",
+                "should_compact",
+                "reason",
+                "effective_trigger_chars",
+                "effective_target_chars",
+                "emergency_chars",
+                "reserve_before_send",
+                "reserve_after_compact",
+                "min_new_chars",
+                "min_turns",
+            ]
+            if key in policy_decision
+        }
+        if isinstance(growth, dict):
+            summary["policy_decision"]["growth"] = {
+                key: growth.get(key)
+                for key in [
+                    "recent_message_count",
+                    "recent_growth_chars",
+                    "recent_growth_chars_per_turn",
+                    "last_compaction_summary_index",
+                    "new_chars_since_last_compaction",
+                    "turns_since_last_compaction",
+                ]
+                if key in growth
+            }
 
     build = data.get("build")
     if isinstance(build, dict):
