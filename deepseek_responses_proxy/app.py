@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a2-default-open-codex-tool-forwarding"
+PROXY_VERSION = "v2.3a3-context-trimming-and-compaction-for-deepseek-codex"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -835,6 +835,370 @@ def _env_float(name: str, default: float) -> float:
     return value
 
 
+def _json_char_size(value: Any) -> int:
+    try:
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    except Exception:
+        return len(str(value))
+
+
+def _append_context_trim_operation(report: dict[str, Any], operation: dict[str, Any]) -> None:
+    operations = report.setdefault("operations", [])
+    if len(operations) < 200:
+        operations.append(operation)
+    else:
+        report["operations_truncated"] = True
+
+
+def _truncate_middle_text(text: str, limit: int) -> tuple[str, bool]:
+    if limit < 0:
+        limit = 0
+    if len(text) <= limit:
+        return text, False
+    if limit == 0:
+        return "", True
+
+    marker = f"\n...[deepseek-proxy context trimmed: original_chars={len(text)}]...\n"
+    if limit <= len(marker) + 2:
+        return text[:limit], True
+
+    remaining = limit - len(marker)
+    head_len = remaining // 2
+    tail_len = remaining - head_len
+    return text[:head_len] + marker + text[-tail_len:], True
+
+
+def _context_trim_env_config() -> dict[str, int]:
+    return {
+        "max_context_chars": _env_int("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", 1_500_000),
+        "max_tool_output_chars": _env_int("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", 60_000),
+        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", 24),
+    }
+
+
+def _safe_recent_message_start(messages: list[dict[str, Any]], keep_recent_messages: int) -> int:
+    if keep_recent_messages <= 0:
+        keep_recent_messages = 1
+
+    start = max(0, len(messages) - keep_recent_messages)
+
+    # Do not begin the retained tail with a tool result. If the nominal cut point
+    # lands inside an assistant tool_call -> tool output pair, pull the boundary
+    # back to include the assistant request as well.
+    while start > 0 and isinstance(messages[start], dict) and messages[start].get("role") == "tool":
+        start -= 1
+
+    return start
+
+
+def _trim_message_text_field(
+    container: dict[str, Any],
+    key: str,
+    *,
+    limit: int,
+    location: str,
+    report: dict[str, Any],
+) -> bool:
+    value = container.get(key)
+    if not isinstance(value, str):
+        return False
+
+    trimmed_value, changed = _truncate_middle_text(value, limit)
+    if not changed:
+        return False
+
+    container[key] = trimmed_value
+    report["trimmed"] = True
+    report["trimmed_fields"] = int(report.get("trimmed_fields", 0)) + 1
+    _append_context_trim_operation(
+        report,
+        {
+            "kind": "truncate_text_field",
+            "location": location,
+            "original_chars": len(value),
+            "trimmed_chars": len(trimmed_value),
+            "limit": limit,
+        },
+    )
+    return True
+
+
+def _trim_message_for_context(
+    message: dict[str, Any],
+    *,
+    index: int,
+    is_recent: bool,
+    max_tool_output_chars: int,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    trimmed = deepcopy(message)
+    role = trimmed.get("role")
+
+    # Tool outputs are the dominant source of Codex context explosions. Trim them
+    # even in recent turns, while preserving role, tool_call_id, and ordering.
+    if role == "tool":
+        _trim_message_text_field(
+            trimmed,
+            "content",
+            limit=max_tool_output_chars,
+            location=f"messages[{index}].content",
+            report=report,
+        )
+
+    # Older plain-text content can also grow without bound. Keep recent content
+    # mostly intact, but compact older non-system messages.
+    if role not in {"system", "developer", "tool"} and not is_recent:
+        _trim_message_text_field(
+            trimmed,
+            "content",
+            limit=max_tool_output_chars,
+            location=f"messages[{index}].content",
+            report=report,
+        )
+
+    # DeepSeek thinking history can accumulate large hidden reasoning payloads.
+    # Preserve the field but cap its size.
+    _trim_message_text_field(
+        trimmed,
+        "reasoning_content",
+        limit=max_tool_output_chars,
+        location=f"messages[{index}].reasoning_content",
+        report=report,
+    )
+
+    # Function-call arguments can become large for apply_patch or shell-like
+    # tools. Only trim old arguments so active/recent tool calls keep fidelity.
+    if not is_recent:
+        tool_calls = trimmed.get("tool_calls") or []
+        if isinstance(tool_calls, list):
+            for tool_index, tool_call in enumerate(tool_calls):
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function") or {}
+                if not isinstance(function, dict):
+                    continue
+                _trim_message_text_field(
+                    function,
+                    "arguments",
+                    limit=max_tool_output_chars,
+                    location=f"messages[{index}].tool_calls[{tool_index}].function.arguments",
+                    report=report,
+                )
+
+    return trimmed
+
+
+def _compact_old_message_prefix(
+    messages: list[dict[str, Any]],
+    *,
+    keep_recent_messages: int,
+    report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if len(messages) <= keep_recent_messages:
+        return messages
+
+    leading_system: list[dict[str, Any]] = []
+    cursor = 0
+    while cursor < len(messages):
+        message = messages[cursor]
+        if isinstance(message, dict) and message.get("role") in {"system", "developer"}:
+            leading_system.append(message)
+            cursor += 1
+            continue
+        break
+
+    recent_start = _safe_recent_message_start(messages, keep_recent_messages)
+    if recent_start <= cursor:
+        return messages
+
+    compacted = messages[cursor:recent_start]
+    retained = messages[recent_start:]
+    role_counts: dict[str, int] = {}
+    compacted_chars = _json_char_size(compacted)
+    for message in compacted:
+        if isinstance(message, dict):
+            role = str(message.get("role") or "unknown")
+        else:
+            role = "unknown"
+        role_counts[role] = role_counts.get(role, 0) + 1
+
+    summary_text = (
+        "[deepseek-proxy context compacted]\n"
+        f"compacted_message_count: {len(compacted)}\n"
+        f"compacted_chars: {compacted_chars}\n"
+        f"role_counts: {json.dumps(role_counts, ensure_ascii=False, sort_keys=True)}\n"
+        "Older messages were summarized by the proxy to avoid exceeding the "
+        "DeepSeek upstream context limit. Recent messages and tool-call protocol "
+        "structure are retained."
+    )
+    summary_message = {"role": "user", "content": summary_text}
+
+    report["trimmed"] = True
+    report["compacted_message_count"] = int(report.get("compacted_message_count", 0)) + len(compacted)
+    _append_context_trim_operation(
+        report,
+        {
+            "kind": "compact_old_message_prefix",
+            "compacted_message_count": len(compacted),
+            "compacted_chars": compacted_chars,
+            "retained_recent_messages": len(retained),
+            "role_counts": role_counts,
+        },
+    )
+
+    return leading_system + [summary_message] + retained
+
+
+def _iter_payload_string_fields(payload: dict[str, Any]):
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return
+
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        for key in ("content", "reasoning_content"):
+            value = message.get(key)
+            if isinstance(value, str):
+                yield f"messages[{index}].{key}", message, key, len(value)
+
+        tool_calls = message.get("tool_calls") or []
+        if isinstance(tool_calls, list):
+            for tool_index, tool_call in enumerate(tool_calls):
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function") or {}
+                if not isinstance(function, dict):
+                    continue
+                value = function.get("arguments")
+                if isinstance(value, str):
+                    yield (
+                        f"messages[{index}].tool_calls[{tool_index}].function.arguments",
+                        function,
+                        "arguments",
+                        len(value),
+                    )
+
+
+def _aggressively_shrink_payload_to_limit(
+    payload: dict[str, Any],
+    *,
+    max_context_chars: int,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    # Last-resort safety valve. It never changes roles, ordering, tool_call_id, or
+    # function names. It only shortens string fields until the serialized request
+    # falls below the configured character budget or no useful string remains.
+    for _ in range(100):
+        current_chars = _json_char_size(payload)
+        if current_chars <= max_context_chars:
+            return payload
+
+        fields = list(_iter_payload_string_fields(payload) or [])
+        if not fields:
+            return payload
+
+        location, container, key, current_len = max(fields, key=lambda item: item[3])
+        if current_len <= 256:
+            return payload
+
+        excess = current_chars - max_context_chars
+        new_limit = max(128, current_len - max(excess + 512, current_len // 2))
+        old_value = container[key]
+        if not isinstance(old_value, str):
+            return payload
+
+        new_value, changed = _truncate_middle_text(old_value, new_limit)
+        if not changed:
+            return payload
+
+        container[key] = new_value
+        report["trimmed"] = True
+        report["aggressive_trimmed_fields"] = int(report.get("aggressive_trimmed_fields", 0)) + 1
+        _append_context_trim_operation(
+            report,
+            {
+                "kind": "aggressive_truncate_text_field",
+                "location": location,
+                "original_chars": current_len,
+                "trimmed_chars": len(new_value),
+                "target_payload_chars": max_context_chars,
+            },
+        )
+
+    return payload
+
+
+def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    config = _context_trim_env_config()
+    max_context_chars = config["max_context_chars"]
+    max_tool_output_chars = config["max_tool_output_chars"]
+    keep_recent_messages = config["keep_recent_messages"]
+
+    before_chars = _json_char_size(payload)
+    messages = payload.get("messages")
+    report: dict[str, Any] = {
+        "version": PROXY_VERSION,
+        "enabled": True,
+        "max_context_chars": max_context_chars,
+        "max_tool_output_chars": max_tool_output_chars,
+        "keep_recent_messages": keep_recent_messages,
+        "before_chars": before_chars,
+        "after_chars": before_chars,
+        "trimmed": False,
+        "message_count_before": len(messages) if isinstance(messages, list) else None,
+        "message_count_after": len(messages) if isinstance(messages, list) else None,
+        "operations": [],
+    }
+
+    if not isinstance(messages, list):
+        return payload, report
+
+    trimmed_payload = deepcopy(payload)
+    trimmed_messages = trimmed_payload.get("messages")
+    if not isinstance(trimmed_messages, list):
+        return payload, report
+
+    recent_start = _safe_recent_message_start(trimmed_messages, keep_recent_messages)
+    new_messages: list[dict[str, Any]] = []
+    for index, message in enumerate(trimmed_messages):
+        if not isinstance(message, dict):
+            new_messages.append(message)
+            continue
+        is_recent = index >= recent_start or message.get("role") in {"system", "developer"}
+        new_messages.append(
+            _trim_message_for_context(
+                message,
+                index=index,
+                is_recent=is_recent,
+                max_tool_output_chars=max_tool_output_chars,
+                report=report,
+            )
+        )
+    trimmed_payload["messages"] = new_messages
+
+    if _json_char_size(trimmed_payload) > max_context_chars:
+        trimmed_payload["messages"] = _compact_old_message_prefix(
+            trimmed_payload["messages"],
+            keep_recent_messages=keep_recent_messages,
+            report=report,
+        )
+
+    if _json_char_size(trimmed_payload) > max_context_chars:
+        trimmed_payload = _aggressively_shrink_payload_to_limit(
+            trimmed_payload,
+            max_context_chars=max_context_chars,
+            report=report,
+        )
+
+    report["after_chars"] = _json_char_size(trimmed_payload)
+    final_messages = trimmed_payload.get("messages")
+    report["message_count_after"] = len(final_messages) if isinstance(final_messages, list) else None
+    report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
+
+    return trimmed_payload, report
+
+
 class DeepSeekClient:
     def __init__(
         self,
@@ -889,6 +1253,8 @@ class DeepSeekClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
+        payload, context_trimming_report = _compact_deepseek_payload_context(payload)
+
         # Debug aid: keep the last upstream payload without secrets.
         # This is useful because DeepSeek returns precise 400 error messages
         # for invalid tool schemas or invalid tool-message ordering.
@@ -899,6 +1265,10 @@ class DeepSeekClient:
             debug_dir.mkdir(exist_ok=True)
             (debug_dir / "last_deepseek_payload.json").write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (debug_dir / "context_trimming_report.json").write_text(
+                json.dumps(context_trimming_report, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
         except Exception as exc:
