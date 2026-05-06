@@ -49,6 +49,22 @@ def test_liveness_intent_detector_only_matches_unfinished_tool_intent():
         tools_available=True,
     )
 
+    assert _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "dumpsys 没返回内容。换用 uiautomator2 直接检查当前状态并截图：",
+        },
+        tools_available=True,
+    )
+
+    assert _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "WeChat is open. Capture one final screenshot:",
+        },
+        tools_available=True,
+    )
+
     assert not _assistant_message_needs_liveness_guard(
         {"role": "assistant", "content": "Now let me run tests:", "tool_calls": [{"id": "x"}]},
         tools_available=True,
@@ -118,6 +134,8 @@ async def test_liveness_guard_reasks_and_surfaces_local_codex_tool_call(tmp_path
     assert report["retry_count"] == 1
     assert report["final_has_tool_calls"] is True
     assert report["final_tool_call_count"] == 1
+    assert report["retry_attempts"][0]["response_has_tool_calls"] is True
+    assert report["retry_attempts"][0]["response_tool_names"] == ["shell"]
 
 
 @pytest.mark.asyncio
@@ -190,7 +208,7 @@ async def test_proxy_status_reports_agent_liveness(tmp_path, monkeypatch):
     assert response.status_code == 200
     data = response.json()
 
-    assert data["version"].startswith("v2.3a6-")
+    assert data["version"].startswith("v2.3a")
     assert data["agent_liveness"]["config"]["enabled"] is True
     assert data["agent_liveness"]["config"]["max_retries"] == 2
     assert data["agent_liveness"]["last_report"]["exists"] is True

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a6-agent-loop-liveness-guard"
+PROXY_VERSION = "v2.3a7-tool-call-protocol-hardening"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -3068,7 +3068,7 @@ def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> d
 def _agent_liveness_env_config() -> dict[str, Any]:
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", True),
-        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 1),
+        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 2),
         "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_PREVIEW_CHARS", 600),
     }
 
@@ -3104,11 +3104,25 @@ def _assistant_message_needs_liveness_guard(
         "i'll now",
         "i will now",
         "let's ",
+        "switch to",
+        "try ",
+        "use ",
+        "fallback to",
+        "i'll switch",
+        "i will switch",
         "接下来",
         "我来",
         "让我",
         "我将",
         "我会",
+        "换用",
+        "改用",
+        "尝试",
+        "先",
+        "再",
+        "然后",
+        "继续",
+        "直接",
     ]
     action_markers = [
         "run",
@@ -3130,6 +3144,11 @@ def _assistant_message_needs_liveness_guard(
         "grep",
         "search",
         "screenshot",
+        "screencap",
+        "screen",
+        "capture",
+        "tap",
+        "click",
         "ui",
         "adb",
         "uiautomator",
@@ -3141,14 +3160,24 @@ def _assistant_message_needs_liveness_guard(
         "查看",
         "调用",
         "截图",
+        "截屏",
         "唤醒",
+        "点击",
+        " dump",
+        "状态",
+        "看看",
     ]
 
     has_intent = any(marker in lowered for marker in intent_markers)
     has_action = any(marker in lowered for marker in action_markers)
     ends_like_continuation = stripped.endswith(":") or stripped.endswith("：") or stripped.endswith("—")
 
-    return has_intent and (has_action or ends_like_continuation)
+    # Codex-like liveness: the harness only continues on real tool calls.
+    # Treat action verbs followed by a continuation marker as unfinished tool
+    # intent even when the model did not use explicit "let me" wording.
+    return (has_intent and (has_action or ends_like_continuation)) or (
+        has_action and ends_like_continuation
+    )
 
 
 def _agent_liveness_guard_prompt(
@@ -3165,12 +3194,17 @@ def _agent_liveness_guard_prompt(
         "role": "user",
         "content": (
             "Codex agent-loop protocol correction.\n\n"
-            "You just wrote an intention to continue using tools, but you did not "
-            "emit a tool call. The harness cannot execute narrated intentions.\n\n"
-            f"Your previous assistant text was:\n{preview}\n\n"
-            "If further action is needed, emit the next tool_call now. "
-            "If no further action is needed, provide a final answer to the user. "
-            "Do not narrate future tool use without actually calling a tool.\n\n"
+            "You are inside a Codex-style agent loop. The harness only executes "
+            "structured tool calls. It does not execute narrated future actions.\n\n"
+            "Your previous assistant message narrated a concrete next action, but "
+            "did not emit a tool_call, so the loop would stop incorrectly.\n\n"
+            f"Previous assistant text:\n{preview}\n\n"
+            "You must choose exactly one of the following in this response:\n"
+            "A. Emit the next concrete tool_call now.\n"
+            "B. If no tool is needed, provide the final answer to the user.\n\n"
+            "Do not say 'I will', 'let me', 'next I will', '换用', '我来', "
+            "'接下来', or any similar future-action text unless this same response "
+            "also contains a tool_call.\n\n"
             f"retry_index={retry_index}; max_retries={max_retries}"
         ),
     }
@@ -3226,6 +3260,7 @@ async def _run_chat_with_tool_bridge(
         "max_retries": int(liveness_config["max_retries"]),
         "tools_available": bool(deepseek_tools),
         "guard_reason": "not_triggered",
+        "retry_attempts": [],
     }
 
     for round_index in range(max_rounds):
@@ -3282,6 +3317,27 @@ async def _run_chat_with_tool_bridge(
                 break
             assistant_message = choices[0].get("message") or {}
             tool_calls = assistant_message.get("tool_calls") or []
+            retry_content_preview = _plain_text_from_content(assistant_message.get("content", "")).strip()
+            retry_content_preview, _changed = _truncate_middle_text(
+                retry_content_preview,
+                int(liveness_config["content_preview_chars"]),
+            )
+            retry_tool_names = []
+            if isinstance(tool_calls, list):
+                for tool_call in tool_calls:
+                    if isinstance(tool_call, dict):
+                        function = tool_call.get("function") or {}
+                        if isinstance(function, dict):
+                            retry_tool_names.append(function.get("name"))
+            liveness_report.setdefault("retry_attempts", []).append(
+                {
+                    "retry_index": int(liveness_report["retry_count"]),
+                    "response_has_tool_calls": bool(tool_calls),
+                    "response_tool_call_count": len(tool_calls) if isinstance(tool_calls, list) else 0,
+                    "response_tool_names": retry_tool_names,
+                    "response_content_preview": retry_content_preview,
+                }
+            )
 
         liveness_report["final_has_tool_calls"] = bool(tool_calls)
         liveness_report["final_tool_call_count"] = len(tool_calls) if isinstance(tool_calls, list) else 0
@@ -3785,6 +3841,7 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "final_has_tool_calls",
         "final_tool_call_count",
         "guard_reason",
+        "retry_attempts",
     ]:
         if key in data:
             summary[key] = data[key]
