@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.4a1a1-cli-start-version-and-port-guard" in out
+    assert "v2.4a2-install-scripts-and-codex-profile-bootstrap" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.4a1a1-")
+    assert data["proxy_version"].startswith("v2.4a2-")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.4a1a1-")
+    assert data["expected_version"].startswith("v2.4a2-")
     assert data["running_version"] == "v0.old"
 
 
@@ -120,3 +120,77 @@ def test_cli_doctor_reports_version_mismatch(monkeypatch, tmp_path, capsys):
     assert data["ok"] is False
     assert data["healthz"]["version_match"] is False
     assert data["proxy_status"]["version_match"] is False
+
+
+
+def test_cli_install_codex_profile_writes_profile(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('model = "gpt-5.4"\n\n[features]\nmemories = true\n', encoding="utf-8")
+
+    assert main([
+        "install-codex-profile",
+        "--path",
+        str(config_path),
+        "--name",
+        "deepseek-thinking",
+        "--base-url",
+        "http://127.0.0.1:8001/v1",
+        "--model",
+        "deepseek-v4-pro",
+        "--no-backup",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["profile"] == "deepseek-thinking"
+    assert result["provider"] == "deepseek-thinking-proxy"
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "[features]" in text
+    assert "[model_providers.deepseek-thinking-proxy]" in text
+    assert 'base_url = "http://127.0.0.1:8001/v1"' in text
+    assert "[profiles.deepseek-thinking]" in text
+    assert 'model = "deepseek-v4-pro"' in text
+    assert 'model_provider = "deepseek-thinking-proxy"' in text
+    assert 'model_reasoning_effort = "xhigh"' in text
+
+
+def test_cli_install_codex_profile_dry_run_does_not_write(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+
+    assert main([
+        "install-codex-profile",
+        "--path",
+        str(config_path),
+        "--dry-run",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["dry_run"] is True
+    assert "[profiles.deepseek-thinking]" in result["config_preview"]
+    assert not config_path.exists()
+
+
+def test_cli_uninstall_codex_profile_removes_profile_and_provider(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+    assert main([
+        "install-codex-profile",
+        "--path",
+        str(config_path),
+        "--no-backup",
+    ]) == 0
+    capsys.readouterr()
+
+    assert main([
+        "uninstall-codex-profile",
+        "--path",
+        str(config_path),
+        "--no-backup",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["profile_removed"] is True
+    assert result["provider_removed"] is True
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "[profiles.deepseek-thinking]" not in text
+    assert "[model_providers.deepseek-thinking-proxy]" not in text

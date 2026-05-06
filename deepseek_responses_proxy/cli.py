@@ -137,6 +137,186 @@ def _write_default_config(path: Path, *, force: bool = False) -> bool:
     return True
 
 
+def default_codex_config_path() -> Path:
+    return Path(os.environ.get("CODEX_CONFIG_FILE", Path.home() / ".codex" / "config.toml")).expanduser()
+
+
+def _toml_quote(value: str) -> str:
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _toml_table_range(text: str, header: str) -> tuple[int, int] | None:
+    lines = text.splitlines(keepends=True)
+    offset = 0
+    start = None
+    for line in lines:
+        if line.strip() == header:
+            start = offset
+            break
+        offset += len(line)
+    if start is None:
+        return None
+
+    end = len(text)
+    offset = 0
+    found = False
+    for line in lines:
+        line_start = offset
+        offset += len(line)
+        stripped = line.strip()
+        if line_start <= start:
+            if line_start == start:
+                found = True
+            continue
+        if found and stripped.startswith("[") and stripped.endswith("]"):
+            end = line_start
+            break
+
+    return start, end
+
+
+def _remove_toml_table(text: str, header: str) -> tuple[str, bool]:
+    table_range = _toml_table_range(text, header)
+    if table_range is None:
+        return text, False
+    start, end = table_range
+    new_text = text[:start].rstrip() + "\n\n" + text[end:].lstrip()
+    return new_text, True
+
+
+def _upsert_toml_table(text: str, header: str, block: str) -> tuple[str, bool]:
+    removed_text, existed = _remove_toml_table(text, header)
+    cleaned = removed_text.rstrip()
+    if cleaned:
+        return cleaned + "\n\n" + block.rstrip() + "\n", existed
+    return block.rstrip() + "\n", existed
+
+
+def _codex_profile_blocks(
+    *,
+    profile_name: str,
+    provider_name: str,
+    base_url: str,
+    model: str,
+    reasoning_effort: str,
+    context_window: int,
+    auto_compact_token_limit: int,
+    tool_output_token_limit: int,
+    model_catalog_json: str | None,
+) -> tuple[str, str, str, str]:
+    provider_header = f"[model_providers.{provider_name}]"
+    profile_header = f"[profiles.{profile_name}]"
+
+    provider_lines = [
+        provider_header,
+        'name = "DeepSeek Thinking Responses Proxy"' if "thinking" in profile_name else 'name = "DeepSeek Responses Proxy"',
+        f"base_url = {_toml_quote(base_url)}",
+        'env_key = "DEEPSEEK_API_KEY"',
+        'wire_api = "responses"',
+    ]
+
+    profile_lines = [
+        profile_header,
+        f"model = {_toml_quote(model)}",
+        f"model_provider = {_toml_quote(provider_name)}",
+        f"model_context_window = {int(context_window)}",
+        f"model_auto_compact_token_limit = {int(auto_compact_token_limit)}",
+        f"tool_output_token_limit = {int(tool_output_token_limit)}",
+        'model_reasoning_summary = "none"',
+        "model_supports_reasoning_summaries = false",
+        f"model_reasoning_effort = {_toml_quote(reasoning_effort)}",
+    ]
+    if model_catalog_json:
+        profile_lines.append(f"model_catalog_json = {_toml_quote(model_catalog_json)}")
+
+    return provider_header, "\n".join(provider_lines), profile_header, "\n".join(profile_lines)
+
+
+def _install_codex_profile(args: argparse.Namespace) -> int:
+    config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
+    profile_name = args.name
+    provider_name = args.provider_name or f"{profile_name}-proxy"
+
+    provider_header, provider_block, profile_header, profile_block = _codex_profile_blocks(
+        profile_name=profile_name,
+        provider_name=provider_name,
+        base_url=args.base_url,
+        model=args.model,
+        reasoning_effort=args.reasoning_effort,
+        context_window=args.context_window,
+        auto_compact_token_limit=args.auto_compact_token_limit,
+        tool_output_token_limit=args.tool_output_token_limit,
+        model_catalog_json=args.model_catalog_json,
+    )
+
+    original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    text, provider_existed = _upsert_toml_table(original, provider_header, provider_block)
+    text, profile_existed = _upsert_toml_table(text, profile_header, profile_block)
+
+    result = {
+        "path": str(config_path),
+        "profile": profile_name,
+        "provider": provider_name,
+        "base_url": args.base_url,
+        "model": args.model,
+        "provider_existed": provider_existed,
+        "profile_existed": profile_existed,
+        "dry_run": bool(args.dry_run),
+    }
+
+    if args.dry_run:
+        result["config_preview"] = text
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if config_path.exists() and not args.no_backup:
+        backup = config_path.with_suffix(config_path.suffix + ".bak")
+        backup.write_text(original, encoding="utf-8")
+        result["backup"] = str(backup)
+
+    config_path.write_text(text, encoding="utf-8")
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _uninstall_codex_profile(args: argparse.Namespace) -> int:
+    config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
+    profile_name = args.name
+    provider_name = args.provider_name or f"{profile_name}-proxy"
+    provider_header = f"[model_providers.{provider_name}]"
+    profile_header = f"[profiles.{profile_name}]"
+
+    original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    text, profile_removed = _remove_toml_table(original, profile_header)
+    text, provider_removed = _remove_toml_table(text, provider_header)
+
+    result = {
+        "path": str(config_path),
+        "profile": profile_name,
+        "provider": provider_name,
+        "profile_removed": profile_removed,
+        "provider_removed": provider_removed,
+        "dry_run": bool(args.dry_run),
+    }
+
+    if args.dry_run:
+        result["config_preview"] = text
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if config_path.exists() and not args.no_backup:
+        backup = config_path.with_suffix(config_path.suffix + ".bak")
+        backup.write_text(original, encoding="utf-8")
+        result["backup"] = str(backup)
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(text, encoding="utf-8")
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _read_pid(pid_path: Path) -> int | None:
     try:
         text = pid_path.read_text(encoding="utf-8").strip()
@@ -535,6 +715,29 @@ def build_parser() -> argparse.ArgumentParser:
     config_init.add_argument("--path")
     config_init.add_argument("--force", action="store_true")
     config_init.set_defaults(func=_config)
+
+    install_profile = sub.add_parser("install-codex-profile", help="install a Codex config profile")
+    install_profile.add_argument("--name", default="deepseek-thinking")
+    install_profile.add_argument("--path")
+    install_profile.add_argument("--provider-name")
+    install_profile.add_argument("--base-url", default="http://127.0.0.1:8001/v1")
+    install_profile.add_argument("--model", default="deepseek-v4-pro")
+    install_profile.add_argument("--reasoning-effort", default="xhigh")
+    install_profile.add_argument("--context-window", type=int, default=1_000_000)
+    install_profile.add_argument("--auto-compact-token-limit", type=int, default=750_000)
+    install_profile.add_argument("--tool-output-token-limit", type=int, default=12_000)
+    install_profile.add_argument("--model-catalog-json")
+    install_profile.add_argument("--dry-run", action="store_true")
+    install_profile.add_argument("--no-backup", action="store_true")
+    install_profile.set_defaults(func=_install_codex_profile)
+
+    uninstall_profile = sub.add_parser("uninstall-codex-profile", help="remove a Codex config profile")
+    uninstall_profile.add_argument("--name", default="deepseek-thinking")
+    uninstall_profile.add_argument("--path")
+    uninstall_profile.add_argument("--provider-name")
+    uninstall_profile.add_argument("--dry-run", action="store_true")
+    uninstall_profile.add_argument("--no-backup", action="store_true")
+    uninstall_profile.set_defaults(func=_uninstall_codex_profile)
 
     return parser
 
