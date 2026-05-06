@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a7-tool-call-protocol-hardening"
+PROXY_VERSION = "v2.3a8-codex-tool-protocol-instruction-and-liveness-judge"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -3065,6 +3065,67 @@ def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> d
     }
 
 
+_CODEX_TOOL_PROTOCOL_MARKER = "[deepseek-proxy codex tool protocol]"
+
+
+def _codex_tool_protocol_env_config() -> dict[str, Any]:
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", True),
+        "role": os.environ.get("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_ROLE", "system").strip() or "system",
+    }
+
+
+def _codex_tool_protocol_instruction_message() -> dict[str, str]:
+    config = _codex_tool_protocol_env_config()
+    role = str(config.get("role") or "system")
+    if role not in {"system", "user"}:
+        role = "system"
+
+    return {
+        "role": role,
+        "content": (
+            f"{_CODEX_TOOL_PROTOCOL_MARKER}\n"
+            "You are operating inside a Codex-style agent loop. The harness "
+            "continues only when you emit structured tool calls. If the next step "
+            "requires inspecting files, running commands, using ADB, controlling a "
+            "device, taking screenshots, reading UI state, searching, or otherwise "
+            "acting on the environment, emit a tool_call in the same response. Do "
+            "not narrate future tool use without emitting a tool_call. Return a "
+            "plain assistant answer only when no further tool use is needed and "
+            "control should return to the user."
+        ),
+    }
+
+
+def _messages_with_codex_tool_protocol_instruction(
+    messages: list[dict[str, Any]],
+    *,
+    tools_available: bool,
+) -> list[dict[str, Any]]:
+    config = _codex_tool_protocol_env_config()
+    if not config.get("enabled") or not tools_available:
+        return messages
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = _plain_text_from_content(message.get("content", ""))
+        if _CODEX_TOOL_PROTOCOL_MARKER in content:
+            return messages
+
+    injected = deepcopy(messages)
+    insert_at = 0
+    while insert_at < len(injected):
+        message = injected[insert_at]
+        if isinstance(message, dict) and message.get("role") == "system":
+            insert_at += 1
+            continue
+        break
+
+    injected.insert(insert_at, _codex_tool_protocol_instruction_message())
+    return injected
+
+
 def _agent_liveness_env_config() -> dict[str, Any]:
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", True),
@@ -3180,6 +3241,61 @@ def _assistant_message_needs_liveness_guard(
     )
 
 
+def _assistant_message_is_obvious_final_answer(assistant_message: dict[str, Any]) -> bool:
+    content = _plain_text_from_content(assistant_message.get("content", "")).strip()
+    if not content:
+        return False
+
+    lowered = content.lower()
+    normalized = " ".join(lowered.replace("。", ".").replace("！", "!").replace("？", "?").split())
+
+    final_markers = [
+        "done",
+        "complete",
+        "completed",
+        "finished",
+        "all requested checks are complete",
+        "task complete",
+        "echo complete",
+        "status consumed",
+        "consumed",
+        "no further action",
+        "nothing else is needed",
+        "i can't continue",
+        "i cannot continue",
+        "需要你确认",
+        "请确认",
+        "已完成",
+        "完成了",
+        "已经完成",
+        "检查完成",
+        "测试通过",
+        "任务完成",
+        "无法继续",
+        "需要确认",
+    ]
+
+    if any(marker in normalized for marker in final_markers):
+        return True
+
+    # Short final acknowledgements should not trigger an expensive judge call.
+    if len(content) <= 120 and any(
+        token in normalized
+        for token in [
+            "ok.",
+            "okay.",
+            "done.",
+            "complete.",
+            "completed.",
+            "已完成",
+            "完成",
+        ]
+    ):
+        return True
+
+    return False
+
+
 def _agent_liveness_guard_prompt(
     assistant_message: dict[str, Any],
     *,
@@ -3210,6 +3326,211 @@ def _agent_liveness_guard_prompt(
     }
 
 
+def _agent_liveness_judge_env_config() -> dict[str, Any]:
+    raw_model = os.environ.get(
+        "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL",
+        "v4-flash-no-thinking",
+    ).strip() or "v4-flash-no-thinking"
+
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", True),
+        "model": raw_model,
+        "upstream_model": _normalize_agent_liveness_judge_model(raw_model),
+        "thinking": {"type": "disabled"},
+        "max_recent_messages": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_RECENT_MESSAGES", 4),
+        "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_PREVIEW_CHARS", 1200),
+        "trigger_on_ambiguous": _env_bool(
+            "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_TRIGGER_ON_AMBIGUOUS",
+            False,
+        ),
+    }
+
+
+def _normalize_agent_liveness_judge_model(model: str) -> str:
+    value = (model or "").strip().lower()
+    aliases = {
+        "v4-flash-no-thinking": "deepseek-v4-flash",
+        "deepseek-v4-flash-no-thinking": "deepseek-v4-flash",
+        "v4-flash": "deepseek-v4-flash",
+        "flash": "deepseek-v4-flash",
+        "v4-pro": "deepseek-v4-pro",
+        "pro": "deepseek-v4-pro",
+    }
+    if value in aliases:
+        return aliases[value]
+    if value in {"deepseek-v4-flash", "deepseek-v4-pro"}:
+        return value
+    return "deepseek-v4-flash"
+
+
+def _recent_messages_for_liveness_judge(
+    messages: list[dict[str, Any]],
+    *,
+    max_recent_messages: int,
+    content_preview_chars: int,
+) -> list[dict[str, str]]:
+    recent: list[dict[str, str]] = []
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "unknown")
+        if role not in {"user", "assistant", "tool", "system"}:
+            continue
+        content = _plain_text_from_content(message.get("content", ""))
+        if not content:
+            continue
+        content, _changed = _truncate_middle_text(content, content_preview_chars)
+        item: dict[str, str] = {
+            "role": role,
+            "content": content,
+        }
+        if message.get("tool_call_id"):
+            item["tool_call_id"] = str(message.get("tool_call_id"))
+        recent.append(item)
+        if len(recent) >= max_recent_messages:
+            break
+    recent.reverse()
+    return recent
+
+
+def _parse_agent_liveness_judge_json(text: str) -> dict[str, Any]:
+    raw = (text or "").strip()
+    if not raw:
+        return {
+            "decision": "ambiguous",
+            "confidence": 0.0,
+            "reason": "empty_judge_response",
+            "candidate_trigger_phrases": [],
+        }
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                parsed = {}
+        else:
+            parsed = {}
+
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    decision = str(parsed.get("decision") or "ambiguous").strip().lower()
+    if decision not in {"needs_tool_call", "final_answer", "ambiguous"}:
+        decision = "ambiguous"
+
+    confidence = parsed.get("confidence", 0.0)
+    try:
+        confidence = float(confidence)
+    except Exception:
+        confidence = 0.0
+
+    phrases = parsed.get("candidate_trigger_phrases") or []
+    if not isinstance(phrases, list):
+        phrases = []
+    phrases = [str(item)[:200] for item in phrases if str(item).strip()][:12]
+
+    return {
+        "decision": decision,
+        "confidence": max(0.0, min(1.0, confidence)),
+        "reason": str(parsed.get("reason") or "")[:1200],
+        "candidate_trigger_phrases": phrases,
+    }
+
+
+async def _judge_agent_liveness_with_llm(
+    *,
+    deepseek_client: "DeepSeekClient",
+    assistant_message: dict[str, Any],
+    messages_for_deepseek: list[dict[str, Any]],
+    tools_available: bool,
+) -> dict[str, Any]:
+    config = _agent_liveness_judge_env_config()
+    report: dict[str, Any] = {
+        "enabled": bool(config["enabled"]),
+        "model": config["model"],
+        "upstream_model": config["upstream_model"],
+        "thinking": config["thinking"],
+        "tools_available": tools_available,
+        "decision": "not_run",
+        "confidence": 0.0,
+        "reason": "",
+        "candidate_trigger_phrases": [],
+    }
+
+    if not config["enabled"]:
+        report["decision"] = "disabled"
+        return report
+    if not tools_available:
+        report["decision"] = "no_tools_available"
+        return report
+
+    assistant_text = _plain_text_from_content(assistant_message.get("content", "")).strip()
+    assistant_preview, _changed = _truncate_middle_text(
+        assistant_text,
+        int(config["content_preview_chars"]),
+    )
+    recent_messages = _recent_messages_for_liveness_judge(
+        messages_for_deepseek,
+        max_recent_messages=int(config["max_recent_messages"]),
+        content_preview_chars=int(config["content_preview_chars"]),
+    )
+
+    system_prompt = (
+        "You are a liveness judge for a Codex-style agent loop. Your only job is "
+        "to classify whether the latest assistant message is a final answer or an "
+        "unfinished environment-action intent that should have been a tool call. "
+        "Do not solve the task. Do not propose commands. Return strict JSON only."
+    )
+
+    user_prompt = (
+        "Classify the latest assistant message.\n\n"
+        "Labels:\n"
+        "- needs_tool_call: assistant describes, promises, or transitions to an "
+        "environment action such as running commands, checking UI, using ADB, "
+        "opening apps, tapping, reading files, taking screenshots, dumping state, "
+        "using URL schemes/intents, or verifying device state, but no tool_call was emitted.\n"
+        "- final_answer: assistant is done, summarizes results, asks user for "
+        "clarification, or explicitly cannot continue.\n"
+        "- ambiguous: unclear.\n\n"
+        "Return JSON exactly like:\n"
+        "{\"decision\":\"needs_tool_call|final_answer|ambiguous\","
+        "\"confidence\":0.0,"
+        "\"reason\":\"short reason\","
+        "\"candidate_trigger_phrases\":[\"phrase\"]}\n\n"
+        f"tools_available: {tools_available}\n"
+        f"recent_messages: {json.dumps(recent_messages, ensure_ascii=False)}\n"
+        f"latest_assistant_message: {assistant_preview}"
+    )
+
+    judge_payload = {
+        "model": config["upstream_model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0,
+        "stream": False,
+        "thinking": config["thinking"],
+    }
+
+    try:
+        judge_response = await deepseek_client.chat_completions(judge_payload)
+        judge_text = _extract_deepseek_message_text(judge_response)
+        parsed = _parse_agent_liveness_judge_json(judge_text)
+        report.update(parsed)
+        report["raw_response_preview"], _changed = _truncate_middle_text(judge_text, 1200)
+    except Exception as exc:
+        report["decision"] = "ambiguous"
+        report["reason"] = f"judge_error:{type(exc).__name__}:{str(exc)[:500]}"
+
+    return report
+
+
 def _write_agent_liveness_guard_report(report: dict[str, Any]) -> None:
     try:
         debug_dir = Path(".debug")
@@ -3225,6 +3546,12 @@ def _write_agent_liveness_guard_report(report: dict[str, Any]) -> None:
 def _proxy_agent_liveness_status() -> dict[str, Any]:
     return {
         "config": _agent_liveness_env_config(),
+        "judge": {
+            "config": _agent_liveness_judge_env_config(),
+        },
+        "tool_protocol": {
+            "config": _codex_tool_protocol_env_config(),
+        },
         "last_report": _context_report_summary("agent_liveness_guard_report.json"),
     }
 
@@ -3277,13 +3604,41 @@ async def _run_chat_with_tool_bridge(
             not tool_calls
             and bool(liveness_config["enabled"])
             and int(liveness_report["retry_count"]) < int(liveness_config["max_retries"])
-            and _assistant_message_needs_liveness_guard(
+        ):
+            heuristic_triggered = _assistant_message_needs_liveness_guard(
                 assistant_message,
                 tools_available=bool(deepseek_tools),
             )
-        ):
+            judge_report: dict[str, Any] | None = None
+            judge_decision = "not_run"
+
+            if not heuristic_triggered:
+                if _assistant_message_is_obvious_final_answer(assistant_message):
+                    liveness_report["guard_reason"] = "obvious_final_answer_no_retry"
+                    break
+
+                judge_report = await _judge_agent_liveness_with_llm(
+                    deepseek_client=deepseek_client,
+                    assistant_message=assistant_message,
+                    messages_for_deepseek=messages_for_deepseek,
+                    tools_available=bool(deepseek_tools),
+                )
+                liveness_report.setdefault("judge_attempts", []).append(judge_report)
+                judge_decision = str(judge_report.get("decision") or "ambiguous")
+                trigger_on_ambiguous = bool(
+                    _agent_liveness_judge_env_config().get("trigger_on_ambiguous")
+                )
+                if judge_decision == "needs_tool_call" or (
+                    judge_decision == "ambiguous" and trigger_on_ambiguous
+                ):
+                    liveness_report["guard_reason"] = f"judge_{judge_decision}"
+                else:
+                    liveness_report["guard_reason"] = f"judge_{judge_decision}_no_retry"
+                    break
+            else:
+                liveness_report["guard_reason"] = "assistant_narrated_tool_intent_without_tool_call"
+
             liveness_report["triggered"] = True
-            liveness_report["guard_reason"] = "assistant_narrated_tool_intent_without_tool_call"
             liveness_report["round_index"] = round_index + 1
             liveness_report["retry_count"] = int(liveness_report["retry_count"]) + 1
             content_preview = _plain_text_from_content(assistant_message.get("content", "")).strip()
@@ -3766,6 +4121,11 @@ def _build_chat_payload(
     reasoning_effort: str | None = None,
     request_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    messages = _messages_with_codex_tool_protocol_instruction(
+        messages,
+        tools_available=bool(tools),
+    )
+
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -3842,6 +4202,7 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "final_tool_call_count",
         "guard_reason",
         "retry_attempts",
+        "judge_attempts",
     ]:
         if key in data:
             summary[key] = data[key]

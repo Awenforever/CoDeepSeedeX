@@ -5,6 +5,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from deepseek_responses_proxy.app import (
+    _build_chat_payload,
     _assistant_message_needs_liveness_guard,
     _run_chat_with_tool_bridge,
     create_app,
@@ -211,7 +212,133 @@ async def test_proxy_status_reports_agent_liveness(tmp_path, monkeypatch):
     assert data["version"].startswith("v2.3a")
     assert data["agent_liveness"]["config"]["enabled"] is True
     assert data["agent_liveness"]["config"]["max_retries"] == 2
+    assert data["agent_liveness"]["judge"]["config"]["upstream_model"] == "deepseek-v4-flash"
+    assert data["agent_liveness"]["judge"]["config"]["thinking"] == {"type": "disabled"}
+    assert data["agent_liveness"]["tool_protocol"]["config"]["enabled"] is True
     assert data["agent_liveness"]["last_report"]["exists"] is True
     assert data["agent_liveness"]["last_report"]["triggered"] is True
     assert data["agent_liveness"]["last_report"]["retry_count"] == 1
     assert data["agent_liveness"]["last_report"]["final_has_tool_calls"] is True
+
+
+
+def test_codex_tool_protocol_instruction_is_injected_for_tool_requests(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+
+    payload = _build_chat_payload(
+        model="deepseek-v4-pro",
+        messages=[{"role": "user", "content": "check device"}],
+        tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={},
+    )
+
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert "[deepseek-proxy codex tool protocol]" in serialized
+    assert "emit a tool_call" in serialized
+
+
+def test_codex_tool_protocol_instruction_is_not_duplicated(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+
+    messages = [
+        {
+            "role": "system",
+            "content": "[deepseek-proxy codex tool protocol]\nexisting",
+        },
+        {"role": "user", "content": "check device"},
+    ]
+    payload = _build_chat_payload(
+        model="deepseek-v4-pro",
+        messages=messages,
+        tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={},
+    )
+
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert serialized.count("[deepseek-proxy codex tool protocol]") == 1
+
+
+@pytest.mark.asyncio
+async def test_liveness_judge_triggers_retry_when_heuristic_misses(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+
+    fake = FakeDeepSeekClient(
+        [
+            _response(
+                {
+                    "role": "assistant",
+                    "content": (
+                        "INJECT_EVENTS 仍然被阻止。使用 WeChat URL scheme 或 intent "
+                        "直接跳转到通讯录/好友申请页面，同时验证 keyevent 是否可行。"
+                    ),
+                }
+            ),
+            _response(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "decision": "needs_tool_call",
+                            "confidence": 0.92,
+                            "reason": "The assistant describes environment actions but emitted no tool call.",
+                            "candidate_trigger_phrases": [
+                                "使用 WeChat URL scheme",
+                                "验证 keyevent 是否可行",
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                }
+            ),
+            _response(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_shell",
+                            "type": "function",
+                            "function": {
+                                "name": "shell",
+                                "arguments": json.dumps({"cmd": "echo ok"}),
+                            },
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+
+    deepseek_response, _history = await _run_chat_with_tool_bridge(
+        deepseek_client=fake,
+        chat_payload={
+            "model": "deepseek-v4-pro",
+            "messages": [{"role": "user", "content": "accept wechat friend"}],
+            "tools": [{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        },
+        messages_for_deepseek=[{"role": "user", "content": "accept wechat friend"}],
+        history_messages=[{"role": "user", "content": "accept wechat friend"}],
+        model="deepseek-v4-pro",
+        deepseek_tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={},
+    )
+
+    assert len(fake.payloads) == 3
+    assert fake.payloads[1]["model"] == "deepseek-v4-flash"
+    assert fake.payloads[1]["thinking"] == {"type": "disabled"}
+    assert deepseek_response["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "shell"
+
+    report = json.loads(Path(".debug/agent_liveness_guard_report.json").read_text(encoding="utf-8"))
+    assert report["triggered"] is True
+    assert report["retry_count"] == 1
+    assert report["guard_reason"] == "judge_needs_tool_call"
+    assert report["judge_attempts"][0]["decision"] == "needs_tool_call"
+    assert "使用 WeChat URL scheme" in report["judge_attempts"][0]["candidate_trigger_phrases"]
+    assert report["retry_attempts"][0]["response_has_tool_calls"] is True
