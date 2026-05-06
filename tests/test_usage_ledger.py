@@ -111,6 +111,12 @@ def _record_usage_event(
     cached_tokens=20,
     reasoning_tokens=0,
     estimated_cost_usd=0.001,
+    purpose="final",
+    call_index=None,
+    request_id=None,
+    requested_model=None,
+    effective_model=None,
+    upstream_model=None,
 ):
     store.record_usage(
         response_id=response_id,
@@ -125,6 +131,12 @@ def _record_usage_event(
             "reasoning_tokens": reasoning_tokens,
         },
         estimated_cost_usd=estimated_cost_usd,
+        purpose=purpose,
+        call_index=call_index,
+        request_id=request_id,
+        requested_model=requested_model,
+        effective_model=effective_model,
+        upstream_model=upstream_model,
     )
 
     with store._connect() as conn:
@@ -330,3 +342,134 @@ async def test_usage_endpoints_accept_filters(tmp_path):
     assert [event["response_id"] for event in events_data["usage_events"]] == ["thinking_mid"]
 
     assert bad_range_response.status_code == 400
+
+
+
+def _usage_deepseek_tool_call_response(call_id: str, name: str, arguments: dict) -> dict:
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": __import__("json").dumps(arguments),
+                            },
+                        }
+                    ],
+                }
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 1,
+            "total_tokens": 11,
+        },
+    }
+
+
+class UsageSequenceDeepSeekClient(DeepSeekClient):
+    def __init__(self, responses):
+        self.responses = list(responses)
+
+    async def chat_completions(self, payload):
+        if not self.responses:
+            raise AssertionError("unexpected extra chat_completions call")
+        return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_usage_records_internal_tool_bridge_call_purposes(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    app = create_app(
+        deepseek_client=UsageSequenceDeepSeekClient(
+            [
+                _usage_deepseek_tool_call_response("call_1", "proxy_echo", {"value": "hello"}),
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "echo complete",
+                            }
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 20,
+                        "completion_tokens": 2,
+                        "total_tokens": 22,
+                    },
+                },
+            ]
+        ),
+        store=store,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Use proxy_echo.",
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "proxy_echo",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"value": {"type": "string"}},
+                            "required": ["value"],
+                        },
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    response_id = response.json()["id"]
+    events = store.usage_events(limit=10)
+
+    assert [event["purpose"] for event in events] == ["tool_bridge", "primary"]
+    assert {event["response_id"] for event in events} == {response_id}
+    assert {event["request_id"] for event in events} == {response_id}
+    assert [event["call_index"] for event in events] == [1, 0]
+    assert all(event["effective_model"] == "deepseek-v4-pro" for event in events)
+    assert all(event["upstream_model"] == "deepseek-v4-pro" for event in events)
+
+    summary = store.usage_summary(purpose="tool_bridge")
+    assert summary["request_count"] == 1
+    assert summary["prompt_tokens"] == 20
+
+
+def test_usage_events_include_attribution_fields_and_filter_by_purpose(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    _record_usage_event(
+        store,
+        response_id="resp_attr",
+        created_at=500,
+        model="deepseek-v4-flash",
+        purpose="liveness_judge",
+        call_index=3,
+        request_id="resp_attr",
+        requested_model="v4-flash-no-thinking",
+        effective_model="deepseek-v4-flash",
+        upstream_model="deepseek-v4-flash",
+    )
+
+    events = store.usage_events(purpose="liveness_judge")
+    assert len(events) == 1
+    event = events[0]
+    assert event["purpose"] == "liveness_judge"
+    assert event["call_index"] == 3
+    assert event["request_id"] == "resp_attr"
+    assert event["requested_model"] == "v4-flash-no-thinking"
+    assert event["effective_model"] == "deepseek-v4-flash"
+    assert event["upstream_model"] == "deepseek-v4-flash"
+
+    assert store.usage_summary(purpose="liveness_judge")["request_count"] == 1
+    assert store.usage_summary(purpose="primary")["request_count"] == 0

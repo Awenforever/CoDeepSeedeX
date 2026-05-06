@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.3a8-codex-tool-protocol-instruction-and-liveness-judge"
+PROXY_VERSION = "v2.3a9-usage-ledger-internal-call-attribution"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -619,6 +619,64 @@ class SQLiteResponseStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_usage_events_response_id ON usage_events(response_id)"
             )
+            self._migrate_usage_events_schema(conn)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_usage_events_purpose ON usage_events(purpose)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_usage_events_request_id ON usage_events(request_id)"
+            )
+
+    @staticmethod
+    def _ensure_column(
+        conn: sqlite3.Connection,
+        *,
+        table: str,
+        column: str,
+        ddl: str,
+    ) -> None:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        existing = {row["name"] for row in rows}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    def _migrate_usage_events_schema(self, conn: sqlite3.Connection) -> None:
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="purpose",
+            ddl="TEXT NOT NULL DEFAULT 'final'",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="call_index",
+            ddl="INTEGER",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="request_id",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="requested_model",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="effective_model",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="upstream_model",
+            ddl="TEXT",
+        )
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         response_id = response["id"]
@@ -672,7 +730,17 @@ class SQLiteResponseStore:
         thinking_enabled: bool,
         usage_numbers: dict[str, int],
         estimated_cost_usd: float,
+        purpose: str = "final",
+        call_index: int | None = None,
+        request_id: str | None = None,
+        requested_model: str | None = None,
+        effective_model: str | None = None,
+        upstream_model: str | None = None,
     ) -> None:
+        normalized_purpose = str(purpose or "final").strip() or "final"
+        normalized_effective_model = str(effective_model or model).strip() or model
+        normalized_upstream_model = str(upstream_model or normalized_effective_model).strip() or normalized_effective_model
+
         with self._connect() as conn:
             conn.execute(
                 """
@@ -682,6 +750,12 @@ class SQLiteResponseStore:
                     previous_response_id,
                     model,
                     thinking_enabled,
+                    purpose,
+                    call_index,
+                    request_id,
+                    requested_model,
+                    effective_model,
+                    upstream_model,
                     prompt_tokens,
                     completion_tokens,
                     total_tokens,
@@ -689,7 +763,7 @@ class SQLiteResponseStore:
                     reasoning_tokens,
                     estimated_cost_usd
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _now(),
@@ -697,6 +771,12 @@ class SQLiteResponseStore:
                     previous_response_id,
                     model,
                     1 if thinking_enabled else 0,
+                    normalized_purpose,
+                    call_index,
+                    request_id,
+                    requested_model,
+                    normalized_effective_model,
+                    normalized_upstream_model,
                     usage_numbers["prompt_tokens"],
                     usage_numbers["completion_tokens"],
                     usage_numbers["total_tokens"],
@@ -713,6 +793,7 @@ class SQLiteResponseStore:
         until: int | None = None,
         thinking: bool | None = None,
         model: str | None = None,
+        purpose: str | None = None,
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -733,6 +814,10 @@ class SQLiteResponseStore:
             clauses.append("model = ?")
             params.append(model)
 
+        if purpose:
+            clauses.append("purpose = ?")
+            params.append(purpose)
+
         if not clauses:
             return "", params
 
@@ -746,12 +831,14 @@ class SQLiteResponseStore:
         until: int | None = None,
         thinking: bool | None = None,
         model: str | None = None,
+        purpose: str | None = None,
     ) -> list[dict[str, Any]]:
         where_sql, params = self._usage_filter_where(
             since=since,
             until=until,
             thinking=thinking,
             model=model,
+            purpose=purpose,
         )
 
         safe_limit = max(1, min(int(limit), 1000))
@@ -765,6 +852,12 @@ class SQLiteResponseStore:
                     previous_response_id,
                     model,
                     thinking_enabled,
+                    purpose,
+                    call_index,
+                    request_id,
+                    requested_model,
+                    effective_model,
+                    upstream_model,
                     prompt_tokens,
                     completion_tokens,
                     total_tokens,
@@ -788,12 +881,14 @@ class SQLiteResponseStore:
         until: int | None = None,
         thinking: bool | None = None,
         model: str | None = None,
+        purpose: str | None = None,
     ) -> dict[str, Any]:
         where_sql, params = self._usage_filter_where(
             since=since,
             until=until,
             thinking=thinking,
             model=model,
+            purpose=purpose,
         )
 
         with self._connect() as conn:
@@ -1509,6 +1604,9 @@ async def _compact_chat_history_for_codex_like_persistence(
     messages: list[dict[str, Any]],
     request_payload: dict[str, Any] | None,
     previous_response_id: str | None,
+    store: Any | None = None,
+    response_id: str | None = None,
+    usage_call_counter: dict[str, int] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     config = _context_compaction_env_config()
     before_chars = _json_char_size({"messages": messages})
@@ -1557,7 +1655,18 @@ async def _compact_chat_history_for_codex_like_persistence(
 
     summary_text = ""
     try:
-        deepseek_response = await deepseek_client.chat_completions(compaction_payload)
+        deepseek_response = await _chat_completions_with_usage(
+            deepseek_client=deepseek_client,
+            store=store,
+            payload=compaction_payload,
+            purpose="compaction",
+            response_id=response_id,
+            previous_response_id=previous_response_id,
+            request_id=response_id,
+            requested_model=(request_payload or {}).get("model"),
+            thinking_enabled=_thinking_enabled(),
+            call_counter=usage_call_counter,
+        )
         summary_text = _extract_deepseek_message_text(deepseek_response)
         report["summary_source"] = "deepseek"
     except Exception as exc:
@@ -1700,6 +1809,51 @@ class DeepSeekClient:
             )
 
         return response.json()
+
+
+def _next_usage_call_index(call_counter: dict[str, int] | None) -> int | None:
+    if call_counter is None:
+        return None
+    value = int(call_counter.get("value", 0))
+    call_counter["value"] = value + 1
+    return value
+
+
+async def _chat_completions_with_usage(
+    *,
+    deepseek_client: "DeepSeekClient",
+    store: Any | None,
+    payload: dict[str, Any],
+    purpose: str,
+    response_id: str | None,
+    previous_response_id: str | None,
+    request_id: str | None,
+    requested_model: str | None,
+    thinking_enabled: bool,
+    call_counter: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    effective_model = str(payload.get("model") or DEFAULT_MODEL)
+    deepseek_response = await deepseek_client.chat_completions(payload)
+
+    if store is not None and hasattr(store, "record_usage"):
+        usage_numbers = _extract_usage_numbers(deepseek_response)
+        estimated_cost_usd = _estimate_cost_usd(effective_model, usage_numbers)
+        store.record_usage(
+            response_id=response_id,
+            previous_response_id=previous_response_id,
+            model=effective_model,
+            thinking_enabled=thinking_enabled,
+            usage_numbers=usage_numbers,
+            estimated_cost_usd=estimated_cost_usd,
+            purpose=purpose,
+            call_index=_next_usage_call_index(call_counter),
+            request_id=request_id,
+            requested_model=requested_model,
+            effective_model=effective_model,
+            upstream_model=effective_model,
+        )
+
+    return deepseek_response
 
 
 def _mcp_readonly_tool_names() -> set[str]:
@@ -3448,6 +3602,11 @@ async def _judge_agent_liveness_with_llm(
     assistant_message: dict[str, Any],
     messages_for_deepseek: list[dict[str, Any]],
     tools_available: bool,
+    store: Any | None = None,
+    response_id: str | None = None,
+    previous_response_id: str | None = None,
+    requested_model: str | None = None,
+    usage_call_counter: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     config = _agent_liveness_judge_env_config()
     report: dict[str, Any] = {
@@ -3519,7 +3678,18 @@ async def _judge_agent_liveness_with_llm(
     }
 
     try:
-        judge_response = await deepseek_client.chat_completions(judge_payload)
+        judge_response = await _chat_completions_with_usage(
+            deepseek_client=deepseek_client,
+            store=store,
+            payload=judge_payload,
+            purpose="liveness_judge",
+            response_id=response_id,
+            previous_response_id=previous_response_id,
+            request_id=response_id,
+            requested_model=requested_model,
+            thinking_enabled=False,
+            call_counter=usage_call_counter,
+        )
         judge_text = _extract_deepseek_message_text(judge_response)
         parsed = _parse_agent_liveness_judge_json(judge_text)
         report.update(parsed)
@@ -3567,8 +3737,22 @@ async def _run_chat_with_tool_bridge(
     reasoning_effort: str | None,
     request_payload: dict[str, Any],
     store: Any | None = None,
+    response_id: str | None = None,
+    previous_response_id: str | None = None,
+    usage_call_counter: dict[str, int] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    deepseek_response = await deepseek_client.chat_completions(chat_payload)
+    deepseek_response = await _chat_completions_with_usage(
+        deepseek_client=deepseek_client,
+        store=store,
+        payload=chat_payload,
+        purpose="primary",
+        response_id=response_id,
+        previous_response_id=previous_response_id,
+        request_id=response_id,
+        requested_model=request_payload.get("model"),
+        thinking_enabled=_thinking_enabled(),
+        call_counter=usage_call_counter,
+    )
 
     if not _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True):
         return deepseek_response, history_messages
@@ -3622,6 +3806,11 @@ async def _run_chat_with_tool_bridge(
                     assistant_message=assistant_message,
                     messages_for_deepseek=messages_for_deepseek,
                     tools_available=bool(deepseek_tools),
+                    store=store,
+                    response_id=response_id,
+                    previous_response_id=previous_response_id,
+                    requested_model=request_payload.get("model"),
+                    usage_call_counter=usage_call_counter,
                 )
                 liveness_report.setdefault("judge_attempts", []).append(judge_report)
                 judge_decision = str(judge_report.get("decision") or "ambiguous")
@@ -3665,7 +3854,18 @@ async def _run_chat_with_tool_bridge(
                 reasoning_effort=reasoning_effort,
                 request_payload=request_payload,
             )
-            deepseek_response = await deepseek_client.chat_completions(guard_payload)
+            deepseek_response = await _chat_completions_with_usage(
+                deepseek_client=deepseek_client,
+                store=store,
+                payload=guard_payload,
+                purpose="liveness_retry",
+                response_id=response_id,
+                previous_response_id=previous_response_id,
+                request_id=response_id,
+                requested_model=request_payload.get("model"),
+                thinking_enabled=_thinking_enabled(),
+                call_counter=usage_call_counter,
+            )
             choices = deepseek_response.get("choices") or []
             if not choices:
                 liveness_report["guard_reason"] = "guard_retry_returned_no_choices"
@@ -3749,7 +3949,18 @@ async def _run_chat_with_tool_bridge(
             reasoning_effort=reasoning_effort,
             request_payload=request_payload,
         )
-        deepseek_response = await deepseek_client.chat_completions(chat_payload)
+        deepseek_response = await _chat_completions_with_usage(
+            deepseek_client=deepseek_client,
+            store=store,
+            payload=chat_payload,
+            purpose="tool_bridge",
+            response_id=response_id,
+            previous_response_id=previous_response_id,
+            request_id=response_id,
+            requested_model=request_payload.get("model"),
+            thinking_enabled=_thinking_enabled(),
+            call_counter=usage_call_counter,
+        )
 
     liveness_report["guard_reason"] = "max_tool_bridge_rounds_reached"
     _write_agent_liveness_guard_report(liveness_report)
@@ -4346,6 +4557,7 @@ def create_app(
         until: int | None = None,
         thinking: bool | None = None,
         model: str | None = None,
+        purpose: str | None = None,
     ) -> dict[str, Any]:
         if since is not None and until is not None and until < since:
             raise HTTPException(status_code=400, detail="until must be greater than or equal to since")
@@ -4356,6 +4568,8 @@ def create_app(
             "thinking": thinking,
             "model": model,
         }
+        if purpose is not None:
+            filters["purpose"] = purpose
 
         if not hasattr(app.state.store, "usage_events"):
             return {
@@ -4375,6 +4589,7 @@ def create_app(
                 until=until,
                 thinking=thinking,
                 model=model,
+                purpose=purpose,
             ),
         }
 
@@ -4384,6 +4599,7 @@ def create_app(
         until: int | None = None,
         thinking: bool | None = None,
         model: str | None = None,
+        purpose: str | None = None,
     ) -> dict[str, Any]:
         if since is not None and until is not None and until < since:
             raise HTTPException(status_code=400, detail="until must be greater than or equal to since")
@@ -4394,6 +4610,8 @@ def create_app(
             "thinking": thinking,
             "model": model,
         }
+        if purpose is not None:
+            filters["purpose"] = purpose
 
         if not hasattr(app.state.store, "usage_summary"):
             return {
@@ -4413,6 +4631,7 @@ def create_app(
                 until=until,
                 thinking=thinking,
                 model=model,
+                purpose=purpose,
             ),
             "filters": filters,
             "pricing_usd_per_1m": _load_model_pricing_usd_per_1m(),
@@ -4443,6 +4662,8 @@ def create_app(
     @app.post("/v1/responses")
     async def create_response(request: Request):
         payload = await request.json()
+        response_id = _response_id()
+        usage_call_counter: dict[str, int] = {"value": 0}
 
         try:
             debug_dir = Path(".debug")
@@ -4555,6 +4776,9 @@ def create_app(
             messages=messages,
             request_payload=payload,
             previous_response_id=previous_response_id,
+            store=app.state.store,
+            response_id=response_id,
+            usage_call_counter=usage_call_counter,
         )
         _write_context_compaction_report(context_compaction_report)
         if context_compaction_report.get("compacted"):
@@ -4581,7 +4805,10 @@ def create_app(
                 deepseek_tools=deepseek_tools,
                 reasoning_effort=reasoning_effort,
                 request_payload=payload,
-            store=app.state.store,
+                store=app.state.store,
+                response_id=response_id,
+                previous_response_id=previous_response_id,
+                usage_call_counter=usage_call_counter,
             )
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc
@@ -4593,7 +4820,6 @@ def create_app(
 
         output_items = _deepseek_message_to_output_items(assistant_message, mcp_tool_mapping)
         output_items.extend(_image_result_output_items_from_messages(messages))
-        response_id = _response_id()
         response_body = _build_response_envelope(
             response_id=response_id,
             model=model,
@@ -4601,18 +4827,6 @@ def create_app(
             output_items=output_items,
             deepseek_response=deepseek_response,
         )
-
-        if hasattr(app.state.store, "record_usage"):
-            usage_numbers = _extract_usage_numbers(deepseek_response)
-            estimated_cost_usd = _estimate_cost_usd(model, usage_numbers)
-            app.state.store.record_usage(
-                response_id=response_id,
-                previous_response_id=previous_response_id,
-                model=model,
-                thinking_enabled=_thinking_enabled(),
-                usage_numbers=usage_numbers,
-                estimated_cost_usd=estimated_cost_usd,
-            )
 
         next_history = deepcopy(messages)
         assistant_history_item = {"role": "assistant", "content": assistant_message.get("content") or ""}
