@@ -1,52 +1,81 @@
 # CoDeepSeedeX
 
-[中文文档](README.zh-CN.md) | [English](README.md)
+[中文说明](README.zh-CN.md) | English
 
 Local OpenAI Responses-compatible proxy for running Codex with DeepSeek models.
 
-## One-line install
+## ⚡ One-line install
 
     curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
 
-The installer asks for the stable proxy port, thinking proxy port and DeepSeek API key. The API key is entered with hidden input and stored in a chmod 600 local env file. This is not cryptographic encryption.
+The installer will:
+
+- install CoDeepSeedeX into `~/.local/share/deepseek-responses-proxy`
+- create the `dsproxy` command
+- create two Codex profiles: `deepseek` and `deepseek-thinking`
+- optionally install a safe `codex` wrapper for these two profiles only
+- ask for stable/thinking ports and your DeepSeek API key
+- save the API key in a local `chmod 600` env file
+
+The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
+
+## 🚀 Quick start
 
 After installation:
 
-    dsproxy start --thinking
+    codex --profile deepseek
     codex --profile deepseek-thinking
+
+If you accepted the recommended codex wrapper, these commands automatically start the matching local proxy before launching Codex.
 
 Continue a previous Codex conversation:
 
     codex --profile deepseek-thinking resume
 
-## What this project does
+## 🧠 deepseek vs deepseek-thinking
 
-CoDeepSeedeX is a local experimental OpenAI Responses-compatible proxy for using Codex with DeepSeek upstream models.
+| Profile | Local port | Mode | Recommended use |
+|---|---:|---|---|
+| `deepseek` | 8000 | stable proxy | quick edits, lightweight tasks, lower-cost use |
+| `deepseek-thinking` | 8001 | thinking proxy | long tasks, multi-step coding, tool-heavy agent loops |
 
-It provides:
+Both profiles use the local CoDeepSeedeX proxy. The difference is the local endpoint and runtime mode.
 
-- Responses-compatible local API for Codex
-- DeepSeek ChatCompletions upstream bridge
-- Codex tool-call normalization and protocol hardening
-- Default-open Codex tool forwarding
-- Context trimming and persistent local compaction
-- Agent-loop liveness recovery
-- Lightweight LLM liveness judge
-- Usage attribution by internal call purpose
-- Adaptive compaction budget policy
-- dsproxy CLI for start, stop, status, doctor, logs, usage and Codex profile bootstrap
+## 🧭 Codex TUI commands
 
-## Daily shell commands
+Inside Codex TUI:
+
+    /status
+
+Show current session and runtime status.
+
+    /model
+
+Switch model or reasoning effort inside Codex.
+
+    /plan
+
+Use planning mode before implementation work.
+
+You can also type natural-language requests such as:
+
+    check balance
+
+Codex will usually call local tools to run `dsproxy balance`. The most deterministic shell command is still:
+
+    dsproxy balance
+
+## 🔧 Shell operations
 
 Check proxy health:
 
     dsproxy doctor --thinking
 
-Check DeepSeek balance:
+Show DeepSeek balance:
 
     dsproxy balance
 
-Show local proxy configuration:
+Show local configuration:
 
     dsproxy config show
 
@@ -61,46 +90,27 @@ Change Codex reasoning effort:
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
 
-Start or stop the thinking proxy:
-
-    dsproxy start --thinking
-    dsproxy stop --thinking
-
-View usage ledger:
+View usage:
 
     dsproxy usage --thinking --summary
-    dsproxy usage --thinking --summary --purpose primary
-    dsproxy usage --thinking --summary --purpose tool_bridge
-    dsproxy usage --thinking --summary --purpose compaction
-    dsproxy usage --thinking --summary --purpose liveness_judge
 
-Show full CLI help:
+Full CLI help:
 
     dsproxy -H
 
-## Codex TUI commands
+## 🧹 Uninstall and restore
 
-After entering Codex with:
+Remove CoDeepSeedeX Codex profiles and wrappers:
 
-    codex --profile deepseek-thinking
+    bash scripts/install.sh --uninstall
 
-you can also use Codex TUI slash commands.
+If the installer replaced an existing `codex` command in the install bin directory, it records a backup path and restores it during uninstall when possible.
 
-Check current session and runtime status:
+By default, uninstall removes the integration wrappers and Codex profiles. It does not delete the installed source directory or the local env file. To remove those as well:
 
-    /status
+    bash scripts/install.sh --uninstall --remove-files
 
-Switch model or reasoning effort inside Codex:
-
-    /model
-
-Use planning mode before implementation work:
-
-    /plan
-
-These slash commands are handled by Codex itself. dsproxy provides the local model endpoint and helper configuration, but the TUI commands are Codex-side controls.
-
-## Install from source
+## 📦 Install from source
 
     git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
     cd ~/deepseek-responses-proxy
@@ -110,17 +120,12 @@ These slash commands are handled by Codex itself. dsproxy provides the local mod
 Initialize:
 
     .venv/bin/dsproxy config init
-    .venv/bin/dsproxy install-codex-profile
+    .venv/bin/dsproxy install-codex-profile --name deepseek --base-url http://127.0.0.1:8000/v1
+    .venv/bin/dsproxy install-codex-profile --name deepseek-thinking --base-url http://127.0.0.1:8001/v1
 
-Start:
+## 🔐 Security
 
-    export DEEPSEEK_API_KEY="..."
-    .venv/bin/dsproxy start --thinking
-    .venv/bin/dsproxy doctor --thinking
-
-## Security notice
-
-Run only on localhost. Do not expose the proxy to a public network.
+CoDeepSeedeX is designed for localhost use. Do not expose it to a public network.
 
 Codex may call tools, modify files, execute commands and access MCP servers depending on your Codex configuration.
 
@@ -128,11 +133,3 @@ Read:
 
 - docs/security.en.md
 - docs/security.zh-CN.md
-
-## Status
-
-Technical preview. Recommended public release label:
-
-    v0.1.0-alpha
-
-This is not a production-stable replacement for native Codex.

@@ -6,9 +6,50 @@ REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX
 BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}"
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
+MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
 DRY_RUN=0
 INSTALL_CODEX_PROFILE=1
+INSTALL_CODEX_WRAPPER=1
 NON_INTERACTIVE=0
+UNINSTALL=0
+REMOVE_FILES=0
+
+logo() {
+  cat <<'LOGO'
+   ____      ____                 ____              _      __  __
+  / ___|___ |  _ \  ___  ___ _ __/ ___|  ___  ___  __| | ___ \ \/ /
+ | |   / _ \| | | |/ _ \/ _ \ '_ \___ \ / _ \/ _ \/ _` |/ _ \ \  /
+ | |__| (_) | |_| |  __/  __/ |_) |__) |  __/  __/ (_| |  __/ /  \
+  \____\___/|____/ \___|\___| .__/____/ \___|\___|\__,_|\___|/_/\_\
+                             |_|
+
+  CoDeepSeedeX
+  Codex × DeepSeek local Responses proxy
+LOGO
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/install.sh [options]
+
+Options:
+  --dry-run              Print actions without applying changes
+  --non-interactive      Do not prompt; use environment/default values
+  --install-dir DIR      Installation directory
+  --repo-url URL         Git repository URL
+  --bin-dir DIR          Directory for dsproxy and optional codex wrapper
+  --config-dir DIR       Config directory
+  --env-file FILE        Env file path
+  --no-codex-profile     Skip Codex profile installation
+  --no-codex-wrapper     Skip safe codex wrapper installation
+  --uninstall            Remove profiles and wrappers installed by CoDeepSeedeX
+  --remove-files         With --uninstall, also remove install dir and env files
+  -h, -H, --help         Show help
+
+The API key is entered with hidden input and written to a chmod 600 env file.
+This is not cryptographic encryption.
+USAGE
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -17,34 +58,13 @@ while [ "$#" -gt 0 ]; do
     --install-dir) INSTALL_DIR="$2"; shift ;;
     --repo-url) REPO_URL="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
-    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env" ;;
+    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env" ;;
     --env-file) ENV_FILE="$2" ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
-    -h|--help|-H)
-      cat <<'USAGE'
-Usage: scripts/install.sh [options]
-
-Options:
-  --dry-run              Print actions without applying changes
-  --non-interactive      Do not prompt; use environment/default values
-  --install-dir DIR      Installation directory
-  --repo-url URL         Git repository URL
-  --bin-dir DIR          Directory for dsproxy wrapper
-  --config-dir DIR       Config directory
-  --env-file FILE        Env file path
-  --no-codex-profile     Skip Codex profile installation
-  -h, -H, --help         Show help
-
-Interactive prompts:
-  Stable proxy port
-  Thinking proxy port
-  DeepSeek API key, hidden input
-
-The API key is written to a chmod 600 env file. Input is hidden, but this is
-not cryptographic encryption.
-USAGE
-      exit 0
-      ;;
+    --no-codex-wrapper) INSTALL_CODEX_WRAPPER=0 ;;
+    --uninstall) UNINSTALL=1 ;;
+    --remove-files) REMOVE_FILES=1 ;;
+    -h|--help|-H) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -79,6 +99,24 @@ read_from_tty() {
   printf '%s\n' "$value"
 }
 
+read_yes_no() {
+  local prompt="$1"
+  local default_value="${2:-Y}"
+  local value=""
+
+  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ]; then
+    printf '%s\n' "$default_value"
+    return 0
+  fi
+
+  printf "%s " "$prompt" > /dev/tty
+  IFS= read -r value < /dev/tty || true
+  if [ -z "$value" ]; then
+    value="$default_value"
+  fi
+  printf '%s\n' "$value"
+}
+
 read_secret_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
@@ -104,6 +142,25 @@ read_secret_from_tty() {
     value="$default_value"
   fi
   printf '%s\n' "$value"
+}
+
+find_real_codex() {
+  local wrapper_path="$1"
+  local candidate=""
+
+  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ] && [ -x "$CODEEPSEEDEX_REAL_CODEX" ]; then
+    printf '%s\n' "$CODEEPSEEDEX_REAL_CODEX"
+    return 0
+  fi
+
+  while IFS= read -r candidate; do
+    if [ "$candidate" != "$wrapper_path" ] && [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(type -P -a codex 2>/dev/null || true)
+
+  return 1
 }
 
 write_env_file() {
@@ -138,12 +195,167 @@ write_env_file() {
   chmod 600 "$ENV_FILE"
 }
 
-echo "CoDeepSeedeX installer"
-echo "INSTALL_DIR=$INSTALL_DIR"
-echo "REPO_URL=$REPO_URL"
-echo "BIN_DIR=$BIN_DIR"
-echo "ENV_FILE=$ENV_FILE"
-echo "DRY_RUN=$DRY_RUN"
+write_dsproxy_wrapper() {
+  run mkdir -p "$BIN_DIR"
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "+ write $BIN_DIR/dsproxy"
+    return 0
+  fi
+
+  cat > "$BIN_DIR/dsproxy" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
+if [ -f "\$ENV_FILE" ]; then
+  source "\$ENV_FILE"
+fi
+exec "$INSTALL_DIR/.venv/bin/dsproxy" "\$@"
+EOF
+  chmod +x "$BIN_DIR/dsproxy"
+}
+
+write_codex_wrapper() {
+  local stable_port="$1"
+  local thinking_port="$2"
+  local wrapper_path="$BIN_DIR/codex"
+  local real_codex=""
+  local backup_path=""
+
+  if [ "$INSTALL_CODEX_WRAPPER" != "1" ]; then
+    echo "codex wrapper skipped"
+    return 0
+  fi
+
+  real_codex="$(find_real_codex "$wrapper_path" || true)"
+
+  if [ -e "$wrapper_path" ] && ! grep -q "CoDeepSeedeX codex wrapper" "$wrapper_path" 2>/dev/null; then
+    backup_path="$wrapper_path.codeepseedex.bak.$(date +%Y%m%d_%H%M%S)"
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "+ backup existing $wrapper_path to $backup_path"
+    else
+      mv "$wrapper_path" "$backup_path"
+      if [ -z "$real_codex" ]; then
+        real_codex="$backup_path"
+      fi
+    fi
+  fi
+
+  if [ -z "$real_codex" ]; then
+    echo "WARNING: real codex command not found. Skipping codex wrapper." >&2
+    return 0
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "+ write $wrapper_path"
+    return 0
+  fi
+
+  cat > "$wrapper_path" <<EOF
+#!/usr/bin/env bash
+# CoDeepSeedeX codex wrapper
+set -euo pipefail
+
+REAL_CODEX="$real_codex"
+DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"
+ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
+
+if [ -f "\$ENV_FILE" ]; then
+  source "\$ENV_FILE"
+fi
+
+profile=""
+prev=""
+for arg in "\$@"; do
+  if [ "\$prev" = "--profile" ] || [ "\$prev" = "-p" ]; then
+    profile="\$arg"
+    break
+  fi
+  case "\$arg" in
+    --profile=*) profile="\${arg#--profile=}"; break ;;
+    -p*) profile="\${arg#-p}"; break ;;
+  esac
+  prev="\$arg"
+done
+
+case "\$profile" in
+  deepseek)
+    "\$DSPROXY" start >/dev/null
+    ;;
+  deepseek-thinking)
+    "\$DSPROXY" start --thinking >/dev/null
+    ;;
+esac
+
+exec "\$REAL_CODEX" "\$@"
+EOF
+  chmod +x "$wrapper_path"
+
+  cat > "$MANIFEST_FILE" <<EOF
+CODEX_WRAPPER_PATH="$wrapper_path"
+CODEX_WRAPPER_BACKUP="$backup_path"
+REAL_CODEX="$real_codex"
+ENV_FILE="$ENV_FILE"
+INSTALL_DIR="$INSTALL_DIR"
+BIN_DIR="$BIN_DIR"
+STABLE_PORT="$stable_port"
+THINKING_PORT="$thinking_port"
+EOF
+  chmod 600 "$MANIFEST_FILE" 2>/dev/null || true
+}
+
+uninstall() {
+  logo
+  echo "Uninstalling CoDeepSeedeX integration..."
+
+  local wrapper_path="$BIN_DIR/codex"
+  local backup_path=""
+
+  if [ -f "$MANIFEST_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$MANIFEST_FILE" || true
+    wrapper_path="${CODEX_WRAPPER_PATH:-$wrapper_path}"
+    backup_path="${CODEX_WRAPPER_BACKUP:-}"
+  fi
+
+  if [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then
+    run "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek --no-backup || true
+    run "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek-thinking --no-backup || true
+  fi
+
+  if [ -f "$wrapper_path" ] && grep -q "CoDeepSeedeX codex wrapper" "$wrapper_path" 2>/dev/null; then
+    run rm -f "$wrapper_path"
+    if [ -n "$backup_path" ] && [ -f "$backup_path" ]; then
+      run mv "$backup_path" "$wrapper_path"
+    fi
+  fi
+
+  if [ -f "$BIN_DIR/dsproxy" ] && grep -q "$INSTALL_DIR/.venv/bin/dsproxy" "$BIN_DIR/dsproxy" 2>/dev/null; then
+    run rm -f "$BIN_DIR/dsproxy"
+  fi
+
+  if [ "$REMOVE_FILES" = "1" ]; then
+    run rm -rf "$INSTALL_DIR"
+    run rm -f "$ENV_FILE"
+    run rm -f "$MANIFEST_FILE"
+  fi
+
+  echo "Uninstall completed."
+}
+
+if [ "$UNINSTALL" = "1" ]; then
+  uninstall
+  exit 0
+fi
+
+logo
+
+echo "This installer will:"
+echo "  1. install CoDeepSeedeX into $INSTALL_DIR"
+echo "  2. create a dsproxy command"
+echo "  3. create Codex profiles: deepseek and deepseek-thinking"
+echo "  4. optionally install a safe codex wrapper for these two profiles only"
+echo "  5. save your DeepSeek API key in a chmod 600 local env file"
+echo
 
 python3 - <<'PY'
 import sys
@@ -162,6 +374,12 @@ DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
 STABLE_PORT="$(read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT")"
 THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
 API_KEY="$(read_secret_from_tty "DeepSeek API key" "${DEEPSEEK_API_KEY:-}")"
+WRAPPER_CHOICE="$(read_yes_no "Install codex wrapper for deepseek/deepseek-thinking profiles? [Y/n] (Recommended):" "Y")"
+
+case "$WRAPPER_CHOICE" in
+  n|N|no|NO|No) INSTALL_CODEX_WRAPPER=0 ;;
+  *) INSTALL_CODEX_WRAPPER=1 ;;
+esac
 
 if [ -z "$API_KEY" ]; then
   echo "WARNING: DEEPSEEK_API_KEY is empty. You must set it before using the proxy." >&2
@@ -179,29 +397,27 @@ run "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip
 run "$INSTALL_DIR/.venv/bin/python" -m pip install -e "$INSTALL_DIR"
 
 write_env_file "$STABLE_PORT" "$THINKING_PORT" "$API_KEY"
-
-run mkdir -p "$BIN_DIR"
-if [ "$DRY_RUN" = "0" ]; then
-  cat > "$BIN_DIR/dsproxy" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
-if [ -f "\$ENV_FILE" ]; then
-  source "\$ENV_FILE"
-fi
-exec "$INSTALL_DIR/.venv/bin/dsproxy" "\$@"
-EOF
-  chmod +x "$BIN_DIR/dsproxy"
-else
-  echo "+ write $BIN_DIR/dsproxy"
-fi
+write_dsproxy_wrapper
 
 run "$INSTALL_DIR/.venv/bin/dsproxy" config init
 
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
   run "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
-    --base-url "http://127.0.0.1:${THINKING_PORT}/v1"
+    --name deepseek \
+    --provider-name deepseek-proxy \
+    --base-url "http://127.0.0.1:${STABLE_PORT}/v1" \
+    --model deepseek-v4-flash \
+    --reasoning-effort medium
+
+  run "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
+    --name deepseek-thinking \
+    --provider-name deepseek-thinking-proxy \
+    --base-url "http://127.0.0.1:${THINKING_PORT}/v1" \
+    --model deepseek-v4-pro \
+    --reasoning-effort xhigh
 fi
+
+write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"
 
 echo
 echo "Installed."
@@ -209,18 +425,24 @@ echo
 echo "If $BIN_DIR is not on PATH, add it first:"
 echo "  export PATH=\"$BIN_DIR:\$PATH\""
 echo
-echo "Basic commands:"
-echo "  dsproxy --version"
+echo "Use Codex with CoDeepSeedeX:"
+echo "  codex --profile deepseek"
+echo "  codex --profile deepseek-thinking"
+echo
+echo "Inside Codex TUI:"
+echo "  /status      show session/runtime status"
+echo "  /model       switch model or reasoning effort"
+echo "  /plan        plan before implementation"
+echo "  check balance"
+echo
+echo "Shell commands:"
 echo "  dsproxy balance"
 echo "  dsproxy config show"
 echo "  dsproxy config set-model deepseek-v4-flash"
 echo "  dsproxy config set-effort high"
-echo "  dsproxy doctor --thinking --allow-down"
-echo "  dsproxy start --thinking"
-echo "  codex --profile deepseek-thinking"
 echo
 echo "Continue a previous Codex conversation:"
 echo "  codex --profile deepseek-thinking resume"
 echo
-echo "Stop the proxy:"
-echo "  dsproxy stop --thinking"
+echo "Uninstall integration:"
+echo "  bash scripts/install.sh --uninstall"

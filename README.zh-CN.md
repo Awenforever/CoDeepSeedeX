@@ -1,42 +1,75 @@
 # CoDeepSeedeX
 
-[English](README.md) | [中文文档](README.zh-CN.md)
+[English](README.md) | 中文说明
 
-面向Codex和DeepSeek模型的本地OpenAI Responses兼容代理。
+CoDeepSeedeX是一个本地代理，用来让Codex通过DeepSeek模型运行。它不会替换你的Codex，只会新增`deepseek`和`deepseek-thinking`两个入口。
 
-## 一行安装
+## ⚡ 一行安装
 
     curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
 
-安装向导会询问stable proxy端口、thinking proxy端口和DeepSeek API key。API key输入时不回显，并写入权限为chmod 600的本地env文件。这不是严格意义上的加密存储。
+安装向导会完成这些事：
+
+- 把CoDeepSeedeX安装到`~/.local/share/deepseek-responses-proxy`
+- 创建`dsproxy`命令
+- 创建两个Codex配置：`deepseek`和`deepseek-thinking`
+- 询问是否安装安全的`codex`包装器，只接管这两个profile
+- 询问stable/thinking端口和DeepSeek API key
+- 把API key写入权限为`chmod 600`的本地env文件
+
+API key输入时不会回显，也不会打印到终端。这是基于本地文件权限的保存方式，不是严格意义上的加密存储。
+
+## 🚀 快速开始
 
 安装完成后：
 
-    dsproxy start --thinking
+    codex --profile deepseek
     codex --profile deepseek-thinking
+
+如果你接受了推荐的codex wrapper，上面两个命令会在进入Codex前自动启动对应的本地proxy。
 
 继续已有Codex对话：
 
     codex --profile deepseek-thinking resume
 
-## 这个项目做什么
+## 🧠 deepseek和deepseek-thinking有什么区别？
 
-CoDeepSeedeX是一个本地实验性OpenAI Responses兼容代理，用于让Codex通过DeepSeek上游模型运行。
+| Profile | 本地端口 | 模式 | 适合场景 |
+|---|---:|---|---|
+| `deepseek` | 8000 | stable proxy | 快速问答、轻量修改、低成本任务 |
+| `deepseek-thinking` | 8001 | thinking proxy | 长任务、多步骤代码修改、工具调用较多的agent流程 |
 
-它提供：
+两者都通过本地CoDeepSeedeX proxy访问DeepSeek。区别主要在于连接的本地端口和运行模式。
 
-- 面向Codex的Responses兼容本地API
-- DeepSeek ChatCompletions上游桥接
-- Codex工具调用归一化与协议强化
-- Codex工具默认转发
-- 上下文裁剪与持久本地压缩
-- agent loop活性恢复
-- 轻量LLM活性判定
-- 内部调用usage归因
-- 自适应压缩预算策略
-- dsproxy统一CLI
+## 🧭 Codex TUI内置命令
 
-## 日常shell命令
+进入Codex后可以直接用这些slash commands：
+
+    /status
+
+查看当前会话和运行状态。
+
+    /model
+
+在Codex内部切换模型或推理强度。
+
+    /plan
+
+先规划任务，再进入实现。
+
+你也可以直接发送自然语言消息，例如：
+
+    check balance
+
+或者：
+
+    检查余额
+
+Codex通常会调用本地工具执行`dsproxy balance`。如果你想要最稳定的结果，可以直接在shell中运行：
+
+    dsproxy balance
+
+## 🔧 常用shell操作
 
 检查proxy状态：
 
@@ -46,7 +79,7 @@ CoDeepSeedeX是一个本地实验性OpenAI Responses兼容代理，用于让Code
 
     dsproxy balance
 
-查看本地proxy配置：
+查看本地配置：
 
     dsproxy config show
 
@@ -61,46 +94,27 @@ CoDeepSeedeX是一个本地实验性OpenAI Responses兼容代理，用于让Code
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
 
-启动或停止thinking proxy：
-
-    dsproxy start --thinking
-    dsproxy stop --thinking
-
-查看用量统计：
+查看用量：
 
     dsproxy usage --thinking --summary
-    dsproxy usage --thinking --summary --purpose primary
-    dsproxy usage --thinking --summary --purpose tool_bridge
-    dsproxy usage --thinking --summary --purpose compaction
-    dsproxy usage --thinking --summary --purpose liveness_judge
 
-查看完整CLI帮助：
+查看完整帮助：
 
     dsproxy -H
 
-## Codex TUI内置命令
+## 🧹 卸载和还原
 
-进入Codex：
+移除CoDeepSeedeX写入的Codex profiles和wrapper：
 
-    codex --profile deepseek-thinking
+    bash scripts/install.sh --uninstall
 
-进入后，也可以使用Codex TUI内置的slash commands。
+如果安装器曾经替换过安装目录中的`codex`命令，它会记录备份路径，并在卸载时尽量恢复原文件。
 
-查看当前会话和运行状态：
+默认卸载只移除wrapper和Codex配置，不删除源码安装目录和本地env文件。如果也要删除这些文件：
 
-    /status
+    bash scripts/install.sh --uninstall --remove-files
 
-在Codex内部切换模型或推理强度：
-
-    /model
-
-进入或使用plan模式，在执行前先做任务规划：
-
-    /plan
-
-这些slash commands由Codex TUI处理。dsproxy负责提供本地模型端点和配置辅助，但/status、/model、/plan本身属于Codex侧控制命令。
-
-## 从源码安装
+## 📦 从源码安装
 
     git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
     cd ~/deepseek-responses-proxy
@@ -110,29 +124,16 @@ CoDeepSeedeX是一个本地实验性OpenAI Responses兼容代理，用于让Code
 初始化：
 
     .venv/bin/dsproxy config init
-    .venv/bin/dsproxy install-codex-profile
+    .venv/bin/dsproxy install-codex-profile --name deepseek --base-url http://127.0.0.1:8000/v1
+    .venv/bin/dsproxy install-codex-profile --name deepseek-thinking --base-url http://127.0.0.1:8001/v1
 
-启动：
+## 🔐 安全说明
 
-    export DEEPSEEK_API_KEY="..."
-    .venv/bin/dsproxy start --thinking
-    .venv/bin/dsproxy doctor --thinking
+CoDeepSeedeX只建议在本地使用，不要暴露到公网。
 
-## 安全提示
+Codex可能根据你的配置调用工具、修改文件、执行命令或访问MCP服务器。
 
-仅建议监听本地地址，不要暴露到公网。
-
-Codex可能根据配置调用工具、修改文件、执行命令和访问MCP服务器。
-
-请阅读：
+建议先阅读：
 
 - docs/security.zh-CN.md
 - docs/security.en.md
-
-## 当前状态
-
-技术预览版。建议公开发布标记：
-
-    v0.1.0-alpha
-
-不要将其描述为生产稳定版，也不要宣称完全替代原生Codex。

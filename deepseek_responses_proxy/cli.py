@@ -757,9 +757,17 @@ def _config(args: argparse.Namespace) -> int:
         values["DEEPSEEK_PROXY_MODEL"] = args.model
         values.setdefault("DEEPSEEK_PROXY_FORCE_MODEL", "1")
         _write_env_exports(env_file, values)
+
         codex_path = Path(args.codex_config).expanduser() if args.codex_config else default_codex_config_path()
         patched = _patch_codex_profile_value(codex_path, args.profile, "model", args.model)
-        print(json.dumps({"env_file": str(env_file), "model": args.model, "codex_config": str(codex_path), "codex_profile": args.profile, "codex_profile_patched": patched}, ensure_ascii=False, indent=2))
+
+        print(json.dumps({
+            "env_file": str(env_file),
+            "model": args.model,
+            "codex_config": str(codex_path),
+            "codex_profile": args.profile,
+            "codex_profile_patched": patched,
+        }, ensure_ascii=False, indent=2))
         return 0
 
     if args.config_command == "set-effort":
@@ -770,26 +778,46 @@ def _config(args: argparse.Namespace) -> int:
         values = _read_env_exports(env_file)
         values["DEEPSEEK_REASONING_EFFORT"] = args.effort
         _write_env_exports(env_file, values)
+
         codex_path = Path(args.codex_config).expanduser() if args.codex_config else default_codex_config_path()
         patched = _patch_codex_profile_value(codex_path, args.profile, "model_reasoning_effort", args.effort)
-        print(json.dumps({"env_file": str(env_file), "effort": args.effort, "codex_config": str(codex_path), "codex_profile": args.profile, "codex_profile_patched": patched}, ensure_ascii=False, indent=2))
+
+        print(json.dumps({
+            "env_file": str(env_file),
+            "effort": args.effort,
+            "codex_config": str(codex_path),
+            "codex_profile": args.profile,
+            "codex_profile_patched": patched,
+        }, ensure_ascii=False, indent=2))
         return 0
 
     raise SystemExit("unknown config command")
+
+
 
 def _balance(args: argparse.Namespace) -> int:
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
         env_values = _read_env_exports(Path(args.env_file).expanduser() if args.env_file else default_env_file_path())
         api_key = env_values.get("DEEPSEEK_API_KEY", "")
+
     if not api_key:
-        print(json.dumps({"status": "error", "error": "missing_deepseek_api_key", "hint": "Set DEEPSEEK_API_KEY or write the local env file."}, ensure_ascii=False, indent=2))
+        print(json.dumps({
+            "status": "error",
+            "error": "missing_deepseek_api_key",
+            "hint": "Set DEEPSEEK_API_KEY or write the local env file.",
+        }, ensure_ascii=False, indent=2))
         return 1
+
     request = urllib.request.Request(
         args.url,
-        headers={"Accept": "application/json", "Authorization": f"Bearer {api_key}"},
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
         method="GET",
     )
+
     try:
         with urllib.request.urlopen(request, timeout=args.timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
@@ -801,8 +829,10 @@ def _balance(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(json.dumps({"status": "error", "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False, indent=2))
         return 1
+
     print(json.dumps({"status": "ok", "url": args.url, "balance": data}, ensure_ascii=False, indent=2))
     return 0
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dsproxy", description="DeepSeek Responses Proxy command line tools")
