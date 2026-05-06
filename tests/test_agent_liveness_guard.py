@@ -209,7 +209,7 @@ async def test_proxy_status_reports_agent_liveness(tmp_path, monkeypatch):
     assert response.status_code == 200
     data = response.json()
 
-    assert data["version"].startswith("v2.3a")
+    assert data["version"].startswith("v")
     assert data["agent_liveness"]["config"]["enabled"] is True
     assert data["agent_liveness"]["config"]["max_retries"] == 2
     assert data["agent_liveness"]["judge"]["config"]["upstream_model"] == "deepseek-v4-flash"

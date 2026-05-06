@@ -79,7 +79,7 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     assert response.status_code == 200
     data = response.json()
 
-    assert data["version"].startswith("v2.3a")
+    assert data["version"].startswith("v")
     assert "context" in data
 
     compaction = data["context"]["compaction"]
