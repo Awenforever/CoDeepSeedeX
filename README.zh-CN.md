@@ -2,6 +2,12 @@
 
 [English](README.md) | 中文说明
 
+<!-- CODEEPSEEDEX_LOGO_START -->
+<p align="center">
+  <img src="docs/logo.png" alt="CoDeepSeedeX logo" width="220">
+</p>
+<!-- CODEEPSEEDEX_LOGO_END -->
+
 CoDeepSeedeX是一个本地代理，用来让Codex通过DeepSeek模型运行。它不会替换你的Codex，只会新增`deepseek`和`deepseek-thinking`两个入口。
 
 ## ✅ 安装前准备

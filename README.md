@@ -2,6 +2,12 @@
 
 [中文说明](README.zh-CN.md) | English
 
+<!-- CODEEPSEEDEX_LOGO_START -->
+<p align="center">
+  <img src="docs/logo.png" alt="CoDeepSeedeX logo" width="220">
+</p>
+<!-- CODEEPSEEDEX_LOGO_END -->
+
 Local OpenAI Responses-compatible proxy for running Codex with DeepSeek models.
 
 ## ✅ Prerequisites
