@@ -46,43 +46,49 @@ Continue a previous Codex conversation:
 
 ## 🧠 deepseek vs deepseek-thinking
 
-| Profile | Local port | Mode | Recommended use |
-|---|---:|---|---|
-| `deepseek` | 8000 | stable proxy | quick edits, lightweight tasks, lower-cost use |
-| `deepseek-thinking` | 8001 | thinking proxy | long tasks, multi-step coding, tool-heavy agent loops |
+The difference is simple:
 
-Both profiles use the local CoDeepSeedeX proxy. The difference is the local endpoint and runtime mode.
+- `deepseek` sends Codex requests to DeepSeek with thinking disabled.
+- `deepseek-thinking` sends Codex requests to DeepSeek with thinking enabled.
+
+They are two Codex profiles that point to two local CoDeepSeedeX proxy modes.
+
+| Profile | Local port | DeepSeek mode | Recommended use |
+|---|---:|---|---|
+| `deepseek` | 8000 | non-thinking | quick edits, lightweight tasks, lower-cost use |
+| `deepseek-thinking` | 8001 | thinking | long tasks, multi-step coding, tool-heavy agent loops |
+
+In other words, `deepseek-thinking` does not mean a different Codex. It means CoDeepSeedeX asks the upstream DeepSeek model to run in thinking mode.
 
 ## 🤖 Supported DeepSeek models
 
 CoDeepSeedeX currently targets the official DeepSeek V4 API model names.
 
-| Upstream model | Thinking mode | Non-thinking mode | Recommended CoDeepSeedeX use |
+The same DeepSeek V4 model can be used in two modes:
+
+- non-thinking mode: DeepSeek returns the answer directly.
+- thinking mode: DeepSeek performs an explicit reasoning phase before returning the answer.
+
+| Upstream model | non-thinking mode | thinking mode | Recommended CoDeepSeedeX use |
 |---|---|---|---|
 | `deepseek-v4-pro` | Supported | Supported | Best default for `deepseek-thinking`, long coding tasks, stronger reasoning |
 | `deepseek-v4-flash` | Supported | Supported | Best default for `deepseek`, faster and lower-cost tasks |
 
 Legacy compatibility names:
 
-| Legacy name | Current mapping | Status |
+| Legacy name | Meaning in practice | Status |
 |---|---|---|
-| `deepseek-chat` | non-thinking mode of `deepseek-v4-flash` | compatibility name, scheduled for deprecation |
-| `deepseek-reasoner` | thinking mode of `deepseek-v4-flash` | compatibility name, scheduled for deprecation |
+| `deepseek-chat` | `deepseek-v4-flash` with thinking disabled | compatibility name |
+| `deepseek-reasoner` | `deepseek-v4-flash` with thinking enabled | compatibility name |
 
 CoDeepSeedeX defaults:
 
-| Codex profile | Default upstream model | Default mode |
+| Codex profile | Default upstream model | DeepSeek mode |
 |---|---|---|
-| `deepseek` | `deepseek-v4-flash` | stable / lightweight mode |
-| `deepseek-thinking` | `deepseek-v4-pro` | thinking-oriented mode |
+| `deepseek` | `deepseek-v4-flash` | non-thinking |
+| `deepseek-thinking` | `deepseek-v4-pro` | thinking |
 
-Notes:
-
-- DeepSeek V4 models support both thinking and non-thinking modes.
-- `deepseek-thinking` is the recommended profile for long agentic coding tasks.
-- `deepseek` is the recommended profile for quick edits, lighter usage and lower cost.
-- Use `dsproxy config set-model deepseek-v4-pro` or `dsproxy config set-model deepseek-v4-flash` to switch the upstream model.
-- Use `/model` inside Codex TUI to change Codex-side model or reasoning settings when available.
+Use `dsproxy config set-model deepseek-v4-pro` or `dsproxy config set-model deepseek-v4-flash` to switch the upstream model. Use `/model` inside Codex TUI to change Codex-side model or reasoning settings when available.
 
 ## 🧭 Codex TUI commands
 
