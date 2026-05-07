@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import shlex
 import socket
@@ -592,37 +593,222 @@ def _start_proxy(args: argparse.Namespace) -> int:
     return 1
 
 
+
+def _pid_alive(pid: int | None) -> bool:
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError):
+        return False
+
+
+def _cmdline_for_pid(pid: int) -> str:
+    proc_cmdline = Path(f"/proc/{pid}/cmdline")
+    try:
+        if proc_cmdline.exists():
+            raw = proc_cmdline.read_bytes()
+            return raw.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+    except OSError:
+        pass
+
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "args="],
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _pid_looks_like_proxy(pid: int) -> bool:
+    cmdline = _cmdline_for_pid(pid)
+    markers = [
+        "deepseek_responses_proxy.app:app",
+        "deepseek_responses_proxy",
+        "deepseek-responses-proxy",
+    ]
+    return any(marker in cmdline for marker in markers)
+
+
+def _listen_pids_for_local_port(port: int) -> list[int]:
+    try:
+        result = subprocess.run(
+            ["ss", "-ltnp"],
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return []
+
+    pids: set[int] = set()
+    for line in result.stdout.splitlines():
+        if f":{port}" not in line:
+            continue
+        if "127.0.0.1:" not in line and "[::1]:" not in line and "localhost:" not in line:
+            continue
+        for match in re.finditer(r"pid=(\d+)", line):
+            try:
+                pids.add(int(match.group(1)))
+            except ValueError:
+                pass
+    return sorted(pids)
+
+
+def _port_status_looks_like_proxy(port: int) -> bool:
+    status, data, _error = _http_json(f"http://{DEFAULT_HOST}:{port}/v1/proxy/status", timeout=1.0)
+    if status != 200 or not isinstance(data, dict):
+        status, data, _error = _healthz_for_port(port, timeout=1.0)
+        if status != 200 or not isinstance(data, dict):
+            return False
+
+    version = data.get("version")
+    if not isinstance(version, str) or not version.startswith("v"):
+        return False
+
+    proxy_markers = {
+        "model_default",
+        "thinking",
+        "thinking_enabled",
+        "tool_bridge",
+        "store",
+        "deepseek_base_url",
+        "agent_liveness",
+        "context",
+    }
+    if any(key in data for key in proxy_markers):
+        return True
+
+    return data.get("status") == "ok"
+
+
+def _terminate_pid(pid: int, *, label: str) -> bool:
+    if not _pid_alive(pid):
+        return False
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+
+    for _ in range(30):
+        if not _pid_alive(pid):
+            print(f"stopped pid={pid} {label}".rstrip())
+            return True
+        time.sleep(0.1)
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+    for _ in range(10):
+        if not _pid_alive(pid):
+            print(f"killed pid={pid} {label}".rstrip())
+            return True
+        time.sleep(0.1)
+
+    return False
+
+
+def _default_stop_port(args: argparse.Namespace) -> int:
+    if getattr(args, "port", None):
+        return int(args.port)
+
+    thinking = bool(getattr(args, "thinking", False))
+    env_name = "DEEPSEEK_PROXY_THINKING_PORT" if thinking else "DEEPSEEK_PROXY_PORT"
+    env_value = os.environ.get(env_name)
+
+    if not env_value:
+        try:
+            env_value = _read_env_exports(default_env_file_path()).get(env_name)
+        except Exception:
+            env_value = None
+
+    if env_value:
+        try:
+            return int(env_value)
+        except ValueError:
+            pass
+
+    return 8001 if thinking else 8000
+
+
+def _stop_by_port_discovery(port: int) -> bool:
+    if not _port_status_looks_like_proxy(port):
+        return False
+
+    pids = _listen_pids_for_local_port(port)
+    if not pids:
+        print(f"proxy_running_but_pid_not_found port={port}")
+        return False
+
+    stopped_any = False
+    refused: list[int] = []
+    for pid in pids:
+        if _pid_looks_like_proxy(pid):
+            stopped_any = _terminate_pid(pid, label=f"port={port} source=port_discovery") or stopped_any
+        else:
+            refused.append(pid)
+
+    if refused:
+        refused_text = ",".join(str(pid) for pid in refused)
+        print(f"refused_to_kill_non_proxy_service port={port} pids={refused_text}")
+
+    return stopped_any
+
 def _stop_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
+    port = _default_stop_port(args)
 
-    pid = _read_pid(pid_path)
-    if not pid:
-        print(f"not_running pid_file={pid_path}")
+    stopped_any = False
+    explicit_port = getattr(args, "port", None) is not None
+
+    # If the user explicitly gives --port, respect the port first. Do not kill a
+    # stale/default pid-file process that may belong to another instance.
+    if explicit_port:
+        stopped_any = _stop_by_port_discovery(port)
+        if not stopped_any:
+            print(f"not_running port={port}")
         return 0
 
-    if _pid_alive(pid):
+    if pid_path.exists():
         try:
-            os.kill(pid, signal.SIGTERM)
+            pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except Exception:
+            pid = None
+
+        if pid is not None and _pid_alive(pid):
+            if _pid_looks_like_proxy(pid):
+                stopped_any = _terminate_pid(pid, label=f"pid_file={pid_path}") or stopped_any
+            else:
+                print(f"refused_to_kill_non_proxy_pid_file pid={pid} pid_file={pid_path}")
+        else:
+            print(f"stale_pid_file pid_file={pid_path}")
+
+        try:
+            pid_path.unlink()
         except OSError:
             pass
-        for _ in range(20):
-            if not _pid_alive(pid):
-                break
-            time.sleep(0.1)
 
-    if _pid_alive(pid):
-        print(f"warning=still_running pid={pid}")
+    # Fallback: if no valid pid file existed, or if the port still responds as
+    # CoDeepSeedeX, discover the listener by port and stop it safely.
+    if _port_status_looks_like_proxy(port):
+        stopped_any = _stop_by_port_discovery(port) or stopped_any
 
-    try:
-        pid_path.unlink()
-    except FileNotFoundError:
-        pass
+    if not stopped_any:
+        print(f"not_running pid_file={pid_path} port={port}")
 
-    print(f"stopped pid={pid}")
     return 0
-
 
 def _status(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
