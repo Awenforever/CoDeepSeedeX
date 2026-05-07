@@ -957,7 +957,7 @@ def _config(args: argparse.Namespace) -> int:
         return 0
 
     if args.config_command == "set-effort":
-        allowed = {"low", "medium", "high", "xhigh"}
+        allowed = {"low", "medium", "high", "xhigh", "max"}
         if args.effort not in allowed:
             print(json.dumps({"error": "invalid_effort", "allowed": sorted(allowed)}, ensure_ascii=False, indent=2))
             return 2

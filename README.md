@@ -144,6 +144,7 @@ Change Codex reasoning effort:
     dsproxy config set-effort medium
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
+    dsproxy config set-effort max
 
 View usage:
 
