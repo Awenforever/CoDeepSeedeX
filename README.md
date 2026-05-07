@@ -4,6 +4,18 @@
 
 Local OpenAI Responses-compatible proxy for running Codex with DeepSeek models.
 
+## ✅ Prerequisites
+
+Before installing CoDeepSeedeX, make sure the OpenAI Codex CLI is already installed and the `codex` command is available on your `PATH`.
+
+    codex --version
+
+If Codex CLI is not installed yet, install it first:
+
+    npm install -g @openai/codex
+
+Then run the CoDeepSeedeX installer.
+
 ## ⚡ One-line install
 
     curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash

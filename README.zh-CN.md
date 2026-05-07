@@ -4,6 +4,18 @@
 
 CoDeepSeedeX是一个本地代理，用来让Codex通过DeepSeek模型运行。它不会替换你的Codex，只会新增`deepseek`和`deepseek-thinking`两个入口。
 
+## ✅ 安装前准备
+
+安装CoDeepSeedeX之前，请先确认你已经安装OpenAI Codex CLI，并且终端里可以直接运行`codex`命令。
+
+    codex --version
+
+如果还没有安装Codex CLI，请先安装：
+
+    npm install -g @openai/codex
+
+然后再运行CoDeepSeedeX的一行安装命令。
+
 ## ⚡ 一行安装
 
     curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
