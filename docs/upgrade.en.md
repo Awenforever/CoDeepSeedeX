@@ -7,21 +7,21 @@ CoDeepSeedeX supports two compatible upgrade paths.
 Use this when the installed version already includes the upgrade command:
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path
+dsproxy upgrade
 ```
 
 Dry run:
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --dry-run
+dsproxy upgrade --dry-run
 ```
 
 Useful options:
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --skip-profile
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --no-restart
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --allow-dirty
+dsproxy upgrade --skip-profile
+dsproxy upgrade --no-restart
+dsproxy upgrade --allow-dirty
 ```
 
 The command:

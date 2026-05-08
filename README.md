@@ -37,6 +37,64 @@ The installer will:
 
 The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
 
+## ⬆️ Upgrade
+
+CoDeepSeedeX supports two compatible upgrade paths.
+
+### Path A: `dsproxy upgrade`
+
+Use this when your installed version already includes the `upgrade` command:
+
+```bash
+dsproxy upgrade
+```
+
+Preview first:
+
+```bash
+dsproxy upgrade --dry-run
+```
+
+By default, `dsproxy upgrade` updates the git checkout to the latest `master` from `origin`, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, and restarts the local proxies.
+
+If you intentionally need a fixed release or branch, pass an explicit ref:
+
+```bash
+dsproxy upgrade --tag <tag-or-branch>
+```
+
+### Path B: rerun the one-line installer
+
+Use this when upgrading from older releases such as `v0.1.0-alpha`, or when `dsproxy upgrade` is not available:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
+```
+
+This path is intentionally compatible with Path A. The installer tracks the current `master` one-line installer, refreshes the installation and profiles, and preserves local env and Codex configuration by default.
+
+Verify after either path:
+
+```bash
+dsproxy --version
+dsproxy doctor --thinking
+curl -sS http://127.0.0.1:8000/healthz
+curl -sS http://127.0.0.1:8001/healthz
+```
+
+## 🔌 MCP behavior in v2.6a+
+
+CoDeepSeedeX treats Codex MCP configuration as the default trust boundary.
+
+- Default MCP policy: `codex`
+- Default MCP backend: `stdio`
+- Proxy-side MCP allowlists are not required by default
+- Write-capable MCP tools are not rejected by default
+- The target server must exist in `~/.codex/config.toml`
+- The target tool must be exposed by the server's runtime `tools/list`
+- Currently supported MCP transport: stdio `command` + `args`
+- Not yet supported: HTTP/SSE/remote MCP transports
+
 ## 🚀 Quick start
 
 After installation:
@@ -189,55 +247,3 @@ Read:
 
 - docs/security.en.md
 - docs/security.zh-CN.md
-
-## ⬆️ Upgrade
-
-CoDeepSeedeX supports two compatible upgrade paths.
-
-### Path A: `dsproxy upgrade`
-
-Use this when your installed version already includes the `upgrade` command:
-
-```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path
-```
-
-Preview first:
-
-```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --dry-run
-```
-
-This path is an in-place upgrade for git checkout installations. It backs up the local env file and Codex config when present, fetches tags, checks out the target tag, reinstalls the package in editable mode, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, and restarts the local proxies unless told otherwise.
-
-### Path B: rerun the one-line installer
-
-Use this when upgrading from older releases such as `v0.1.0-alpha`, or when `dsproxy upgrade` is not available:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
-```
-
-This path is intentionally compatible with Path A. The installer refreshes the installation and profiles while preserving local env and Codex configuration by default. Do not use uninstall `--remove-files` unless you intentionally want to delete local data.
-
-Verify after either path:
-
-```bash
-dsproxy --version
-dsproxy doctor --thinking
-curl -sS http://127.0.0.1:8000/healthz
-curl -sS http://127.0.0.1:8001/healthz
-```
-
-## 🔌 MCP behavior in v2.6a+
-
-CoDeepSeedeX now treats Codex MCP configuration as the default trust boundary.
-
-- Default MCP policy: `codex`
-- Default MCP backend: `stdio`
-- Proxy-side MCP allowlists are not required by default
-- Write-capable MCP tools are not rejected by default
-- The target server must exist in `~/.codex/config.toml`
-- The target tool must be exposed by the server's runtime `tools/list`
-- Currently supported MCP transport: stdio `command` + `args`
-- Not yet supported: HTTP/SSE/remote MCP transports
