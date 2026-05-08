@@ -153,7 +153,7 @@ approval_mode = "approve"
     assert result["ok"] is True
     assert result["tool"] == "mcp__fake__safe_tool"
     assert result["mcp"]["server"] == "fake"
-    assert result["mcp"]["permission"] == "readonly"
+    assert result["mcp"]["permission"] == "codex"
     assert result["result"]["structuredContent"] == {
         "name": "safe_tool",
         "arguments": {"q": "hello"},
@@ -251,14 +251,15 @@ approval_mode = "approve"
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_stdio_backend_keeps_write_tools_denied(tmp_path, monkeypatch):
     config = tmp_path / "config.toml"
     config.write_text(
-        '''
+        """
 [mcp_servers.fake]
 command = "/tmp/does-not-matter"
 args = []
-''',
+""",
         encoding="utf-8",
     )
 
@@ -287,7 +288,7 @@ args = []
                     ],
                 }
             ),
-            _response({"role": "assistant", "content": "Write denied."}),
+            _response({"role": "assistant", "content": "Write discovery failed."}),
         ]
     )
 
@@ -322,11 +323,13 @@ args = []
         request_payload={},
     )
 
-    assert deepseek_response["choices"][0]["message"]["content"] == "Write denied."
+    assert deepseek_response["choices"][0]["message"]["content"] == "Write discovery failed."
     tool_payloads = _payloads_with_tool_messages(fake.payloads)
     result = json.loads([m for m in tool_payloads[0]["messages"] if m.get("role") == "tool"][0]["content"])
     assert result["ok"] is False
-    assert result["error"] == "mcp_write_denied"
+    assert result["error"] == "mcp_discovery_failed_before_call"
+    assert result["mcp"]["permission"] == "codex"
+
 
 
 def _write_fake_mcp_iserror_server(path: Path) -> None:
