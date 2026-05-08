@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a4a1-readable-largest-tool-outputs"
+PROXY_VERSION = "v2.7a5-tool-output-dry-run-trimming"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -321,7 +321,7 @@ def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
 
 _DEBUG_TRACE_SECRET_KEYS = {"authorization", "api_key", "token", "password", "secret"}
 _DEBUG_TRACE_LARGE_CONTENT_KEYS = {"messages", "input", "content", "reasoning_content", "arguments"}
-_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs"}
+_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs", "targets", "trim_targets"}
 _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "event",
     "response_id",
@@ -345,6 +345,8 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "tool_name",
     "name",
     "item_type",
+    "trim_mode",
+    "trim_reason",
 }
 
 
@@ -614,6 +616,104 @@ def _tool_output_budget_env_config() -> dict[str, int]:
     }
 
 
+def _tool_output_trim_dry_run_env_config() -> dict[str, Any]:
+    mode = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run").strip().lower()
+    if mode not in {"off", "dry_run", "enabled"}:
+        mode = "dry_run"
+    return {
+        "mode": mode,
+        "max_item_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS", 12000)),
+        "max_total_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS", 80000)),
+        "keep_head_chars": max(0, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS", 3000)),
+        "keep_tail_chars": max(0, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS", 3000)),
+        "max_targets": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MAX_TARGETS", 12)),
+        "notice_chars": max(128, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_NOTICE_CHARS", 512)),
+    }
+
+
+def _estimate_tool_output_trim_after_chars(original_chars: int, config: dict[str, Any]) -> int:
+    keep_total = int(config["keep_head_chars"]) + int(config["keep_tail_chars"]) + int(config["notice_chars"])
+    return min(int(original_chars), max(1, keep_total))
+
+
+def _tool_output_trim_dry_run(
+    outputs: list[dict[str, Any]],
+    *,
+    total_output_chars: int,
+) -> dict[str, Any]:
+    config = _tool_output_trim_dry_run_env_config()
+    max_item_chars = int(config["max_item_chars"])
+    max_total_chars = int(config["max_total_chars"])
+    max_targets = int(config["max_targets"])
+
+    targets_by_call_id: dict[str, dict[str, Any]] = {}
+
+    for output in outputs:
+        item_chars = int(output.get("item_chars") or 0)
+        if item_chars <= max_item_chars:
+            continue
+        after_chars = _estimate_tool_output_trim_after_chars(item_chars, config)
+        targets_by_call_id[str(output.get("call_id") or "")] = {
+            **output,
+            "trim_reason": "item_exceeds_max_item_chars",
+            "original_chars": item_chars,
+            "estimated_after_chars": after_chars,
+            "estimated_remove_chars": max(0, item_chars - after_chars),
+        }
+
+    estimated_total_after_item_caps = int(total_output_chars) - sum(
+        int(target.get("estimated_remove_chars") or 0)
+        for target in targets_by_call_id.values()
+    )
+
+    if estimated_total_after_item_caps > max_total_chars:
+        for output in sorted(outputs, key=lambda item: int(item.get("item_chars") or 0), reverse=True):
+            if estimated_total_after_item_caps <= max_total_chars:
+                break
+
+            call_id = str(output.get("call_id") or "")
+            if call_id in targets_by_call_id:
+                continue
+
+            item_chars = int(output.get("item_chars") or 0)
+            after_chars = _estimate_tool_output_trim_after_chars(item_chars, config)
+            remove_chars = max(0, item_chars - after_chars)
+            if remove_chars <= 0:
+                continue
+
+            targets_by_call_id[call_id] = {
+                **output,
+                "trim_reason": "total_output_exceeds_max_total_chars",
+                "original_chars": item_chars,
+                "estimated_after_chars": after_chars,
+                "estimated_remove_chars": remove_chars,
+            }
+            estimated_total_after_item_caps -= remove_chars
+
+    targets = sorted(
+        targets_by_call_id.values(),
+        key=lambda item: int(item.get("estimated_remove_chars") or 0),
+        reverse=True,
+    )
+
+    would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in targets)
+
+    return {
+        "mode": config["mode"],
+        "applied": False,
+        "would_trim": bool(targets),
+        "would_trim_item_count": len(targets),
+        "would_remove_chars_estimate": would_remove,
+        "estimated_total_output_chars_before": int(total_output_chars),
+        "estimated_total_output_chars_after": max(0, int(total_output_chars) - would_remove),
+        "max_item_chars": max_item_chars,
+        "max_total_chars": max_total_chars,
+        "keep_head_chars": int(config["keep_head_chars"]),
+        "keep_tail_chars": int(config["keep_tail_chars"]),
+        "targets": targets[:max_targets],
+    }
+
+
 def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
     config = _tool_output_budget_env_config()
     summary: dict[str, Any] = {
@@ -670,6 +770,7 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
                 }
 
     largest_outputs: list[dict[str, Any]] = []
+    all_outputs: list[dict[str, Any]] = []
     warn_item_chars = int(config["warn_item_chars"])
 
     for index, item in enumerate(input_value):
@@ -693,23 +794,27 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
         if item_chars >= warn_item_chars:
             summary["large_output_count"] = int(summary["large_output_count"]) + 1
 
-        largest_outputs.append(
-            {
-                "index": index,
-                "call_id": call_id,
-                "tool_name": tool_name,
-                "item_chars": item_chars,
-                "output_chars": output_chars,
-                "matching_function_call_index": call_info.get("index"),
-                "matching_function_call_arguments_chars": call_info.get("arguments_chars"),
-                "exceeds_warn_item_chars": item_chars >= warn_item_chars,
-            }
-        )
+        output_record = {
+            "index": index,
+            "call_id": call_id,
+            "tool_name": tool_name,
+            "item_chars": item_chars,
+            "output_chars": output_chars,
+            "matching_function_call_index": call_info.get("index"),
+            "matching_function_call_arguments_chars": call_info.get("arguments_chars"),
+            "exceeds_warn_item_chars": item_chars >= warn_item_chars,
+        }
+        largest_outputs.append(output_record)
+        all_outputs.append(output_record)
 
     largest_outputs.sort(key=lambda item: int(item.get("item_chars") or 0), reverse=True)
     summary["largest_outputs"] = largest_outputs[: int(config["largest_items"])]
     summary["total_output_exceeds_warn_total"] = (
         int(summary["function_call_output_chars"]) >= int(config["warn_total_chars"])
+    )
+    summary["trim_dry_run"] = _tool_output_trim_dry_run(
+        all_outputs,
+        total_output_chars=int(summary["function_call_output_chars"]),
     )
     return summary
 

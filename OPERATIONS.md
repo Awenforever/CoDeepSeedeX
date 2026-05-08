@@ -200,7 +200,7 @@ Important safety notes:
 * Debug traces should not be committed.
 
 
-Tool output budget diagnostics are included in `dsproxy debug budget`. They identify how much of the Responses input is made of `function_call` and `function_call_output` items, and list the largest tool outputs by `call_id`, tool name and character size. This mode is audit-only and does not truncate tool outputs by default.
+Tool output budget diagnostics are included in `dsproxy debug budget`. The dry-run trimming report estimates how many characters would be removed if tool output trimming were enabled, but it does not alter upstream payloads. Relevant knobs: `DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE=off|dry_run|enabled`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS`, and `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS`. They identify how much of the Responses input is made of `function_call` and `function_call_output` items, and list the largest tool outputs by `call_id`, tool name and character size. This mode is audit-only and does not truncate tool outputs by default.
 
 Context budget diagnostics are available after a traced request:
 

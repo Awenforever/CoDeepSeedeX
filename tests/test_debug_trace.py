@@ -282,3 +282,53 @@ def test_debug_trace_none_mode_preserves_largest_outputs_metadata(monkeypatch, t
     assert event["largest_outputs"][0]["call_id"] == "call_large"
     assert event["largest_outputs"][0]["tool_name"] == "shell"
     assert event["largest_outputs"][0]["item_chars"] == 41290
+
+
+def test_tool_output_trim_dry_run_estimates_item_and_total_savings(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS", "180")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS", "20")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS", "20")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_NOTICE_CHARS", "20")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MAX_TARGETS", "5")
+
+    input_items = [
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "write_stdin",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "x" * 220,
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_2",
+            "name": "exec_command",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_2",
+            "output": "y" * 160,
+        },
+    ]
+
+    budget = proxy_app._tool_output_budget_breakdown(input_items)
+    dry_run = budget["trim_dry_run"]
+
+    assert dry_run["mode"] == "dry_run"
+    assert dry_run["applied"] is False
+    assert dry_run["would_trim"] is True
+    assert dry_run["would_trim_item_count"] >= 2
+    assert dry_run["would_remove_chars_estimate"] > 0
+    assert dry_run["estimated_total_output_chars_after"] < dry_run["estimated_total_output_chars_before"]
+    assert dry_run["targets"][0]["estimated_remove_chars"] > 0
+    assert dry_run["targets"][0]["trim_reason"] in {
+        "item_exceeds_max_item_chars",
+        "total_output_exceeds_max_total_chars",
+    }
