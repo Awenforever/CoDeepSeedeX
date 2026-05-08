@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a5-tool-output-dry-run-trimming" in out
+    assert "v2.7a5a1-readable-trim-dry-run" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a5-tool-output-dry-run-trimming")
+    assert data["proxy_version"].startswith("v2.7a5a1-readable-trim-dry-run")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a5-tool-output-dry-run-trimming")
+    assert data["expected_version"].startswith("v2.7a5a1-readable-trim-dry-run")
     assert data["running_version"] == "v0.old"
 
 
@@ -492,6 +492,9 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
                             "would_remove_chars_estimate": 35000,
                             "estimated_total_output_chars_before": 191260,
                             "estimated_total_output_chars_after": 156260,
+                            "target_total_output_chars": 80000,
+                            "unmet_total_budget_chars": 76260,
+                            "total_budget_reachable": False,
                             "targets": [
                                 {
                                     "call_id": "call_large",
@@ -530,5 +533,7 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["largest_outputs"][0]["tool_name"] == "shell"
     assert data["budget"]["tool_output_budget"]["trim_dry_run"]["would_trim"] is True
     assert data["budget"]["tool_output_budget"]["trim_dry_run"]["would_remove_chars_estimate"] == 35000
+    assert data["budget"]["tool_output_budget"]["trim_dry_run"]["total_budget_reachable"] is False
+    assert data["budget"]["tool_output_budget"]["trim_dry_run"]["unmet_total_budget_chars"] == 76260
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]

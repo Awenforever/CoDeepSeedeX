@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a5-tool-output-dry-run-trimming"
+PROXY_VERSION = "v2.7a5a1-readable-trim-dry-run"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -345,6 +345,7 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "tool_name",
     "name",
     "item_type",
+    "mode",
     "trim_mode",
     "trim_reason",
 }
@@ -698,6 +699,9 @@ def _tool_output_trim_dry_run(
 
     would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in targets)
 
+    estimated_after = max(0, int(total_output_chars) - would_remove)
+    unmet_total_budget_chars = max(0, estimated_after - max_total_chars)
+
     return {
         "mode": config["mode"],
         "applied": False,
@@ -705,11 +709,15 @@ def _tool_output_trim_dry_run(
         "would_trim_item_count": len(targets),
         "would_remove_chars_estimate": would_remove,
         "estimated_total_output_chars_before": int(total_output_chars),
-        "estimated_total_output_chars_after": max(0, int(total_output_chars) - would_remove),
+        "estimated_total_output_chars_after": estimated_after,
+        "target_total_output_chars": max_total_chars,
+        "unmet_total_budget_chars": unmet_total_budget_chars,
+        "total_budget_reachable": unmet_total_budget_chars == 0,
         "max_item_chars": max_item_chars,
         "max_total_chars": max_total_chars,
         "keep_head_chars": int(config["keep_head_chars"]),
         "keep_tail_chars": int(config["keep_tail_chars"]),
+        "trimmed_to_item_cap_chars": _estimate_tool_output_trim_after_chars(max_item_chars + 1, config),
         "targets": targets[:max_targets],
     }
 

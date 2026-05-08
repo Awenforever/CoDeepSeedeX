@@ -327,8 +327,36 @@ def test_tool_output_trim_dry_run_estimates_item_and_total_savings(monkeypatch):
     assert dry_run["would_trim_item_count"] >= 2
     assert dry_run["would_remove_chars_estimate"] > 0
     assert dry_run["estimated_total_output_chars_after"] < dry_run["estimated_total_output_chars_before"]
+    assert dry_run["target_total_output_chars"] == 180
+    assert "unmet_total_budget_chars" in dry_run
+    assert "total_budget_reachable" in dry_run
+    assert "trimmed_to_item_cap_chars" in dry_run
     assert dry_run["targets"][0]["estimated_remove_chars"] > 0
     assert dry_run["targets"][0]["trim_reason"] in {
         "item_exceeds_max_item_chars",
         "total_output_exceeds_max_total_chars",
     }
+
+
+def test_debug_trace_none_mode_preserves_trim_dry_run_mode(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_trim_dry_run",
+        "tool_output_budget_breakdown",
+        trim_dry_run={
+            "mode": "dry_run",
+            "applied": False,
+            "would_trim": True,
+            "unmet_total_budget_chars": 37216,
+            "total_budget_reachable": False,
+        },
+    )
+
+    event = json.loads((trace_dir / "trace-resp_trim_dry_run.jsonl").read_text(encoding="utf-8"))
+    assert event["trim_dry_run"]["mode"] == "dry_run"
+    assert event["trim_dry_run"]["unmet_total_budget_chars"] == 37216
+    assert event["trim_dry_run"]["total_budget_reachable"] is False
