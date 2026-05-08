@@ -575,3 +575,29 @@ def test_history_growth_breakdown_classifies_flattened_tool_transcripts():
     assert report["assistant_tool_arguments_chars"] > 0
     assert report["input_item_type_counts"]["function_call_output"] == 1
     assert report["largest_messages"]
+
+
+def test_debug_trace_none_mode_preserves_largest_messages_metadata(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_history_growth",
+        "history_growth_breakdown",
+        largest_messages=[
+            {
+                "index": 164,
+                "role": "user",
+                "history_category": "flattened_tool_transcript",
+                "chars": 16669,
+            }
+        ],
+    )
+
+    event = json.loads((trace_dir / "trace-resp_history_growth.jsonl").read_text(encoding="utf-8"))
+    assert isinstance(event["largest_messages"], list)
+    assert event["largest_messages"][0]["role"] == "user"
+    assert event["largest_messages"][0]["history_category"] == "flattened_tool_transcript"
+    assert event["largest_messages"][0]["chars"] == 16669
