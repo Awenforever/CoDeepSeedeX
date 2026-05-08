@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import time
+import tomllib
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
@@ -2136,6 +2137,90 @@ def _mcp_executor_readonly_allowlist() -> set[str]:
 
 def _mcp_executor_write_allowlist() -> set[str]:
     return _split_env_csv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST")
+
+
+def _mcp_config_path() -> Path:
+    configured = os.environ.get("DEEPSEEK_PROXY_MCP_CONFIG_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".codex" / "config.toml"
+
+
+def _safe_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, (str, int, float, bool))]
+
+
+def _codex_mcp_config_snapshot(path: Path | None = None) -> dict[str, Any]:
+    config_path = path or _mcp_config_path()
+    snapshot: dict[str, Any] = {
+        "config_path": str(config_path),
+        "exists": config_path.exists(),
+        "server_count": 0,
+        "servers": {},
+        "error": None,
+    }
+
+    if not config_path.exists():
+        return snapshot
+
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        snapshot["error"] = f"{type(exc).__name__}: {exc}"
+        return snapshot
+
+    raw_servers = data.get("mcp_servers") or {}
+    if not isinstance(raw_servers, dict):
+        snapshot["error"] = "invalid_mcp_servers_root"
+        return snapshot
+
+    servers: dict[str, Any] = {}
+    for server_name, raw_server in sorted(raw_servers.items()):
+        if not isinstance(raw_server, dict):
+            continue
+
+        raw_tools = raw_server.get("tools") or {}
+        tools: dict[str, Any] = {}
+        if isinstance(raw_tools, dict):
+            for tool_name, raw_tool in sorted(raw_tools.items()):
+                if isinstance(raw_tool, dict):
+                    tools[str(tool_name)] = {
+                        "approval_mode": str(raw_tool.get("approval_mode") or ""),
+                    }
+
+        raw_env = raw_server.get("env") or {}
+        env_keys = sorted(str(key) for key in raw_env.keys()) if isinstance(raw_env, dict) else []
+
+        servers[str(server_name)] = {
+            "command": str(raw_server.get("command") or ""),
+            "args": _safe_string_list(raw_server.get("args")),
+            "env_vars": _safe_string_list(raw_server.get("env_vars")),
+            "env_keys": env_keys,
+            "startup_timeout_sec": raw_server.get("startup_timeout_sec"),
+            "tool_timeout_sec": raw_server.get("tool_timeout_sec"),
+            "tool_count": len(tools),
+            "tools": tools,
+        }
+
+    snapshot["servers"] = servers
+    snapshot["server_count"] = len(servers)
+    return snapshot
+
+
+def _mcp_executor_status() -> dict[str, Any]:
+    return {
+        "enabled": _mcp_executor_enabled(),
+        "backend": {
+            "type": "injected" if _MCP_EXECUTOR_BACKEND is not None else "none",
+            "available": _MCP_EXECUTOR_BACKEND is not None,
+            "production_execution": False,
+        },
+        "readonly_allowlist": sorted(_mcp_executor_readonly_allowlist()),
+        "write_allowlist": sorted(_mcp_executor_write_allowlist()),
+        "codex_config": _codex_mcp_config_snapshot(),
+    }
 
 
 def _mcp_executor_policy_decision(function_name: Any) -> dict[str, Any]:
@@ -4896,6 +4981,7 @@ def _tool_bridge_status() -> dict[str, Any]:
             "output_dir": str(_image_output_dir()),
             "api_key_configured": bool(_image_api_key()) if image_provider != "mock" else None,
         },
+        "mcp_executor": _mcp_executor_status(),
     }
 
 
