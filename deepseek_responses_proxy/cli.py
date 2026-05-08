@@ -1079,14 +1079,16 @@ def _upgrade_run_step(
 
 def _upgrade(args: argparse.Namespace) -> int:
     repo_hint = Path(args.repo).expanduser() if args.repo else Path(__file__).resolve().parents[1]
-    target_tag = args.tag or PROXY_VERSION
+    requested_ref = args.tag
+    target_ref = requested_ref or "master"
     dry_run = bool(args.dry_run)
 
     result: dict[str, Any] = {
         "status": "ok",
         "operation": "upgrade",
         "current_runtime_version": PROXY_VERSION,
-        "target_tag": target_tag,
+        "target_ref": target_ref,
+        "target_source": "explicit_ref" if requested_ref else "latest_master",
         "repo_hint": str(repo_hint),
         "dry_run": dry_run,
         "mode": "dsproxy_upgrade",
@@ -1125,15 +1127,26 @@ def _upgrade(args: argparse.Namespace) -> int:
         return 1
 
     if not args.no_backup:
-        backup_root = Path(args.backup_dir).expanduser() if args.backup_dir else _default_config_dir() / "upgrade-backups" / f"{target_tag}-{int(time.time())}"
+        safe_target_ref = re.sub(r"[^A-Za-z0-9_.-]+", "_", target_ref)
+        backup_root = Path(args.backup_dir).expanduser() if args.backup_dir else _default_config_dir() / "upgrade-backups" / f"{safe_target_ref}-{int(time.time())}"
         _backup_upgrade_file(default_env_file_path(), backup_root, result)
         _backup_upgrade_file(default_codex_config_path(), backup_root, result)
 
     commands: list[tuple[str, list[str], bool]] = [
         ("git_fetch_tags", ["git", "-C", str(repo_root), "fetch", "--tags", "origin"], False),
-        ("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_tag], False),
-        ("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False),
     ]
+
+    if requested_ref:
+        commands.append(("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_ref], False))
+    else:
+        commands.extend(
+            [
+                ("git_checkout_master", ["git", "-C", str(repo_root), "checkout", "master"], False),
+                ("git_pull_latest_master", ["git", "-C", str(repo_root), "pull", "--ff-only", "origin", "master"], False),
+            ]
+        )
+
+    commands.append(("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False))
 
     if not args.skip_profile:
         commands.extend(
@@ -1346,7 +1359,7 @@ def build_parser() -> argparse.ArgumentParser:
     balance.set_defaults(func=_balance)
 
     upgrade = sub.add_parser("upgrade", help="upgrade a git checkout installation")
-    upgrade.add_argument("--tag", default=PROXY_VERSION, help="target git tag or ref")
+    upgrade.add_argument("--tag", help="target git tag or ref; defaults to latest master")
     upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
     upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
     upgrade.add_argument("--allow-dirty", action="store_true", help="allow upgrade with a dirty git worktree")

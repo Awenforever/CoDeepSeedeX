@@ -7,21 +7,21 @@ CoDeepSeedeX支持两种互相兼容的升级方式。
 适用于已经包含`upgrade`命令的新版本：
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path
+dsproxy upgrade
 ```
 
 预览升级计划：
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --dry-run
+dsproxy upgrade --dry-run
 ```
 
 常用选项：
 
 ```bash
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --skip-profile
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --no-restart
-dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --allow-dirty
+dsproxy upgrade --skip-profile
+dsproxy upgrade --no-restart
+dsproxy upgrade --allow-dirty
 ```
 
 该命令会：
