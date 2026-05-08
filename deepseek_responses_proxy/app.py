@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v0.2.0-alpha"
+PROXY_VERSION = "v2.7-debug-trace-foundation"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -256,6 +256,222 @@ def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
     ) / 1_000_000
 
     return float(cost)
+
+
+def _debug_trace_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_DEBUG_TRACE", False)
+
+
+def _debug_trace_dir() -> Path:
+    return Path(os.environ.get("DEEPSEEK_PROXY_DEBUG_DIR", ".debug/traces")).expanduser()
+
+
+def _debug_trace_content_mode() -> str:
+    value = os.environ.get("DEEPSEEK_PROXY_DEBUG_CONTENT", "preview").strip().lower()
+    if value not in {"none", "preview", "full"}:
+        return "preview"
+    return value
+
+
+def _debug_trace_preview_chars() -> int:
+    return max(0, _env_int("DEEPSEEK_PROXY_DEBUG_PREVIEW_CHARS", 1200))
+
+
+def _debug_trace_max_event_chars() -> int:
+    return max(1000, _env_int("DEEPSEEK_PROXY_DEBUG_MAX_EVENT_CHARS", 8000))
+
+
+def _debug_trace_safe_response_id(response_id: str | None) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(response_id or "unknown"))
+    return safe or "unknown"
+
+
+def _debug_trace_file(response_id: str | None) -> Path:
+    return _debug_trace_dir() / f"trace-{_debug_trace_safe_response_id(response_id)}.jsonl"
+
+
+def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
+    try:
+        chars = _json_char_size(value)
+    except Exception:
+        chars = len(str(value))
+
+    if isinstance(value, list):
+        kind = "list"
+        count = len(value)
+    elif isinstance(value, dict):
+        kind = "dict"
+        count = len(value)
+    elif isinstance(value, str):
+        kind = "str"
+        count = len(value)
+    else:
+        kind = type(value).__name__
+        count = None
+
+    summary: dict[str, Any] = {
+        "label": label,
+        "type": kind,
+        "chars": chars,
+    }
+    if count is not None:
+        summary["count"] = count
+    return summary
+
+
+def _debug_trace_sanitize(value: Any) -> Any:
+    mode = _debug_trace_content_mode()
+    preview_chars = _debug_trace_preview_chars()
+
+    if mode == "none":
+        return _debug_trace_summary(value)
+
+    if isinstance(value, str):
+        if mode == "full":
+            return value
+        truncated, changed = _truncate_middle_text(value, preview_chars)
+        if changed:
+            return {
+                "preview": truncated,
+                "original_chars": len(value),
+                "truncated": True,
+            }
+        return value
+
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+
+    if isinstance(value, list):
+        if mode == "full":
+            return value
+        return {
+            **_debug_trace_summary(value),
+            "preview": [_debug_trace_sanitize(item) for item in value[:5]],
+            "truncated": len(value) > 5,
+        }
+
+    if isinstance(value, dict):
+        if mode == "full":
+            return value
+        sanitized: dict[str, Any] = {}
+        for key, item in list(value.items())[:20]:
+            key_str = str(key)
+            if key_str.lower() in {"authorization", "api_key", "token", "password", "secret"}:
+                sanitized[key_str] = "[redacted]"
+            elif key_str in {"messages", "input", "content", "reasoning_content", "arguments"}:
+                sanitized[key_str] = _debug_trace_summary(item, label=key_str)
+            else:
+                sanitized[key_str] = _debug_trace_sanitize(item)
+        if len(value) > 20:
+            sanitized["_truncated_keys"] = len(value) - 20
+        return sanitized
+
+    return str(value)
+
+
+def _debug_trace_event(response_id: str | None, event: str, **fields: Any) -> None:
+    if not _debug_trace_enabled() or not response_id:
+        return
+
+    try:
+        debug_dir = _debug_trace_dir()
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        path = _debug_trace_file(response_id)
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "event": event,
+            "response_id": response_id,
+            "version": PROXY_VERSION,
+        }
+        for key, value in fields.items():
+            entry[key] = _debug_trace_sanitize(value)
+
+        line = json.dumps(entry, ensure_ascii=False, default=str)
+        max_chars = _debug_trace_max_event_chars()
+        if len(line) > max_chars:
+            entry = {
+                "ts": entry["ts"],
+                "event": event,
+                "response_id": response_id,
+                "version": PROXY_VERSION,
+                "truncated_event": True,
+                "original_chars": len(line),
+                "keys": sorted(fields.keys()),
+            }
+            line = json.dumps(entry, ensure_ascii=False, default=str)
+
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+        latest = debug_dir / "latest.json"
+        latest.write_text(
+            json.dumps(
+                {
+                    "response_id": response_id,
+                    "trace_path": str(path),
+                    "updated_at": time.time(),
+                    "event": event,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write debug trace event: {exc}")
+
+
+def _debug_trace_status() -> dict[str, Any]:
+    debug_dir = _debug_trace_dir()
+    latest_path = debug_dir / "latest.json"
+    latest: dict[str, Any] | None = None
+    if latest_path.exists():
+        try:
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            latest = {"error": f"{type(exc).__name__}: {exc}"}
+
+    trace_count = 0
+    try:
+        trace_count = len(list(debug_dir.glob("trace-*.jsonl"))) if debug_dir.exists() else 0
+    except Exception:
+        trace_count = 0
+
+    return {
+        "enabled": _debug_trace_enabled(),
+        "dir": str(debug_dir),
+        "content_mode": _debug_trace_content_mode(),
+        "preview_chars": _debug_trace_preview_chars(),
+        "max_event_chars": _debug_trace_max_event_chars(),
+        "trace_count": trace_count,
+        "latest": latest,
+    }
+
+
+def _debug_trace_latest(limit: int = 200) -> dict[str, Any]:
+    status = _debug_trace_status()
+    latest = status.get("latest")
+    if not isinstance(latest, dict) or not latest.get("trace_path"):
+        return {"status": "empty", "debug_trace": status, "events": []}
+
+    path = Path(str(latest["trace_path"]))
+    if not path.exists():
+        return {"status": "missing", "debug_trace": status, "events": []}
+
+    safe_limit = max(1, min(int(limit), 1000))
+    lines = path.read_text(encoding="utf-8").splitlines()[-safe_limit:]
+    events: list[Any] = []
+    for line in lines:
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            events.append({"raw": line})
+    return {
+        "status": "ok",
+        "debug_trace": status,
+        "trace_path": str(path),
+        "events": events,
+    }
 
 
 def _normalize_chat_role(role: str | None) -> str:
@@ -1954,6 +2170,7 @@ class DeepSeekClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload, context_trimming_report = _compact_deepseek_payload_context(payload)
+        self.last_context_trimming_report = context_trimming_report
 
         # Debug aid: keep the last upstream payload without secrets.
         # This is useful because DeepSeek returns precise 400 error messages
@@ -2019,11 +2236,63 @@ async def _chat_completions_with_usage(
     call_counter: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     effective_model = str(payload.get("model") or DEFAULT_MODEL)
-    deepseek_response = await deepseek_client.chat_completions(payload)
+    call_index = _next_usage_call_index(call_counter)
+
+    _debug_trace_event(
+        response_id,
+        "upstream_call_started",
+        purpose=purpose,
+        call_index=call_index,
+        requested_model=requested_model,
+        effective_model=effective_model,
+        thinking_enabled=thinking_enabled,
+        payload_summary=_debug_trace_summary(payload, label="chat_payload"),
+        message_count=len(payload.get("messages") or []) if isinstance(payload.get("messages"), list) else None,
+    )
+    started = time.time()
+    try:
+        deepseek_response = await deepseek_client.chat_completions(payload)
+    except Exception as exc:
+        _debug_trace_event(
+            response_id,
+            "upstream_call_failed",
+            purpose=purpose,
+            call_index=call_index,
+            error_type=type(exc).__name__,
+            message=str(exc)[:1000],
+            elapsed_seconds=time.time() - started,
+        )
+        raise
+
+    usage_numbers = _extract_usage_numbers(deepseek_response)
+    estimated_cost_usd = _estimate_cost_usd(effective_model, usage_numbers)
+    trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
+    if isinstance(trimming_report, dict):
+        _debug_trace_event(
+            response_id,
+            "context_trimming_finished",
+            purpose=purpose,
+            call_index=call_index,
+            trimmed=trimming_report.get("trimmed"),
+            before_chars=trimming_report.get("before_chars"),
+            after_chars=trimming_report.get("after_chars"),
+            chars_removed=trimming_report.get("chars_removed"),
+            message_count_before=trimming_report.get("message_count_before"),
+            message_count_after=trimming_report.get("message_count_after"),
+            operations=trimming_report.get("operations"),
+        )
+
+    _debug_trace_event(
+        response_id,
+        "upstream_call_finished",
+        purpose=purpose,
+        call_index=call_index,
+        elapsed_seconds=time.time() - started,
+        usage=usage_numbers,
+        estimated_cost_usd=estimated_cost_usd,
+    )
 
     if store is not None and hasattr(store, "record_usage"):
-        usage_numbers = _extract_usage_numbers(deepseek_response)
-        estimated_cost_usd = _estimate_cost_usd(effective_model, usage_numbers)
         store.record_usage(
             response_id=response_id,
             previous_response_id=previous_response_id,
@@ -2032,7 +2301,7 @@ async def _chat_completions_with_usage(
             usage_numbers=usage_numbers,
             estimated_cost_usd=estimated_cost_usd,
             purpose=purpose,
-            call_index=_next_usage_call_index(call_counter),
+            call_index=call_index,
             request_id=request_id,
             requested_model=requested_model,
             effective_model=effective_model,
@@ -5584,6 +5853,18 @@ def create_app(
             "pricing_usd_per_1m": _load_model_pricing_usd_per_1m(),
         }
 
+    @app.get("/v1/proxy/debug/status")
+    async def proxy_debug_status() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "debug_trace": _debug_trace_status(),
+        }
+
+    @app.get("/v1/proxy/debug/latest")
+    async def proxy_debug_latest(limit: int = 200) -> dict[str, Any]:
+        return _debug_trace_latest(limit=limit)
+
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
         created = _now()
@@ -5611,6 +5892,15 @@ def create_app(
         payload = await request.json()
         response_id = _response_id()
         usage_call_counter: dict[str, int] = {"value": 0}
+
+        _debug_trace_event(
+            response_id,
+            "request_received",
+            payload_summary=_debug_trace_summary(payload, label="responses_payload"),
+            request_model=payload.get("model"),
+            previous_response_id=payload.get("previous_response_id"),
+            stream=bool(payload.get("stream")),
+        )
 
         try:
             debug_dir = Path(".debug")
@@ -5691,6 +5981,15 @@ def create_app(
 
         messages.extend(_input_items_to_messages(input_value))
 
+        _debug_trace_event(
+            response_id,
+            "history_loaded",
+            previous_response_id=previous_response_id,
+            message_count=len(messages),
+            history_chars=_json_char_size({"messages": messages}),
+            input_summary=_debug_trace_summary(input_value, label="input"),
+        )
+
         messages, repaired_tool_history = _repair_tool_call_message_order(messages)
         if repaired_tool_history:
             app.state.repair_count += 1
@@ -5728,6 +6027,21 @@ def create_app(
             usage_call_counter=usage_call_counter,
         )
         _write_context_compaction_report(context_compaction_report)
+        _debug_trace_event(
+            response_id,
+            "compaction_finished",
+            compacted=context_compaction_report.get("compacted"),
+            reason=context_compaction_report.get("reason"),
+            policy=context_compaction_report.get("policy"),
+            before_chars=context_compaction_report.get("before_chars"),
+            after_chars=context_compaction_report.get("after_chars"),
+            chars_removed=context_compaction_report.get("chars_removed"),
+            message_count_before=context_compaction_report.get("message_count_before"),
+            message_count_after=context_compaction_report.get("message_count_after"),
+            policy_decision=context_compaction_report.get("policy_decision"),
+            summary_source=context_compaction_report.get("summary_source"),
+            material=context_compaction_report.get("material"),
+        )
         if context_compaction_report.get("compacted"):
             messages, _repaired_after_compaction = _repair_tool_call_message_order(messages)
             if _thinking_enabled():
@@ -5741,6 +6055,15 @@ def create_app(
             tools=deepseek_tools,
             reasoning_effort=reasoning_effort,
             request_payload=payload,
+        )
+        _debug_trace_event(
+            response_id,
+            "messages_prepared_for_deepseek",
+            model=model,
+            reasoning_effort=reasoning_effort,
+            message_count=len(messages_for_deepseek),
+            payload_chars=_json_char_size(chat_payload),
+            tool_count=len(deepseek_tools or []),
         )
         try:
             deepseek_response, messages = await _run_chat_with_tool_bridge(
@@ -5773,6 +6096,13 @@ def create_app(
             previous_response_id=previous_response_id,
             output_items=output_items,
             deepseek_response=deepseek_response,
+        )
+        _debug_trace_event(
+            response_id,
+            "response_envelope_built",
+            output_item_count=len(output_items),
+            response_chars=_json_char_size(response_body),
+            history_message_count=len(messages),
         )
 
         next_history = deepcopy(messages)
