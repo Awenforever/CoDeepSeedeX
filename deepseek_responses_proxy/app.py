@@ -2545,6 +2545,110 @@ async def _execute_mcp_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, A
     return _mcp_executor_denied_result(name)
 
 
+def _mcp_diagnostic_call_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", False)
+
+
+def _mcp_diagnostic_function_name(payload: dict[str, Any]) -> str:
+    raw_function_name = str(payload.get("function_name") or "").strip()
+    if raw_function_name:
+        return raw_function_name
+
+    server = str(payload.get("server") or "").strip()
+    tool = str(payload.get("tool") or payload.get("name") or "").strip()
+    if server and tool:
+        return f"mcp__{server}__{tool}"
+
+    return ""
+
+
+async def _mcp_diagnostic_call(payload: dict[str, Any]) -> dict[str, Any]:
+    function_name = _mcp_diagnostic_function_name(payload)
+    parsed = _parse_mcp_proxy_tool_name(function_name)
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
+
+    base: dict[str, Any] = {
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": _mcp_diagnostic_call_enabled(),
+        "production_execution": False,
+        "tools_call_enabled": False,
+        "backend": _mcp_executor_backend_type(),
+        "tool": function_name,
+    }
+
+    if parsed is not None:
+        base["mcp"] = {
+            "server": parsed["server"],
+            "name": parsed["name"],
+            "namespace": parsed["namespace"],
+            "policy_key": parsed["policy_key"],
+        }
+
+    if not _mcp_diagnostic_call_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_diagnostic_call_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL=1 to enable this diagnostic endpoint.",
+        }
+
+    if parsed is None:
+        return {
+            **base,
+            "ok": False,
+            "error": "invalid_mcp_tool_name",
+            "message": "Provide function_name=mcp__server__tool or server/tool fields.",
+        }
+
+    if not _mcp_executor_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_executor_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR=1 before using diagnostic MCP calls.",
+        }
+
+    if not _mcp_stdio_backend_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_stdio_backend_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND=stdio for diagnostic MCP calls.",
+        }
+
+    decision = _mcp_executor_policy_decision(function_name)
+    if decision.get("ok") is not True:
+        denied = _mcp_executor_denied_result(function_name)
+        return {
+            **base,
+            **denied,
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "enabled": True,
+            "production_execution": False,
+            "tools_call_enabled": False,
+            "backend": _mcp_executor_backend_type(),
+        }
+
+    result = await _execute_mcp_stdio_backend(
+        function_name=function_name,
+        parsed=parsed,
+        arguments=arguments,
+        decision=decision,
+    )
+    return {
+        **base,
+        **result,
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": True,
+        "production_execution": False,
+        "tools_call_enabled": True,
+        "backend": _mcp_executor_backend_type(),
+    }
+
+
 def _normalize_mcp_nested_tool(
     namespace: str,
     nested_tool: dict[str, Any],
@@ -5307,6 +5411,13 @@ def create_app(
     @app.get("/v1/proxy/mcp/discovery")
     async def proxy_mcp_discovery() -> dict[str, Any]:
         return await _mcp_discovery_status()
+
+    @app.post("/v1/proxy/mcp/diagnostic-call")
+    async def proxy_mcp_diagnostic_call(request: Request) -> dict[str, Any]:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="request body must be a JSON object")
+        return await _mcp_diagnostic_call(payload)
 
     @app.get("/v1/proxy/balance")
     async def proxy_balance() -> dict[str, Any]:
