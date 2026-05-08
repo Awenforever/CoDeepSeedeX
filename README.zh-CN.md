@@ -193,3 +193,55 @@ Codex可能根据你的配置调用工具、修改文件、执行命令或访问
 
 - docs/security.zh-CN.md
 - docs/security.en.md
+
+## ⬆️ 升级
+
+CoDeepSeedeX支持两种互相兼容的升级方式。
+
+### 方式A：`dsproxy upgrade`
+
+适用于已经包含`upgrade`命令的新版本：
+
+```bash
+dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path
+```
+
+先预览升级计划：
+
+```bash
+dsproxy upgrade --tag v2.6a1-docs-and-upgrade-path --dry-run
+```
+
+这是面向git checkout安装的原地升级方式。它会备份本地env文件和Codex配置，拉取tags，切换到目标tag，以editable模式重新安装包，刷新`deepseek`和`deepseek-thinking`两个Codex profile，并在默认情况下重启本地proxy。
+
+### 方式B：再次运行one-line installer
+
+适用于从`v0.1.0-alpha`等旧版本升级，或当前环境还没有`dsproxy upgrade`命令的情况：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
+```
+
+该方式与方式A兼容。安装器会刷新安装目录和profile，默认保留本地env和Codex配置。除非确实想删除本地数据，否则不要使用卸载命令里的`--remove-files`。
+
+任一方式完成后验证：
+
+```bash
+dsproxy --version
+dsproxy doctor --thinking
+curl -sS http://127.0.0.1:8000/healthz
+curl -sS http://127.0.0.1:8001/healthz
+```
+
+## 🔌 v2.6a+的MCP行为
+
+CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
+
+- 默认MCP策略：`codex`
+- 默认MCP后端：`stdio`
+- 默认不需要proxy侧MCP allowlist
+- 默认不拒绝写入型MCP tool
+- 目标server必须存在于`~/.codex/config.toml`
+- 目标tool必须存在于server运行时`tools/list`
+- 当前支持的MCP传输：stdio `command` + `args`
+- 暂不支持：HTTP/SSE/远程MCP传输

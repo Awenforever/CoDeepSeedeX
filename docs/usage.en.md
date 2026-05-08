@@ -69,3 +69,7 @@ liveness_retry: retry calls triggered by the liveness guard.
 ## Codex TUI commands
 
 After entering Codex with `codex --profile deepseek-thinking`, use `/status` to inspect status, `/model` to switch model or reasoning effort, and `/plan` to use planning mode before implementation work.
+
+## Upgrade
+
+See [Upgrade](upgrade.en.md) for both `dsproxy upgrade` and one-line installer upgrade paths.

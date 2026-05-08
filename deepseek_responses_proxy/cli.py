@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -981,6 +982,241 @@ def _config(args: argparse.Namespace) -> int:
 
 
 
+
+def _git_root_for(path: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    root = result.stdout.strip()
+    return Path(root).expanduser() if root else None
+
+
+def _git_status_porcelain(repo_root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "status", "--porcelain"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception as exc:
+        return f"<status failed: {type(exc).__name__}: {exc}>"
+
+    if result.returncode != 0:
+        return result.stderr.strip() or result.stdout.strip()
+
+    return result.stdout.strip()
+
+
+def _backup_upgrade_file(path: Path, backup_dir: Path, result: dict[str, Any]) -> None:
+    if not path.exists():
+        return
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / path.name
+    if target.exists():
+        target = backup_dir / f"{path.name}.{int(time.time())}"
+    shutil.copy2(path, target)
+    result.setdefault("backups", []).append({"source": str(path), "backup": str(target)})
+
+
+def _upgrade_run_step(
+    result: dict[str, Any],
+    *,
+    label: str,
+    argv: list[str],
+    cwd: Path,
+    dry_run: bool,
+    allow_failure: bool = False,
+) -> bool:
+    step: dict[str, Any] = {
+        "label": label,
+        "cmd": argv,
+        "cwd": str(cwd),
+        "dry_run": dry_run,
+    }
+    result.setdefault("steps", []).append(step)
+
+    if dry_run:
+        step["skipped"] = True
+        return True
+
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=str(cwd),
+            text=True,
+            capture_output=True,
+            timeout=300,
+            check=False,
+        )
+    except Exception as exc:
+        step["returncode"] = None
+        step["error"] = f"{type(exc).__name__}: {exc}"
+        return bool(allow_failure)
+
+    step["returncode"] = completed.returncode
+    step["stdout"] = completed.stdout[-2000:]
+    step["stderr"] = completed.stderr[-2000:]
+
+    if completed.returncode != 0 and not allow_failure:
+        return False
+
+    return True
+
+
+def _upgrade(args: argparse.Namespace) -> int:
+    repo_hint = Path(args.repo).expanduser() if args.repo else Path(__file__).resolve().parents[1]
+    target_tag = args.tag or PROXY_VERSION
+    dry_run = bool(args.dry_run)
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "operation": "upgrade",
+        "current_runtime_version": PROXY_VERSION,
+        "target_tag": target_tag,
+        "repo_hint": str(repo_hint),
+        "dry_run": dry_run,
+        "mode": "dsproxy_upgrade",
+        "fallback": "If this install is not a git checkout, rerun the one-line installer from the target release.",
+        "skip_profile": bool(args.skip_profile),
+        "no_restart": bool(args.no_restart),
+    }
+
+    repo_root = _git_root_for(repo_hint)
+    if repo_root is None:
+        result.update(
+            {
+                "status": "error",
+                "error": "not_a_git_checkout",
+                "one_line_upgrade": "curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash",
+                "hint": "This command supports git checkout installs. Older or non-git installs should upgrade by rerunning the one-line installer.",
+            }
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1
+
+    result["repo_root"] = str(repo_root)
+
+    dirty = _git_status_porcelain(repo_root)
+    result["git_dirty"] = bool(dirty)
+    if dirty and not args.allow_dirty:
+        result.update(
+            {
+                "status": "error",
+                "error": "dirty_worktree",
+                "git_status": dirty,
+                "hint": "Commit, stash, or pass --allow-dirty if you understand the risk.",
+            }
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1
+
+    if not args.no_backup:
+        backup_root = Path(args.backup_dir).expanduser() if args.backup_dir else _default_config_dir() / "upgrade-backups" / f"{target_tag}-{int(time.time())}"
+        _backup_upgrade_file(default_env_file_path(), backup_root, result)
+        _backup_upgrade_file(default_codex_config_path(), backup_root, result)
+
+    commands: list[tuple[str, list[str], bool]] = [
+        ("git_fetch_tags", ["git", "-C", str(repo_root), "fetch", "--tags", "origin"], False),
+        ("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_tag], False),
+        ("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False),
+    ]
+
+    if not args.skip_profile:
+        commands.extend(
+            [
+                (
+                    "install_codex_profile_stable",
+                    [
+                        sys.executable,
+                        "-m",
+                        "deepseek_responses_proxy.cli",
+                        "install-codex-profile",
+                        "--name",
+                        "deepseek",
+                        "--provider-name",
+                        "deepseek-proxy",
+                        "--base-url",
+                        "http://127.0.0.1:8000/v1",
+                        "--model",
+                        "deepseek-v4-flash",
+                        "--reasoning-effort",
+                        "medium",
+                    ],
+                    False,
+                ),
+                (
+                    "install_codex_profile_thinking",
+                    [
+                        sys.executable,
+                        "-m",
+                        "deepseek_responses_proxy.cli",
+                        "install-codex-profile",
+                        "--name",
+                        "deepseek-thinking",
+                        "--provider-name",
+                        "deepseek-thinking-proxy",
+                        "--base-url",
+                        "http://127.0.0.1:8001/v1",
+                        "--model",
+                        "deepseek-v4-pro",
+                        "--reasoning-effort",
+                        "xhigh",
+                    ],
+                    False,
+                ),
+            ]
+        )
+
+    if not args.no_restart:
+        commands.extend(
+            [
+                ("stop_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop"], True),
+                ("stop_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop", "--thinking"], True),
+                ("start_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start"], False),
+                ("start_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start", "--thinking"], False),
+            ]
+        )
+
+    for label, argv, allow_failure in commands:
+        ok = _upgrade_run_step(
+            result,
+            label=label,
+            argv=argv,
+            cwd=repo_root,
+            dry_run=dry_run,
+            allow_failure=allow_failure,
+        )
+        if not ok:
+            result.update({"status": "error", "error": "upgrade_step_failed", "failed_step": label})
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1
+
+    if not dry_run and not args.no_restart and not args.no_verify:
+        stable_status, stable_data, stable_error = _healthz_for_port(DEFAULT_STABLE_PORT, timeout=3.0)
+        thinking_status, thinking_data, thinking_error = _healthz_for_port(DEFAULT_THINKING_PORT, timeout=3.0)
+        result["runtime_verify"] = {
+            "stable": {"http_status": stable_status, "data": stable_data, "error": stable_error},
+            "thinking": {"http_status": thinking_status, "data": thinking_data, "error": thinking_error},
+        }
+
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _balance(args: argparse.Namespace) -> int:
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
@@ -1108,6 +1344,18 @@ def build_parser() -> argparse.ArgumentParser:
     balance.add_argument("--url", default="https://api.deepseek.com/user/balance")
     balance.add_argument("--timeout", type=float, default=10.0)
     balance.set_defaults(func=_balance)
+
+    upgrade = sub.add_parser("upgrade", help="upgrade a git checkout installation")
+    upgrade.add_argument("--tag", default=PROXY_VERSION, help="target git tag or ref")
+    upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
+    upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
+    upgrade.add_argument("--allow-dirty", action="store_true", help="allow upgrade with a dirty git worktree")
+    upgrade.add_argument("--no-backup", action="store_true", help="do not back up local env and Codex config files")
+    upgrade.add_argument("--backup-dir", help="directory for env/Codex config backups")
+    upgrade.add_argument("--skip-profile", action="store_true", help="do not refresh Codex profiles")
+    upgrade.add_argument("--no-restart", action="store_true", help="do not restart local proxy processes")
+    upgrade.add_argument("--no-verify", action="store_true", help="skip post-upgrade health checks")
+    upgrade.set_defaults(func=_upgrade)
 
     install_profile = sub.add_parser("install-codex-profile", help="install a Codex config profile")
     install_profile.add_argument("--name", default="deepseek-thinking")

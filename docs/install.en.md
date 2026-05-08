@@ -53,3 +53,7 @@ Generated profile:
     bash scripts/install.sh
 
 Before public release, replace the placeholder repository URL in scripts/install.sh.
+
+## Upgrade
+
+See [Upgrade](upgrade.en.md) after installation if you need to move from an older release.
