@@ -2204,6 +2204,70 @@ def _mcp_executor_denied_result(function_name: Any) -> dict[str, Any]:
     }
 
 
+_MCP_EXECUTOR_BACKEND: Any | None = None
+
+
+def _set_mcp_executor_backend_for_tests(backend: Any | None) -> None:
+    """Install an in-process MCP executor backend for tests.
+
+    Production MCP execution is intentionally not implemented in v2.5c.
+    """
+    global _MCP_EXECUTOR_BACKEND
+    _MCP_EXECUTOR_BACKEND = backend
+
+
+async def _execute_mcp_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+    function = tool_call.get("function") or {}
+    name = str(function.get("name") or "")
+    decision = _mcp_executor_policy_decision(name)
+
+    if decision.get("ok") is not True:
+        return _mcp_executor_denied_result(name)
+
+    if _MCP_EXECUTOR_BACKEND is None:
+        return _mcp_executor_denied_result(name)
+
+    arguments = _decode_tool_arguments(function.get("arguments", ""))
+    parsed = _parse_mcp_proxy_tool_name(name)
+    if parsed is None:
+        return _mcp_executor_denied_result(name)
+
+    try:
+        result = await _MCP_EXECUTOR_BACKEND(
+            server=parsed["server"],
+            tool=parsed["name"],
+            arguments=arguments,
+            decision=decision,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "tool": name,
+            "error": "mcp_executor_backend_failed",
+            "message": str(exc),
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    return {
+        "ok": True,
+        "tool": name,
+        "mcp": {
+            "server": parsed["server"],
+            "name": parsed["name"],
+            "namespace": parsed["namespace"],
+            "policy_key": parsed["policy_key"],
+            "permission": decision.get("permission"),
+        },
+        "result": result,
+    }
+
+
 def _normalize_mcp_nested_tool(
     namespace: str,
     nested_tool: dict[str, Any],
@@ -3373,7 +3437,7 @@ async def _execute_proxy_tool_call(
     arguments = _decode_tool_arguments(function.get("arguments", ""))
 
     if _parse_mcp_proxy_tool_name(name) is not None:
-        return _mcp_executor_denied_result(name)
+        return await _execute_mcp_proxy_tool_call(tool_call)
 
     if name == "proxy_status":
         return {

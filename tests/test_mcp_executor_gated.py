@@ -263,3 +263,197 @@ async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_pat
     assert result["ok"] is False
     assert result["error"] == "mcp_write_denied"
     assert result["mcp"]["permission"] == "write"
+
+@pytest.mark.asyncio
+async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
+
+    from deepseek_responses_proxy.app import _set_mcp_executor_backend_for_tests
+
+    calls = []
+
+    async def fake_backend(*, server, tool, arguments, decision):
+        calls.append(
+            {
+                "server": server,
+                "tool": tool,
+                "arguments": arguments,
+                "decision": decision,
+            }
+        )
+        return {
+            "answer": "fake result",
+            "received": arguments,
+        }
+
+    _set_mcp_executor_backend_for_tests(fake_backend)
+    try:
+        fake = FakeDeepSeekClient(
+            [
+                _response(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_custom",
+                                "type": "function",
+                                "function": {
+                                    "name": "mcp__custom_server__safe_tool",
+                                    "arguments": json.dumps({"q": "hello"}),
+                                },
+                            }
+                        ],
+                    }
+                ),
+                _response({"role": "assistant", "content": "Fake MCP result consumed."}),
+            ]
+        )
+
+        deepseek_response, history = await _run_chat_with_tool_bridge(
+            deepseek_client=fake,
+            chat_payload={
+                "model": "deepseek-v4-pro",
+                "messages": [{"role": "user", "content": "use custom mcp"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "mcp__custom_server__safe_tool",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            },
+            messages_for_deepseek=[{"role": "user", "content": "use custom mcp"}],
+            history_messages=[{"role": "user", "content": "use custom mcp"}],
+            model="deepseek-v4-pro",
+            deepseek_tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp__custom_server__safe_tool",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+            reasoning_effort=None,
+            request_payload={},
+        )
+    finally:
+        _set_mcp_executor_backend_for_tests(None)
+
+    assert deepseek_response["choices"][0]["message"]["content"] == "Fake MCP result consumed."
+    assert calls == [
+        {
+            "server": "custom_server",
+            "tool": "safe_tool",
+            "arguments": {"q": "hello"},
+            "decision": {
+                "ok": True,
+                "kind": "allowed_readonly",
+                "permission": "readonly",
+                "server": "custom_server",
+                "name": "safe_tool",
+                "namespace": "mcp__custom_server__",
+                "function_name": "mcp__custom_server__safe_tool",
+                "policy_key": "custom_server.safe_tool",
+            },
+        }
+    ]
+
+    tool_payloads = _payloads_with_tool_messages(fake.payloads)
+    assert len(tool_payloads) == 1
+    tool_messages = [m for m in tool_payloads[0]["messages"] if m.get("role") == "tool"]
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is True
+    assert result["tool"] == "mcp__custom_server__safe_tool"
+    assert result["mcp"]["server"] == "custom_server"
+    assert result["mcp"]["permission"] == "readonly"
+    assert result["result"] == {"answer": "fake result", "received": {"q": "hello"}}
+    assert history[-1]["role"] == "tool"
+
+
+@pytest.mark.asyncio
+async def test_mcp_backend_exception_returns_structured_tool_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
+
+    from deepseek_responses_proxy.app import _set_mcp_executor_backend_for_tests
+
+    async def failing_backend(*, server, tool, arguments, decision):
+        raise RuntimeError("boom")
+
+    _set_mcp_executor_backend_for_tests(failing_backend)
+    try:
+        fake = FakeDeepSeekClient(
+            [
+                _response(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_custom",
+                                "type": "function",
+                                "function": {
+                                    "name": "mcp__custom_server__safe_tool",
+                                    "arguments": json.dumps({"q": "hello"}),
+                                },
+                            }
+                        ],
+                    }
+                ),
+                _response({"role": "assistant", "content": "Handled backend failure."}),
+            ]
+        )
+
+        deepseek_response, _history = await _run_chat_with_tool_bridge(
+            deepseek_client=fake,
+            chat_payload={
+                "model": "deepseek-v4-pro",
+                "messages": [{"role": "user", "content": "use custom mcp"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "mcp__custom_server__safe_tool",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            },
+            messages_for_deepseek=[{"role": "user", "content": "use custom mcp"}],
+            history_messages=[{"role": "user", "content": "use custom mcp"}],
+            model="deepseek-v4-pro",
+            deepseek_tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp__custom_server__safe_tool",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+            reasoning_effort=None,
+            request_payload={},
+        )
+    finally:
+        _set_mcp_executor_backend_for_tests(None)
+
+    assert deepseek_response["choices"][0]["message"]["content"] == "Handled backend failure."
+    tool_payloads = _payloads_with_tool_messages(fake.payloads)
+    assert len(tool_payloads) == 1
+    tool_messages = [m for m in tool_payloads[0]["messages"] if m.get("role") == "tool"]
+    result = json.loads(tool_messages[0]["content"])
+    assert result["ok"] is False
+    assert result["error"] == "mcp_executor_backend_failed"
+    assert result["message"] == "boom"
+    assert result["mcp"]["server"] == "custom_server"
