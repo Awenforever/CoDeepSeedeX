@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import time
+import tomllib
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.4a8a7-runtime-version-sync-fix"
+PROXY_VERSION = "v2.5f4-mcp-stdio-executor"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -2091,6 +2092,583 @@ def _mcp_tool_forwarding_class(tool_name: str) -> str | None:
     return None
 
 
+def _parse_mcp_proxy_tool_name(function_name: Any) -> dict[str, str] | None:
+    """Parse flattened MCP function names such as mcp__server__tool.
+
+    This parser is intentionally generic. It does not assume that a particular
+    MCP server is installed, and it does not grant execution permission.
+    """
+    raw_name = str(function_name or "").strip()
+    prefix = "mcp__"
+    if not raw_name.startswith(prefix):
+        return None
+
+    body = raw_name[len(prefix):]
+    server, sep, tool_name = body.partition("__")
+    if not sep or not server or not tool_name:
+        return None
+
+    return {
+        "server": server,
+        "name": tool_name,
+        "namespace": f"mcp__{server}__",
+        "function_name": raw_name,
+        "policy_key": f"{server}.{tool_name}",
+    }
+
+
+def _mcp_executor_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_EXECUTOR", False)
+
+
+def _split_env_csv(name: str) -> set[str]:
+    raw = os.environ.get(name, "")
+    values: set[str] = set()
+    for item in raw.split(","):
+        normalized = item.strip()
+        if normalized:
+            values.add(normalized)
+    return values
+
+
+def _mcp_executor_readonly_allowlist() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST")
+
+
+def _mcp_executor_write_allowlist() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST")
+
+
+def _mcp_config_path() -> Path:
+    configured = os.environ.get("DEEPSEEK_PROXY_MCP_CONFIG_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".codex" / "config.toml"
+
+
+def _safe_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, (str, int, float, bool))]
+
+
+def _codex_mcp_config_snapshot(
+    path: Path | None = None,
+    *,
+    include_env_values: bool = False,
+) -> dict[str, Any]:
+    config_path = path or _mcp_config_path()
+    snapshot: dict[str, Any] = {
+        "config_path": str(config_path),
+        "exists": config_path.exists(),
+        "server_count": 0,
+        "servers": {},
+        "error": None,
+    }
+
+    if not config_path.exists():
+        return snapshot
+
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        snapshot["error"] = f"{type(exc).__name__}: {exc}"
+        return snapshot
+
+    raw_servers = data.get("mcp_servers") or {}
+    if not isinstance(raw_servers, dict):
+        snapshot["error"] = "invalid_mcp_servers_root"
+        return snapshot
+
+    servers: dict[str, Any] = {}
+    for server_name, raw_server in sorted(raw_servers.items()):
+        if not isinstance(raw_server, dict):
+            continue
+
+        raw_tools = raw_server.get("tools") or {}
+        tools: dict[str, Any] = {}
+        if isinstance(raw_tools, dict):
+            for tool_name, raw_tool in sorted(raw_tools.items()):
+                if isinstance(raw_tool, dict):
+                    tools[str(tool_name)] = {
+                        "approval_mode": str(raw_tool.get("approval_mode") or ""),
+                    }
+
+        raw_env = raw_server.get("env") or {}
+        env_keys = sorted(str(key) for key in raw_env.keys()) if isinstance(raw_env, dict) else []
+
+        server_info: dict[str, Any] = {
+            "command": str(raw_server.get("command") or ""),
+            "args": _safe_string_list(raw_server.get("args")),
+            "env_vars": _safe_string_list(raw_server.get("env_vars")),
+            "env_keys": env_keys,
+            "startup_timeout_sec": raw_server.get("startup_timeout_sec"),
+            "tool_timeout_sec": raw_server.get("tool_timeout_sec"),
+            "tool_count": len(tools),
+            "tools": tools,
+        }
+
+        if include_env_values and isinstance(raw_env, dict):
+            server_info["env"] = {
+                str(key): str(value)
+                for key, value in raw_env.items()
+                if isinstance(key, str)
+            }
+
+        servers[str(server_name)] = server_info
+
+    snapshot["servers"] = servers
+    snapshot["server_count"] = len(servers)
+    return snapshot
+
+
+def _mcp_executor_backend_type() -> str:
+    backend_type = os.environ.get("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none").strip().lower()
+    if backend_type in {"none", "injected", "stdio"}:
+        return backend_type
+    return "none"
+
+
+def _mcp_stdio_backend_enabled() -> bool:
+    return _mcp_executor_backend_type() == "stdio"
+
+
+def _mcp_executor_status() -> dict[str, Any]:
+    backend_type = _mcp_executor_backend_type()
+    injected_available = _MCP_EXECUTOR_BACKEND is not None
+
+    return {
+        "enabled": _mcp_executor_enabled(),
+        "backend": {
+            "type": "injected" if injected_available else backend_type,
+            "available": injected_available or backend_type == "stdio",
+            "production_execution": backend_type == "stdio",
+        },
+        "readonly_allowlist": sorted(_mcp_executor_readonly_allowlist()),
+        "write_allowlist": sorted(_mcp_executor_write_allowlist()),
+        "discovery": _mcp_discovery_config_status(),
+        "codex_config": _codex_mcp_config_snapshot(),
+    }
+
+
+def _mcp_executor_policy_decision(function_name: Any) -> dict[str, Any]:
+    parsed = _parse_mcp_proxy_tool_name(function_name)
+    if parsed is None:
+        return {
+            "ok": False,
+            "kind": "not_mcp_tool",
+            "function_name": str(function_name or ""),
+        }
+
+    if not _mcp_executor_enabled():
+        return {
+            "ok": False,
+            "kind": "mcp_executor_disabled",
+            **parsed,
+        }
+
+    policy_key = parsed["policy_key"]
+    if policy_key in _mcp_executor_readonly_allowlist():
+        return {
+            "ok": True,
+            "kind": "allowed_readonly",
+            "permission": "readonly",
+            **parsed,
+        }
+
+    if policy_key in _mcp_executor_write_allowlist():
+        return {
+            "ok": False,
+            "kind": "mcp_write_denied",
+            "permission": "write",
+            "message": "MCP write execution is denied by default.",
+            **parsed,
+        }
+
+    return {
+        "ok": False,
+        "kind": "mcp_tool_not_allowed",
+        **parsed,
+    }
+
+
+def _mcp_executor_denied_result(function_name: Any) -> dict[str, Any]:
+    decision = _mcp_executor_policy_decision(function_name)
+    error = str(decision.get("kind") or "mcp_tool_not_allowed")
+    message = decision.get("message") or "MCP tool execution is not allowed by proxy policy."
+
+    if decision.get("ok") is True:
+        error = "mcp_executor_backend_unavailable"
+        message = (
+            "MCP tool is allowed by proxy policy, but proxy-side MCP execution "
+            "backend is not implemented yet."
+        )
+
+    return {
+        "ok": False,
+        "tool": str(function_name or ""),
+        "error": error,
+        "mcp": {
+            key: decision[key]
+            for key in ["server", "name", "namespace", "policy_key", "permission"]
+            if key in decision
+        },
+        "message": message,
+    }
+
+
+_MCP_EXECUTOR_BACKEND: Any | None = None
+
+
+def _set_mcp_executor_backend_for_tests(backend: Any | None) -> None:
+    """Install an in-process MCP executor backend for tests.
+
+    Production MCP execution is intentionally not implemented in v2.5c.
+    """
+    global _MCP_EXECUTOR_BACKEND
+    _MCP_EXECUTOR_BACKEND = backend
+
+
+async def _execute_mcp_stdio_backend(
+    *,
+    function_name: str,
+    parsed: dict[str, str],
+    arguments: dict[str, Any],
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    config_snapshot = _codex_mcp_config_snapshot(include_env_values=True)
+
+    if not config_snapshot.get("exists"):
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_config_missing",
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    if config_snapshot.get("error"):
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_config_error",
+            "message": str(config_snapshot.get("error")),
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    servers = config_snapshot.get("servers") or {}
+    if not isinstance(servers, dict) or parsed["server"] not in servers:
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_server_not_configured",
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    from deepseek_responses_proxy.mcp_stdio import (
+        call_stdio_mcp_tool,
+        discover_stdio_mcp_tools,
+        mcp_server_config_from_snapshot,
+    )
+
+    server_snapshot = servers[parsed["server"]]
+    if not isinstance(server_snapshot, dict):
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_server_config_invalid",
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    config = mcp_server_config_from_snapshot(parsed["server"], server_snapshot)
+    discovery = await discover_stdio_mcp_tools(config, client_version=PROXY_VERSION)
+    discovered_tool_names = {
+        str(tool.get("name") or "")
+        for tool in discovery.get("tools", [])
+        if isinstance(tool, dict)
+    }
+
+    if not discovery.get("ok"):
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_discovery_failed_before_call",
+            "discovery": discovery,
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    if parsed["name"] not in discovered_tool_names:
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_tool_not_discovered",
+            "discovery": {
+                "ok": True,
+                "tool_count": discovery.get("tool_count"),
+                "tool_names": sorted(discovered_tool_names),
+            },
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    call_result = await call_stdio_mcp_tool(
+        config,
+        tool_name=parsed["name"],
+        arguments=arguments,
+        client_version=PROXY_VERSION,
+    )
+
+    if not call_result.get("ok"):
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_stdio_tool_call_failed",
+            "call": call_result,
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+        }
+
+    tool_result = call_result.get("result")
+    if isinstance(tool_result, dict) and tool_result.get("isError") is True:
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_tool_result_error",
+            "result": tool_result,
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+            "discovery": {
+                "ok": True,
+                "tool_count": discovery.get("tool_count"),
+            },
+        }
+
+    return {
+        "ok": True,
+        "tool": function_name,
+        "mcp": {
+            "server": parsed["server"],
+            "name": parsed["name"],
+            "namespace": parsed["namespace"],
+            "policy_key": parsed["policy_key"],
+            "permission": decision.get("permission"),
+        },
+        "result": tool_result,
+        "discovery": {
+            "ok": True,
+            "tool_count": discovery.get("tool_count"),
+        },
+    }
+
+
+async def _execute_mcp_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+    function = tool_call.get("function") or {}
+    name = str(function.get("name") or "")
+    decision = _mcp_executor_policy_decision(name)
+
+    if decision.get("ok") is not True:
+        return _mcp_executor_denied_result(name)
+
+    arguments = _decode_tool_arguments(function.get("arguments", ""))
+    parsed = _parse_mcp_proxy_tool_name(name)
+    if parsed is None:
+        return _mcp_executor_denied_result(name)
+
+    if _MCP_EXECUTOR_BACKEND is not None:
+        try:
+            result = await _MCP_EXECUTOR_BACKEND(
+                server=parsed["server"],
+                tool=parsed["name"],
+                arguments=arguments,
+                decision=decision,
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "tool": name,
+                "error": "mcp_executor_backend_failed",
+                "message": str(exc),
+                "mcp": {
+                    "server": parsed["server"],
+                    "name": parsed["name"],
+                    "namespace": parsed["namespace"],
+                    "policy_key": parsed["policy_key"],
+                    "permission": decision.get("permission"),
+                },
+            }
+
+        return {
+            "ok": True,
+            "tool": name,
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+            "result": result,
+        }
+
+    if _mcp_stdio_backend_enabled():
+        return await _execute_mcp_stdio_backend(
+            function_name=name,
+            parsed=parsed,
+            arguments=arguments,
+            decision=decision,
+        )
+
+    return _mcp_executor_denied_result(name)
+
+
+def _mcp_diagnostic_call_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", False)
+
+
+def _mcp_diagnostic_function_name(payload: dict[str, Any]) -> str:
+    raw_function_name = str(payload.get("function_name") or "").strip()
+    if raw_function_name:
+        return raw_function_name
+
+    server = str(payload.get("server") or "").strip()
+    tool = str(payload.get("tool") or payload.get("name") or "").strip()
+    if server and tool:
+        return f"mcp__{server}__{tool}"
+
+    return ""
+
+
+async def _mcp_diagnostic_call(payload: dict[str, Any]) -> dict[str, Any]:
+    function_name = _mcp_diagnostic_function_name(payload)
+    parsed = _parse_mcp_proxy_tool_name(function_name)
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
+
+    base: dict[str, Any] = {
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": _mcp_diagnostic_call_enabled(),
+        "production_execution": False,
+        "tools_call_enabled": False,
+        "backend": _mcp_executor_backend_type(),
+        "tool": function_name,
+    }
+
+    if parsed is not None:
+        base["mcp"] = {
+            "server": parsed["server"],
+            "name": parsed["name"],
+            "namespace": parsed["namespace"],
+            "policy_key": parsed["policy_key"],
+        }
+
+    if not _mcp_diagnostic_call_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_diagnostic_call_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL=1 to enable this diagnostic endpoint.",
+        }
+
+    if parsed is None:
+        return {
+            **base,
+            "ok": False,
+            "error": "invalid_mcp_tool_name",
+            "message": "Provide function_name=mcp__server__tool or server/tool fields.",
+        }
+
+    if not _mcp_executor_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_executor_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR=1 before using diagnostic MCP calls.",
+        }
+
+    if not _mcp_stdio_backend_enabled():
+        return {
+            **base,
+            "ok": False,
+            "error": "mcp_stdio_backend_disabled",
+            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND=stdio for diagnostic MCP calls.",
+        }
+
+    decision = _mcp_executor_policy_decision(function_name)
+    if decision.get("ok") is not True:
+        denied = _mcp_executor_denied_result(function_name)
+        return {
+            **base,
+            **denied,
+            "status": "ok",
+            "version": PROXY_VERSION,
+            "enabled": True,
+            "production_execution": False,
+            "tools_call_enabled": False,
+            "backend": _mcp_executor_backend_type(),
+        }
+
+    result = await _execute_mcp_stdio_backend(
+        function_name=function_name,
+        parsed=parsed,
+        arguments=arguments,
+        decision=decision,
+    )
+    return {
+        **base,
+        **result,
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": True,
+        "production_execution": False,
+        "tools_call_enabled": True,
+        "backend": _mcp_executor_backend_type(),
+    }
+
+
 def _normalize_mcp_nested_tool(
     namespace: str,
     nested_tool: dict[str, Any],
@@ -3256,8 +3834,11 @@ async def _execute_proxy_tool_call(
     store: Any | None = None,
 ) -> dict[str, Any]:
     function = tool_call.get("function") or {}
-    name = function.get("name", "")
+    name = str(function.get("name") or "")
     arguments = _decode_tool_arguments(function.get("arguments", ""))
+
+    if _parse_mcp_proxy_tool_name(name) is not None:
+        return await _execute_mcp_proxy_tool_call(tool_call)
 
     if name == "proxy_status":
         return {
@@ -3390,10 +3971,15 @@ async def _execute_proxy_tool_call(
     }
 
 
+def _is_mcp_executor_tool_call(tool_call: dict[str, Any]) -> bool:
+    function = tool_call.get("function") or {}
+    return _parse_mcp_proxy_tool_name(function.get("name")) is not None
+
+
 def _is_proxy_tool_call(tool_call: dict[str, Any]) -> bool:
     function = tool_call.get("function") or {}
-    name = function.get("name", "")
-    return name.startswith("proxy_")
+    function_name = str(function.get("name") or "")
+    return function_name.startswith("proxy_") or _is_mcp_executor_tool_call(tool_call)
 
 
 def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -4711,7 +5297,90 @@ def _tool_bridge_status() -> dict[str, Any]:
             "output_dir": str(_image_output_dir()),
             "api_key_configured": bool(_image_api_key()) if image_provider != "mock" else None,
         },
+        "mcp_executor": _mcp_executor_status(),
     }
+
+
+def _mcp_discovery_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_DISCOVERY", False)
+
+
+def _mcp_discovery_server_filter() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_DISCOVERY_SERVERS")
+
+
+def _mcp_discovery_config_status() -> dict[str, Any]:
+    return {
+        "enabled": _mcp_discovery_enabled(),
+        "endpoint": "/v1/proxy/mcp/discovery",
+        "auto_run_in_status": False,
+        "server_filter": sorted(_mcp_discovery_server_filter()),
+        "operations": ["initialize", "notifications/initialized", "tools/list"],
+        "tools_call_enabled": False,
+        "production_execution": False,
+    }
+
+
+async def _mcp_discovery_status() -> dict[str, Any]:
+    config_snapshot = _codex_mcp_config_snapshot()
+    server_filter = _mcp_discovery_server_filter()
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": _mcp_discovery_enabled(),
+        "production_execution": False,
+        "tools_call_enabled": False,
+        "operations": ["initialize", "notifications/initialized", "tools/list"],
+        "server_filter": sorted(server_filter),
+        "selected_servers": [],
+        "codex_config": config_snapshot,
+        "discovery_runs": {},
+    }
+
+    if not result["enabled"]:
+        result["reason"] = "disabled"
+        return result
+
+    if not config_snapshot.get("exists"):
+        result["reason"] = "config_missing"
+        return result
+
+    if config_snapshot.get("error"):
+        result["reason"] = "config_error"
+        return result
+
+    from deepseek_responses_proxy.mcp_stdio import (
+        discover_stdio_mcp_tools,
+        mcp_server_config_from_snapshot,
+    )
+
+    runtime_snapshot = _codex_mcp_config_snapshot(include_env_values=True)
+    runtime_servers = runtime_snapshot.get("servers") or {}
+    if not isinstance(runtime_servers, dict):
+        result["reason"] = "invalid_runtime_servers"
+        return result
+
+    selected_servers: list[str] = []
+    discovery_runs: dict[str, Any] = {}
+
+    for server_name, server_snapshot in sorted(runtime_servers.items()):
+        if server_filter and server_name not in server_filter:
+            continue
+        if not isinstance(server_snapshot, dict):
+            continue
+
+        selected_servers.append(str(server_name))
+        config = mcp_server_config_from_snapshot(str(server_name), server_snapshot)
+        discovery_runs[str(server_name)] = await discover_stdio_mcp_tools(
+            config,
+            client_version=PROXY_VERSION,
+        )
+
+    result["selected_servers"] = selected_servers
+    result["discovery_runs"] = discovery_runs
+    result["reason"] = "completed"
+    return result
 
 
 def create_app(
@@ -4758,6 +5427,17 @@ def create_app(
             "version": PROXY_VERSION,
             "tool_bridge": _tool_bridge_status(),
         }
+
+    @app.get("/v1/proxy/mcp/discovery")
+    async def proxy_mcp_discovery() -> dict[str, Any]:
+        return await _mcp_discovery_status()
+
+    @app.post("/v1/proxy/mcp/diagnostic-call")
+    async def proxy_mcp_diagnostic_call(request: Request) -> dict[str, Any]:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="request body must be a JSON object")
+        return await _mcp_diagnostic_call(payload)
 
     @app.get("/v1/proxy/balance")
     async def proxy_balance() -> dict[str, Any]:
