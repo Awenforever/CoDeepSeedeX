@@ -1,6 +1,9 @@
-# v0.2.0-alpha
+# CoDeepSeedeX v0.2.0-alpha
 
 ## Summary
+
+Internal milestone: `v2.6a2-release-upgrade-defaults`.
+
 
 This release finalizes the public upgrade experience before release publication.
 
