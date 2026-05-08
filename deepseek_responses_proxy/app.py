@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a6a1-compact-policy-budget-event"
+PROXY_VERSION = "v2.7a7-tool-output-safe-trimming-disabled-by-default"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -348,6 +348,7 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "category",
     "mode",
     "policy_name",
+    "reason",
     "trim_mode",
     "trim_reason",
 }
@@ -986,6 +987,184 @@ def _tool_output_trim_dry_run(
         "trimmed_to_item_cap_chars": _estimate_tool_output_trim_after_chars(max_item_chars + 1, config),
         "targets": _compact_tool_output_targets_for_trace(targets, max_items=trace_target_limit),
     }
+
+
+def _format_trimmed_tool_output_text(
+    *,
+    original_text: str,
+    call_id: str,
+    tool_name: str,
+    category: str,
+    policy: dict[str, Any],
+    original_item_chars: int,
+) -> str:
+    keep_head = int(policy.get("keep_head_chars") or 0)
+    keep_tail = int(policy.get("keep_tail_chars") or 0)
+
+    if keep_head + keep_tail >= len(original_text):
+        return original_text
+
+    head = original_text[:keep_head] if keep_head > 0 else ""
+    tail = original_text[-keep_tail:] if keep_tail > 0 else ""
+    omitted_chars = max(0, len(original_text) - len(head) - len(tail))
+
+    return (
+        "[tool output trimmed by CoDeepSeedeX]\n"
+        f"call_id: {call_id or 'unknown'}\n"
+        f"tool_name: {tool_name or 'unknown'}\n"
+        f"category: {category or 'unknown'}\n"
+        f"original_output_chars: {len(original_text)}\n"
+        f"original_item_chars: {original_item_chars}\n"
+        f"kept_head_chars: {len(head)}\n"
+        f"kept_tail_chars: {len(tail)}\n"
+        f"omitted_middle_chars: {omitted_chars}\n"
+        "\n--- kept head ---\n"
+        f"{head}"
+        "\n--- omitted middle ---\n"
+        f"... {omitted_chars} chars omitted ...\n"
+        "\n--- kept tail ---\n"
+        f"{tail}"
+    )
+
+
+def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, Any]]:
+    config = _tool_output_trim_dry_run_env_config()
+    mode = str(config.get("mode") or "dry_run")
+    report: dict[str, Any] = {
+        "mode": mode,
+        "enabled": mode == "enabled",
+        "applied": False,
+        "reason": None,
+        "input_is_list": isinstance(input_value, list),
+        "input_item_count_before": len(input_value) if isinstance(input_value, list) else 0,
+        "input_item_count_after": len(input_value) if isinstance(input_value, list) else 0,
+        "function_call_output_count": 0,
+        "trimmed_item_count": 0,
+        "chars_before": _debug_trace_json_chars(input_value),
+        "chars_after": _debug_trace_json_chars(input_value),
+        "chars_removed": 0,
+        "targets": [],
+        "error": None,
+    }
+
+    if mode != "enabled":
+        report["reason"] = "trim_mode_not_enabled"
+        return input_value, report
+
+    if not isinstance(input_value, list):
+        report["reason"] = "input_not_list"
+        return input_value, report
+
+    try:
+        trimmed_input = deepcopy(input_value)
+
+        calls_by_id: dict[str, dict[str, Any]] = {}
+        for index, item in enumerate(trimmed_input):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type") or "") != "function_call":
+                continue
+            call_id = str(item.get("call_id") or "")
+            if not call_id:
+                continue
+            calls_by_id[call_id] = {
+                "index": index,
+                "tool_name": str(item.get("name") or "unknown"),
+                "arguments_chars": _debug_trace_json_chars(item.get("arguments")),
+            }
+
+        targets: list[dict[str, Any]] = []
+        chars_before = _debug_trace_json_chars(trimmed_input)
+
+        for index, item in enumerate(trimmed_input):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type") or "") != "function_call_output":
+                continue
+
+            report["function_call_output_count"] = int(report["function_call_output_count"]) + 1
+
+            output = item.get("output")
+            if not isinstance(output, str):
+                continue
+
+            call_id = str(item.get("call_id") or "")
+            call_info = calls_by_id.get(call_id) or {}
+            tool_name = str(call_info.get("tool_name") or "unknown")
+            category = _classify_tool_output_category(tool_name)
+            policy = _tool_output_category_policy(category)
+            original_item_chars = _debug_trace_json_chars(item)
+
+            if original_item_chars <= int(policy["max_item_chars"]):
+                continue
+
+            trimmed_output = _format_trimmed_tool_output_text(
+                original_text=output,
+                call_id=call_id,
+                tool_name=tool_name,
+                category=category,
+                policy=policy,
+                original_item_chars=original_item_chars,
+            )
+            if trimmed_output == output:
+                continue
+
+            original_output_chars = len(output)
+            item["output"] = trimmed_output
+            trimmed_item_chars = _debug_trace_json_chars(item)
+            removed_chars = max(0, original_item_chars - trimmed_item_chars)
+            if removed_chars <= 0:
+                item["output"] = output
+                continue
+
+            targets.append(
+                {
+                    "index": index,
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    "category": category,
+                    "policy_name": str(policy.get("policy_name") or category),
+                    "trim_reason": "enabled_category_item_exceeds_max_item_chars",
+                    "item_chars": original_item_chars,
+                    "output_chars": original_output_chars,
+                    "original_chars": original_item_chars,
+                    "estimated_after_chars": trimmed_item_chars,
+                    "estimated_remove_chars": removed_chars,
+                    "exceeds_warn_item_chars": True,
+                }
+            )
+
+        chars_after = _debug_trace_json_chars(trimmed_input)
+        chars_removed = max(0, chars_before - chars_after)
+
+        if not targets or chars_removed <= 0:
+            report["reason"] = "no_outputs_exceeded_policy"
+            report["chars_after"] = chars_after
+            return input_value, report
+
+        trace_target_limit = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_APPLIED_TRACE_TARGETS", 5))
+        report.update(
+            {
+                "applied": True,
+                "reason": "enabled",
+                "input_item_count_after": len(trimmed_input),
+                "trimmed_item_count": len(targets),
+                "chars_before": chars_before,
+                "chars_after": chars_after,
+                "chars_removed": chars_removed,
+                "targets": _compact_tool_output_targets_for_trace(targets, max_items=trace_target_limit),
+            }
+        )
+        return trimmed_input, report
+
+    except Exception as exc:
+        report["reason"] = "exception_fallback_to_original_input"
+        report["error"] = f"{type(exc).__name__}: {exc}"
+        report["applied"] = False
+        report["chars_after"] = report["chars_before"]
+        report["chars_removed"] = 0
+        report["targets"] = []
+        return input_value, report
 
 
 def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
@@ -6655,6 +6834,13 @@ def create_app(
                 for item in input_value
                 if item.get("type") != "function_call"
             ]
+
+        input_value, tool_output_trim_report = _apply_tool_output_safe_trimming(input_value)
+        _debug_trace_event(
+            response_id,
+            "tool_output_trim_applied",
+            **tool_output_trim_report,
+        )
 
         messages.extend(_input_items_to_messages(input_value))
 

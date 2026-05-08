@@ -450,3 +450,81 @@ def test_tool_output_policy_dry_run_event_stays_compact(monkeypatch):
     assert len(budget["policy_dry_run"]["targets"]) <= 20
     assert len(budget["largest_outputs"]) <= budget["config"]["largest_items"]
     assert len(encoded) < 8000
+
+
+def test_tool_output_safe_trimming_default_dry_run_does_not_change_input(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run")
+    input_items = [
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "exec_command",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "x" * 20000,
+        },
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+
+    assert trimmed is input_items
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["reason"] == "trim_mode_not_enabled"
+    assert input_items[1]["output"] == "x" * 20000
+
+
+def test_tool_output_safe_trimming_enabled_trims_only_function_call_output(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_MAX_ITEM_CHARS", "1000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_KEEP_HEAD_CHARS", "20")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_KEEP_TAIL_CHARS", "30")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_NOTICE_CHARS", "128")
+
+    input_items = [
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "keep this"}],
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_shell",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"long\"}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_shell",
+            "output": "A" * 5000 + "TAIL",
+        },
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+
+    assert trimmed is not input_items
+    assert input_items[2]["output"] == "A" * 5000 + "TAIL"
+    assert report["enabled"] is True
+    assert report["applied"] is True
+    assert report["trimmed_item_count"] == 1
+    assert report["chars_removed"] > 0
+    assert report["targets"][0]["category"] == "shell_command"
+    assert trimmed[0] == input_items[0]
+    assert trimmed[1] == input_items[1]
+    assert "[tool output trimmed by CoDeepSeedeX]" in trimmed[2]["output"]
+    assert "--- kept head ---" in trimmed[2]["output"]
+    assert "--- kept tail ---" in trimmed[2]["output"]
+    assert trimmed[2]["output"].endswith("TAIL")
+
+
+def test_tool_output_safe_trimming_handles_non_list_input(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming("plain input")
+
+    assert trimmed == "plain input"
+    assert report["applied"] is False
+    assert report["reason"] == "input_not_list"
