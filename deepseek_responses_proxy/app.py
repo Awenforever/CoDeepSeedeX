@@ -4588,6 +4588,8 @@ async def _run_chat_with_tool_bridge(
 
         assistant_message = choices[0].get("message") or {}
         tool_calls = assistant_message.get("tool_calls") or []
+        pre_liveness_retry_response = deepseek_response
+        liveness_retry_attempted = False
 
         while (
             not tool_calls
@@ -4632,6 +4634,7 @@ async def _run_chat_with_tool_bridge(
             else:
                 liveness_report["guard_reason"] = "assistant_narrated_tool_intent_without_tool_call"
 
+            liveness_retry_attempted = True
             liveness_report["triggered"] = True
             liveness_report["round_index"] = round_index + 1
             liveness_report["retry_count"] = int(liveness_report["retry_count"]) + 1
@@ -4703,6 +4706,14 @@ async def _run_chat_with_tool_bridge(
         liveness_report["final_tool_call_count"] = len(tool_calls) if isinstance(tool_calls, list) else 0
 
         if not tool_calls:
+            if liveness_retry_attempted:
+                liveness_report["guard_reason"] = (
+                    f"{liveness_report.get('guard_reason')}"
+                    "_retry_without_tool_call_returned_pre_retry_response"
+                )
+                _write_agent_liveness_guard_report(liveness_report)
+                return pre_liveness_retry_response, history_messages
+
             _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
 

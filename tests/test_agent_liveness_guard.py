@@ -140,6 +140,54 @@ async def test_liveness_guard_reasks_and_surfaces_local_codex_tool_call(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_liveness_retry_without_tool_call_returns_pre_retry_response(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "1")
+
+    pre_retry_text = (
+        "uiautomator2 connected successfully. Now let me try more — "
+        "wake the screen, dump UI, and test a real action:"
+    )
+    leaked_retry_text = "B — no tool needed. This was already the final answer."
+
+    fake = FakeDeepSeekClient(
+        [
+            _response({"role": "assistant", "content": pre_retry_text}),
+            _response({"role": "assistant", "content": leaked_retry_text}),
+        ]
+    )
+
+    deepseek_response, history = await _run_chat_with_tool_bridge(
+        deepseek_client=fake,
+        chat_payload={
+            "model": "deepseek-v4-pro",
+            "messages": [{"role": "user", "content": "check device"}],
+            "tools": [{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        },
+        messages_for_deepseek=[{"role": "user", "content": "check device"}],
+        history_messages=[{"role": "user", "content": "check device"}],
+        model="deepseek-v4-pro",
+        deepseek_tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={},
+    )
+
+    assert len(fake.payloads) == 2
+    assert deepseek_response["choices"][0]["message"]["content"] == pre_retry_text
+    assert history == [{"role": "user", "content": "check device"}]
+
+    report = json.loads(Path(".debug/agent_liveness_guard_report.json").read_text(encoding="utf-8"))
+    assert report["triggered"] is True
+    assert report["retry_count"] == 1
+    assert report["final_has_tool_calls"] is False
+    assert report["retry_attempts"][0]["response_has_tool_calls"] is False
+    assert report["retry_attempts"][0]["response_content_preview"] == leaked_retry_text
+    assert "retry_without_tool_call_returned_pre_retry_response" in report["guard_reason"]
+
+
+
+@pytest.mark.asyncio
 async def test_liveness_guard_does_not_reask_final_answer(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
