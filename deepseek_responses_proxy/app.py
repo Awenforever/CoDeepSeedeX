@@ -2152,7 +2152,11 @@ def _safe_string_list(value: Any) -> list[str]:
     return [str(item) for item in value if isinstance(item, (str, int, float, bool))]
 
 
-def _codex_mcp_config_snapshot(path: Path | None = None) -> dict[str, Any]:
+def _codex_mcp_config_snapshot(
+    path: Path | None = None,
+    *,
+    include_env_values: bool = False,
+) -> dict[str, Any]:
     config_path = path or _mcp_config_path()
     snapshot: dict[str, Any] = {
         "config_path": str(config_path),
@@ -2193,7 +2197,7 @@ def _codex_mcp_config_snapshot(path: Path | None = None) -> dict[str, Any]:
         raw_env = raw_server.get("env") or {}
         env_keys = sorted(str(key) for key in raw_env.keys()) if isinstance(raw_env, dict) else []
 
-        servers[str(server_name)] = {
+        server_info: dict[str, Any] = {
             "command": str(raw_server.get("command") or ""),
             "args": _safe_string_list(raw_server.get("args")),
             "env_vars": _safe_string_list(raw_server.get("env_vars")),
@@ -2203,6 +2207,15 @@ def _codex_mcp_config_snapshot(path: Path | None = None) -> dict[str, Any]:
             "tool_count": len(tools),
             "tools": tools,
         }
+
+        if include_env_values and isinstance(raw_env, dict):
+            server_info["env"] = {
+                str(key): str(value)
+                for key, value in raw_env.items()
+                if isinstance(key, str)
+            }
+
+        servers[str(server_name)] = server_info
 
     snapshot["servers"] = servers
     snapshot["server_count"] = len(servers)
@@ -2219,6 +2232,7 @@ def _mcp_executor_status() -> dict[str, Any]:
         },
         "readonly_allowlist": sorted(_mcp_executor_readonly_allowlist()),
         "write_allowlist": sorted(_mcp_executor_write_allowlist()),
+        "discovery": _mcp_discovery_config_status(),
         "codex_config": _codex_mcp_config_snapshot(),
     }
 
@@ -4985,6 +4999,88 @@ def _tool_bridge_status() -> dict[str, Any]:
     }
 
 
+def _mcp_discovery_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_DISCOVERY", False)
+
+
+def _mcp_discovery_server_filter() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_DISCOVERY_SERVERS")
+
+
+def _mcp_discovery_config_status() -> dict[str, Any]:
+    return {
+        "enabled": _mcp_discovery_enabled(),
+        "endpoint": "/v1/proxy/mcp/discovery",
+        "auto_run_in_status": False,
+        "server_filter": sorted(_mcp_discovery_server_filter()),
+        "operations": ["initialize", "notifications/initialized", "tools/list"],
+        "tools_call_enabled": False,
+        "production_execution": False,
+    }
+
+
+async def _mcp_discovery_status() -> dict[str, Any]:
+    config_snapshot = _codex_mcp_config_snapshot()
+    server_filter = _mcp_discovery_server_filter()
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "enabled": _mcp_discovery_enabled(),
+        "production_execution": False,
+        "tools_call_enabled": False,
+        "operations": ["initialize", "notifications/initialized", "tools/list"],
+        "server_filter": sorted(server_filter),
+        "selected_servers": [],
+        "codex_config": config_snapshot,
+        "discovery_runs": {},
+    }
+
+    if not result["enabled"]:
+        result["reason"] = "disabled"
+        return result
+
+    if not config_snapshot.get("exists"):
+        result["reason"] = "config_missing"
+        return result
+
+    if config_snapshot.get("error"):
+        result["reason"] = "config_error"
+        return result
+
+    from deepseek_responses_proxy.mcp_stdio import (
+        discover_stdio_mcp_tools,
+        mcp_server_config_from_snapshot,
+    )
+
+    runtime_snapshot = _codex_mcp_config_snapshot(include_env_values=True)
+    runtime_servers = runtime_snapshot.get("servers") or {}
+    if not isinstance(runtime_servers, dict):
+        result["reason"] = "invalid_runtime_servers"
+        return result
+
+    selected_servers: list[str] = []
+    discovery_runs: dict[str, Any] = {}
+
+    for server_name, server_snapshot in sorted(runtime_servers.items()):
+        if server_filter and server_name not in server_filter:
+            continue
+        if not isinstance(server_snapshot, dict):
+            continue
+
+        selected_servers.append(str(server_name))
+        config = mcp_server_config_from_snapshot(str(server_name), server_snapshot)
+        discovery_runs[str(server_name)] = await discover_stdio_mcp_tools(
+            config,
+            client_version=PROXY_VERSION,
+        )
+
+    result["selected_servers"] = selected_servers
+    result["discovery_runs"] = discovery_runs
+    result["reason"] = "completed"
+    return result
+
+
 def create_app(
     *,
     deepseek_client: DeepSeekClient | None = None,
@@ -5029,6 +5125,10 @@ def create_app(
             "version": PROXY_VERSION,
             "tool_bridge": _tool_bridge_status(),
         }
+
+    @app.get("/v1/proxy/mcp/discovery")
+    async def proxy_mcp_discovery() -> dict[str, Any]:
+        return await _mcp_discovery_status()
 
     @app.get("/v1/proxy/balance")
     async def proxy_balance() -> dict[str, Any]:
