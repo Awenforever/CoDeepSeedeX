@@ -2117,8 +2117,17 @@ def _parse_mcp_proxy_tool_name(function_name: Any) -> dict[str, str] | None:
     }
 
 
+def _mcp_executor_policy_mode() -> str:
+    mode = os.environ.get("DEEPSEEK_PROXY_MCP_POLICY", "codex").strip().lower()
+    if mode in {"codex", "allowlist", "off"}:
+        return mode
+    return "codex"
+
+
 def _mcp_executor_enabled() -> bool:
-    return _env_bool("DEEPSEEK_PROXY_MCP_EXECUTOR", False)
+    if _mcp_executor_policy_mode() == "off":
+        return False
+    return _env_bool("DEEPSEEK_PROXY_MCP_EXECUTOR", True)
 
 
 def _split_env_csv(name: str) -> set[str]:
@@ -2223,10 +2232,10 @@ def _codex_mcp_config_snapshot(
 
 
 def _mcp_executor_backend_type() -> str:
-    backend_type = os.environ.get("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none").strip().lower()
+    backend_type = os.environ.get("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio").strip().lower()
     if backend_type in {"none", "injected", "stdio"}:
         return backend_type
-    return "none"
+    return "stdio"
 
 
 def _mcp_stdio_backend_enabled() -> bool:
@@ -2236,13 +2245,16 @@ def _mcp_stdio_backend_enabled() -> bool:
 def _mcp_executor_status() -> dict[str, Any]:
     backend_type = _mcp_executor_backend_type()
     injected_available = _MCP_EXECUTOR_BACKEND is not None
+    executor_enabled = _mcp_executor_enabled()
+    stdio_available = executor_enabled and backend_type == "stdio"
 
     return {
-        "enabled": _mcp_executor_enabled(),
+        "enabled": executor_enabled,
+        "policy": _mcp_executor_policy_mode(),
         "backend": {
             "type": "injected" if injected_available else backend_type,
-            "available": injected_available or backend_type == "stdio",
-            "production_execution": backend_type == "stdio",
+            "available": injected_available or stdio_available,
+            "production_execution": stdio_available,
         },
         "readonly_allowlist": sorted(_mcp_executor_readonly_allowlist()),
         "write_allowlist": sorted(_mcp_executor_write_allowlist()),
@@ -2264,30 +2276,52 @@ def _mcp_executor_policy_decision(function_name: Any) -> dict[str, Any]:
         return {
             "ok": False,
             "kind": "mcp_executor_disabled",
+            "policy": _mcp_executor_policy_mode(),
             **parsed,
         }
 
+    policy_mode = _mcp_executor_policy_mode()
     policy_key = parsed["policy_key"]
-    if policy_key in _mcp_executor_readonly_allowlist():
+
+    if policy_mode == "codex":
         return {
             "ok": True,
-            "kind": "allowed_readonly",
-            "permission": "readonly",
+            "kind": "allowed_codex_config",
+            "permission": "codex",
+            "policy": policy_mode,
             **parsed,
         }
 
-    if policy_key in _mcp_executor_write_allowlist():
+    if policy_mode == "allowlist":
+        if policy_key in _mcp_executor_readonly_allowlist():
+            return {
+                "ok": True,
+                "kind": "allowed_readonly",
+                "permission": "readonly",
+                "policy": policy_mode,
+                **parsed,
+            }
+
+        if policy_key in _mcp_executor_write_allowlist():
+            return {
+                "ok": True,
+                "kind": "allowed_write",
+                "permission": "write",
+                "policy": policy_mode,
+                **parsed,
+            }
+
         return {
             "ok": False,
-            "kind": "mcp_write_denied",
-            "permission": "write",
-            "message": "MCP write execution is denied by default.",
+            "kind": "mcp_tool_not_allowed",
+            "policy": policy_mode,
             **parsed,
         }
 
     return {
         "ok": False,
-        "kind": "mcp_tool_not_allowed",
+        "kind": "mcp_executor_disabled",
+        "policy": policy_mode,
         **parsed,
     }
 

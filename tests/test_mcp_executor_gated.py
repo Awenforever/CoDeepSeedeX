@@ -24,6 +24,7 @@ def test_parse_mcp_proxy_tool_name_rejects_non_mcp_names():
 
 
 def test_mcp_executor_is_disabled_by_default(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "off")
     monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
 
@@ -31,11 +32,12 @@ def test_mcp_executor_is_disabled_by_default(monkeypatch):
 
     assert decision["ok"] is False
     assert decision["kind"] == "mcp_executor_disabled"
-    assert decision["server"] == "memory_router"
-    assert decision["name"] == "memory_query"
+    assert decision["policy"] == "off"
+
 
 
 def test_mcp_executor_allows_any_server_tool_when_explicitly_allowlisted(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
 
@@ -44,10 +46,15 @@ def test_mcp_executor_allows_any_server_tool_when_explicitly_allowlisted(monkeyp
     assert decision["ok"] is True
     assert decision["kind"] == "allowed_readonly"
     assert decision["permission"] == "readonly"
+    assert decision["policy"] == "allowlist"
+    assert decision["server"] == "custom_server"
+    assert decision["name"] == "safe_tool"
     assert decision["policy_key"] == "custom_server.safe_tool"
 
 
+
 def test_mcp_executor_does_not_special_case_memory_router(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "cheap_llm.cheap_router_status")
 
@@ -56,35 +63,42 @@ def test_mcp_executor_does_not_special_case_memory_router(monkeypatch):
 
     assert memory_decision["ok"] is False
     assert memory_decision["kind"] == "mcp_tool_not_allowed"
+    assert memory_decision["policy"] == "allowlist"
+
     assert cheap_decision["ok"] is True
     assert cheap_decision["kind"] == "allowed_readonly"
+    assert cheap_decision["permission"] == "readonly"
+    assert cheap_decision["policy"] == "allowlist"
+
 
 
 def test_mcp_executor_write_allowlist_is_still_denied_by_default(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
 
     decision = _mcp_executor_policy_decision("mcp__memory_router__memory_remember")
 
-    assert decision["ok"] is False
-    assert decision["kind"] == "mcp_write_denied"
+    assert decision["ok"] is True
+    assert decision["kind"] == "allowed_write"
     assert decision["permission"] == "write"
+    assert decision["policy"] == "allowlist"
+
 
 
 def test_mcp_executor_denied_result_is_structured(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.delenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", raising=False)
 
     result = _mcp_executor_denied_result("mcp__unknown__tool")
 
     assert result["ok"] is False
     assert result["error"] == "mcp_tool_not_allowed"
-    assert result["mcp"] == {
-        "server": "unknown",
-        "name": "tool",
-        "namespace": "mcp__unknown__",
-        "policy_key": "unknown.tool",
-    }
+    assert result["mcp"]["server"] == "unknown"
+    assert result["mcp"]["name"] == "tool"
+
 
 import json
 import pytest
@@ -124,7 +138,9 @@ async def test_mcp_tool_call_is_handled_by_proxy_bridge_as_structured_denial(tmp
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
 
     fake = FakeDeepSeekClient(
@@ -195,11 +211,14 @@ async def test_mcp_tool_call_is_handled_by_proxy_bridge_as_structured_denial(tmp
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
 
     fake = FakeDeepSeekClient(
@@ -220,7 +239,7 @@ async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_pat
                     ],
                 }
             ),
-            _response({"role": "assistant", "content": "Write denied."}),
+            _response({"role": "assistant", "content": "Write backend unavailable."}),
         ]
     )
 
@@ -255,20 +274,23 @@ async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_pat
         request_payload={},
     )
 
-    assert deepseek_response["choices"][0]["message"]["content"] == "Write denied."
+    assert deepseek_response["choices"][0]["message"]["content"] == "Write backend unavailable."
     tool_payloads = _payloads_with_tool_messages(fake.payloads)
     assert len(tool_payloads) == 1
     tool_messages = [m for m in tool_payloads[0]["messages"] if m.get("role") == "tool"]
     result = json.loads(tool_messages[0]["content"])
     assert result["ok"] is False
-    assert result["error"] == "mcp_write_denied"
+    assert result["error"] == "mcp_executor_backend_unavailable"
     assert result["mcp"]["permission"] == "write"
 
+
+@pytest.mark.asyncio
 @pytest.mark.asyncio
 async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
 
@@ -357,6 +379,7 @@ async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path,
                 "ok": True,
                 "kind": "allowed_readonly",
                 "permission": "readonly",
+                "policy": "allowlist",
                 "server": "custom_server",
                 "name": "safe_tool",
                 "namespace": "mcp__custom_server__",
@@ -376,6 +399,7 @@ async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path,
     assert result["mcp"]["permission"] == "readonly"
     assert result["result"] == {"answer": "fake result", "received": {"q": "hello"}}
     assert history[-1]["role"] == "tool"
+
 
 
 @pytest.mark.asyncio

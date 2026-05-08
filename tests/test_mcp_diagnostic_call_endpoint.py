@@ -96,7 +96,7 @@ def test_mcp_diagnostic_call_requires_stdio_backend(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
 
     response = _client().post(
         "/v1/proxy/mcp/diagnostic-call",
@@ -113,11 +113,11 @@ def test_mcp_diagnostic_call_requires_stdio_backend(tmp_path, monkeypatch):
 def test_mcp_diagnostic_call_keeps_write_denied(tmp_path, monkeypatch):
     config = tmp_path / "config.toml"
     config.write_text(
-        '''
+        """
 [mcp_servers.fake]
 command = "/tmp/does-not-matter"
 args = []
-''',
+""",
         encoding="utf-8",
     )
 
@@ -135,8 +135,9 @@ args = []
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is False
-    assert data["error"] == "mcp_write_denied"
-    assert data["mcp"]["permission"] == "write"
+    assert data["error"] == "mcp_discovery_failed_before_call"
+    assert data["mcp"]["permission"] == "codex"
+
 
 
 def test_mcp_diagnostic_call_executes_readonly_stdio_tool(tmp_path, monkeypatch):
@@ -178,7 +179,7 @@ approval_mode = "approve"
     assert data["backend"] == "stdio"
     assert data["tool"] == "mcp__fake__safe_tool"
     assert data["mcp"]["server"] == "fake"
-    assert data["mcp"]["permission"] == "readonly"
+    assert data["mcp"]["permission"] == "codex"
     assert data["result"]["structuredContent"] == {
         "name": "safe_tool",
         "arguments": {"q": "hello"},

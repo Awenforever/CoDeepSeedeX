@@ -85,8 +85,9 @@ approval_mode = "approve"
     status = _mcp_executor_status()
 
     assert status["enabled"] is True
-    assert status["backend"]["type"] == "none"
-    assert status["backend"]["production_execution"] is False
+    assert status["policy"] == "codex"
+    assert status["backend"]["type"] == "stdio"
+    assert status["backend"]["production_execution"] is True
     assert status["readonly_allowlist"] == [
         "cheap_llm.cheap_router_status",
         "memory_router.memory_query",
@@ -99,6 +100,7 @@ approval_mode = "approve"
 def test_tool_bridge_status_includes_mcp_executor(tmp_path, monkeypatch):
     missing = tmp_path / "missing.toml"
     monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(missing))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "off")
     monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
 
     status = _tool_bridge_status()
