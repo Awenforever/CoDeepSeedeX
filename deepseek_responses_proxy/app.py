@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a7-tool-output-safe-trimming-disabled-by-default"
+PROXY_VERSION = "v2.7a8-history-growth-audit"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -348,6 +348,7 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "category",
     "mode",
     "policy_name",
+    "history_category",
     "reason",
     "trim_mode",
     "trim_reason",
@@ -1282,6 +1283,120 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
         all_outputs,
         total_output_chars=int(summary["function_call_output_chars"]),
     )
+    return summary
+
+
+def _classify_history_message_for_audit(message: Any) -> str:
+    if not isinstance(message, dict):
+        return "non_dict_message"
+
+    role = str(message.get("role") or "unknown")
+    content = _plain_text_from_content(message.get("content", ""))
+
+    if role == "tool":
+        return "tool_protocol_message"
+
+    tool_calls = message.get("tool_calls") or []
+    if role == "assistant" and isinstance(tool_calls, list) and tool_calls:
+        return "assistant_tool_call_message"
+
+    lowered = content.lower()
+    flattened_markers = (
+        "assistant_requested_tool_calls",
+        "tool_outputs:",
+        "tool_call_id:",
+        "[orphaned tool output ignored by protocol repair]",
+        "function_call_output",
+    )
+    if any(marker in lowered for marker in flattened_markers):
+        return "flattened_tool_transcript"
+
+    if role in {"system", "developer"}:
+        return "system_or_developer"
+
+    if role == "user":
+        return "plain_user_message"
+
+    if role == "assistant":
+        return "plain_assistant_message"
+
+    return "other_message"
+
+
+def _history_growth_breakdown(
+    messages: Any,
+    *,
+    input_value: Any = None,
+    previous_response_id: str | None = None,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "previous_response_id_present": bool(previous_response_id),
+        "messages_is_list": isinstance(messages, list),
+        "message_count": len(messages) if isinstance(messages, list) else 0,
+        "messages_total_chars": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "roles": {},
+        "history_categories": {},
+        "assistant_tool_call_count": 0,
+        "assistant_tool_arguments_chars": 0,
+        "input_is_list": isinstance(input_value, list),
+        "input_item_count": len(input_value) if isinstance(input_value, list) else 0,
+        "input_item_type_counts": {},
+        "input_item_type_chars": {},
+        "largest_messages": [],
+    }
+
+    if isinstance(input_value, list):
+        for item in input_value:
+            item_type = "non_dict"
+            if isinstance(item, dict):
+                item_type = str(item.get("type") or "missing_type")
+            summary["input_item_type_counts"][item_type] = int(summary["input_item_type_counts"].get(item_type, 0)) + 1
+            summary["input_item_type_chars"][item_type] = int(summary["input_item_type_chars"].get(item_type, 0)) + _debug_trace_json_chars(item)
+
+    if not isinstance(messages, list):
+        return summary
+
+    largest_messages: list[dict[str, Any]] = []
+
+    for index, message in enumerate(messages):
+        if isinstance(message, dict):
+            role = str(message.get("role") or "unknown")
+            tool_calls = message.get("tool_calls") or []
+        else:
+            role = "non_dict"
+            tool_calls = []
+
+        message_chars = _debug_trace_json_chars(message)
+        role_bucket = summary["roles"].setdefault(role, {"count": 0, "chars": 0})
+        role_bucket["count"] += 1
+        role_bucket["chars"] += message_chars
+
+        category = _classify_history_message_for_audit(message)
+        category_bucket = summary["history_categories"].setdefault(category, {"count": 0, "chars": 0})
+        category_bucket["count"] += 1
+        category_bucket["chars"] += message_chars
+
+        if isinstance(tool_calls, list) and tool_calls:
+            summary["assistant_tool_call_count"] = int(summary["assistant_tool_call_count"]) + len(tool_calls)
+            for tool_call in tool_calls:
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function") or {}
+                if isinstance(function, dict):
+                    summary["assistant_tool_arguments_chars"] = int(summary["assistant_tool_arguments_chars"]) + len(str(function.get("arguments") or ""))
+
+        largest_messages.append(
+            {
+                "index": index,
+                "role": role,
+                "history_category": category,
+                "chars": message_chars,
+            }
+        )
+
+    largest_messages.sort(key=lambda item: int(item.get("chars") or 0), reverse=True)
+    limit = max(1, _env_int("DEEPSEEK_PROXY_HISTORY_GROWTH_LARGEST_MESSAGES", 8))
+    summary["largest_messages"] = largest_messages[:limit]
     return summary
 
 
@@ -6881,6 +6996,15 @@ def create_app(
                     )
 
         messages_before_compaction = deepcopy(messages)
+        _debug_trace_event(
+            response_id,
+            "history_growth_breakdown",
+            **_history_growth_breakdown(
+                messages_before_compaction,
+                input_value=input_value,
+                previous_response_id=previous_response_id,
+            ),
+        )
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,
             messages=messages,

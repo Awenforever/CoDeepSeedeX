@@ -528,3 +528,50 @@ def test_tool_output_safe_trimming_handles_non_list_input(monkeypatch):
     assert trimmed == "plain input"
     assert report["applied"] is False
     assert report["reason"] == "input_not_list"
+
+
+def test_history_growth_breakdown_classifies_flattened_tool_transcripts():
+    messages = [
+        {"role": "system", "content": "developer instructions"},
+        {"role": "user", "content": "plain question"},
+        {
+            "role": "user",
+            "content": "assistant_requested_tool_calls:\n- tool_call_id: call_1\n  name: exec_command\n\ntool_outputs:\n- tool_call_id: call_1\n  content: long output",
+        },
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "exec_command", "arguments": "{\"cmd\":\"pytest\"}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_2", "content": "pytest output"},
+    ]
+
+    input_items = [
+        {"type": "message", "role": "user", "content": "hello"},
+        {"type": "function_call", "call_id": "call_1", "name": "exec_command", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_1", "output": "output"},
+    ]
+
+    report = proxy_app._history_growth_breakdown(
+        messages,
+        input_value=input_items,
+        previous_response_id="resp_previous",
+    )
+
+    assert report["previous_response_id_present"] is True
+    assert report["message_count"] == 5
+    assert report["history_categories"]["flattened_tool_transcript"]["count"] == 1
+    assert report["history_categories"]["assistant_tool_call_message"]["count"] == 1
+    assert report["history_categories"]["tool_protocol_message"]["count"] == 1
+    assert report["history_categories"]["plain_user_message"]["count"] == 1
+    assert report["history_categories"]["system_or_developer"]["count"] == 1
+    assert report["assistant_tool_call_count"] == 1
+    assert report["assistant_tool_arguments_chars"] > 0
+    assert report["input_item_type_counts"]["function_call_output"] == 1
+    assert report["largest_messages"]
