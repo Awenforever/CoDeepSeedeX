@@ -13,6 +13,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -1230,6 +1231,82 @@ def _upgrade(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _proxy_port_from_args(args: argparse.Namespace) -> int:
+    if getattr(args, "port", None) is not None:
+        return int(args.port)
+    if getattr(args, "thinking", False):
+        return 8001
+    return 8000
+
+
+def _proxy_base_url_from_args(args: argparse.Namespace) -> str:
+    return f"http://127.0.0.1:{_proxy_port_from_args(args)}"
+
+
+def _debug_fetch_json(url: str, timeout: float) -> dict[str, object]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                data = {"raw": raw}
+            return {
+                "ok": True,
+                "status": getattr(response, "status", None),
+                "url": url,
+                "json": data,
+            }
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = raw
+        return {
+            "ok": False,
+            "status": exc.code,
+            "url": url,
+            "error": data,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": None,
+            "url": url,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _debug(args: argparse.Namespace) -> int:
+    base_url = _proxy_base_url_from_args(args)
+    command = getattr(args, "debug_command", "")
+
+    if command == "status":
+        path = "/v1/proxy/debug/status"
+    elif command == "latest":
+        limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
+        path = f"/v1/proxy/debug/latest?{urllib.parse.urlencode({'limit': limit})}"
+    else:
+        print(json.dumps({
+            "status": "error",
+            "error": "unknown_debug_command",
+            "command": command,
+        }, ensure_ascii=False, indent=2))
+        return 1
+
+    result = _debug_fetch_json(base_url + path, float(getattr(args, "timeout", 3.0)))
+    output = {
+        "status": "ok" if result.get("ok") else "error",
+        "proxy_url": base_url,
+        "debug_command": command,
+        "result": result,
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if result.get("ok") else 1
+
+
 def _balance(args: argparse.Namespace) -> int:
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
@@ -1351,6 +1428,22 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_effort.add_argument("--codex-config")
     config_set_effort.add_argument("--profile", default="deepseek-thinking")
     config_set_effort.set_defaults(func=_config)
+
+    debug = sub.add_parser("debug", help="inspect proxy debug trace state")
+    debug_sub = debug.add_subparsers(dest="debug_command", required=True)
+
+    debug_status = debug_sub.add_parser("status", help="show debug trace status")
+    debug_status.add_argument("--thinking", action="store_true")
+    debug_status.add_argument("--port", type=int)
+    debug_status.add_argument("--timeout", type=float, default=3.0)
+    debug_status.set_defaults(func=_debug)
+
+    debug_latest = debug_sub.add_parser("latest", help="show latest debug trace events")
+    debug_latest.add_argument("--thinking", action="store_true")
+    debug_latest.add_argument("--port", type=int)
+    debug_latest.add_argument("--timeout", type=float, default=3.0)
+    debug_latest.add_argument("--limit", type=int, default=200)
+    debug_latest.set_defaults(func=_debug)
 
     balance = sub.add_parser("balance", help="query DeepSeek API account balance")
     balance.add_argument("--env-file")

@@ -340,3 +340,94 @@ def test_cli_upgrade_dry_run_defaults_to_latest_master(monkeypatch, tmp_path, ca
     assert any("fetch --tags origin" in cmd for cmd in commands)
     assert any("checkout master" in cmd for cmd in commands)
     assert any("pull --ff-only origin master" in cmd for cmd in commands)
+
+
+def test_cli_debug_status(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "debug_trace": {
+                    "enabled": True,
+                    "trace_count": 1,
+                },
+            }).encode("utf-8")
+
+    def fake_urlopen(url, timeout=0):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "status", "--port", "8123", "--timeout", "0.5"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "ok"
+    assert data["proxy_url"] == "http://127.0.0.1:8123"
+    assert data["debug_command"] == "status"
+    assert data["result"]["json"]["debug_trace"]["enabled"] is True
+    assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/status", 0.5)]
+
+
+def test_cli_debug_latest_uses_limit_and_thinking_port(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "events": [{"event": "request_received"}],
+            }).encode("utf-8")
+
+    def fake_urlopen(url, timeout=0):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "latest", "--thinking", "--limit", "50"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "ok"
+    assert data["proxy_url"] == "http://127.0.0.1:8001"
+    assert data["debug_command"] == "latest"
+    assert data["result"]["json"]["events"][0]["event"] == "request_received"
+    assert calls == [("http://127.0.0.1:8001/v1/proxy/debug/latest?limit=50", 3.0)]
+
+
+def test_cli_debug_returns_nonzero_when_proxy_unreachable(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    def fake_urlopen(url, timeout=0):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "status", "--port", "9"]) == 1
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "error"
+    assert data["result"]["ok"] is False
+    assert "connection refused" in data["result"]["error"]
