@@ -211,6 +211,20 @@ View usage:
 Full CLI help:
 
     dsproxy -H
+### WeClaw integration
+
+<!-- CODEEPSEEDEX_WECLAW_DEV_INTEGRATION_START -->
+
+CoDeepSeedeX can be used together with [weclaw_dev](https://github.com/Awenforever/weclaw_dev) as the DeepSeek/Codex runtime backend for WeClaw-style chat and automation workflows.
+
+Current integration boundary:
+
+- WeClaw can route user messages to Codex profiles backed by CoDeepSeedeX.
+- CoDeepSeedeX provides the local DeepSeek Responses-compatible proxy, runtime model controls, MCP tool bridging, and upgrade path.
+- WeClaw remains responsible for the messaging surface, session routing, command UX, and user-facing bot behavior.
+- CoDeepSeedeX does not replace WeClaw, and WeClaw does not change CoDeepSeedeX proxy internals.
+
+<!-- CODEEPSEEDEX_WECLAW_DEV_INTEGRATION_END -->
 
 ## 🧹 Uninstall and restore
 
