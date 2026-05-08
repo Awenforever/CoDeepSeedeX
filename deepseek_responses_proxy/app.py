@@ -2091,6 +2091,119 @@ def _mcp_tool_forwarding_class(tool_name: str) -> str | None:
     return None
 
 
+def _parse_mcp_proxy_tool_name(function_name: Any) -> dict[str, str] | None:
+    """Parse flattened MCP function names such as mcp__server__tool.
+
+    This parser is intentionally generic. It does not assume that a particular
+    MCP server is installed, and it does not grant execution permission.
+    """
+    raw_name = str(function_name or "").strip()
+    prefix = "mcp__"
+    if not raw_name.startswith(prefix):
+        return None
+
+    body = raw_name[len(prefix):]
+    server, sep, tool_name = body.partition("__")
+    if not sep or not server or not tool_name:
+        return None
+
+    return {
+        "server": server,
+        "name": tool_name,
+        "namespace": f"mcp__{server}__",
+        "function_name": raw_name,
+        "policy_key": f"{server}.{tool_name}",
+    }
+
+
+def _mcp_executor_enabled() -> bool:
+    return _env_bool("DEEPSEEK_PROXY_MCP_EXECUTOR", False)
+
+
+def _split_env_csv(name: str) -> set[str]:
+    raw = os.environ.get(name, "")
+    values: set[str] = set()
+    for item in raw.split(","):
+        normalized = item.strip()
+        if normalized:
+            values.add(normalized)
+    return values
+
+
+def _mcp_executor_readonly_allowlist() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST")
+
+
+def _mcp_executor_write_allowlist() -> set[str]:
+    return _split_env_csv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST")
+
+
+def _mcp_executor_policy_decision(function_name: Any) -> dict[str, Any]:
+    parsed = _parse_mcp_proxy_tool_name(function_name)
+    if parsed is None:
+        return {
+            "ok": False,
+            "kind": "not_mcp_tool",
+            "function_name": str(function_name or ""),
+        }
+
+    if not _mcp_executor_enabled():
+        return {
+            "ok": False,
+            "kind": "mcp_executor_disabled",
+            **parsed,
+        }
+
+    policy_key = parsed["policy_key"]
+    if policy_key in _mcp_executor_readonly_allowlist():
+        return {
+            "ok": True,
+            "kind": "allowed_readonly",
+            "permission": "readonly",
+            **parsed,
+        }
+
+    if policy_key in _mcp_executor_write_allowlist():
+        return {
+            "ok": False,
+            "kind": "mcp_write_denied",
+            "permission": "write",
+            "message": "MCP write execution is denied by default.",
+            **parsed,
+        }
+
+    return {
+        "ok": False,
+        "kind": "mcp_tool_not_allowed",
+        **parsed,
+    }
+
+
+def _mcp_executor_denied_result(function_name: Any) -> dict[str, Any]:
+    decision = _mcp_executor_policy_decision(function_name)
+    error = str(decision.get("kind") or "mcp_tool_not_allowed")
+    message = decision.get("message") or "MCP tool execution is not allowed by proxy policy."
+
+    if decision.get("ok") is True:
+        error = "mcp_executor_backend_unavailable"
+        message = (
+            "MCP tool is allowed by proxy policy, but proxy-side MCP execution "
+            "backend is not implemented yet."
+        )
+
+    return {
+        "ok": False,
+        "tool": str(function_name or ""),
+        "error": error,
+        "mcp": {
+            key: decision[key]
+            for key in ["server", "name", "namespace", "policy_key", "permission"]
+            if key in decision
+        },
+        "message": message,
+    }
+
+
 def _normalize_mcp_nested_tool(
     namespace: str,
     nested_tool: dict[str, Any],
@@ -3256,8 +3369,11 @@ async def _execute_proxy_tool_call(
     store: Any | None = None,
 ) -> dict[str, Any]:
     function = tool_call.get("function") or {}
-    name = function.get("name", "")
+    name = str(function.get("name") or "")
     arguments = _decode_tool_arguments(function.get("arguments", ""))
+
+    if _parse_mcp_proxy_tool_name(name) is not None:
+        return _mcp_executor_denied_result(name)
 
     if name == "proxy_status":
         return {
@@ -3390,10 +3506,15 @@ async def _execute_proxy_tool_call(
     }
 
 
+def _is_mcp_executor_tool_call(tool_call: dict[str, Any]) -> bool:
+    function = tool_call.get("function") or {}
+    return _parse_mcp_proxy_tool_name(function.get("name")) is not None
+
+
 def _is_proxy_tool_call(tool_call: dict[str, Any]) -> bool:
     function = tool_call.get("function") or {}
-    name = function.get("name", "")
-    return name.startswith("proxy_")
+    function_name = str(function.get("name") or "")
+    return function_name.startswith("proxy_") or _is_mcp_executor_tool_call(tool_call)
 
 
 def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
