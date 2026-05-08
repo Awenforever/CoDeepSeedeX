@@ -1,6 +1,9 @@
-# v0.2.0-alpha
+# CoDeepSeedeX v0.2.0-alpha
 
 ## 概要
+
+内部里程碑：`v2.6a2-release-upgrade-defaults`。
+
 
 本版本在正式发布前完善升级体验。
 
