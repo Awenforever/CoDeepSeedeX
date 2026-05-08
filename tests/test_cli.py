@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a6-tool-output-policy-dry-run" in out
+    assert "v2.7a6a1-compact-policy-budget-event" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a6-tool-output-policy-dry-run")
+    assert data["proxy_version"].startswith("v2.7a6a1-compact-policy-budget-event")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a6-tool-output-policy-dry-run")
+    assert data["expected_version"].startswith("v2.7a6a1-compact-policy-budget-event")
     assert data["running_version"] == "v0.old"
 
 
@@ -562,3 +562,41 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["policy_dry_run"]["targets"][0]["category"] == "shell_command"
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]
+
+
+def test_cli_debug_budget_marks_truncated_tool_output_event(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "events": [
+                    {
+                        "event": "context_budget_breakdown",
+                        "chat_payload_chars": 123,
+                    },
+                    {
+                        "event": "tool_output_budget_breakdown",
+                        "truncated_event": True,
+                        "original_chars": 13319,
+                        "keys": ["policy_dry_run", "trim_dry_run"],
+                    },
+                ],
+            }).encode("utf-8")
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", lambda url, timeout=0: FakeResponse())
+
+    assert cli.main(["debug", "budget", "--port", "8123"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["budget"]["tool_output_budget_truncated"] is True
+    assert data["budget"]["tool_output_budget_error"] == "tool_output_budget_event_truncated"

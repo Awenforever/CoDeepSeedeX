@@ -1303,11 +1303,17 @@ def _debug_budget_from_events(events: list[object]) -> dict[str, object]:
         if isinstance(event, dict) and event.get("event") == "tool_output_budget_breakdown"
     ]
     latest_tool_output_budget = tool_output_events[-1] if tool_output_events else None
+    tool_output_budget_truncated = bool(
+        isinstance(latest_tool_output_budget, dict)
+        and latest_tool_output_budget.get("truncated_event")
+    )
 
     return {
         "found": latest_budget is not None,
         "event": latest_budget,
         "tool_output_budget": latest_tool_output_budget,
+        "tool_output_budget_truncated": tool_output_budget_truncated,
+        "tool_output_budget_error": "tool_output_budget_event_truncated" if tool_output_budget_truncated else None,
         "primary_usage": latest_primary_usage,
     }
 

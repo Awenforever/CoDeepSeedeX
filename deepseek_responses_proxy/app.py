@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a6-tool-output-policy-dry-run"
+PROXY_VERSION = "v2.7a6a1-compact-policy-budget-event"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -834,6 +834,22 @@ def _tool_output_policy_dry_run(
         )
         would_trim_count_by_category[category] = int(would_trim_count_by_category.get(category, 0)) + 1
 
+    compact_policies = {
+        category: {
+            "policy_name": policy.get("policy_name"),
+            "max_item_chars": policy.get("max_item_chars"),
+            "keep_head_chars": policy.get("keep_head_chars"),
+            "keep_tail_chars": policy.get("keep_tail_chars"),
+            "notice_chars": policy.get("notice_chars"),
+        }
+        for category, policy in policies.items()
+    }
+
+    trace_target_limit = min(
+        max_targets,
+        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_TRACE_TARGETS", 5)),
+    )
+
     return {
         "enabled": True,
         "applied": False,
@@ -850,9 +866,36 @@ def _tool_output_policy_dry_run(
         "category_counts": category_counts,
         "category_chars": category_chars,
         "category_output_chars": category_output_chars,
-        "policies": policies,
-        "targets": targets[:max_targets],
+        "policies": compact_policies,
+        "targets": _compact_tool_output_targets_for_trace(targets, max_items=trace_target_limit),
     }
+
+
+def _compact_tool_output_target_for_trace(target: dict[str, Any]) -> dict[str, Any]:
+    keys = [
+        "index",
+        "call_id",
+        "tool_name",
+        "category",
+        "policy_name",
+        "trim_reason",
+        "item_chars",
+        "output_chars",
+        "original_chars",
+        "estimated_after_chars",
+        "estimated_remove_chars",
+        "exceeds_warn_item_chars",
+    ]
+    return {key: target.get(key) for key in keys if key in target}
+
+
+def _compact_tool_output_targets_for_trace(
+    targets: list[dict[str, Any]],
+    *,
+    max_items: int,
+) -> list[dict[str, Any]]:
+    safe_max = max(1, int(max_items))
+    return [_compact_tool_output_target_for_trace(target) for target in targets[:safe_max]]
 
 
 def _tool_output_trim_dry_run(
@@ -920,6 +963,11 @@ def _tool_output_trim_dry_run(
     estimated_after = max(0, int(total_output_chars) - would_remove)
     unmet_total_budget_chars = max(0, estimated_after - max_total_chars)
 
+    trace_target_limit = min(
+        max_targets,
+        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_TRACE_TARGETS", 5)),
+    )
+
     return {
         "mode": config["mode"],
         "applied": False,
@@ -936,7 +984,7 @@ def _tool_output_trim_dry_run(
         "keep_head_chars": int(config["keep_head_chars"]),
         "keep_tail_chars": int(config["keep_tail_chars"]),
         "trimmed_to_item_cap_chars": _estimate_tool_output_trim_after_chars(max_item_chars + 1, config),
-        "targets": targets[:max_targets],
+        "targets": _compact_tool_output_targets_for_trace(targets, max_items=trace_target_limit),
     }
 
 
@@ -1036,7 +1084,14 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
         all_outputs.append(output_record)
 
     largest_outputs.sort(key=lambda item: int(item.get("item_chars") or 0), reverse=True)
-    summary["largest_outputs"] = largest_outputs[: int(config["largest_items"])]
+    largest_limit = min(
+        int(config["largest_items"]),
+        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_LARGEST_TRACE_ITEMS", 5)),
+    )
+    summary["largest_outputs"] = _compact_tool_output_targets_for_trace(
+        largest_outputs,
+        max_items=largest_limit,
+    )
     summary["total_output_exceeds_warn_total"] = (
         int(summary["function_call_output_chars"]) >= int(config["warn_total_chars"])
     )

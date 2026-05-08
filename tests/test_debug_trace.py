@@ -421,3 +421,32 @@ def test_tool_output_policy_dry_run_classifies_generic_tool_names(monkeypatch):
     assert policy["targets"]
     assert all("category" in item for item in policy["targets"])
     assert all("policy_name" in item for item in policy["targets"])
+
+
+def test_tool_output_policy_dry_run_event_stays_compact(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "80000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", "20")
+
+    input_items = []
+    for index in range(80):
+        call_id = f"call_{index}"
+        input_items.append({
+            "type": "function_call",
+            "call_id": call_id,
+            "name": "exec_command" if index % 2 else "write_stdin",
+            "arguments": "{}",
+        })
+        input_items.append({
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": "x" * (3000 + index * 100),
+        })
+
+    budget = proxy_app._tool_output_budget_breakdown(input_items)
+    encoded = json.dumps(budget, ensure_ascii=False, separators=(",", ":"))
+
+    assert "policy_dry_run" in budget
+    assert budget["policy_dry_run"]["policies"]
+    assert len(budget["policy_dry_run"]["targets"]) <= 20
+    assert len(budget["largest_outputs"]) <= budget["config"]["largest_items"]
+    assert len(encoded) < 8000
