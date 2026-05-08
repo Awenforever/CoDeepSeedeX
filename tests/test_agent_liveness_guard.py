@@ -390,3 +390,63 @@ async def test_liveness_judge_triggers_retry_when_heuristic_misses(tmp_path, mon
     assert report["judge_attempts"][0]["decision"] == "needs_tool_call"
     assert "使用 WeChat URL scheme" in report["judge_attempts"][0]["candidate_trigger_phrases"]
     assert report["retry_attempts"][0]["response_has_tool_calls"] is True
+
+
+@pytest.mark.asyncio
+async def test_liveness_retry_without_tool_call_does_not_retry_again(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(tmp_path / "traces"))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    pre_retry_text = (
+        "I found the device. Now let me inspect the UI and run the next shell command."
+    )
+    retry_text = (
+        "I still need to inspect the UI and then run the shell command, but no tool call was emitted."
+    )
+
+    fake = FakeDeepSeekClient(
+        [
+            _response({"role": "assistant", "content": pre_retry_text}),
+            _response({"role": "assistant", "content": retry_text}),
+        ]
+    )
+
+    deepseek_response, history = await _run_chat_with_tool_bridge(
+        deepseek_client=fake,
+        chat_payload={
+            "model": "deepseek-v4-pro",
+            "messages": [{"role": "user", "content": "inspect device"}],
+            "tools": [{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        },
+        messages_for_deepseek=[{"role": "user", "content": "inspect device"}],
+        history_messages=[{"role": "user", "content": "inspect device"}],
+        model="deepseek-v4-pro",
+        deepseek_tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={},
+        response_id="resp_liveness_policy",
+    )
+
+    assert len(fake.payloads) == 2
+    assert deepseek_response["choices"][0]["message"]["content"] == pre_retry_text
+    assert history == [{"role": "user", "content": "inspect device"}]
+
+    report = json.loads(Path(".debug/agent_liveness_guard_report.json").read_text(encoding="utf-8"))
+    assert report["triggered"] is True
+    assert report["retry_count"] == 1
+    assert report["retry_attempts"][0]["response_has_tool_calls"] is False
+    assert report["guard_reason"] == (
+        "retry_without_tool_call_no_further_retry"
+        "_retry_without_tool_call_returned_pre_retry_response"
+    )
+
+    trace = Path("traces/trace-resp_liveness_policy.jsonl").read_text(encoding="utf-8")
+    events = [json.loads(line) for line in trace.splitlines()]
+    decisions = [event for event in events if event["event"] == "liveness_guard_decision"]
+    assert decisions
+    assert decisions[-1]["should_retry"] is False
+    assert decisions[-1]["guard_reason"] == "retry_without_tool_call_no_further_retry"

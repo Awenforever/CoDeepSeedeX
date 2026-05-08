@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a1-debug-trace-readable-metadata"
+PROXY_VERSION = "v2.7a2-liveness-retry-policy"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -334,6 +334,8 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "upstream_model",
     "summary_source",
     "error_type",
+    "guard_reason",
+    "judge_decision",
     "status",
     "url",
     "trace_path",
@@ -4396,7 +4398,7 @@ def _messages_with_codex_tool_protocol_instruction(
 def _agent_liveness_env_config() -> dict[str, Any]:
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", True),
-        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 2),
+        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 1),
         "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_PREVIEW_CHARS", 600),
     }
 
@@ -4914,6 +4916,16 @@ async def _run_chat_with_tool_bridge(
             if not heuristic_triggered:
                 if _assistant_message_is_obvious_final_answer(assistant_message):
                     liveness_report["guard_reason"] = "obvious_final_answer_no_retry"
+                    _debug_trace_event(
+                        response_id,
+                        "liveness_guard_decision",
+                        round_index=round_index + 1,
+                        retry_count=int(liveness_report["retry_count"]),
+                        should_retry=False,
+                        guard_reason=liveness_report["guard_reason"],
+                        heuristic_triggered=False,
+                        assistant_content_chars=len(_plain_text_from_content(assistant_message.get("content", ""))),
+                    )
                     break
 
                 judge_report = await _judge_agent_liveness_with_llm(
@@ -4938,11 +4950,33 @@ async def _run_chat_with_tool_bridge(
                     liveness_report["guard_reason"] = f"judge_{judge_decision}"
                 else:
                     liveness_report["guard_reason"] = f"judge_{judge_decision}_no_retry"
+                    _debug_trace_event(
+                        response_id,
+                        "liveness_guard_decision",
+                        round_index=round_index + 1,
+                        retry_count=int(liveness_report["retry_count"]),
+                        should_retry=False,
+                        guard_reason=liveness_report["guard_reason"],
+                        heuristic_triggered=False,
+                        judge_decision=judge_decision,
+                        assistant_content_chars=len(_plain_text_from_content(assistant_message.get("content", ""))),
+                    )
                     break
             else:
                 liveness_report["guard_reason"] = "assistant_narrated_tool_intent_without_tool_call"
 
             liveness_retry_attempted = True
+            _debug_trace_event(
+                response_id,
+                "liveness_guard_decision",
+                round_index=round_index + 1,
+                retry_count=int(liveness_report["retry_count"]),
+                should_retry=True,
+                guard_reason=liveness_report.get("guard_reason"),
+                heuristic_triggered=bool(heuristic_triggered),
+                judge_decision=judge_decision,
+                assistant_content_chars=len(_plain_text_from_content(assistant_message.get("content", ""))),
+            )
             liveness_report["triggered"] = True
             liveness_report["round_index"] = round_index + 1
             liveness_report["retry_count"] = int(liveness_report["retry_count"]) + 1
@@ -5009,6 +5043,19 @@ async def _run_chat_with_tool_bridge(
                     "response_content_preview": retry_content_preview,
                 }
             )
+            if not tool_calls:
+                liveness_report["guard_reason"] = "retry_without_tool_call_no_further_retry"
+                _debug_trace_event(
+                    response_id,
+                    "liveness_guard_decision",
+                    round_index=round_index + 1,
+                    retry_count=int(liveness_report["retry_count"]),
+                    should_retry=False,
+                    guard_reason=liveness_report["guard_reason"],
+                    retry_returned_tool_calls=False,
+                    assistant_content_chars=len(_plain_text_from_content(assistant_message.get("content", ""))),
+                )
+                break
 
         liveness_report["final_has_tool_calls"] = bool(tool_calls)
         liveness_report["final_tool_call_count"] = len(tool_calls) if isinstance(tool_calls, list) else 0
