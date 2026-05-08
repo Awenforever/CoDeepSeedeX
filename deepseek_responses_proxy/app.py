@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a2-liveness-retry-policy"
+PROXY_VERSION = "v2.7a3-context-budget-audit"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -512,6 +512,92 @@ def _debug_trace_latest(limit: int = 200) -> dict[str, Any]:
         "debug_trace": status,
         "trace_path": str(path),
         "events": events,
+    }
+
+
+def _debug_trace_json_chars(value: Any) -> int:
+    try:
+        return _json_char_size(value)
+    except Exception:
+        return len(str(value))
+
+
+def _debug_trace_message_budget(messages: Any) -> dict[str, Any]:
+    if not isinstance(messages, list):
+        return {
+            "message_count": 0,
+            "total_chars": 0,
+            "roles": {},
+        }
+
+    roles: dict[str, dict[str, int]] = {}
+    for message in messages:
+        if isinstance(message, dict):
+            role = str(message.get("role") or "unknown")
+        else:
+            role = "unknown"
+        item = roles.setdefault(role, {"count": 0, "chars": 0})
+        item["count"] += 1
+        item["chars"] += _debug_trace_json_chars(message)
+
+    return {
+        "message_count": len(messages),
+        "total_chars": _debug_trace_json_chars({"messages": messages}),
+        "roles": roles,
+    }
+
+
+def _context_budget_breakdown(
+    *,
+    request_payload: dict[str, Any],
+    input_value: Any,
+    messages_before_compaction: list[dict[str, Any]],
+    messages_after_compaction: list[dict[str, Any]],
+    messages_for_deepseek: list[dict[str, Any]],
+    deepseek_tools: list[dict[str, Any]] | None,
+    chat_payload: dict[str, Any],
+    context_compaction_report: dict[str, Any],
+) -> dict[str, Any]:
+    raw_tools = request_payload.get("tools") or []
+    normalized_tools = deepseek_tools or []
+    chat_payload_tools = chat_payload.get("tools") or []
+    chat_payload_messages = chat_payload.get("messages") or []
+
+    policy_decision = context_compaction_report.get("policy_decision")
+    if not isinstance(policy_decision, dict):
+        policy_decision = {}
+
+    return {
+        "request_payload_chars": _debug_trace_json_chars(request_payload),
+        "current_input_chars": _debug_trace_json_chars(input_value),
+        "raw_tool_count": len(raw_tools) if isinstance(raw_tools, list) else 0,
+        "raw_tools_chars": _debug_trace_json_chars({"tools": raw_tools}),
+        "normalized_tool_count": len(normalized_tools),
+        "normalized_tools_chars": _debug_trace_json_chars({"tools": normalized_tools}),
+        "chat_payload_chars": _debug_trace_json_chars(chat_payload),
+        "chat_payload_message_count": len(chat_payload_messages) if isinstance(chat_payload_messages, list) else 0,
+        "chat_payload_messages_chars": _debug_trace_json_chars({"messages": chat_payload_messages}),
+        "chat_payload_tool_count": len(chat_payload_tools) if isinstance(chat_payload_tools, list) else 0,
+        "chat_payload_tools_chars": _debug_trace_json_chars({"tools": chat_payload_tools}),
+        "messages_before_compaction": _debug_trace_message_budget(messages_before_compaction),
+        "messages_after_compaction": _debug_trace_message_budget(messages_after_compaction),
+        "messages_for_deepseek": _debug_trace_message_budget(messages_for_deepseek),
+        "compaction": {
+            "compacted": context_compaction_report.get("compacted"),
+            "reason": context_compaction_report.get("reason"),
+            "policy": context_compaction_report.get("policy"),
+            "before_chars": context_compaction_report.get("before_chars"),
+            "after_chars": context_compaction_report.get("after_chars"),
+            "chars_removed": context_compaction_report.get("chars_removed"),
+            "message_count_before": context_compaction_report.get("message_count_before"),
+            "message_count_after": context_compaction_report.get("message_count_after"),
+            "effective_trigger_chars": policy_decision.get("effective_trigger_chars"),
+            "effective_target_chars": policy_decision.get("effective_target_chars"),
+            "emergency_chars": policy_decision.get("emergency_chars"),
+            "min_new_chars": policy_decision.get("min_new_chars"),
+            "min_turns": policy_decision.get("min_turns"),
+            "growth": policy_decision.get("growth"),
+        },
     }
 
 
@@ -6103,6 +6189,7 @@ def create_app(
                         "tool messages because no DeepSeek tools were available"
                     )
 
+        messages_before_compaction = deepcopy(messages)
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,
             messages=messages,
@@ -6141,6 +6228,20 @@ def create_app(
             tools=deepseek_tools,
             reasoning_effort=reasoning_effort,
             request_payload=payload,
+        )
+        _debug_trace_event(
+            response_id,
+            "context_budget_breakdown",
+            **_context_budget_breakdown(
+                request_payload=payload,
+                input_value=input_value,
+                messages_before_compaction=messages_before_compaction,
+                messages_after_compaction=messages,
+                messages_for_deepseek=messages_for_deepseek,
+                deepseek_tools=deepseek_tools,
+                chat_payload=chat_payload,
+                context_compaction_report=context_compaction_report,
+            ),
         )
         _debug_trace_event(
             response_id,

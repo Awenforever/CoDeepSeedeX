@@ -179,8 +179,10 @@ Inspect through the CLI:
 ```bash
 dsproxy debug status
 dsproxy debug latest
+dsproxy debug budget
 dsproxy debug status --thinking
 dsproxy debug latest --thinking --limit 50
+dsproxy debug budget --thinking --limit 100
 ```
 
 Trace files are written under the configured debug trace directory, by default:
@@ -197,11 +199,21 @@ Important safety notes:
 * Avoid `DEEPSEEK_PROXY_DEBUG_CONTENT=full` unless running locally for a short, controlled diagnostic session.
 * Debug traces should not be committed.
 
+
+Context budget diagnostics are available after a traced request:
+
+```bash
+dsproxy debug budget --thinking --limit 100
+```
+
+The budget view extracts the latest `context_budget_breakdown` event and the primary upstream usage from the latest trace. Use it to see whether context growth is dominated by tools, conversation history, compaction summaries, or current input.
+
 Events currently include, when applicable:
 
 * `request_received`
 * `history_loaded`
 * `compaction_finished`
+* `context_budget_breakdown`
 * `messages_prepared_for_deepseek`
 * `context_trimming_finished`
 * `upstream_call_started`

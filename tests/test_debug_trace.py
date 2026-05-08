@@ -152,3 +152,61 @@ def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_pa
     assert event["chars_removed"] == 888889
     assert event["policy_decision"]["should_compact"] is True
     assert event["policy_decision"]["effective_trigger_chars"] == 900000
+
+
+def test_context_budget_breakdown_splits_tools_messages_and_compaction():
+    request_payload = {
+        "input": [{"role": "user", "content": "hello"}],
+        "tools": [{"type": "function", "function": {"name": "raw_tool"}}],
+    }
+    deepseek_tools = [{"type": "function", "function": {"name": "normalized_tool"}}]
+    messages_before = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "answer"},
+    ]
+    messages_after = messages_before[1:]
+    messages_for_deepseek = messages_after + [{"role": "tool", "content": "tool-output"}]
+    chat_payload = {
+        "model": "deepseek-v4-flash",
+        "messages": messages_for_deepseek,
+        "tools": deepseek_tools,
+    }
+    report = {
+        "compacted": False,
+        "reason": "not_triggered",
+        "policy": "adaptive",
+        "before_chars": 1000,
+        "after_chars": 1000,
+        "chars_removed": None,
+        "message_count_before": 3,
+        "message_count_after": 2,
+        "policy_decision": {
+            "effective_trigger_chars": 1250000,
+            "effective_target_chars": 750000,
+            "emergency_chars": 1380000,
+            "min_new_chars": 250000,
+            "min_turns": 4,
+            "growth": {"turns_since_last_compaction": 3},
+        },
+    }
+
+    budget = proxy_app._context_budget_breakdown(
+        request_payload=request_payload,
+        input_value=request_payload["input"],
+        messages_before_compaction=messages_before,
+        messages_after_compaction=messages_after,
+        messages_for_deepseek=messages_for_deepseek,
+        deepseek_tools=deepseek_tools,
+        chat_payload=chat_payload,
+        context_compaction_report=report,
+    )
+
+    assert budget["raw_tool_count"] == 1
+    assert budget["normalized_tool_count"] == 1
+    assert budget["chat_payload_tool_count"] == 1
+    assert budget["messages_before_compaction"]["message_count"] == 3
+    assert budget["messages_before_compaction"]["roles"]["system"]["count"] == 1
+    assert budget["messages_for_deepseek"]["roles"]["tool"]["count"] == 1
+    assert budget["compaction"]["reason"] == "not_triggered"
+    assert budget["compaction"]["effective_trigger_chars"] == 1250000

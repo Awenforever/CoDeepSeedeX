@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a2-liveness-retry-policy" in out
+    assert "v2.7a3-context-budget-audit" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a2-liveness-retry-policy")
+    assert data["proxy_version"].startswith("v2.7a3-context-budget-audit")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a2-liveness-retry-policy")
+    assert data["expected_version"].startswith("v2.7a3-context-budget-audit")
     assert data["running_version"] == "v0.old"
 
 
@@ -431,3 +431,69 @@ def test_cli_debug_returns_nonzero_when_proxy_unreachable(monkeypatch, capsys):
     assert data["status"] == "error"
     assert data["result"]["ok"] is False
     assert "connection refused" in data["result"]["error"]
+
+
+def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "trace_path": ".debug/traces/trace-resp_budget.jsonl",
+                "events": [
+                    {
+                        "event": "context_budget_breakdown",
+                        "response_id": "resp_budget",
+                        "chat_payload_chars": 247930,
+                        "chat_payload_tool_count": 37,
+                        "messages_for_deepseek": {
+                            "message_count": 128,
+                            "total_chars": 212783,
+                            "roles": {
+                                "user": {"count": 60, "chars": 120000},
+                                "assistant": {"count": 60, "chars": 90000},
+                            },
+                        },
+                        "compaction": {
+                            "reason": "not_triggered",
+                            "effective_trigger_chars": 1250000,
+                        },
+                    },
+                    {
+                        "event": "upstream_call_finished",
+                        "purpose": "primary",
+                        "usage": {
+                            "prompt_tokens": 71042,
+                            "cached_tokens": 69632,
+                        },
+                    },
+                ],
+            }).encode("utf-8")
+
+    def fake_urlopen(url, timeout=0):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "budget", "--port", "8123", "--limit", "25"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "ok"
+    assert data["debug_command"] == "budget"
+    assert data["budget"]["found"] is True
+    assert data["budget"]["event"]["chat_payload_chars"] == 247930
+    assert data["budget"]["event"]["chat_payload_tool_count"] == 37
+    assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
+    assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]

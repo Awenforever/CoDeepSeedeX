@@ -1279,13 +1279,38 @@ def _debug_fetch_json(url: str, timeout: float) -> dict[str, object]:
         }
 
 
+def _debug_budget_from_events(events: list[object]) -> dict[str, object]:
+    budget_events = [
+        event
+        for event in events
+        if isinstance(event, dict) and event.get("event") == "context_budget_breakdown"
+    ]
+    upstream_finished = [
+        event
+        for event in events
+        if isinstance(event, dict) and event.get("event") == "upstream_call_finished"
+    ]
+    latest_budget = budget_events[-1] if budget_events else None
+    latest_primary_usage = None
+    for event in reversed(upstream_finished):
+        if isinstance(event, dict) and event.get("purpose") == "primary":
+            latest_primary_usage = event
+            break
+
+    return {
+        "found": latest_budget is not None,
+        "event": latest_budget,
+        "primary_usage": latest_primary_usage,
+    }
+
+
 def _debug(args: argparse.Namespace) -> int:
     base_url = _proxy_base_url_from_args(args)
     command = getattr(args, "debug_command", "")
 
     if command == "status":
         path = "/v1/proxy/debug/status"
-    elif command == "latest":
+    elif command in {"latest", "budget"}:
         limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
         path = f"/v1/proxy/debug/latest?{urllib.parse.urlencode({'limit': limit})}"
     else:
@@ -1303,6 +1328,12 @@ def _debug(args: argparse.Namespace) -> int:
         "debug_command": command,
         "result": result,
     }
+
+    if command == "budget" and result.get("ok"):
+        body = result.get("json")
+        events = body.get("events", []) if isinstance(body, dict) else []
+        output["budget"] = _debug_budget_from_events(events)
+
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") else 1
 
@@ -1444,6 +1475,13 @@ def build_parser() -> argparse.ArgumentParser:
     debug_latest.add_argument("--timeout", type=float, default=3.0)
     debug_latest.add_argument("--limit", type=int, default=200)
     debug_latest.set_defaults(func=_debug)
+
+    debug_budget = debug_sub.add_parser("budget", help="show latest context budget breakdown")
+    debug_budget.add_argument("--thinking", action="store_true")
+    debug_budget.add_argument("--port", type=int)
+    debug_budget.add_argument("--timeout", type=float, default=3.0)
+    debug_budget.add_argument("--limit", type=int, default=200)
+    debug_budget.set_defaults(func=_debug)
 
     balance = sub.add_parser("balance", help="query DeepSeek API account balance")
     balance.add_argument("--env-file")
