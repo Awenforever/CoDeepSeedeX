@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a5a1-readable-trim-dry-run"
+PROXY_VERSION = "v2.7a6-tool-output-policy-dry-run"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -321,7 +321,7 @@ def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
 
 _DEBUG_TRACE_SECRET_KEYS = {"authorization", "api_key", "token", "password", "secret"}
 _DEBUG_TRACE_LARGE_CONTENT_KEYS = {"messages", "input", "content", "reasoning_content", "arguments"}
-_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs", "targets", "trim_targets"}
+_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs", "targets", "trim_targets", "policy_targets"}
 _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "event",
     "response_id",
@@ -345,7 +345,9 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "tool_name",
     "name",
     "item_type",
+    "category",
     "mode",
+    "policy_name",
     "trim_mode",
     "trim_reason",
 }
@@ -637,6 +639,222 @@ def _estimate_tool_output_trim_after_chars(original_chars: int, config: dict[str
     return min(int(original_chars), max(1, keep_total))
 
 
+def _classify_tool_output_category(tool_name: str | None) -> str:
+    name = str(tool_name or "").strip().lower()
+    if not name:
+        return "unknown"
+
+    if name in {"write_stdin", "send_stdin", "terminal_input"} or "stdin" in name:
+        return "interactive_shell"
+
+    if "user_input" in name or "request_user" in name or "ask_user" in name:
+        return "user_interaction"
+
+    if "search" in name or name in {"rg", "grep", "ripgrep"}:
+        return "search"
+
+    if "read" in name or "file" in name or name in {"cat", "cat_file"}:
+        return "file_read"
+
+    if (
+        name in {"exec_command", "shell", "run_command", "terminal_exec"}
+        or "exec" in name
+        or "command" in name
+        or "shell" in name
+        or "terminal" in name
+    ):
+        return "shell_command"
+
+    return "unknown"
+
+
+def _tool_output_category_policy(category: str) -> dict[str, Any]:
+    category = str(category or "unknown")
+    defaults: dict[str, dict[str, int]] = {
+        "interactive_shell": {
+            "max_item_chars": 6000,
+            "keep_head_chars": 1000,
+            "keep_tail_chars": 3000,
+            "notice_chars": 512,
+        },
+        "shell_command": {
+            "max_item_chars": 9000,
+            "keep_head_chars": 1500,
+            "keep_tail_chars": 4500,
+            "notice_chars": 512,
+        },
+        "search": {
+            "max_item_chars": 16000,
+            "keep_head_chars": 4000,
+            "keep_tail_chars": 4000,
+            "notice_chars": 512,
+        },
+        "file_read": {
+            "max_item_chars": 20000,
+            "keep_head_chars": 6000,
+            "keep_tail_chars": 6000,
+            "notice_chars": 512,
+        },
+        "user_interaction": {
+            "max_item_chars": 50000,
+            "keep_head_chars": 10000,
+            "keep_tail_chars": 10000,
+            "notice_chars": 512,
+        },
+        "unknown": {
+            "max_item_chars": 12000,
+            "keep_head_chars": 3000,
+            "keep_tail_chars": 3000,
+            "notice_chars": 512,
+        },
+    }
+    base = dict(defaults.get(category, defaults["unknown"]))
+    prefix = "DEEPSEEK_PROXY_TOOL_OUTPUT_" + category.upper() + "_"
+    base["max_item_chars"] = max(1, _env_int(prefix + "MAX_ITEM_CHARS", int(base["max_item_chars"])))
+    base["keep_head_chars"] = max(0, _env_int(prefix + "KEEP_HEAD_CHARS", int(base["keep_head_chars"])))
+    base["keep_tail_chars"] = max(0, _env_int(prefix + "KEEP_TAIL_CHARS", int(base["keep_tail_chars"])))
+    base["notice_chars"] = max(128, _env_int(prefix + "NOTICE_CHARS", int(base["notice_chars"])))
+    base["policy_name"] = category
+    return base
+
+
+def _estimate_tool_output_trim_after_chars_for_policy(original_chars: int, policy: dict[str, Any]) -> int:
+    keep_total = int(policy["keep_head_chars"]) + int(policy["keep_tail_chars"]) + int(policy["notice_chars"])
+    return min(int(original_chars), max(1, keep_total))
+
+
+def _tool_output_policy_dry_run(
+    outputs: list[dict[str, Any]],
+    *,
+    total_output_chars: int,
+) -> dict[str, Any]:
+    mode = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_DRY_RUN", "1").strip().lower()
+    enabled = mode not in {"0", "false", "off", "no"}
+    max_total_chars = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", 80000))
+    max_targets = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", 20))
+
+    category_counts: dict[str, int] = {}
+    category_chars: dict[str, int] = {}
+    category_output_chars: dict[str, int] = {}
+    policies: dict[str, dict[str, Any]] = {}
+
+    for output in outputs:
+        category = str(output.get("category") or "unknown")
+        item_chars = int(output.get("item_chars") or 0)
+        output_chars = int(output.get("output_chars") or 0)
+        category_counts[category] = int(category_counts.get(category, 0)) + 1
+        category_chars[category] = int(category_chars.get(category, 0)) + item_chars
+        category_output_chars[category] = int(category_output_chars.get(category, 0)) + output_chars
+        if category not in policies:
+            policies[category] = _tool_output_category_policy(category)
+
+    if not enabled:
+        return {
+            "enabled": False,
+            "applied": False,
+            "would_trim": False,
+            "category_counts": category_counts,
+            "category_chars": category_chars,
+            "category_output_chars": category_output_chars,
+            "policies": policies,
+            "targets": [],
+            "would_remove_chars_estimate": 0,
+            "estimated_total_output_chars_before": int(total_output_chars),
+            "estimated_total_output_chars_after": int(total_output_chars),
+            "target_total_output_chars": max_total_chars,
+            "unmet_total_budget_chars": max(0, int(total_output_chars) - max_total_chars),
+            "total_budget_reachable": int(total_output_chars) <= max_total_chars,
+        }
+
+    targets_by_call_id: dict[str, dict[str, Any]] = {}
+
+    for output in outputs:
+        category = str(output.get("category") or "unknown")
+        policy = policies.get(category) or _tool_output_category_policy(category)
+        item_chars = int(output.get("item_chars") or 0)
+        if item_chars <= int(policy["max_item_chars"]):
+            continue
+        after_chars = _estimate_tool_output_trim_after_chars_for_policy(item_chars, policy)
+        call_id = str(output.get("call_id") or "")
+        targets_by_call_id[call_id] = {
+            **output,
+            "policy_name": str(policy.get("policy_name") or category),
+            "trim_reason": "category_item_exceeds_max_item_chars",
+            "original_chars": item_chars,
+            "estimated_after_chars": after_chars,
+            "estimated_remove_chars": max(0, item_chars - after_chars),
+        }
+
+    estimated_after = int(total_output_chars) - sum(
+        int(target.get("estimated_remove_chars") or 0)
+        for target in targets_by_call_id.values()
+    )
+
+    if estimated_after > max_total_chars:
+        for output in sorted(outputs, key=lambda item: int(item.get("item_chars") or 0), reverse=True):
+            if estimated_after <= max_total_chars:
+                break
+            call_id = str(output.get("call_id") or "")
+            if call_id in targets_by_call_id:
+                continue
+
+            category = str(output.get("category") or "unknown")
+            policy = policies.get(category) or _tool_output_category_policy(category)
+            item_chars = int(output.get("item_chars") or 0)
+            after_chars = _estimate_tool_output_trim_after_chars_for_policy(item_chars, policy)
+            remove_chars = max(0, item_chars - after_chars)
+            if remove_chars <= 0:
+                continue
+
+            targets_by_call_id[call_id] = {
+                **output,
+                "policy_name": str(policy.get("policy_name") or category),
+                "trim_reason": "category_total_output_exceeds_max_total_chars",
+                "original_chars": item_chars,
+                "estimated_after_chars": after_chars,
+                "estimated_remove_chars": remove_chars,
+            }
+            estimated_after -= remove_chars
+
+    targets = sorted(
+        targets_by_call_id.values(),
+        key=lambda item: int(item.get("estimated_remove_chars") or 0),
+        reverse=True,
+    )
+    would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in targets)
+    estimated_total_after = max(0, int(total_output_chars) - would_remove)
+    unmet = max(0, estimated_total_after - max_total_chars)
+
+    would_remove_by_category: dict[str, int] = {}
+    would_trim_count_by_category: dict[str, int] = {}
+    for target in targets:
+        category = str(target.get("category") or "unknown")
+        would_remove_by_category[category] = int(would_remove_by_category.get(category, 0)) + int(
+            target.get("estimated_remove_chars") or 0
+        )
+        would_trim_count_by_category[category] = int(would_trim_count_by_category.get(category, 0)) + 1
+
+    return {
+        "enabled": True,
+        "applied": False,
+        "would_trim": bool(targets),
+        "would_trim_item_count": len(targets),
+        "would_remove_chars_estimate": would_remove,
+        "would_remove_chars_by_category": would_remove_by_category,
+        "would_trim_count_by_category": would_trim_count_by_category,
+        "estimated_total_output_chars_before": int(total_output_chars),
+        "estimated_total_output_chars_after": estimated_total_after,
+        "target_total_output_chars": max_total_chars,
+        "unmet_total_budget_chars": unmet,
+        "total_budget_reachable": unmet == 0,
+        "category_counts": category_counts,
+        "category_chars": category_chars,
+        "category_output_chars": category_output_chars,
+        "policies": policies,
+        "targets": targets[:max_targets],
+    }
+
+
 def _tool_output_trim_dry_run(
     outputs: list[dict[str, Any]],
     *,
@@ -802,10 +1020,12 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
         if item_chars >= warn_item_chars:
             summary["large_output_count"] = int(summary["large_output_count"]) + 1
 
+        category = _classify_tool_output_category(tool_name)
         output_record = {
             "index": index,
             "call_id": call_id,
             "tool_name": tool_name,
+            "category": category,
             "item_chars": item_chars,
             "output_chars": output_chars,
             "matching_function_call_index": call_info.get("index"),
@@ -821,6 +1041,10 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
         int(summary["function_call_output_chars"]) >= int(config["warn_total_chars"])
     )
     summary["trim_dry_run"] = _tool_output_trim_dry_run(
+        all_outputs,
+        total_output_chars=int(summary["function_call_output_chars"]),
+    )
+    summary["policy_dry_run"] = _tool_output_policy_dry_run(
         all_outputs,
         total_output_chars=int(summary["function_call_output_chars"]),
     )

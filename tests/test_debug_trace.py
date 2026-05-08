@@ -360,3 +360,64 @@ def test_debug_trace_none_mode_preserves_trim_dry_run_mode(monkeypatch, tmp_path
     assert event["trim_dry_run"]["mode"] == "dry_run"
     assert event["trim_dry_run"]["unmet_total_budget_chars"] == 37216
     assert event["trim_dry_run"]["total_budget_reachable"] is False
+
+
+def test_tool_output_policy_dry_run_classifies_generic_tool_names(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "500")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", "10")
+
+    input_items = [
+        {
+            "type": "function_call",
+            "call_id": "call_shell",
+            "name": "exec_command",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_shell",
+            "output": "s" * 9500,
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_stdin",
+            "name": "write_stdin",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_stdin",
+            "output": "i" * 7000,
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_unknown",
+            "name": "vendor_specific_tool",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_unknown",
+            "output": "u" * 13000,
+        },
+    ]
+
+    budget = proxy_app._tool_output_budget_breakdown(input_items)
+    policy = budget["policy_dry_run"]
+
+    categories = {item["call_id"]: item["category"] for item in budget["largest_outputs"]}
+    assert categories["call_shell"] == "shell_command"
+    assert categories["call_stdin"] == "interactive_shell"
+    assert categories["call_unknown"] == "unknown"
+
+    assert policy["enabled"] is True
+    assert policy["applied"] is False
+    assert policy["would_trim"] is True
+    assert policy["category_counts"]["shell_command"] == 1
+    assert policy["category_counts"]["interactive_shell"] == 1
+    assert policy["category_counts"]["unknown"] == 1
+    assert "shell_command" in policy["policies"]
+    assert "interactive_shell" in policy["policies"]
+    assert policy["targets"]
+    assert all("category" in item for item in policy["targets"])
+    assert all("policy_name" in item for item in policy["targets"])
