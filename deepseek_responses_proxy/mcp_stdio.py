@@ -247,3 +247,122 @@ async def discover_stdio_mcp_tools(
     finally:
         if proc is not None:
             await _terminate_process(proc)
+
+
+async def call_stdio_mcp_tool(
+    config: StdioMCPServerConfig,
+    *,
+    tool_name: str,
+    arguments: dict[str, Any] | None = None,
+    client_name: str = "deepseek-responses-proxy",
+    client_version: str = "unknown",
+    protocol_version: str = DEFAULT_MCP_PROTOCOL_VERSION,
+) -> dict[str, Any]:
+    """Call one stdio MCP tool.
+
+    This is a low-level client primitive. Authorization and readonly/write
+    gating must be enforced by the caller before this function is invoked.
+    """
+    if not config.command:
+        return {
+            "ok": False,
+            "server": config.name,
+            "tool": tool_name,
+            "error": "missing_mcp_command",
+        }
+
+    command_path = Path(config.command).expanduser()
+    if not command_path.exists():
+        return {
+            "ok": False,
+            "server": config.name,
+            "tool": tool_name,
+            "error": "mcp_command_not_found",
+            "command": str(command_path),
+        }
+
+    proc: asyncio.subprocess.Process | None = None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(command_path),
+            *config.args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=build_mcp_process_env(config),
+        )
+
+        initialize_id = 1
+        await _write_jsonrpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": initialize_id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": protocol_version,
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": client_name,
+                        "version": client_version,
+                    },
+                },
+            },
+        )
+        initialize_response = await _read_jsonrpc_response(
+            proc,
+            expected_id=initialize_id,
+            timeout_sec=config.startup_timeout_sec,
+        )
+
+        await _write_jsonrpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {},
+            },
+        )
+
+        call_id = 2
+        await _write_jsonrpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": call_id,
+                "method": "tools/call",
+                "params": {
+                    "name": str(tool_name),
+                    "arguments": arguments or {},
+                },
+            },
+        )
+        call_response = await _read_jsonrpc_response(
+            proc,
+            expected_id=call_id,
+            timeout_sec=config.tool_timeout_sec,
+        )
+
+        result = call_response.get("result") or {}
+        if not isinstance(result, dict):
+            result = {"raw_result": result}
+
+        return {
+            "ok": True,
+            "server": config.name,
+            "tool": str(tool_name),
+            "protocol_version": protocol_version,
+            "initialize": initialize_response.get("result") or {},
+            "result": result,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "server": config.name,
+            "tool": str(tool_name),
+            "error": "mcp_tool_call_failed",
+            "message": str(exc),
+        }
+    finally:
+        if proc is not None:
+            await _terminate_process(proc)
