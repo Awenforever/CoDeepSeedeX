@@ -27,6 +27,17 @@ def test_debug_trace_none_mode_summarizes_without_raw_content(monkeypatch, tmp_p
         "resp_unit",
         "request_received",
         payload={"input": "secret-ish content should not appear verbatim"},
+        message_count=12,
+        before_chars=3456,
+        compacted=False,
+        reason="not_triggered",
+        usage={
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "cached_tokens": 80,
+            "reasoning_tokens": 5,
+            "total_tokens": 120,
+        },
     )
 
     trace_file = trace_dir / "trace-resp_unit.jsonl"
@@ -38,8 +49,15 @@ def test_debug_trace_none_mode_summarizes_without_raw_content(monkeypatch, tmp_p
     assert event["event"] == "request_received"
     assert event["response_id"] == "resp_unit"
     assert event["version"] == proxy_app.PROXY_VERSION
-    assert event["payload"]["type"] == "dict"
-    assert event["payload"]["chars"] > 0
+    assert event["payload"]["input"]["label"] == "input"
+    assert event["payload"]["input"]["type"] == "str"
+    assert event["payload"]["input"]["chars"] > 0
+    assert event["message_count"] == 12
+    assert event["before_chars"] == 3456
+    assert event["compacted"] is False
+    assert event["reason"] == "not_triggered"
+    assert event["usage"]["prompt_tokens"] == 100
+    assert event["usage"]["cached_tokens"] == 80
 
 
 def test_debug_trace_preview_mode_redacts_secret_like_keys(monkeypatch, tmp_path):
@@ -97,3 +115,40 @@ def test_debug_trace_sanitizes_response_id(monkeypatch, tmp_path):
 
     files = sorted(path.name for path in trace_dir.glob("trace-*.jsonl"))
     assert files == ["trace-resp_unsafe_value.jsonl"]
+
+def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_compaction",
+        "compaction_finished",
+        compacted=True,
+        reason="adaptive_triggered",
+        policy="adaptive",
+        before_chars=1234567,
+        after_chars=345678,
+        chars_removed=888889,
+        message_count_before=88,
+        message_count_after=25,
+        policy_decision={
+            "policy": "adaptive",
+            "should_compact": True,
+            "reason": "adaptive_triggered",
+            "effective_trigger_chars": 900000,
+            "effective_target_chars": 350000,
+        },
+    )
+
+    event = json.loads((trace_dir / "trace-resp_compaction.jsonl").read_text(encoding="utf-8"))
+    assert event["event"] == "compaction_finished"
+    assert event["compacted"] is True
+    assert event["reason"] == "adaptive_triggered"
+    assert event["policy"] == "adaptive"
+    assert event["before_chars"] == 1234567
+    assert event["after_chars"] == 345678
+    assert event["chars_removed"] == 888889
+    assert event["policy_decision"]["should_compact"] is True
+    assert event["policy_decision"]["effective_trigger_chars"] == 900000

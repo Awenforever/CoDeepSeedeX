@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7-debug-trace-foundation"
+PROXY_VERSION = "v2.7a1-debug-trace-readable-metadata"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -319,27 +319,65 @@ def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
     return summary
 
 
-def _debug_trace_sanitize(value: Any) -> Any:
+_DEBUG_TRACE_SECRET_KEYS = {"authorization", "api_key", "token", "password", "secret"}
+_DEBUG_TRACE_LARGE_CONTENT_KEYS = {"messages", "input", "content", "reasoning_content", "arguments"}
+_DEBUG_TRACE_SAFE_STRING_KEYS = {
+    "event",
+    "response_id",
+    "version",
+    "purpose",
+    "policy",
+    "reason",
+    "model",
+    "requested_model",
+    "effective_model",
+    "upstream_model",
+    "summary_source",
+    "error_type",
+    "status",
+    "url",
+    "trace_path",
+    "debug_command",
+}
+
+
+def _debug_trace_safe_string(value: str, *, key: str | None = None) -> Any:
     mode = _debug_trace_content_mode()
+    if mode == "full":
+        return value
+
     preview_chars = _debug_trace_preview_chars()
+    if key in _DEBUG_TRACE_SAFE_STRING_KEYS and len(value) <= max(preview_chars, 256):
+        return value
 
     if mode == "none":
         return _debug_trace_summary(value)
 
-    if isinstance(value, str):
-        if mode == "full":
-            return value
-        truncated, changed = _truncate_middle_text(value, preview_chars)
-        if changed:
-            return {
-                "preview": truncated,
-                "original_chars": len(value),
-                "truncated": True,
-            }
-        return value
+    truncated, changed = _truncate_middle_text(value, preview_chars)
+    if changed:
+        return {
+            "preview": truncated,
+            "original_chars": len(value),
+            "truncated": True,
+        }
+    return value
+
+
+def _debug_trace_sanitize(value: Any, *, key: str | None = None) -> Any:
+    mode = _debug_trace_content_mode()
+    key_lower = str(key or "").lower()
+
+    if key_lower in _DEBUG_TRACE_SECRET_KEYS:
+        return "[redacted]"
+
+    if key in _DEBUG_TRACE_LARGE_CONTENT_KEYS:
+        return _debug_trace_summary(value, label=key)
 
     if isinstance(value, (int, float, bool)) or value is None:
         return value
+
+    if isinstance(value, str):
+        return _debug_trace_safe_string(value, key=key)
 
     if isinstance(value, list):
         if mode == "full":
@@ -354,16 +392,17 @@ def _debug_trace_sanitize(value: Any) -> Any:
         if mode == "full":
             return value
         sanitized: dict[str, Any] = {}
-        for key, item in list(value.items())[:20]:
-            key_str = str(key)
-            if key_str.lower() in {"authorization", "api_key", "token", "password", "secret"}:
-                sanitized[key_str] = "[redacted]"
-            elif key_str in {"messages", "input", "content", "reasoning_content", "arguments"}:
-                sanitized[key_str] = _debug_trace_summary(item, label=key_str)
+        for item_key, item in list(value.items())[:50]:
+            item_key_str = str(item_key)
+            item_key_lower = item_key_str.lower()
+            if item_key_lower in _DEBUG_TRACE_SECRET_KEYS:
+                sanitized[item_key_str] = "[redacted]"
+            elif item_key_str in _DEBUG_TRACE_LARGE_CONTENT_KEYS:
+                sanitized[item_key_str] = _debug_trace_summary(item, label=item_key_str)
             else:
-                sanitized[key_str] = _debug_trace_sanitize(item)
-        if len(value) > 20:
-            sanitized["_truncated_keys"] = len(value) - 20
+                sanitized[item_key_str] = _debug_trace_sanitize(item, key=item_key_str)
+        if len(value) > 50:
+            sanitized["_truncated_keys"] = len(value) - 50
         return sanitized
 
     return str(value)
@@ -384,7 +423,7 @@ def _debug_trace_event(response_id: str | None, event: str, **fields: Any) -> No
             "version": PROXY_VERSION,
         }
         for key, value in fields.items():
-            entry[key] = _debug_trace_sanitize(value)
+            entry[key] = _debug_trace_sanitize(value, key=key)
 
         line = json.dumps(entry, ensure_ascii=False, default=str)
         max_chars = _debug_trace_max_event_chars()
