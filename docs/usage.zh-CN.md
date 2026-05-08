@@ -69,3 +69,7 @@ liveness_retry表示活性守卫触发后的重试调用。
 ## Codex TUI内置命令
 
 进入`codex --profile deepseek-thinking`后，可以使用`/status`查看状态，使用`/model`切换模型或推理强度，使用`/plan`进入或使用任务规划模式。
+
+## 升级
+
+参见[升级](upgrade.zh-CN.md)了解`dsproxy upgrade`和再次运行one-line installer两种升级路径。

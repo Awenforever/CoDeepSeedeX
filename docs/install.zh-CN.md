@@ -53,3 +53,7 @@
     bash scripts/install.sh
 
 正式公开前，需要替换scripts/install.sh中的占位仓库地址。
+
+## 升级
+
+如果需要从旧版本升级，安装后可参见[升级](upgrade.zh-CN.md)。
