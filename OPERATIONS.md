@@ -144,6 +144,72 @@ Recent thinking usage events:
 curl -sS "http://127.0.0.1:8001/v1/proxy/usage?limit=20" | python3 -m json.tool
 ```
 
+## Debug trace
+
+Debug trace mode records a structured JSONL activity timeline for each Responses request. It is intended for diagnosing context trimming, Codex-like persistent compaction, tool bridge rounds, upstream calls, and final response-envelope construction.
+
+Enable it only when diagnosing a local proxy session:
+
+```bash
+DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy-start
+DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy-start-thinking
+```
+
+Useful optional settings:
+
+```bash
+DEEPSEEK_PROXY_DEBUG_DIR=.debug/traces
+DEEPSEEK_PROXY_DEBUG_CONTENT=none      # metadata only
+DEEPSEEK_PROXY_DEBUG_CONTENT=preview   # default, redacted previews
+DEEPSEEK_PROXY_DEBUG_CONTENT=full      # high risk, local temporary use only
+DEEPSEEK_PROXY_DEBUG_PREVIEW_CHARS=1200
+DEEPSEEK_PROXY_DEBUG_MAX_EVENT_CHARS=8000
+```
+
+Inspect the trace state through HTTP:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/proxy/debug/status | python3 -m json.tool
+curl -sS http://127.0.0.1:8000/v1/proxy/debug/latest | python3 -m json.tool
+curl -sS 'http://127.0.0.1:8001/v1/proxy/debug/latest?limit=50' | python3 -m json.tool
+```
+
+Inspect through the CLI:
+
+```bash
+dsproxy debug status
+dsproxy debug latest
+dsproxy debug status --thinking
+dsproxy debug latest --thinking --limit 50
+```
+
+Trace files are written under the configured debug trace directory, by default:
+
+```text
+.debug/traces/trace-<response_id>.jsonl
+.debug/traces/latest.json
+```
+
+Important safety notes:
+
+* Default content mode is `preview`, which redacts secret-like keys and summarizes large fields.
+* Use `DEEPSEEK_PROXY_DEBUG_CONTENT=none` for safest metadata-only diagnostics.
+* Avoid `DEEPSEEK_PROXY_DEBUG_CONTENT=full` unless running locally for a short, controlled diagnostic session.
+* Debug traces should not be committed.
+
+Events currently include, when applicable:
+
+* `request_received`
+* `history_loaded`
+* `compaction_finished`
+* `messages_prepared_for_deepseek`
+* `context_trimming_finished`
+* `upstream_call_started`
+* `upstream_call_finished`
+* `upstream_call_failed`
+* `response_envelope_built`
+
+
 ## Health check
 
 Default stable proxy check:
