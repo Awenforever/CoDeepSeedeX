@@ -2467,6 +2467,26 @@ async def _execute_mcp_stdio_backend(
             },
         }
 
+    tool_result = call_result.get("result")
+    if isinstance(tool_result, dict) and tool_result.get("isError") is True:
+        return {
+            "ok": False,
+            "tool": function_name,
+            "error": "mcp_tool_result_error",
+            "result": tool_result,
+            "mcp": {
+                "server": parsed["server"],
+                "name": parsed["name"],
+                "namespace": parsed["namespace"],
+                "policy_key": parsed["policy_key"],
+                "permission": decision.get("permission"),
+            },
+            "discovery": {
+                "ok": True,
+                "tool_count": discovery.get("tool_count"),
+            },
+        }
+
     return {
         "ok": True,
         "tool": function_name,
@@ -2477,7 +2497,7 @@ async def _execute_mcp_stdio_backend(
             "policy_key": parsed["policy_key"],
             "permission": decision.get("permission"),
         },
-        "result": call_result.get("result"),
+        "result": tool_result,
         "discovery": {
             "ok": True,
             "tool_count": discovery.get("tool_count"),
