@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a4-tool-output-budget-control"
+PROXY_VERSION = "v2.7a4a1-readable-largest-tool-outputs"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -321,6 +321,7 @@ def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
 
 _DEBUG_TRACE_SECRET_KEYS = {"authorization", "api_key", "token", "password", "secret"}
 _DEBUG_TRACE_LARGE_CONTENT_KEYS = {"messages", "input", "content", "reasoning_content", "arguments"}
+_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs"}
 _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "event",
     "response_id",
@@ -386,8 +387,8 @@ def _debug_trace_sanitize(value: Any, *, key: str | None = None) -> Any:
         return _debug_trace_safe_string(value, key=key)
 
     if isinstance(value, list):
-        if mode == "full":
-            return value
+        if mode == "full" or key in _DEBUG_TRACE_SAFE_METADATA_LIST_KEYS:
+            return [_debug_trace_sanitize(item) for item in value]
         return {
             **_debug_trace_summary(value),
             "preview": [_debug_trace_sanitize(item) for item in value[:5]],

@@ -254,3 +254,31 @@ def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):
     assert budget["largest_outputs"][0]["tool_name"] == "shell"
     assert budget["largest_outputs"][0]["exceeds_warn_item_chars"] is True
     assert len(budget["largest_outputs"]) == 2
+
+
+def test_debug_trace_none_mode_preserves_largest_outputs_metadata(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_tool_budget",
+        "tool_output_budget_breakdown",
+        largest_outputs=[
+            {
+                "index": 13,
+                "call_id": "call_large",
+                "tool_name": "shell",
+                "item_chars": 41290,
+                "output_chars": 41000,
+                "exceeds_warn_item_chars": True,
+            }
+        ],
+    )
+
+    event = json.loads((trace_dir / "trace-resp_tool_budget.jsonl").read_text(encoding="utf-8"))
+    assert isinstance(event["largest_outputs"], list)
+    assert event["largest_outputs"][0]["call_id"] == "call_large"
+    assert event["largest_outputs"][0]["tool_name"] == "shell"
+    assert event["largest_outputs"][0]["item_chars"] == 41290
