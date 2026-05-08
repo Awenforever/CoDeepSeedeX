@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a3-context-budget-audit"
+PROXY_VERSION = "v2.7a4-tool-output-budget-control"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -340,6 +340,10 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "url",
     "trace_path",
     "debug_command",
+    "call_id",
+    "tool_name",
+    "name",
+    "item_type",
 }
 
 
@@ -599,6 +603,114 @@ def _context_budget_breakdown(
             "growth": policy_decision.get("growth"),
         },
     }
+
+
+def _tool_output_budget_env_config() -> dict[str, int]:
+    return {
+        "largest_items": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", 12)),
+        "warn_item_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_ITEM_CHARS", 12000)),
+        "warn_total_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_TOTAL_CHARS", 80000)),
+    }
+
+
+def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
+    config = _tool_output_budget_env_config()
+    summary: dict[str, Any] = {
+        "config": config,
+        "input_is_list": isinstance(input_value, list),
+        "input_item_count": len(input_value) if isinstance(input_value, list) else 0,
+        "input_chars": _debug_trace_json_chars(input_value),
+        "function_call_count": 0,
+        "function_call_chars": 0,
+        "function_call_output_count": 0,
+        "function_call_output_chars": 0,
+        "function_call_output_payload_chars": 0,
+        "type_counts": {},
+        "type_chars": {},
+        "tool_name_counts": {},
+        "tool_name_chars": {},
+        "largest_outputs": [],
+        "large_output_count": 0,
+        "total_output_exceeds_warn_total": False,
+    }
+
+    if not isinstance(input_value, list):
+        return summary
+
+    calls_by_id: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(input_value):
+        if not isinstance(item, dict):
+            item_type = type(item).__name__
+            item_chars = _debug_trace_json_chars(item)
+        else:
+            item_type = str(item.get("type") or "missing_type")
+            item_chars = _debug_trace_json_chars(item)
+
+        summary["type_counts"][item_type] = int(summary["type_counts"].get(item_type, 0)) + 1
+        summary["type_chars"][item_type] = int(summary["type_chars"].get(item_type, 0)) + item_chars
+
+        if not isinstance(item, dict):
+            continue
+
+        if item_type == "function_call":
+            call_id = str(item.get("call_id") or "")
+            tool_name = str(item.get("name") or "unknown")
+            arguments_chars = _debug_trace_json_chars(item.get("arguments"))
+            summary["function_call_count"] = int(summary["function_call_count"]) + 1
+            summary["function_call_chars"] = int(summary["function_call_chars"]) + item_chars
+            summary["tool_name_counts"][tool_name] = int(summary["tool_name_counts"].get(tool_name, 0)) + 1
+            summary["tool_name_chars"][tool_name] = int(summary["tool_name_chars"].get(tool_name, 0)) + item_chars
+            if call_id:
+                calls_by_id[call_id] = {
+                    "index": index,
+                    "tool_name": tool_name,
+                    "arguments_chars": arguments_chars,
+                    "item_chars": item_chars,
+                }
+
+    largest_outputs: list[dict[str, Any]] = []
+    warn_item_chars = int(config["warn_item_chars"])
+
+    for index, item in enumerate(input_value):
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type") or "missing_type")
+        if item_type != "function_call_output":
+            continue
+
+        call_id = str(item.get("call_id") or "")
+        item_chars = _debug_trace_json_chars(item)
+        output_chars = _debug_trace_json_chars(item.get("output"))
+        call_info = calls_by_id.get(call_id) or {}
+        tool_name = str(call_info.get("tool_name") or "unknown")
+
+        summary["function_call_output_count"] = int(summary["function_call_output_count"]) + 1
+        summary["function_call_output_chars"] = int(summary["function_call_output_chars"]) + item_chars
+        summary["function_call_output_payload_chars"] = int(summary["function_call_output_payload_chars"]) + output_chars
+        summary["tool_name_counts"][tool_name] = int(summary["tool_name_counts"].get(tool_name, 0)) + 1
+        summary["tool_name_chars"][tool_name] = int(summary["tool_name_chars"].get(tool_name, 0)) + item_chars
+        if item_chars >= warn_item_chars:
+            summary["large_output_count"] = int(summary["large_output_count"]) + 1
+
+        largest_outputs.append(
+            {
+                "index": index,
+                "call_id": call_id,
+                "tool_name": tool_name,
+                "item_chars": item_chars,
+                "output_chars": output_chars,
+                "matching_function_call_index": call_info.get("index"),
+                "matching_function_call_arguments_chars": call_info.get("arguments_chars"),
+                "exceeds_warn_item_chars": item_chars >= warn_item_chars,
+            }
+        )
+
+    largest_outputs.sort(key=lambda item: int(item.get("item_chars") or 0), reverse=True)
+    summary["largest_outputs"] = largest_outputs[: int(config["largest_items"])]
+    summary["total_output_exceeds_warn_total"] = (
+        int(summary["function_call_output_chars"]) >= int(config["warn_total_chars"])
+    )
+    return summary
 
 
 def _normalize_chat_role(role: str | None) -> str:
@@ -6242,6 +6354,11 @@ def create_app(
                 chat_payload=chat_payload,
                 context_compaction_report=context_compaction_report,
             ),
+        )
+        _debug_trace_event(
+            response_id,
+            "tool_output_budget_breakdown",
+            **_tool_output_budget_breakdown(input_value),
         )
         _debug_trace_event(
             response_id,

@@ -210,3 +210,47 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
     assert budget["messages_for_deepseek"]["roles"]["tool"]["count"] == 1
     assert budget["compaction"]["reason"] == "not_triggered"
     assert budget["compaction"]["effective_trigger_chars"] == 1250000
+
+
+def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_ITEM_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_TOTAL_CHARS", "150")
+
+    input_items = [
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "shell",
+            "arguments": "{\"cmd\":\"pytest\"}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "x" * 200,
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_2",
+            "name": "read_file",
+            "arguments": "{\"path\":\"a.txt\"}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_2",
+            "output": "small",
+        },
+    ]
+
+    budget = proxy_app._tool_output_budget_breakdown(input_items)
+
+    assert budget["function_call_count"] == 2
+    assert budget["function_call_output_count"] == 2
+    assert budget["function_call_output_chars"] > 200
+    assert budget["function_call_output_payload_chars"] > 200
+    assert budget["large_output_count"] >= 1
+    assert budget["total_output_exceeds_warn_total"] is True
+    assert budget["largest_outputs"][0]["call_id"] == "call_1"
+    assert budget["largest_outputs"][0]["tool_name"] == "shell"
+    assert budget["largest_outputs"][0]["exceeds_warn_item_chars"] is True
+    assert len(budget["largest_outputs"]) == 2

@@ -1297,9 +1297,17 @@ def _debug_budget_from_events(events: list[object]) -> dict[str, object]:
             latest_primary_usage = event
             break
 
+    tool_output_events = [
+        event
+        for event in events
+        if isinstance(event, dict) and event.get("event") == "tool_output_budget_breakdown"
+    ]
+    latest_tool_output_budget = tool_output_events[-1] if tool_output_events else None
+
     return {
         "found": latest_budget is not None,
         "event": latest_budget,
+        "tool_output_budget": latest_tool_output_budget,
         "primary_usage": latest_primary_usage,
     }
 

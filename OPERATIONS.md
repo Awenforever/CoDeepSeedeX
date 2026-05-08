@@ -200,6 +200,8 @@ Important safety notes:
 * Debug traces should not be committed.
 
 
+Tool output budget diagnostics are included in `dsproxy debug budget`. They identify how much of the Responses input is made of `function_call` and `function_call_output` items, and list the largest tool outputs by `call_id`, tool name and character size. This mode is audit-only and does not truncate tool outputs by default.
+
 Context budget diagnostics are available after a traced request:
 
 ```bash
@@ -214,6 +216,7 @@ Events currently include, when applicable:
 * `history_loaded`
 * `compaction_finished`
 * `context_budget_breakdown`
+* `tool_output_budget_breakdown`
 * `messages_prepared_for_deepseek`
 * `context_trimming_finished`
 * `upstream_call_started`
