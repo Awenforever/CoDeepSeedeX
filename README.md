@@ -211,7 +211,7 @@ View usage:
 Full CLI help:
 
     dsproxy -H
-### WeClaw integration
+### 🤝 WeClaw integration
 
 <!-- CODEEPSEEDEX_WECLAW_DEV_INTEGRATION_START -->
 
