@@ -601,3 +601,70 @@ def test_debug_trace_none_mode_preserves_largest_messages_metadata(monkeypatch, 
     assert event["largest_messages"][0]["role"] == "user"
     assert event["largest_messages"][0]["history_category"] == "flattened_tool_transcript"
     assert event["largest_messages"][0]["chars"] == 16669
+
+
+def test_flattened_tool_transcript_compaction_dry_run_estimates_savings(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", "50")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_TARGETS", "5")
+
+    old_flattened = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "- tool_call_id: call_old\n"
+            "tool_outputs:\n"
+            "- tool_call_id: call_old\n"
+            "content: " + ("x" * 1000)
+        ),
+    }
+    recent_flattened = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "- tool_call_id: call_recent\n"
+            "tool_outputs:\n"
+            "- tool_call_id: call_recent\n"
+            "content: " + ("y" * 1000)
+        ),
+    }
+
+    messages = [
+        {"role": "developer", "content": "system"},
+        old_flattened,
+        {"role": "assistant", "content": "answer"},
+        recent_flattened,
+    ]
+
+    report = proxy_app._flattened_tool_transcript_compaction_dry_run(messages)
+
+    assert report["enabled"] is True
+    assert report["applied"] is False
+    assert report["strategy"] == "flattened_tool_transcript_summary_dry_run"
+    assert report["flattened_message_count"] == 2
+    assert report["candidate_count"] == 1
+    assert report["retained_recent_flattened_count"] == 1
+    assert report["would_compact"] is True
+    assert report["would_compact_count"] == 1
+    assert report["would_remove_chars_estimate"] > 0
+    assert report["estimated_messages_chars_after"] < report["estimated_messages_chars_before"]
+    assert report["targets"][0]["history_category"] == "flattened_tool_transcript"
+    assert report["targets"][0]["role"] == "user"
+
+
+def test_flattened_tool_transcript_compaction_dry_run_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_DRY_RUN", "0")
+    messages = [
+        {
+            "role": "user",
+            "content": "assistant_requested_tool_calls:\ntool_outputs:\n" + ("x" * 1000),
+        }
+    ]
+
+    report = proxy_app._flattened_tool_transcript_compaction_dry_run(messages)
+
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["would_compact"] is False
+    assert report["targets"] == []

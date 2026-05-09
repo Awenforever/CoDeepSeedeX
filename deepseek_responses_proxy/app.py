@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a8a1-readable-largest-history-messages"
+PROXY_VERSION = "v2.7a9-flattened-tool-transcript-compaction-dry-run"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -353,6 +353,7 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "trim_mode",
     "trim_reason",
     "role",
+    "strategy",
 }
 
 
@@ -1399,6 +1400,114 @@ def _history_growth_breakdown(
     limit = max(1, _env_int("DEEPSEEK_PROXY_HISTORY_GROWTH_LARGEST_MESSAGES", 8))
     summary["largest_messages"] = largest_messages[:limit]
     return summary
+
+
+def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, Any]:
+    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_DRY_RUN", "1").strip().lower()
+    enabled = enabled_env not in {"0", "false", "off", "no"}
+
+    preserve_recent_messages = max(
+        0,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
+    )
+    min_message_chars = max(
+        1,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", 2000),
+    )
+    summary_chars = max(
+        128,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", 1200),
+    )
+    max_targets = max(
+        1,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_TARGETS", 8),
+    )
+
+    report: dict[str, Any] = {
+        "enabled": enabled,
+        "applied": False,
+        "strategy": "flattened_tool_transcript_summary_dry_run",
+        "messages_is_list": isinstance(messages, list),
+        "message_count": len(messages) if isinstance(messages, list) else 0,
+        "preserve_recent_messages": preserve_recent_messages,
+        "min_message_chars": min_message_chars,
+        "summary_chars": summary_chars,
+        "flattened_message_count": 0,
+        "flattened_message_chars": 0,
+        "candidate_count": 0,
+        "candidate_chars": 0,
+        "would_compact": False,
+        "would_compact_count": 0,
+        "would_remove_chars_estimate": 0,
+        "estimated_messages_chars_before": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "estimated_messages_chars_after": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "retained_recent_flattened_count": 0,
+        "retained_recent_flattened_chars": 0,
+        "targets": [],
+    }
+
+    if not enabled or not isinstance(messages, list):
+        return report
+
+    cutoff = max(0, len(messages) - preserve_recent_messages)
+    targets: list[dict[str, Any]] = []
+
+    for index, message in enumerate(messages):
+        category = _classify_history_message_for_audit(message)
+        if category != "flattened_tool_transcript":
+            continue
+
+        message_chars = _debug_trace_json_chars(message)
+        report["flattened_message_count"] = int(report["flattened_message_count"]) + 1
+        report["flattened_message_chars"] = int(report["flattened_message_chars"]) + message_chars
+
+        if index >= cutoff:
+            report["retained_recent_flattened_count"] = int(report["retained_recent_flattened_count"]) + 1
+            report["retained_recent_flattened_chars"] = int(report["retained_recent_flattened_chars"]) + message_chars
+            continue
+
+        if message_chars < min_message_chars:
+            continue
+
+        estimated_after_chars = min(message_chars, summary_chars)
+        estimated_remove_chars = max(0, message_chars - estimated_after_chars)
+        if estimated_remove_chars <= 0:
+            continue
+
+        role = "non_dict"
+        if isinstance(message, dict):
+            role = str(message.get("role") or "unknown")
+
+        report["candidate_count"] = int(report["candidate_count"]) + 1
+        report["candidate_chars"] = int(report["candidate_chars"]) + message_chars
+
+        targets.append(
+            {
+                "index": index,
+                "role": role,
+                "history_category": category,
+                "chars": message_chars,
+                "estimated_after_chars": estimated_after_chars,
+                "estimated_remove_chars": estimated_remove_chars,
+                "reason": "old_flattened_tool_transcript_over_min_chars",
+            }
+        )
+
+    targets.sort(key=lambda item: int(item.get("estimated_remove_chars") or 0), reverse=True)
+    would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in targets)
+    before = int(report["estimated_messages_chars_before"])
+    after = max(0, before - would_remove)
+
+    report.update(
+        {
+            "would_compact": bool(targets),
+            "would_compact_count": len(targets),
+            "would_remove_chars_estimate": would_remove,
+            "estimated_messages_chars_after": after,
+            "targets": targets[:max_targets],
+        }
+    )
+    return report
 
 
 def _normalize_chat_role(role: str | None) -> str:
@@ -7005,6 +7114,11 @@ def create_app(
                 input_value=input_value,
                 previous_response_id=previous_response_id,
             ),
+        )
+        _debug_trace_event(
+            response_id,
+            "flattened_tool_transcript_compaction_dry_run",
+            **_flattened_tool_transcript_compaction_dry_run(messages_before_compaction),
         )
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,
