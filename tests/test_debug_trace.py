@@ -668,3 +668,61 @@ def test_flattened_tool_transcript_compaction_dry_run_can_be_disabled(monkeypatc
     assert report["applied"] is False
     assert report["would_compact"] is False
     assert report["targets"] == []
+
+
+def test_flattened_tool_payload_compaction_default_does_not_change_messages(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
+    messages = [
+        {
+            "role": "user",
+            "content": "assistant_requested_tool_calls:\ntool_outputs:\n" + ("x" * 5000),
+        }
+    ]
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_payload_compaction(messages)
+
+    assert compacted is messages
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["reason"] == "payload_compaction_mode_not_enabled"
+    assert messages[0]["content"].endswith("x" * 5000)
+
+
+def test_flattened_tool_payload_compaction_enabled_changes_only_copy(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", "700")
+
+    old_content = "assistant_requested_tool_calls:\ntool_outputs:\n" + ("x" * 5000)
+    recent_content = "assistant_requested_tool_calls:\ntool_outputs:\n" + ("y" * 5000)
+    messages = [
+        {"role": "developer", "content": "system"},
+        {"role": "user", "content": old_content},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": recent_content},
+    ]
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_payload_compaction(messages)
+
+    assert compacted is not messages
+    assert messages[1]["content"] == old_content
+    assert messages[3]["content"] == recent_content
+    assert report["enabled"] is True
+    assert report["applied"] is True
+    assert report["reason"] == "enabled"
+    assert report["compacted_count"] == 1
+    assert report["retained_recent_flattened_count"] == 1
+    assert report["chars_removed"] > 0
+    assert "[flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert compacted[3]["content"] == recent_content
+
+
+def test_flattened_tool_payload_compaction_non_list_fallback(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_payload_compaction("not messages")
+
+    assert compacted == "not messages"
+    assert report["applied"] is False
+    assert report["reason"] == "messages_not_list"

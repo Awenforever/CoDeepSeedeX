@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a9-flattened-tool-transcript-compaction-dry-run"
+PROXY_VERSION = "v2.7a10-flattened-tool-payload-compaction-disabled-by-default"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1508,6 +1508,208 @@ def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, An
         }
     )
     return report
+
+
+def _flattened_tool_payload_compaction_env_config() -> dict[str, Any]:
+    mode = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run").strip().lower()
+    if mode not in {"off", "dry_run", "enabled"}:
+        mode = "dry_run"
+
+    return {
+        "mode": mode,
+        "preserve_recent_messages": max(
+            0,
+            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
+        ),
+        "min_message_chars": max(
+            1,
+            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", 2000),
+        ),
+        "summary_chars": max(
+            512,
+            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", 1200),
+        ),
+        "trace_targets": max(
+            1,
+            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_TRACE_TARGETS", 8),
+        ),
+    }
+
+
+def _build_flattened_tool_payload_compaction_text(
+    *,
+    original_text: str,
+    message_index: int,
+    original_chars: int,
+    summary_chars: int,
+) -> str:
+    header = (
+        "[flattened tool transcript compacted by CoDeepSeedeX]\n"
+        f"message_index: {message_index}\n"
+        f"original_chars: {original_chars}\n"
+        "reason: old flattened tool transcript summarized for this upstream payload only\n"
+        "persistence: original SQLite history is unchanged\n"
+    )
+
+    omitted_marker = "\n--- omitted middle ---\n"
+    tail_marker = "\n--- kept tail ---\n"
+    head_marker = "\n--- kept head ---\n"
+
+    fixed_chars = len(header) + len(head_marker) + len(omitted_marker) + len(tail_marker) + 80
+    available = max(0, int(summary_chars) - fixed_chars)
+
+    if available <= 0:
+        compacted = header[: int(summary_chars)]
+        return compacted
+
+    head_len = available // 2
+    tail_len = available - head_len
+
+    head = original_text[:head_len] if head_len > 0 else ""
+    tail = original_text[-tail_len:] if tail_len > 0 else ""
+    omitted = max(0, len(original_text) - len(head) - len(tail))
+
+    compacted = (
+        header
+        + head_marker
+        + head
+        + omitted_marker
+        + f"... {omitted} chars omitted ...\n"
+        + tail_marker
+        + tail
+    )
+
+    if len(compacted) > int(summary_chars):
+        compacted = compacted[: int(summary_chars)]
+
+    return compacted
+
+
+def _apply_flattened_tool_transcript_payload_compaction(
+    messages: Any,
+) -> tuple[Any, dict[str, Any]]:
+    config = _flattened_tool_payload_compaction_env_config()
+    mode = str(config["mode"])
+
+    report: dict[str, Any] = {
+        "mode": mode,
+        "enabled": mode == "enabled",
+        "applied": False,
+        "reason": None,
+        "strategy": "flattened_tool_transcript_payload_summary",
+        "messages_is_list": isinstance(messages, list),
+        "message_count_before": len(messages) if isinstance(messages, list) else 0,
+        "message_count_after": len(messages) if isinstance(messages, list) else 0,
+        "preserve_recent_messages": int(config["preserve_recent_messages"]),
+        "min_message_chars": int(config["min_message_chars"]),
+        "summary_chars": int(config["summary_chars"]),
+        "flattened_message_count": 0,
+        "candidate_count": 0,
+        "compacted_count": 0,
+        "retained_recent_flattened_count": 0,
+        "chars_before": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "chars_after": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "chars_removed": 0,
+        "targets": [],
+        "error": None,
+    }
+
+    if mode != "enabled":
+        report["reason"] = "payload_compaction_mode_not_enabled"
+        return messages, report
+
+    if not isinstance(messages, list):
+        report["reason"] = "messages_not_list"
+        return messages, report
+
+    try:
+        compacted_messages = deepcopy(messages)
+        cutoff = max(0, len(compacted_messages) - int(config["preserve_recent_messages"]))
+        targets: list[dict[str, Any]] = []
+
+        for index, message in enumerate(compacted_messages):
+            category = _classify_history_message_for_audit(message)
+            if category != "flattened_tool_transcript":
+                continue
+
+            report["flattened_message_count"] = int(report["flattened_message_count"]) + 1
+
+            message_chars = _debug_trace_json_chars(message)
+            if index >= cutoff:
+                report["retained_recent_flattened_count"] = int(report["retained_recent_flattened_count"]) + 1
+                continue
+
+            if message_chars < int(config["min_message_chars"]):
+                continue
+
+            if not isinstance(message, dict):
+                continue
+
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+
+            report["candidate_count"] = int(report["candidate_count"]) + 1
+
+            compacted_content = _build_flattened_tool_payload_compaction_text(
+                original_text=content,
+                message_index=index,
+                original_chars=len(content),
+                summary_chars=int(config["summary_chars"]),
+            )
+            if compacted_content == content:
+                continue
+
+            before_message_chars = _debug_trace_json_chars(message)
+            message["content"] = compacted_content
+            after_message_chars = _debug_trace_json_chars(message)
+            removed = max(0, before_message_chars - after_message_chars)
+            if removed <= 0:
+                message["content"] = content
+                continue
+
+            report["compacted_count"] = int(report["compacted_count"]) + 1
+            targets.append(
+                {
+                    "index": index,
+                    "role": str(message.get("role") or "unknown"),
+                    "history_category": category,
+                    "chars": before_message_chars,
+                    "estimated_after_chars": after_message_chars,
+                    "estimated_remove_chars": removed,
+                    "reason": "payload_enabled_old_flattened_tool_transcript",
+                }
+            )
+
+        before = int(report["chars_before"])
+        after = _debug_trace_json_chars({"messages": compacted_messages})
+        removed_total = max(0, before - after)
+
+        if not targets or removed_total <= 0:
+            report["reason"] = "no_payload_compaction_candidates"
+            report["chars_after"] = after
+            return messages, report
+
+        report.update(
+            {
+                "applied": True,
+                "reason": "enabled",
+                "message_count_after": len(compacted_messages),
+                "chars_after": after,
+                "chars_removed": removed_total,
+                "targets": targets[: int(config["trace_targets"])],
+            }
+        )
+        return compacted_messages, report
+
+    except Exception as exc:
+        report["reason"] = "exception_fallback_to_original_messages"
+        report["error"] = f"{type(exc).__name__}: {exc}"
+        report["applied"] = False
+        report["chars_after"] = report["chars_before"]
+        report["chars_removed"] = 0
+        report["targets"] = []
+        return messages, report
 
 
 def _normalize_chat_role(role: str | None) -> str:
@@ -7150,7 +7352,14 @@ def create_app(
             if _thinking_enabled():
                 messages, _repaired_thinking_after_compaction = _repair_thinking_history_messages(messages)
 
-        messages_for_deepseek = _prepare_messages_for_deepseek(messages)
+        payload_messages, flattened_payload_compaction_report = _apply_flattened_tool_transcript_payload_compaction(messages)
+        _debug_trace_event(
+            response_id,
+            "flattened_tool_transcript_payload_compaction_applied",
+            **flattened_payload_compaction_report,
+        )
+
+        messages_for_deepseek = _prepare_messages_for_deepseek(payload_messages)
         reasoning_effort = _deepseek_reasoning_effort_config(payload)
         chat_payload = _build_chat_payload(
             model=model,
