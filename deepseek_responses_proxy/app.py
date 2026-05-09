@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a10-flattened-tool-payload-compaction-disabled-by-default"
+PROXY_VERSION = "v2.7a11-semantic-compaction-foundation"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -321,7 +321,7 @@ def _debug_trace_summary(value: Any, *, label: str = "value") -> dict[str, Any]:
 
 _DEBUG_TRACE_SECRET_KEYS = {"authorization", "api_key", "token", "password", "secret"}
 _DEBUG_TRACE_LARGE_CONTENT_KEYS = {"messages", "input", "content", "reasoning_content", "arguments"}
-_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs", "largest_messages", "targets", "trim_targets", "policy_targets"}
+_DEBUG_TRACE_SAFE_METADATA_LIST_KEYS = {"largest_outputs", "largest_messages", "targets", "trim_targets", "policy_targets", "retention_markers"}
 _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "event",
     "response_id",
@@ -354,6 +354,8 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "trim_reason",
     "role",
     "strategy",
+    "semantic_type",
+    "semantic_risk",
 }
 
 
@@ -396,6 +398,8 @@ def _debug_trace_sanitize(value: Any, *, key: str | None = None) -> Any:
         return _debug_trace_safe_string(value, key=key)
 
     if isinstance(value, list):
+        if key == "retention_markers":
+            return [str(item) for item in value]
         if mode == "full" or key in _DEBUG_TRACE_SAFE_METADATA_LIST_KEYS:
             return [_debug_trace_sanitize(item) for item in value]
         return {
@@ -1323,6 +1327,218 @@ def _classify_history_message_for_audit(message: Any) -> str:
         return "plain_assistant_message"
 
     return "other_message"
+
+
+def _flattened_tool_transcript_retention_markers(text: str) -> list[str]:
+    lowered = text.lower()
+    marker_specs = [
+        ("ERROR", ("error", "exception", "fatal")),
+        ("FAILED", ("failed", " failure", "failures")),
+        ("Traceback", ("traceback (most recent call last)",)),
+        ("AssertionError", ("assertionerror",)),
+        ("PASS", (" passed", "passed in", " ok ")),
+        ("pytest summary", (" passed in", " failed in", "errors in", "warnings in", "== test session starts ==")),
+        ("git hash", ("commit ", "head ->", "origin/", "rev-parse", "sha256")),
+        ("commit", ("commit ", "committed", "git commit")),
+        ("modified files", ("files changed", "insertions(+)", "deletions(-)", "modified:", "changes not staged")),
+        ("exit code", ("exit code", "return code", "status code")),
+        ("warning", ("warning", "warnings")),
+    ]
+
+    markers: list[str] = []
+    for marker, needles in marker_specs:
+        if any(needle in lowered for needle in needles):
+            markers.append(marker)
+    return markers
+
+
+def _classify_flattened_tool_transcript_semantic_type(text: str) -> str:
+    stripped = text.strip()
+    lowered = stripped.lower()
+
+    if "traceback (most recent call last)" in lowered or "assertionerror" in lowered:
+        return "stacktrace"
+
+    if (
+        "diff --git" in lowered
+        or "\n@@ " in lowered
+        or "\n+++ b/" in lowered
+        or "\n--- a/" in lowered
+    ):
+        return "diff_output"
+
+    if (
+        "*** begin patch" in lowered
+        or "apply_patch" in lowered
+        or "patching file" in lowered
+        or "hunk #" in lowered
+    ):
+        return "patch_output"
+
+    if (
+        "\n• running" in lowered
+        or "\n• ran" in lowered
+        or "\n• viewed" in lowered
+        or "\n✔ you approved" in lowered
+    ):
+        return "chatty_terminal"
+
+    if (
+        "pytest" in lowered
+        or " passed in " in lowered
+        or " failed in " in lowered
+        or "collected " in lowered
+        or "== test session starts ==" in lowered
+    ):
+        return "test_output"
+
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            json.loads(stripped)
+            return "json_payload"
+        except Exception:
+            pass
+
+    if (
+        "search result" in lowered
+        or "web.run" in lowered
+        or "turn0search" in lowered
+        or "turn1search" in lowered
+        or "sources:" in lowered
+    ):
+        return "search_result"
+
+    if (
+        "$ " in text
+        or "=====" in text
+        or "kelvin@" in lowered
+        or "ps " in lowered
+        or "traceback" in lowered
+    ):
+        return "shell_log"
+
+    return "unknown"
+
+
+def _flattened_tool_transcript_semantic_risk(
+    semantic_type: str,
+    retention_markers: list[str],
+    *,
+    text_chars: int,
+) -> str:
+    marker_set = set(retention_markers)
+
+    if semantic_type == "test_output" and marker_set and not {"ERROR", "FAILED", "Traceback", "AssertionError"} & marker_set:
+        return "low"
+
+    if {"Traceback", "AssertionError", "FAILED"} & marker_set:
+        return "medium"
+
+    if semantic_type in {"stacktrace", "patch_output", "diff_output", "json_payload", "search_result"}:
+        return "medium"
+
+    if semantic_type == "chatty_terminal":
+        return "high"
+
+    if semantic_type == "unknown":
+        return "high" if text_chars >= 8000 else "medium"
+
+    if semantic_type == "shell_log":
+        return "medium"
+
+    return "medium"
+
+
+def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
+    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
+    enabled = enabled_env not in {"0", "false", "off", "no"}
+    max_targets = max(
+        1,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12),
+    )
+
+    report: dict[str, Any] = {
+        "enabled": enabled,
+        "applied": False,
+        "strategy": "flattened_tool_transcript_semantic_audit",
+        "messages_is_list": isinstance(messages, list),
+        "message_count": len(messages) if isinstance(messages, list) else 0,
+        "flattened_message_count": 0,
+        "flattened_message_chars": 0,
+        "semantic_types": {},
+        "semantic_risks": {},
+        "retention_marker_counts": {},
+        "low_risk_count": 0,
+        "medium_risk_count": 0,
+        "high_risk_count": 0,
+        "targets": [],
+    }
+
+    if not enabled or not isinstance(messages, list):
+        return report
+
+    targets: list[dict[str, Any]] = []
+
+    for index, message in enumerate(messages):
+        category = _classify_history_message_for_audit(message)
+        if category != "flattened_tool_transcript":
+            continue
+
+        role = "non_dict"
+        content = ""
+        if isinstance(message, dict):
+            role = str(message.get("role") or "unknown")
+            content = _plain_text_from_content(message.get("content", ""))
+
+        message_chars = _debug_trace_json_chars(message)
+        text_chars = len(content)
+        semantic_type = _classify_flattened_tool_transcript_semantic_type(content)
+        retention_markers = _flattened_tool_transcript_retention_markers(content)
+        semantic_risk = _flattened_tool_transcript_semantic_risk(
+            semantic_type,
+            retention_markers,
+            text_chars=text_chars,
+        )
+
+        report["flattened_message_count"] = int(report["flattened_message_count"]) + 1
+        report["flattened_message_chars"] = int(report["flattened_message_chars"]) + message_chars
+
+        type_bucket = report["semantic_types"].setdefault(semantic_type, {"count": 0, "chars": 0})
+        type_bucket["count"] += 1
+        type_bucket["chars"] += message_chars
+
+        risk_bucket = report["semantic_risks"].setdefault(semantic_risk, {"count": 0, "chars": 0})
+        risk_bucket["count"] += 1
+        risk_bucket["chars"] += message_chars
+
+        count_key = f"{semantic_risk}_risk_count"
+        report[count_key] = int(report[count_key]) + 1
+
+        for marker in retention_markers:
+            report["retention_marker_counts"][marker] = int(report["retention_marker_counts"].get(marker, 0)) + 1
+
+        targets.append(
+            {
+                "index": index,
+                "role": role,
+                "history_category": category,
+                "chars": message_chars,
+                "text_chars": text_chars,
+                "semantic_type": semantic_type,
+                "semantic_risk": semantic_risk,
+                "retention_markers": retention_markers,
+            }
+        )
+
+    risk_order = {"high": 0, "medium": 1, "low": 2}
+    targets.sort(
+        key=lambda item: (
+            risk_order.get(str(item.get("semantic_risk")), 9),
+            -int(item.get("chars") or 0),
+        )
+    )
+    report["targets"] = targets[:max_targets]
+    return report
 
 
 def _history_growth_breakdown(
@@ -7321,6 +7537,11 @@ def create_app(
             response_id,
             "flattened_tool_transcript_compaction_dry_run",
             **_flattened_tool_transcript_compaction_dry_run(messages_before_compaction),
+        )
+        _debug_trace_event(
+            response_id,
+            "flattened_tool_transcript_semantic_audit",
+            **_flattened_tool_transcript_semantic_audit(messages_before_compaction),
         )
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,

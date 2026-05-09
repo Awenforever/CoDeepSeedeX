@@ -670,6 +670,112 @@ def test_flattened_tool_transcript_compaction_dry_run_can_be_disabled(monkeypatc
     assert report["targets"] == []
 
 
+def test_flattened_tool_transcript_semantic_audit_classifies_types_and_risks(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", "10")
+
+    passed_test = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "===== pytest =====\n"
+            "....\n"
+            "4 passed in 0.10s\n"
+        ),
+    }
+    stacktrace = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "Traceback (most recent call last):\n"
+            "AssertionError: expected true\n"
+        ),
+    }
+    chatty_terminal = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "\n• Running cd repo && pytest\n"
+            "\n• Ran git status\n"
+            "\n✔ You approved codex to always run commands\n"
+        ),
+    }
+
+    report = proxy_app._flattened_tool_transcript_semantic_audit(
+        [
+            {"role": "developer", "content": "system"},
+            passed_test,
+            stacktrace,
+            chatty_terminal,
+        ]
+    )
+
+    assert report["enabled"] is True
+    assert report["applied"] is False
+    assert report["strategy"] == "flattened_tool_transcript_semantic_audit"
+    assert report["flattened_message_count"] == 3
+    assert report["semantic_types"]["test_output"]["count"] == 1
+    assert report["semantic_types"]["stacktrace"]["count"] == 1
+    assert report["semantic_types"]["chatty_terminal"]["count"] == 1
+    assert report["semantic_risks"]["low"]["count"] == 1
+    assert report["semantic_risks"]["medium"]["count"] == 1
+    assert report["semantic_risks"]["high"]["count"] == 1
+    assert report["retention_marker_counts"]["pytest summary"] == 1
+    assert report["retention_marker_counts"]["Traceback"] == 1
+    assert report["retention_marker_counts"]["AssertionError"] == 1
+    assert report["targets"][0]["semantic_risk"] == "high"
+
+
+def test_flattened_tool_transcript_semantic_audit_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "0")
+
+    report = proxy_app._flattened_tool_transcript_semantic_audit(
+        [
+            {
+                "role": "user",
+                "content": "assistant_requested_tool_calls:\ntool_outputs:\npytest\n1 passed in 0.01s",
+            }
+        ]
+    )
+
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["flattened_message_count"] == 0
+    assert report["targets"] == []
+
+
+def test_debug_trace_none_mode_preserves_semantic_audit_targets(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_semantic_audit",
+        "flattened_tool_transcript_semantic_audit",
+        targets=[
+            {
+                "index": 7,
+                "role": "user",
+                "history_category": "flattened_tool_transcript",
+                "chars": 4096,
+                "text_chars": 4000,
+                "semantic_type": "stacktrace",
+                "semantic_risk": "medium",
+                "retention_markers": ["Traceback", "AssertionError"],
+            }
+        ],
+    )
+
+    event = json.loads((trace_dir / "trace-resp_semantic_audit.jsonl").read_text(encoding="utf-8"))
+    assert isinstance(event["targets"], list)
+    assert event["targets"][0]["semantic_type"] == "stacktrace"
+    assert event["targets"][0]["semantic_risk"] == "medium"
+    assert event["targets"][0]["retention_markers"] == ["Traceback", "AssertionError"]
+
+
 def test_flattened_tool_payload_compaction_default_does_not_change_messages(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [
