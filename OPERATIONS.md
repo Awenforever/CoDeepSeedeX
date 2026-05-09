@@ -615,3 +615,44 @@ As of v2.3a2, Codex tool forwarding is default-open for DeepSeek profiles:
 Set any flag to `0` to disable that forwarding class.
 
 This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.
+
+## Semantic compaction rollout
+
+Semantic flattened-tool compaction is staged and conservative.
+
+Pipeline:
+
+1. `flattened_tool_transcript_semantic_audit`
+   - classifies flattened tool transcripts by semantic type and risk.
+2. `flattened_tool_transcript_semantic_policy_dry_run`
+   - estimates whether a semantic payload compaction would be safe.
+3. `flattened_tool_transcript_semantic_payload_compaction_applied`
+   - only rewrites the upstream payload copy when explicitly enabled.
+
+Default behavior is safe:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=dry_run
+```
+
+To inspect rollout readiness:
+
+```bash
+dsproxy status --thinking
+dsproxy debug budget --thinking
+dsproxy debug semantic --thinking
+```
+
+Only enable for a limited session after `semantic_compaction.rollout.safe_to_enable_payload_compaction` is true:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=enabled
+```
+
+Safety boundaries:
+
+- SQLite history is not rewritten.
+- Original Responses history is not rewritten.
+- Only the upstream DeepSeek payload copy may be compacted.
+- The enabled semantic payload compactor only compacts low-risk passed test output summaries.
+- Medium-risk or high-risk transcripts are preserved.

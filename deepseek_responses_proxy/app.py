@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a14-semantic-compaction-runtime-observability"
+PROXY_VERSION = "v2.7a15-semantic-compaction-rollout-hardening"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -632,6 +632,65 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
     return summary
 
 
+def _semantic_compaction_rollout_assessment(
+    *,
+    config: dict[str, Any],
+    latest: dict[str, Any],
+) -> dict[str, Any]:
+    payload_config = config.get("semantic_payload_compaction")
+    if not isinstance(payload_config, dict):
+        payload_config = {}
+
+    mode = str(payload_config.get("mode") or "dry_run")
+    audit = latest.get("semantic_audit")
+    policy = latest.get("semantic_policy_dry_run")
+    payload = latest.get("semantic_payload_compaction")
+
+    if not isinstance(audit, dict):
+        audit = {"present": False}
+    if not isinstance(policy, dict):
+        policy = {"present": False}
+    if not isinstance(payload, dict):
+        payload = {"present": False}
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    if mode == "enabled":
+        warnings.append("semantic_payload_compaction_already_enabled")
+    elif mode != "dry_run":
+        blockers.append("semantic_payload_compaction_not_in_dry_run")
+
+    if not bool(audit.get("present")):
+        blockers.append("semantic_audit_event_missing")
+    if not bool(policy.get("present")):
+        blockers.append("semantic_policy_dry_run_event_missing")
+    if not bool(payload.get("present")):
+        blockers.append("semantic_payload_compaction_event_missing")
+
+    if bool(policy.get("present")) and not bool(policy.get("would_compact")):
+        warnings.append("no_semantic_compaction_candidate_seen")
+    if bool(payload.get("present")) and payload.get("mode") == "enabled" and payload.get("applied") is not False:
+        warnings.append("latest_payload_event_not_dry_run")
+
+    safe_to_enable = mode == "dry_run" and not blockers
+
+    if mode == "enabled":
+        recommendation = "monitor_enabled_rollout"
+    elif safe_to_enable:
+        recommendation = "safe_to_enable_for_limited_session"
+    else:
+        recommendation = "keep_dry_run_until_blockers_clear"
+
+    return {
+        "safe_to_enable_payload_compaction": safe_to_enable,
+        "current_payload_mode": mode,
+        "blockers": blockers,
+        "warnings": warnings,
+        "recommendation": recommendation,
+    }
+
+
 def _semantic_compaction_runtime_status() -> dict[str, Any]:
     audit_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
     policy_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
@@ -652,31 +711,34 @@ def _semantic_compaction_runtime_status() -> dict[str, Any]:
     latest_policy = _latest_debug_event_named("flattened_tool_transcript_semantic_policy_dry_run")
     latest_payload = _latest_debug_event_named("flattened_tool_transcript_semantic_payload_compaction_applied")
 
+    config = {
+        "semantic_audit": {
+            "enabled": audit_enabled,
+            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
+        },
+        "semantic_policy_dry_run": {
+            "enabled": policy_enabled,
+            "summary_chars": policy_summary_chars,
+            "targets": policy_targets,
+        },
+        "semantic_payload_compaction": {
+            "mode": payload_config.get("mode"),
+            "enabled": payload_config.get("mode") == "enabled",
+            "preserve_recent_messages": payload_config.get("preserve_recent_messages"),
+            "min_message_chars": payload_config.get("min_message_chars"),
+            "summary_chars": payload_config.get("summary_chars"),
+            "trace_targets": payload_config.get("trace_targets"),
+        },
+    }
+    latest = {
+        "semantic_audit": _semantic_compaction_event_summary(latest_audit),
+        "semantic_policy_dry_run": _semantic_compaction_event_summary(latest_policy),
+        "semantic_payload_compaction": _semantic_compaction_event_summary(latest_payload),
+    }
     return {
-        "config": {
-            "semantic_audit": {
-                "enabled": audit_enabled,
-                "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
-            },
-            "semantic_policy_dry_run": {
-                "enabled": policy_enabled,
-                "summary_chars": policy_summary_chars,
-                "targets": policy_targets,
-            },
-            "semantic_payload_compaction": {
-                "mode": payload_config.get("mode"),
-                "enabled": payload_config.get("mode") == "enabled",
-                "preserve_recent_messages": payload_config.get("preserve_recent_messages"),
-                "min_message_chars": payload_config.get("min_message_chars"),
-                "summary_chars": payload_config.get("summary_chars"),
-                "trace_targets": payload_config.get("trace_targets"),
-            },
-        },
-        "latest": {
-            "semantic_audit": _semantic_compaction_event_summary(latest_audit),
-            "semantic_policy_dry_run": _semantic_compaction_event_summary(latest_policy),
-            "semantic_payload_compaction": _semantic_compaction_event_summary(latest_payload),
-        },
+        "config": config,
+        "latest": latest,
+        "rollout": _semantic_compaction_rollout_assessment(config=config, latest=latest),
     }
 
 

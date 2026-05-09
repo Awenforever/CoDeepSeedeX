@@ -1337,9 +1337,52 @@ def _debug_budget_from_events(events: list[object]) -> dict[str, object]:
     }
 
 
+def _debug_semantic_compaction_summary(
+    *,
+    status_body: object,
+    latest_body: object,
+) -> dict[str, object]:
+    status_semantic = None
+    if isinstance(status_body, dict):
+        status_semantic = status_body.get("semantic_compaction")
+
+    events = latest_body.get("events", []) if isinstance(latest_body, dict) else []
+    if not isinstance(events, list):
+        events = []
+
+    budget = _debug_budget_from_events(events)
+    return {
+        "status_semantic_compaction": status_semantic,
+        "trace_semantic_compaction": budget.get("semantic_compaction"),
+        "primary_usage": budget.get("primary_usage"),
+    }
+
+
 def _debug(args: argparse.Namespace) -> int:
     base_url = _proxy_base_url_from_args(args)
     command = getattr(args, "debug_command", "")
+
+    if command == "semantic":
+        limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
+        timeout = float(getattr(args, "timeout", 3.0))
+        status_result = _debug_fetch_json(base_url + "/v1/proxy/status", timeout)
+        latest_path = f"/v1/proxy/debug/latest?{urllib.parse.urlencode({'limit': limit})}"
+        latest_result = _debug_fetch_json(base_url + latest_path, timeout)
+        ok = bool(status_result.get("ok") and latest_result.get("ok"))
+        output = {
+            "status": "ok" if ok else "error",
+            "proxy_url": base_url,
+            "debug_command": command,
+            "status_result": status_result,
+            "latest_result": latest_result,
+        }
+        if ok:
+            output["semantic"] = _debug_semantic_compaction_summary(
+                status_body=status_result.get("json"),
+                latest_body=latest_result.get("json"),
+            )
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0 if ok else 1
 
     if command == "status":
         path = "/v1/proxy/debug/status"
@@ -1515,6 +1558,13 @@ def build_parser() -> argparse.ArgumentParser:
     debug_budget.add_argument("--timeout", type=float, default=3.0)
     debug_budget.add_argument("--limit", type=int, default=200)
     debug_budget.set_defaults(func=_debug)
+
+    debug_semantic = debug_sub.add_parser("semantic", help="show semantic compaction rollout status")
+    debug_semantic.add_argument("--thinking", action="store_true")
+    debug_semantic.add_argument("--port", type=int)
+    debug_semantic.add_argument("--timeout", type=float, default=3.0)
+    debug_semantic.add_argument("--limit", type=int, default=200)
+    debug_semantic.set_defaults(func=_debug)
 
     balance = sub.add_parser("balance", help="query DeepSeek API account balance")
     balance.add_argument("--env-file")

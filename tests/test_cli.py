@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a14-semantic-compaction-runtime-observability" in out
+    assert "v2.7a15-semantic-compaction-rollout-hardening" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a14-semantic-compaction-runtime-observability")
+    assert data["proxy_version"].startswith("v2.7a15-semantic-compaction-rollout-hardening")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a14-semantic-compaction-runtime-observability")
+    assert data["expected_version"].startswith("v2.7a15-semantic-compaction-rollout-hardening")
     assert data["running_version"] == "v0.old"
 
 
@@ -562,6 +562,71 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["policy_dry_run"]["targets"][0]["category"] == "shell_command"
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]
+
+
+def test_cli_debug_semantic_combines_status_and_trace_events(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(self.payload).encode("utf-8")
+
+    def fake_urlopen(url, timeout=0):
+        url_text = str(url)
+        if "/v1/proxy/status" in url_text:
+            return FakeResponse({
+                "status": "ok",
+                "semantic_compaction": {
+                    "config": {
+                        "semantic_payload_compaction": {
+                            "mode": "dry_run",
+                            "enabled": False,
+                        }
+                    },
+                    "latest": {},
+                    "rollout": {
+                        "safe_to_enable_payload_compaction": True,
+                        "recommendation": "safe_to_enable_for_limited_session",
+                    },
+                },
+            })
+        if "/v1/proxy/debug/latest" in url_text:
+            return FakeResponse({
+                "status": "ok",
+                "events": [
+                    {"event": "flattened_tool_transcript_semantic_audit", "flattened_message_count": 2},
+                    {"event": "flattened_tool_transcript_semantic_policy_dry_run", "would_compact": True},
+                    {
+                        "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+                        "mode": "dry_run",
+                        "applied": False,
+                    },
+                ],
+            })
+        raise AssertionError(url_text)
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "semantic", "--port", "8123", "--limit", "25"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["debug_command"] == "semantic"
+    semantic = data["semantic"]
+    assert semantic["status_semantic_compaction"]["rollout"]["safe_to_enable_payload_compaction"] is True
+    assert semantic["trace_semantic_compaction"]["semantic_audit"]["found"] is True
+    assert semantic["trace_semantic_compaction"]["semantic_policy_dry_run"]["event"]["would_compact"] is True
+    assert semantic["trace_semantic_compaction"]["semantic_payload_compaction"]["event"]["mode"] == "dry_run"
 
 
 def test_cli_debug_budget_extracts_semantic_compaction_events(monkeypatch, capsys):

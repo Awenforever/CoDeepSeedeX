@@ -83,3 +83,9 @@ def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
     assert semantic["latest"]["semantic_audit"]["present"] is False
     assert semantic["latest"]["semantic_policy_dry_run"]["present"] is False
     assert semantic["latest"]["semantic_payload_compaction"]["present"] is False
+    assert semantic["rollout"]["safe_to_enable_payload_compaction"] is False
+    assert semantic["rollout"]["current_payload_mode"] == "dry_run"
+    assert "semantic_audit_event_missing" in semantic["rollout"]["blockers"]
+    assert "semantic_policy_dry_run_event_missing" in semantic["rollout"]["blockers"]
+    assert "semantic_payload_compaction_event_missing" in semantic["rollout"]["blockers"]
+    assert semantic["rollout"]["recommendation"] == "keep_dry_run_until_blockers_clear"
