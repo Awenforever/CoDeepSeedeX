@@ -897,6 +897,69 @@ def test_debug_trace_none_mode_preserves_semantic_policy_targets(monkeypatch, tm
 
 
 
+
+def test_semantic_compaction_request_trace_event_order_is_stable():
+    from pathlib import Path
+
+    source = Path(proxy_app.__file__).read_text(encoding="utf-8")
+    start = source.index("response_id = _response_id()")
+    request_section = source[start : start + 40000]
+
+    expected_order = [
+        "flattened_tool_transcript_semantic_audit",
+        "flattened_tool_transcript_semantic_policy_dry_run",
+        "flattened_tool_transcript_semantic_payload_compaction_applied",
+        "flattened_tool_transcript_payload_compaction_applied",
+        "context_budget_breakdown",
+    ]
+
+    positions = {name: request_section.index(name) for name in expected_order}
+    assert [positions[name] for name in expected_order] == sorted(positions.values())
+
+
+def test_semantic_compaction_default_environment_is_safe(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", raising=False)
+
+    payload_config = proxy_app._flattened_tool_semantic_payload_compaction_env_config()
+    canary_config = proxy_app._semantic_payload_canary_env_config()
+    enabled_guard = proxy_app._semantic_payload_canary_guard_for_mode("enabled")
+
+    assert payload_config["mode"] == "dry_run"
+    assert canary_config["guard_enabled"] is True
+    assert canary_config["allow_enabled"] is False
+    assert canary_config["require_local_invariants"] is True
+    assert enabled_guard["allowed"] is False
+    assert "semantic_payload_canary_allow_enabled_not_set" in enabled_guard["blockers"]
+
+
+def test_semantic_payload_compaction_enabled_mutates_only_payload_copy(monkeypatch):
+    from copy import deepcopy
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    messages = proxy_app._semantic_compaction_selftest_messages()
+    original_messages = deepcopy(messages)
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert report["applied"] is True
+    assert report["effective_mode"] == "enabled"
+    assert compacted is not messages
+    assert messages == original_messages
+    assert compacted != original_messages
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert original_messages[1]["content"] == messages[1]["content"]
+
+
 def test_semantic_payload_canary_blocks_enabled_without_allow(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
     monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)

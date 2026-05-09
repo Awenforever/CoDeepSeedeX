@@ -677,6 +677,47 @@ DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=enabled
 If `MODE=enabled` is set without the canary allow variable, the runtime guard falls back to dry-run behavior and reports `semantic_payload_canary_guard_blocked_enabled`.
 
 
+
+
+### Semantic compaction stability audit
+
+The semantic compaction rollout is intentionally conservative. The stable request-path order is:
+
+1. `flattened_tool_transcript_semantic_audit`
+2. `flattened_tool_transcript_semantic_policy_dry_run`
+3. `flattened_tool_transcript_semantic_payload_compaction_applied`
+4. `flattened_tool_transcript_payload_compaction_applied`
+5. `context_budget_breakdown`
+
+Minimum safe rollout flow:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=dry_run
+dsproxy debug semantic --self-test --thinking
+dsproxy debug semantic --canary-check --thinking
+```
+
+For a limited enabled session, both variables are required:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED=1
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=enabled
+```
+
+Rollback is immediate by returning to dry-run:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=dry_run
+```
+
+Stability constraints:
+
+- Semantic payload compaction must only rewrite the upstream payload copy.
+- Original Responses history and SQLite history must remain unchanged.
+- Default mode must remain `dry_run`.
+- Canary guard must block `enabled` unless the explicit allow variable is set.
+- Medium-risk and high-risk flattened tool transcripts must remain preserved.
+
 Safety boundaries:
 
 - SQLite history is not rewritten.
