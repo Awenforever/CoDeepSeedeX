@@ -1308,12 +1308,31 @@ def _debug_budget_from_events(events: list[object]) -> dict[str, object]:
         and latest_tool_output_budget.get("truncated_event")
     )
 
+    semantic_event_names = {
+        "semantic_audit": "flattened_tool_transcript_semantic_audit",
+        "semantic_policy_dry_run": "flattened_tool_transcript_semantic_policy_dry_run",
+        "semantic_payload_compaction": "flattened_tool_transcript_semantic_payload_compaction_applied",
+    }
+    semantic_compaction: dict[str, object] = {}
+    for label, event_name in semantic_event_names.items():
+        matching = [
+            event
+            for event in events
+            if isinstance(event, dict) and event.get("event") == event_name
+        ]
+        latest_event = matching[-1] if matching else None
+        semantic_compaction[label] = {
+            "found": latest_event is not None,
+            "event": latest_event,
+        }
+
     return {
         "found": latest_budget is not None,
         "event": latest_budget,
         "tool_output_budget": latest_tool_output_budget,
         "tool_output_budget_truncated": tool_output_budget_truncated,
         "tool_output_budget_error": "tool_output_budget_event_truncated" if tool_output_budget_truncated else None,
+        "semantic_compaction": semantic_compaction,
         "primary_usage": latest_primary_usage,
     }
 

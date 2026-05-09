@@ -60,3 +60,26 @@ def test_dedicated_tool_bridge_status_route(monkeypatch):
     assert data["tool_bridge"]["web_search"]["is_mock"] is True
     assert data["tool_bridge"]["image_generation"]["provider"] == "mock"
     assert data["tool_bridge"]["image_generation"]["is_mock"] is True
+
+
+def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "888")
+
+    app = create_app()
+    client = TestClient(app)
+
+    data = client.get("/v1/proxy/status").json()
+    semantic = data["semantic_compaction"]
+
+    assert semantic["config"]["semantic_audit"]["enabled"] is True
+    assert semantic["config"]["semantic_policy_dry_run"]["enabled"] is True
+    assert semantic["config"]["semantic_payload_compaction"]["mode"] == "dry_run"
+    assert semantic["config"]["semantic_payload_compaction"]["enabled"] is False
+    assert semantic["config"]["semantic_payload_compaction"]["summary_chars"] == 888
+    assert semantic["latest"]["semantic_audit"]["present"] is False
+    assert semantic["latest"]["semantic_policy_dry_run"]["present"] is False
+    assert semantic["latest"]["semantic_payload_compaction"]["present"] is False

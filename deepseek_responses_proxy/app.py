@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a13-semantic-policy-payload-compaction-disabled-by-default"
+PROXY_VERSION = "v2.7a14-semantic-compaction-runtime-observability"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -565,6 +565,118 @@ def _debug_trace_message_budget(messages: Any) -> dict[str, Any]:
         "message_count": len(messages),
         "total_chars": _debug_trace_json_chars({"messages": messages}),
         "roles": roles,
+    }
+
+
+def _latest_debug_event_named(event_name: str, *, limit: int = 200) -> dict[str, Any] | None:
+    latest = _debug_trace_latest(limit=limit)
+    events = latest.get("events") or []
+    if not isinstance(events, list):
+        return None
+
+    for event in reversed(events):
+        if isinstance(event, dict) and event.get("event") == event_name:
+            return event
+    return None
+
+
+def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(event, dict):
+        return {"present": False}
+
+    keys = [
+        "event",
+        "enabled",
+        "mode",
+        "applied",
+        "reason",
+        "strategy",
+        "message_count",
+        "message_count_before",
+        "message_count_after",
+        "flattened_message_count",
+        "candidate_count",
+        "eligible_compaction_count",
+        "eligible_policy_count",
+        "structure_only_count",
+        "preserve_count",
+        "skipped_policy_count",
+        "retained_recent_flattened_count",
+        "compacted_count",
+        "would_compact",
+        "would_compact_count",
+        "would_remove_chars_estimate",
+        "chars_before",
+        "chars_after",
+        "chars_removed",
+    ]
+    summary: dict[str, Any] = {"present": True}
+    for key in keys:
+        if key in event:
+            summary[key] = event.get(key)
+
+    targets = event.get("targets")
+    if isinstance(targets, list):
+        summary["target_count"] = len(targets)
+        if targets and isinstance(targets[0], dict):
+            summary["top_target"] = {
+                "index": targets[0].get("index"),
+                "semantic_type": targets[0].get("semantic_type"),
+                "semantic_risk": targets[0].get("semantic_risk"),
+                "policy_decision": targets[0].get("policy_decision"),
+                "recommended_action": targets[0].get("recommended_action"),
+                "compression_strategy": targets[0].get("compression_strategy"),
+                "estimated_remove_chars": targets[0].get("estimated_remove_chars"),
+                "reason": targets[0].get("reason"),
+            }
+    return summary
+
+
+def _semantic_compaction_runtime_status() -> dict[str, Any]:
+    audit_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
+    policy_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
+    audit_enabled = audit_enabled_env not in {"0", "false", "off", "no"}
+    policy_enabled = policy_enabled_env not in {"0", "false", "off", "no"}
+
+    policy_summary_chars = max(
+        128,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700),
+    )
+    policy_targets = max(
+        1,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12),
+    )
+    payload_config = _flattened_tool_semantic_payload_compaction_env_config()
+
+    latest_audit = _latest_debug_event_named("flattened_tool_transcript_semantic_audit")
+    latest_policy = _latest_debug_event_named("flattened_tool_transcript_semantic_policy_dry_run")
+    latest_payload = _latest_debug_event_named("flattened_tool_transcript_semantic_payload_compaction_applied")
+
+    return {
+        "config": {
+            "semantic_audit": {
+                "enabled": audit_enabled,
+                "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
+            },
+            "semantic_policy_dry_run": {
+                "enabled": policy_enabled,
+                "summary_chars": policy_summary_chars,
+                "targets": policy_targets,
+            },
+            "semantic_payload_compaction": {
+                "mode": payload_config.get("mode"),
+                "enabled": payload_config.get("mode") == "enabled",
+                "preserve_recent_messages": payload_config.get("preserve_recent_messages"),
+                "min_message_chars": payload_config.get("min_message_chars"),
+                "summary_chars": payload_config.get("summary_chars"),
+                "trace_targets": payload_config.get("trace_targets"),
+            },
+        },
+        "latest": {
+            "semantic_audit": _semantic_compaction_event_summary(latest_audit),
+            "semantic_policy_dry_run": _semantic_compaction_event_summary(latest_policy),
+            "semantic_payload_compaction": _semantic_compaction_event_summary(latest_payload),
+        },
     }
 
 
@@ -7686,6 +7798,7 @@ def create_app(
             "tool_bridge": _tool_bridge_status(),
             "context": _proxy_context_status(),
             "agent_liveness": _proxy_agent_liveness_status(),
+            "semantic_compaction": _semantic_compaction_runtime_status(),
             "store": _store_info(app.state.store),
             "started_at": app.state.started_at,
             "uptime_seconds": max(0, _now() - app.state.started_at),

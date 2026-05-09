@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a13-semantic-policy-payload-compaction-disabled-by-default" in out
+    assert "v2.7a14-semantic-compaction-runtime-observability" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a13-semantic-policy-payload-compaction-disabled-by-default")
+    assert data["proxy_version"].startswith("v2.7a14-semantic-compaction-runtime-observability")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a13-semantic-policy-payload-compaction-disabled-by-default")
+    assert data["expected_version"].startswith("v2.7a14-semantic-compaction-runtime-observability")
     assert data["running_version"] == "v0.old"
 
 
@@ -562,6 +562,58 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["policy_dry_run"]["targets"][0]["category"] == "shell_command"
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]
+
+
+def test_cli_debug_budget_extracts_semantic_compaction_events(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "events": [
+                    {
+                        "event": "context_budget_breakdown",
+                        "chat_payload_chars": 1000,
+                    },
+                    {
+                        "event": "flattened_tool_transcript_semantic_audit",
+                        "flattened_message_count": 3,
+                    },
+                    {
+                        "event": "flattened_tool_transcript_semantic_policy_dry_run",
+                        "would_compact": True,
+                        "would_remove_chars_estimate": 1200,
+                    },
+                    {
+                        "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+                        "mode": "dry_run",
+                        "applied": False,
+                        "reason": "semantic_payload_compaction_mode_not_enabled",
+                    },
+                ],
+            }).encode("utf-8")
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", lambda url, timeout=0: FakeResponse())
+
+    assert cli.main(["debug", "budget", "--port", "8123"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    semantic = data["budget"]["semantic_compaction"]
+    assert semantic["semantic_audit"]["found"] is True
+    assert semantic["semantic_audit"]["event"]["flattened_message_count"] == 3
+    assert semantic["semantic_policy_dry_run"]["found"] is True
+    assert semantic["semantic_policy_dry_run"]["event"]["would_compact"] is True
+    assert semantic["semantic_payload_compaction"]["found"] is True
+    assert semantic["semantic_payload_compaction"]["event"]["reason"] == "semantic_payload_compaction_mode_not_enabled"
 
 
 def test_cli_debug_budget_marks_truncated_tool_output_event(monkeypatch, capsys):
