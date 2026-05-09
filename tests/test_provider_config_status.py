@@ -146,3 +146,20 @@ def test_proxy_debug_semantic_canary_check_route_ready_with_allow(monkeypatch, t
     assert data["guard"]["allowed"] is True
     assert data["selftest"]["status"] == "ok"
     assert data["required_enable_env"]["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] == "enabled"
+
+
+def test_proxy_debug_long_session_route_without_trace(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    app = create_app()
+    client = TestClient(app)
+
+    data = client.get("/v1/proxy/debug/long-session?limit=25").json()
+
+    assert data["status"] == "ok"
+    assert data["version"] == PROXY_VERSION
+    assert data["kind"] == "runtime_long_session_observability"
+    assert data["limit"] == 25
+    assert data["trace_event_count"] == 0
+    assert data["context_budget"]["event_count"] == 0
+    assert data["recommendation"] == "collect_more_trace_data"

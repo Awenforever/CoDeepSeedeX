@@ -1362,6 +1362,22 @@ def _debug(args: argparse.Namespace) -> int:
     base_url = _proxy_base_url_from_args(args)
     command = getattr(args, "debug_command", "")
 
+    if command == "long-session":
+        limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
+        timeout = float(getattr(args, "timeout", 3.0))
+        path = f"/v1/proxy/debug/long-session?{urllib.parse.urlencode({'limit': limit})}"
+        result = _debug_fetch_json(base_url + path, timeout)
+        output = {
+            "status": "ok" if result.get("ok") else "error",
+            "proxy_url": base_url,
+            "debug_command": command,
+            "result": result,
+        }
+        if result.get("ok"):
+            output["long_session"] = result.get("json")
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0 if result.get("ok") else 1
+
     if command == "semantic":
         limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
         timeout = float(getattr(args, "timeout", 3.0))
@@ -1588,6 +1604,13 @@ def build_parser() -> argparse.ArgumentParser:
     debug_budget.add_argument("--timeout", type=float, default=3.0)
     debug_budget.add_argument("--limit", type=int, default=200)
     debug_budget.set_defaults(func=_debug)
+
+    debug_long_session = debug_sub.add_parser("long-session", help="summarize recent long-session debug trace trends")
+    debug_long_session.add_argument("--thinking", action="store_true")
+    debug_long_session.add_argument("--port", type=int)
+    debug_long_session.add_argument("--timeout", type=float, default=3.0)
+    debug_long_session.add_argument("--limit", type=int, default=200)
+    debug_long_session.set_defaults(func=_debug)
 
     debug_semantic = debug_sub.add_parser("semantic", help="show semantic compaction rollout status")
     debug_semantic.add_argument("--thinking", action="store_true")

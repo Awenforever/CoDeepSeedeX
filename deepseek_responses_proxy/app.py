@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a18-semantic-compaction-stability-audit"
+PROXY_VERSION = "v2.7a19-runtime-long-session-observability"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1073,6 +1073,166 @@ def _semantic_compaction_runtime_status() -> dict[str, Any]:
         "latest": latest,
         "rollout": _semantic_compaction_rollout_assessment(config=config, latest=latest),
     }
+
+
+def _long_session_observability_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _long_session_context_chars(event: dict[str, Any]) -> int:
+    for key in (
+        "chat_payload_chars",
+        "messages_total_chars",
+        "messages_chars",
+        "payload_chars",
+        "estimated_messages_chars_before",
+        "total_chars",
+    ):
+        if key in event:
+            return _long_session_observability_int(event.get(key))
+    return 0
+
+
+def _long_session_usage_prompt_tokens(event: dict[str, Any]) -> int:
+    usage = event.get("usage")
+    if isinstance(usage, dict):
+        for key in ("prompt_tokens", "input_tokens", "total_prompt_tokens"):
+            if key in usage:
+                return _long_session_observability_int(usage.get(key))
+    for key in ("prompt_tokens", "input_tokens"):
+        if key in event:
+            return _long_session_observability_int(event.get(key))
+    return 0
+
+
+def _long_session_observability_from_events(events: Any, *, limit: int = 200) -> dict[str, Any]:
+    if not isinstance(events, list):
+        events = []
+
+    normalized_events = [event for event in events if isinstance(event, dict)]
+    context_events = [
+        event for event in normalized_events if event.get("event") == "context_budget_breakdown"
+    ]
+    semantic_payload_events = [
+        event
+        for event in normalized_events
+        if event.get("event") == "flattened_tool_transcript_semantic_payload_compaction_applied"
+    ]
+    tool_output_events = [
+        event for event in normalized_events if event.get("event") == "tool_output_budget_breakdown"
+    ]
+    primary_usage_events = [
+        event
+        for event in normalized_events
+        if event.get("event") == "upstream_call_finished" and event.get("purpose") == "primary"
+    ]
+
+    context_series: list[dict[str, Any]] = []
+    for index, event in enumerate(context_events):
+        chars = _long_session_context_chars(event)
+        context_series.append(
+            {
+                "ordinal": index,
+                "chars": chars,
+                "message_count": event.get("message_count"),
+                "conversation_message_count": event.get("conversation_message_count"),
+                "tool_message_chars": event.get("tool_message_chars"),
+                "compaction_summary_chars": event.get("compaction_summary_chars"),
+            }
+        )
+
+    context_chars = [int(item.get("chars") or 0) for item in context_series]
+    latest_context_chars = context_chars[-1] if context_chars else 0
+    max_context_chars = max(context_chars) if context_chars else 0
+    min_context_chars = min(context_chars) if context_chars else 0
+    growth_chars = latest_context_chars - context_chars[0] if len(context_chars) >= 2 else 0
+
+    semantic_applied = [
+        event for event in semantic_payload_events if bool(event.get("applied"))
+    ]
+    semantic_blocked = [
+        event
+        for event in semantic_payload_events
+        if event.get("reason") == "semantic_payload_canary_guard_blocked_enabled"
+    ]
+    semantic_chars_removed = sum(
+        _long_session_observability_int(event.get("chars_removed"))
+        for event in semantic_payload_events
+    )
+    semantic_compacted_count = sum(
+        _long_session_observability_int(event.get("compacted_count"))
+        for event in semantic_payload_events
+    )
+
+    tool_truncated_count = sum(1 for event in tool_output_events if event.get("truncated_event"))
+    tool_latest = tool_output_events[-1] if tool_output_events else None
+
+    prompt_tokens = [_long_session_usage_prompt_tokens(event) for event in primary_usage_events]
+    latest_prompt_tokens = prompt_tokens[-1] if prompt_tokens else 0
+    max_prompt_tokens = max(prompt_tokens) if prompt_tokens else 0
+
+    if semantic_blocked:
+        recommendation = "keep_dry_run_or_fix_canary"
+    elif semantic_applied:
+        recommendation = "monitor_limited_enabled_session"
+    elif semantic_payload_events:
+        recommendation = "continue_dry_run_observation"
+    elif context_events:
+        recommendation = "collect_semantic_trace_events_before_enabled"
+    else:
+        recommendation = "collect_more_trace_data"
+
+    return {
+        "status": "ok",
+        "version": PROXY_VERSION,
+        "kind": "runtime_long_session_observability",
+        "limit": max(1, min(int(limit), 1000)),
+        "trace_event_count": len(normalized_events),
+        "context_budget": {
+            "event_count": len(context_events),
+            "latest_chars": latest_context_chars,
+            "max_chars": max_context_chars,
+            "min_chars": min_context_chars,
+            "growth_chars": growth_chars,
+            "series_tail": context_series[-20:],
+        },
+        "semantic_payload": {
+            "event_count": len(semantic_payload_events),
+            "applied_count": len(semantic_applied),
+            "blocked_count": len(semantic_blocked),
+            "compacted_count": semantic_compacted_count,
+            "chars_removed": semantic_chars_removed,
+            "latest_event": semantic_payload_events[-1] if semantic_payload_events else None,
+        },
+        "tool_output_budget": {
+            "event_count": len(tool_output_events),
+            "truncated_count": tool_truncated_count,
+            "latest_event": tool_latest,
+        },
+        "primary_usage": {
+            "event_count": len(primary_usage_events),
+            "latest_prompt_tokens": latest_prompt_tokens,
+            "max_prompt_tokens": max_prompt_tokens,
+        },
+        "recommendation": recommendation,
+    }
+
+
+def _long_session_observability_report(*, limit: int = 200) -> dict[str, Any]:
+    normalized_limit = max(1, min(int(limit), 1000))
+    latest = _debug_trace_latest(limit=normalized_limit)
+    events = latest.get("events") if isinstance(latest, dict) else []
+    report = _long_session_observability_from_events(events, limit=normalized_limit)
+    report["trace"] = {
+        "status": latest.get("status") if isinstance(latest, dict) else "unknown",
+        "trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
+        "response_id": latest.get("response_id") if isinstance(latest, dict) else None,
+        "debug_enabled": latest.get("enabled") if isinstance(latest, dict) else None,
+    }
+    return report
 
 
 def _context_budget_breakdown(
@@ -8344,6 +8504,10 @@ def create_app(
     @app.get("/v1/proxy/debug/latest")
     async def proxy_debug_latest(limit: int = 200) -> dict[str, Any]:
         return _debug_trace_latest(limit=limit)
+
+    @app.get("/v1/proxy/debug/long-session")
+    async def proxy_debug_long_session(limit: int = 200) -> dict[str, Any]:
+        return _long_session_observability_report(limit=limit)
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:

@@ -616,6 +616,29 @@ Set any flag to `0` to disable that forwarding class.
 
 This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.
 
+
+
+## Runtime long-session observability
+
+`debug long-session` is a read-only view over recent debug-trace events. It does not call the upstream model, does not write SQLite, and does not mutate payloads.
+
+```bash
+dsproxy debug long-session --thinking --limit 200
+```
+
+The report summarizes:
+
+- recent `context_budget_breakdown` growth
+- semantic payload compaction event counts
+- semantic payload characters removed
+- canary-blocked semantic payload attempts
+- recent `tool_output_budget_breakdown` status
+- primary upstream usage prompt-token trend
+- a rollout recommendation such as `collect_more_trace_data`, `continue_dry_run_observation`, `keep_dry_run_or_fix_canary`, or `monitor_limited_enabled_session`
+
+Use this after long Codex or WeClaw sessions before enabling semantic payload compaction.
+
+
 ## Semantic compaction rollout
 
 Semantic flattened-tool compaction is staged and conservative.

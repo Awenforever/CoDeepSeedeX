@@ -154,6 +154,72 @@ def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_pa
     assert event["policy_decision"]["effective_trigger_chars"] == 900000
 
 
+
+def test_long_session_observability_from_events_summarizes_trends():
+    events = [
+        {"event": "context_budget_breakdown", "chat_payload_chars": 1000, "message_count": 10},
+        {"event": "tool_output_budget_breakdown", "truncated_event": False},
+        {
+            "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+            "applied": False,
+            "mode": "dry_run",
+            "reason": "semantic_payload_compaction_mode_not_enabled",
+            "compacted_count": 0,
+            "chars_removed": 0,
+        },
+        {
+            "event": "upstream_call_finished",
+            "purpose": "primary",
+            "usage": {"prompt_tokens": 1200},
+        },
+        {"event": "context_budget_breakdown", "chat_payload_chars": 2400, "message_count": 20},
+        {
+            "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+            "applied": True,
+            "mode": "enabled",
+            "compacted_count": 1,
+            "chars_removed": 400,
+        },
+        {
+            "event": "upstream_call_finished",
+            "purpose": "primary",
+            "usage": {"prompt_tokens": 2500},
+        },
+    ]
+
+    report = proxy_app._long_session_observability_from_events(events, limit=50)
+
+    assert report["status"] == "ok"
+    assert report["kind"] == "runtime_long_session_observability"
+    assert report["trace_event_count"] == 7
+    assert report["context_budget"]["event_count"] == 2
+    assert report["context_budget"]["latest_chars"] == 2400
+    assert report["context_budget"]["max_chars"] == 2400
+    assert report["context_budget"]["growth_chars"] == 1400
+    assert report["semantic_payload"]["event_count"] == 2
+    assert report["semantic_payload"]["applied_count"] == 1
+    assert report["semantic_payload"]["compacted_count"] == 1
+    assert report["semantic_payload"]["chars_removed"] == 400
+    assert report["primary_usage"]["latest_prompt_tokens"] == 2500
+    assert report["recommendation"] == "monitor_limited_enabled_session"
+
+
+def test_long_session_observability_recommends_fixing_canary_when_blocked():
+    events = [
+        {"event": "context_budget_breakdown", "chat_payload_chars": 1000},
+        {
+            "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+            "applied": False,
+            "reason": "semantic_payload_canary_guard_blocked_enabled",
+        },
+    ]
+
+    report = proxy_app._long_session_observability_from_events(events, limit=10)
+
+    assert report["semantic_payload"]["blocked_count"] == 1
+    assert report["recommendation"] == "keep_dry_run_or_fix_canary"
+
+
 def test_context_budget_breakdown_splits_tools_messages_and_compaction():
     request_payload = {
         "input": [{"role": "user", "content": "hello"}],
