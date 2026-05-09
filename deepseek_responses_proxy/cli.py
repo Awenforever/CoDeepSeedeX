@@ -1365,6 +1365,21 @@ def _debug(args: argparse.Namespace) -> int:
     if command == "semantic":
         limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
         timeout = float(getattr(args, "timeout", 3.0))
+        if bool(getattr(args, "self_test", False)):
+            selftest_result = _debug_fetch_json(base_url + "/v1/proxy/debug/semantic-selftest", timeout)
+            ok = bool(selftest_result.get("ok"))
+            output = {
+                "status": "ok" if ok else "error",
+                "proxy_url": base_url,
+                "debug_command": command,
+                "self_test": True,
+                "result": selftest_result,
+            }
+            if ok:
+                output["semantic_selftest"] = selftest_result.get("json")
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+            return 0 if ok else 1
+
         status_result = _debug_fetch_json(base_url + "/v1/proxy/status", timeout)
         latest_path = f"/v1/proxy/debug/latest?{urllib.parse.urlencode({'limit': limit})}"
         latest_result = _debug_fetch_json(base_url + latest_path, timeout)
@@ -1564,6 +1579,7 @@ def build_parser() -> argparse.ArgumentParser:
     debug_semantic.add_argument("--port", type=int)
     debug_semantic.add_argument("--timeout", type=float, default=3.0)
     debug_semantic.add_argument("--limit", type=int, default=200)
+    debug_semantic.add_argument("--self-test", action="store_true", help="run local semantic compaction self-test")
     debug_semantic.set_defaults(func=_debug)
 
     balance = sub.add_parser("balance", help="query DeepSeek API account balance")

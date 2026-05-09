@@ -649,6 +649,16 @@ Only enable for a limited session after `semantic_compaction.rollout.safe_to_ena
 DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=enabled
 ```
 
+
+
+Self-test without upstream calls:
+
+```bash
+dsproxy debug semantic --self-test --thinking
+```
+
+The self-test constructs local low-risk, medium-risk, and high-risk flattened tool transcript samples. It verifies that only low-risk passed pytest output would be compacted under enabled simulation, while stack traces, chatty terminal transcripts, recent messages, SQLite history, and original Responses history remain untouched.
+
 Safety boundaries:
 
 - SQLite history is not rewritten.

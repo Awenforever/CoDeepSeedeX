@@ -89,3 +89,25 @@ def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
     assert "semantic_policy_dry_run_event_missing" in semantic["rollout"]["blockers"]
     assert "semantic_payload_compaction_event_missing" in semantic["rollout"]["blockers"]
     assert semantic["rollout"]["recommendation"] == "keep_dry_run_until_blockers_clear"
+
+
+def test_proxy_debug_semantic_selftest_route(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+
+    app = create_app()
+    client = TestClient(app)
+
+    data = client.get("/v1/proxy/debug/semantic-selftest").json()
+
+    assert data["status"] == "ok"
+    assert data["version"] == PROXY_VERSION
+    assert data["kind"] == "semantic_compaction_selftest"
+    assert data["assertions"]["original_messages_unchanged"] is True
+    assert data["assertions"]["dry_run_not_applied"] is True
+    assert data["assertions"]["enabled_applied"] is True
+    assert data["assertions"]["low_risk_test_output_compacted"] is True
+    assert data["assertions"]["medium_stacktrace_preserved"] is True
+    assert data["assertions"]["high_chatty_terminal_preserved"] is True
+    assert data["assertions"]["recent_low_risk_preserved"] is True
+    assert data["synthetic_rollout"]["safe_to_enable_payload_compaction"] is True

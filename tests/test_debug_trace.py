@@ -895,6 +895,27 @@ def test_debug_trace_none_mode_preserves_semantic_policy_targets(monkeypatch, tm
     assert event["targets"][0]["retention_markers"] == ["pytest summary"]
 
 
+
+def test_semantic_compaction_selftest_report_passes(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+
+    report = proxy_app._semantic_compaction_selftest_report()
+
+    assert report["status"] == "ok"
+    assert report["kind"] == "semantic_compaction_selftest"
+    assert report["audit"]["flattened_message_count"] == 4
+    assert report["policy_dry_run"]["would_compact"] is True
+    assert report["payload_dry_run"]["applied"] is False
+    assert report["payload_enabled_simulation"]["applied"] is True
+    assert report["payload_enabled_simulation"]["compacted_count"] == 1
+    assert report["assertions"]["original_messages_unchanged"] is True
+    assert report["assertions"]["low_risk_test_output_compacted"] is True
+    assert report["assertions"]["medium_stacktrace_preserved"] is True
+    assert report["assertions"]["high_chatty_terminal_preserved"] is True
+    assert report["assertions"]["recent_low_risk_preserved"] is True
+    assert report["synthetic_rollout"]["safe_to_enable_payload_compaction"] is True
+
+
 def test_flattened_tool_semantic_payload_compaction_default_does_not_change_messages(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [

@@ -8,7 +8,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a15-semantic-compaction-rollout-hardening" in out
+    assert "v2.7a16-semantic-compaction-selftest" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +45,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a15-semantic-compaction-rollout-hardening")
+    assert data["proxy_version"].startswith("v2.7a16-semantic-compaction-selftest")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -80,7 +80,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a15-semantic-compaction-rollout-hardening")
+    assert data["expected_version"].startswith("v2.7a16-semantic-compaction-selftest")
     assert data["running_version"] == "v0.old"
 
 
@@ -562,6 +562,47 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["policy_dry_run"]["targets"][0]["category"] == "shell_command"
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]
+
+
+def test_cli_debug_semantic_self_test_fetches_selftest_endpoint(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "kind": "semantic_compaction_selftest",
+                "assertions": {
+                    "low_risk_test_output_compacted": True,
+                    "medium_stacktrace_preserved": True,
+                    "high_chatty_terminal_preserved": True,
+                },
+            }).encode("utf-8")
+
+    seen_urls = []
+
+    def fake_urlopen(url, timeout=0):
+        seen_urls.append(str(url))
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "semantic", "--self-test", "--port", "8123"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["debug_command"] == "semantic"
+    assert data["self_test"] is True
+    assert data["semantic_selftest"]["kind"] == "semantic_compaction_selftest"
+    assert data["semantic_selftest"]["assertions"]["low_risk_test_output_compacted"] is True
+    assert any("/v1/proxy/debug/semantic-selftest" in url for url in seen_urls)
 
 
 def test_cli_debug_semantic_combines_status_and_trace_events(monkeypatch, capsys):

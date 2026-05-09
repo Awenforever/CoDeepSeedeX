@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a15-semantic-compaction-rollout-hardening"
+PROXY_VERSION = "v2.7a16-semantic-compaction-selftest"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -688,6 +688,192 @@ def _semantic_compaction_rollout_assessment(
         "blockers": blockers,
         "warnings": warnings,
         "recommendation": recommendation,
+    }
+
+
+def _semantic_compaction_selftest_messages() -> list[dict[str, Any]]:
+    low_risk_test = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "....\n"
+        "4 passed in 0.10s\n"
+        + ("x" * 5000)
+    )
+    medium_stacktrace = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "Traceback (most recent call last):\n"
+        "AssertionError: expected true\n"
+        + ("y" * 5000)
+    )
+    high_chatty = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "\n• Running cd repo && pytest\n"
+        "\n• Ran git status\n"
+        "\n✔ You approved codex to always run commands\n"
+        + ("z" * 5000)
+    )
+    recent_low_risk = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "1 passed in 0.01s\n"
+        + ("r" * 5000)
+    )
+    return [
+        {"role": "developer", "content": "system"},
+        {"role": "user", "content": low_risk_test},
+        {"role": "user", "content": medium_stacktrace},
+        {"role": "user", "content": high_chatty},
+        {"role": "user", "content": recent_low_risk},
+    ]
+
+
+def _with_semantic_payload_env(overrides: dict[str, str], func: Any) -> Any:
+    previous: dict[str, str | None] = {}
+    for key, value in overrides.items():
+        previous[key] = os.environ.get(key)
+        os.environ[key] = value
+    try:
+        return func()
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _semantic_compaction_selftest_report() -> dict[str, Any]:
+    messages = _semantic_compaction_selftest_messages()
+    original_messages = deepcopy(messages)
+
+    audit_report = _flattened_tool_transcript_semantic_audit(messages)
+    policy_report = _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages)
+
+    payload_env = {
+        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES": "1",
+        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS": "100",
+        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS": "900",
+    }
+
+    def _dry_run_call() -> tuple[Any, dict[str, Any]]:
+        os.environ["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "dry_run"
+        return _apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    dry_run_messages, dry_run_report = _with_semantic_payload_env(payload_env, _dry_run_call)
+
+    def _enabled_call() -> tuple[Any, dict[str, Any]]:
+        os.environ["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "enabled"
+        return _apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    enabled_messages, enabled_report = _with_semantic_payload_env(payload_env, _enabled_call)
+
+    enabled_is_list = isinstance(enabled_messages, list)
+    low_risk_compacted = bool(
+        enabled_is_list
+        and isinstance(enabled_messages[1], dict)
+        and "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in str(enabled_messages[1].get("content") or "")
+    )
+    medium_preserved = bool(enabled_is_list and enabled_messages[2] == original_messages[2])
+    high_preserved = bool(enabled_is_list and enabled_messages[3] == original_messages[3])
+    recent_preserved = bool(enabled_is_list and enabled_messages[4] == original_messages[4])
+
+    synthetic_latest = {
+        "semantic_audit": _semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_audit", **audit_report}
+        ),
+        "semantic_policy_dry_run": _semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_policy_dry_run", **policy_report}
+        ),
+        "semantic_payload_compaction": _semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_payload_compaction_applied", **dry_run_report}
+        ),
+    }
+    synthetic_config = {
+        "semantic_audit": {
+            "enabled": True,
+            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
+        },
+        "semantic_policy_dry_run": {
+            "enabled": True,
+            "summary_chars": max(128, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700)),
+            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12)),
+        },
+        "semantic_payload_compaction": {
+            "mode": "dry_run",
+            "enabled": False,
+            "preserve_recent_messages": 1,
+            "min_message_chars": 100,
+            "summary_chars": 900,
+            "trace_targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_TRACE_TARGETS", 8)),
+        },
+    }
+
+    assertions = {
+        "original_messages_unchanged": messages == original_messages,
+        "dry_run_returned_original_object": dry_run_messages is messages,
+        "dry_run_not_applied": dry_run_report.get("applied") is False,
+        "enabled_returned_copy": enabled_messages is not messages,
+        "enabled_applied": enabled_report.get("applied") is True,
+        "low_risk_test_output_compacted": low_risk_compacted,
+        "medium_stacktrace_preserved": medium_preserved,
+        "high_chatty_terminal_preserved": high_preserved,
+        "recent_low_risk_preserved": recent_preserved,
+    }
+    passed = all(bool(value) for value in assertions.values())
+
+    return {
+        "status": "ok" if passed else "failed",
+        "version": PROXY_VERSION,
+        "kind": "semantic_compaction_selftest",
+        "description": "Local semantic compaction self-test without upstream calls or SQLite writes.",
+        "samples": {
+            "message_count": len(messages),
+            "low_risk_index": 1,
+            "medium_stacktrace_index": 2,
+            "high_chatty_terminal_index": 3,
+            "recent_low_risk_index": 4,
+        },
+        "audit": {
+            "flattened_message_count": audit_report.get("flattened_message_count"),
+            "semantic_types": audit_report.get("semantic_types"),
+            "semantic_risks": audit_report.get("semantic_risks"),
+        },
+        "policy_dry_run": {
+            "candidate_count": policy_report.get("candidate_count"),
+            "eligible_compaction_count": policy_report.get("eligible_compaction_count"),
+            "would_compact": policy_report.get("would_compact"),
+            "would_compact_count": policy_report.get("would_compact_count"),
+            "would_remove_chars_estimate": policy_report.get("would_remove_chars_estimate"),
+            "policy_decisions": policy_report.get("policy_decisions"),
+        },
+        "payload_dry_run": {
+            "mode": dry_run_report.get("mode"),
+            "applied": dry_run_report.get("applied"),
+            "reason": dry_run_report.get("reason"),
+            "compacted_count": dry_run_report.get("compacted_count"),
+            "chars_removed": dry_run_report.get("chars_removed"),
+        },
+        "payload_enabled_simulation": {
+            "mode": enabled_report.get("mode"),
+            "applied": enabled_report.get("applied"),
+            "reason": enabled_report.get("reason"),
+            "candidate_count": enabled_report.get("candidate_count"),
+            "eligible_policy_count": enabled_report.get("eligible_policy_count"),
+            "compacted_count": enabled_report.get("compacted_count"),
+            "skipped_policy_count": enabled_report.get("skipped_policy_count"),
+            "retained_recent_flattened_count": enabled_report.get("retained_recent_flattened_count"),
+            "chars_removed": enabled_report.get("chars_removed"),
+            "targets": enabled_report.get("targets"),
+        },
+        "synthetic_rollout": _semantic_compaction_rollout_assessment(
+            config=synthetic_config,
+            latest=synthetic_latest,
+        ),
+        "assertions": assertions,
     }
 
 
@@ -8020,6 +8206,10 @@ def create_app(
         if stored is None:
             raise HTTPException(status_code=404, detail="response not found")
         return stored.response
+
+    @app.get("/v1/proxy/debug/semantic-selftest")
+    async def proxy_debug_semantic_selftest() -> dict[str, Any]:
+        return _semantic_compaction_selftest_report()
 
     @app.post("/v1/responses")
     async def create_response(request: Request):
