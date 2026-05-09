@@ -895,6 +895,116 @@ def test_debug_trace_none_mode_preserves_semantic_policy_targets(monkeypatch, tm
     assert event["targets"][0]["retention_markers"] == ["pytest summary"]
 
 
+def test_flattened_tool_semantic_payload_compaction_default_does_not_change_messages(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                "assistant_requested_tool_calls:\n"
+                "tool_outputs:\n"
+                "===== pytest =====\n"
+                "4 passed in 0.10s\n"
+                + ("x" * 5000)
+            ),
+        }
+    ]
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert compacted is messages
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["reason"] == "semantic_payload_compaction_mode_not_enabled"
+    assert messages[0]["content"].endswith("x" * 5000)
+
+
+def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_risk_copy(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    low_risk_test = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "....\n"
+        "4 passed in 0.10s\n"
+        + ("x" * 5000)
+    )
+    medium_stacktrace = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "Traceback (most recent call last):\n"
+        "AssertionError: expected true\n"
+        + ("y" * 5000)
+    )
+    high_chatty = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "\n• Running cd repo && pytest\n"
+        "\n• Ran git status\n"
+        "\n✔ You approved codex to always run commands\n"
+        + ("z" * 5000)
+    )
+    recent_low_risk = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "1 passed in 0.01s\n"
+        + ("r" * 5000)
+    )
+    messages = [
+        {"role": "developer", "content": "system"},
+        {"role": "user", "content": low_risk_test},
+        {"role": "user", "content": medium_stacktrace},
+        {"role": "user", "content": high_chatty},
+        {"role": "user", "content": recent_low_risk},
+    ]
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert compacted is not messages
+    assert messages[1]["content"] == low_risk_test
+    assert messages[2]["content"] == medium_stacktrace
+    assert messages[3]["content"] == high_chatty
+    assert messages[4]["content"] == recent_low_risk
+
+    assert report["enabled"] is True
+    assert report["applied"] is True
+    assert report["reason"] == "enabled"
+    assert report["strategy"] == "flattened_tool_transcript_semantic_policy_payload_compaction"
+    assert report["flattened_message_count"] == 4
+    assert report["candidate_count"] == 3
+    assert report["eligible_policy_count"] == 1
+    assert report["skipped_policy_count"] == 2
+    assert report["retained_recent_flattened_count"] == 1
+    assert report["compacted_count"] == 1
+    assert report["chars_removed"] > 0
+
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert "recommended_action: compact_test_output_summary" in compacted[1]["content"]
+    assert "4 passed in 0.10s" in compacted[1]["content"]
+    assert compacted[2]["content"] == medium_stacktrace
+    assert compacted[3]["content"] == high_chatty
+    assert compacted[4]["content"] == recent_low_risk
+
+    assert report["targets"][0]["recommended_action"] == "compact_test_output_summary"
+    assert report["targets"][0]["semantic_type"] == "test_output"
+    assert report["targets"][0]["semantic_risk"] == "low"
+
+
+def test_flattened_tool_semantic_payload_compaction_non_list_fallback(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+
+    compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction("not messages")
+
+    assert compacted == "not messages"
+    assert report["applied"] is False
+    assert report["reason"] == "messages_not_list"
+
+
 def test_flattened_tool_payload_compaction_default_does_not_change_messages(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [
