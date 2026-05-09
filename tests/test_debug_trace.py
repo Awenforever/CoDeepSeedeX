@@ -776,6 +776,125 @@ def test_debug_trace_none_mode_preserves_semantic_audit_targets(monkeypatch, tmp
     assert event["targets"][0]["retention_markers"] == ["Traceback", "AssertionError"]
 
 
+def test_flattened_tool_transcript_semantic_policy_dry_run_recommends_actions(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", "10")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", "200")
+
+    passed_test = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "===== pytest =====\n"
+            "....\n"
+            "4 passed in 0.10s\n"
+            + ("x" * 1000)
+        ),
+    }
+    stacktrace = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "Traceback (most recent call last):\n"
+            "AssertionError: expected true\n"
+        ),
+    }
+    chatty_terminal = {
+        "role": "user",
+        "content": (
+            "assistant_requested_tool_calls:\n"
+            "tool_outputs:\n"
+            "\n• Running cd repo && pytest\n"
+            "\n• Ran git status\n"
+            "\n✔ You approved codex to always run commands\n"
+        ),
+    }
+
+    report = proxy_app._flattened_tool_transcript_semantic_compaction_policy_dry_run(
+        [
+            {"role": "developer", "content": "system"},
+            passed_test,
+            stacktrace,
+            chatty_terminal,
+        ]
+    )
+
+    assert report["enabled"] is True
+    assert report["applied"] is False
+    assert report["strategy"] == "flattened_tool_transcript_semantic_compaction_policy_dry_run"
+    assert report["flattened_message_count"] == 3
+    assert report["candidate_count"] == 3
+    assert report["eligible_compaction_count"] == 1
+    assert report["structure_only_count"] == 1
+    assert report["preserve_count"] == 1
+    assert report["would_compact"] is True
+    assert report["would_compact_count"] == 1
+    assert report["would_remove_chars_estimate"] > 0
+    assert report["estimated_messages_chars_after"] < report["estimated_messages_chars_before"]
+    assert report["policy_decisions"]["compact"] == 1
+    assert report["policy_decisions"]["structure_only"] == 1
+    assert report["policy_decisions"]["preserve"] == 1
+    assert report["targets"][0]["recommended_action"] == "compact_test_output_summary"
+    assert report["targets"][1]["recommended_action"] == "structure_preserving_summary_dry_run_only"
+    assert report["targets"][2]["recommended_action"] == "preserve_high_risk_transcript"
+
+
+def test_flattened_tool_transcript_semantic_policy_dry_run_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "0")
+
+    report = proxy_app._flattened_tool_transcript_semantic_compaction_policy_dry_run(
+        [
+            {
+                "role": "user",
+                "content": "assistant_requested_tool_calls:\ntool_outputs:\npytest\n1 passed in 0.01s",
+            }
+        ]
+    )
+
+    assert report["enabled"] is False
+    assert report["applied"] is False
+    assert report["candidate_count"] == 0
+    assert report["targets"] == []
+
+
+def test_debug_trace_none_mode_preserves_semantic_policy_targets(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+
+    proxy_app._debug_trace_event(
+        "resp_semantic_policy",
+        "flattened_tool_transcript_semantic_policy_dry_run",
+        targets=[
+            {
+                "index": 3,
+                "role": "user",
+                "history_category": "flattened_tool_transcript",
+                "chars": 2048,
+                "semantic_type": "test_output",
+                "semantic_risk": "low",
+                "retention_markers": ["pytest summary"],
+                "policy_decision": "compact",
+                "recommended_action": "compact_test_output_summary",
+                "compression_strategy": "pytest_passed_summary_with_tail",
+                "estimated_after_chars": 200,
+                "estimated_remove_chars": 1848,
+            }
+        ],
+    )
+
+    event = json.loads((trace_dir / "trace-resp_semantic_policy.jsonl").read_text(encoding="utf-8"))
+    assert isinstance(event["targets"], list)
+    assert event["targets"][0]["semantic_type"] == "test_output"
+    assert event["targets"][0]["semantic_risk"] == "low"
+    assert event["targets"][0]["policy_decision"] == "compact"
+    assert event["targets"][0]["recommended_action"] == "compact_test_output_summary"
+    assert event["targets"][0]["compression_strategy"] == "pytest_passed_summary_with_tail"
+    assert event["targets"][0]["retention_markers"] == ["pytest summary"]
+
+
 def test_flattened_tool_payload_compaction_default_does_not_change_messages(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [

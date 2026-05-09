@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a11-semantic-compaction-foundation"
+PROXY_VERSION = "v2.7a12-semantic-compaction-policy-dry-run"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -356,6 +356,9 @@ _DEBUG_TRACE_SAFE_STRING_KEYS = {
     "strategy",
     "semantic_type",
     "semantic_risk",
+    "recommended_action",
+    "policy_decision",
+    "compression_strategy",
 }
 
 
@@ -1616,6 +1619,193 @@ def _history_growth_breakdown(
     limit = max(1, _env_int("DEEPSEEK_PROXY_HISTORY_GROWTH_LARGEST_MESSAGES", 8))
     summary["largest_messages"] = largest_messages[:limit]
     return summary
+
+
+def _semantic_compaction_policy_for_flattened_tool_target(
+    target: dict[str, Any],
+    *,
+    summary_chars: int,
+) -> dict[str, Any]:
+    semantic_type = str(target.get("semantic_type") or "unknown")
+    semantic_risk = str(target.get("semantic_risk") or "medium")
+    retention_markers = target.get("retention_markers") or []
+    if not isinstance(retention_markers, list):
+        retention_markers = []
+
+    marker_set = {str(marker) for marker in retention_markers}
+    hard_markers = {
+        "ERROR",
+        "FAILED",
+        "Traceback",
+        "AssertionError",
+        "git hash",
+        "commit",
+        "modified files",
+        "exit code",
+    }
+    chars = max(0, int(target.get("chars") or 0))
+
+    decision: dict[str, Any] = {
+        "index": target.get("index"),
+        "role": target.get("role"),
+        "history_category": target.get("history_category"),
+        "chars": chars,
+        "semantic_type": semantic_type,
+        "semantic_risk": semantic_risk,
+        "retention_markers": [str(marker) for marker in retention_markers],
+        "eligible_for_compaction": False,
+        "policy_decision": "preserve",
+        "recommended_action": "preserve_original",
+        "compression_strategy": "none",
+        "estimated_after_chars": chars,
+        "estimated_remove_chars": 0,
+        "reason": "default_preserve",
+    }
+
+    if semantic_risk == "low" and semantic_type == "test_output" and "pytest summary" in marker_set:
+        estimated_after = min(chars, max(128, int(summary_chars)))
+        estimated_remove = max(0, chars - estimated_after)
+        decision.update(
+            {
+                "eligible_for_compaction": estimated_remove > 0,
+                "policy_decision": "compact",
+                "recommended_action": "compact_test_output_summary",
+                "compression_strategy": "pytest_passed_summary_with_tail",
+                "estimated_after_chars": estimated_after,
+                "estimated_remove_chars": estimated_remove,
+                "reason": "low_risk_passed_test_output",
+            }
+        )
+        return decision
+
+    if semantic_risk == "medium":
+        decision.update(
+            {
+                "policy_decision": "structure_only",
+                "recommended_action": "structure_preserving_summary_dry_run_only",
+                "compression_strategy": "preserve_markers_and_extract_structure",
+                "reason": "medium_risk_requires_marker_preservation",
+            }
+        )
+        return decision
+
+    if semantic_risk == "high":
+        decision.update(
+            {
+                "policy_decision": "preserve",
+                "recommended_action": "preserve_high_risk_transcript",
+                "compression_strategy": "none",
+                "reason": "high_risk_semantic_context",
+            }
+        )
+        return decision
+
+    if hard_markers & marker_set:
+        decision.update(
+            {
+                "policy_decision": "preserve",
+                "recommended_action": "preserve_due_to_retention_markers",
+                "compression_strategy": "none",
+                "reason": "hard_retention_markers_present",
+            }
+        )
+        return decision
+
+    decision["reason"] = "no_safe_policy_match"
+    return decision
+
+
+def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any) -> dict[str, Any]:
+    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
+    enabled = enabled_env not in {"0", "false", "off", "no"}
+    max_targets = max(
+        1,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12),
+    )
+    summary_chars = max(
+        128,
+        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700),
+    )
+
+    report: dict[str, Any] = {
+        "enabled": enabled,
+        "applied": False,
+        "strategy": "flattened_tool_transcript_semantic_compaction_policy_dry_run",
+        "messages_is_list": isinstance(messages, list),
+        "message_count": len(messages) if isinstance(messages, list) else 0,
+        "summary_chars": summary_chars,
+        "flattened_message_count": 0,
+        "candidate_count": 0,
+        "eligible_compaction_count": 0,
+        "structure_only_count": 0,
+        "preserve_count": 0,
+        "would_compact": False,
+        "would_compact_count": 0,
+        "would_remove_chars_estimate": 0,
+        "estimated_messages_chars_before": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "estimated_messages_chars_after": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "policy_decisions": {},
+        "targets": [],
+    }
+
+    if not enabled or not isinstance(messages, list):
+        return report
+
+    semantic_report = _flattened_tool_transcript_semantic_audit(messages)
+    semantic_targets = semantic_report.get("targets") or []
+    if not isinstance(semantic_targets, list):
+        semantic_targets = []
+
+    decisions: list[dict[str, Any]] = []
+    for target in semantic_targets:
+        if not isinstance(target, dict):
+            continue
+
+        decision = _semantic_compaction_policy_for_flattened_tool_target(
+            target,
+            summary_chars=summary_chars,
+        )
+        decisions.append(decision)
+
+        report["candidate_count"] = int(report["candidate_count"]) + 1
+        policy_decision = str(decision.get("policy_decision") or "preserve")
+        report["policy_decisions"][policy_decision] = int(report["policy_decisions"].get(policy_decision, 0)) + 1
+
+        if bool(decision.get("eligible_for_compaction")):
+            report["eligible_compaction_count"] = int(report["eligible_compaction_count"]) + 1
+        elif policy_decision == "structure_only":
+            report["structure_only_count"] = int(report["structure_only_count"]) + 1
+        else:
+            report["preserve_count"] = int(report["preserve_count"]) + 1
+
+    report["flattened_message_count"] = int(semantic_report.get("flattened_message_count") or 0)
+
+    eligible = [item for item in decisions if bool(item.get("eligible_for_compaction"))]
+    would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in eligible)
+    before = int(report["estimated_messages_chars_before"])
+    after = max(0, before - would_remove)
+
+    decision_order = {"compact": 0, "structure_only": 1, "preserve": 2}
+    risk_order = {"high": 0, "medium": 1, "low": 2}
+    decisions.sort(
+        key=lambda item: (
+            decision_order.get(str(item.get("policy_decision")), 9),
+            risk_order.get(str(item.get("semantic_risk")), 9),
+            -int(item.get("estimated_remove_chars") or 0),
+            -int(item.get("chars") or 0),
+        )
+    )
+
+    report.update(
+        {
+            "would_compact": bool(eligible),
+            "would_compact_count": len(eligible),
+            "would_remove_chars_estimate": would_remove,
+            "estimated_messages_chars_after": after,
+            "targets": decisions[:max_targets],
+        }
+    )
+    return report
 
 
 def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, Any]:
@@ -7542,6 +7732,11 @@ def create_app(
             response_id,
             "flattened_tool_transcript_semantic_audit",
             **_flattened_tool_transcript_semantic_audit(messages_before_compaction),
+        )
+        _debug_trace_event(
+            response_id,
+            "flattened_tool_transcript_semantic_policy_dry_run",
+            **_flattened_tool_transcript_semantic_compaction_policy_dry_run(messages_before_compaction),
         )
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,
