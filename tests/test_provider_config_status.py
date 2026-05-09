@@ -80,6 +80,8 @@ def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
     assert semantic["config"]["semantic_payload_compaction"]["mode"] == "dry_run"
     assert semantic["config"]["semantic_payload_compaction"]["enabled"] is False
     assert semantic["config"]["semantic_payload_compaction"]["summary_chars"] == 888
+    assert semantic["config"]["semantic_payload_canary"]["guard_enabled"] is True
+    assert semantic["config"]["semantic_payload_canary"]["allow_enabled"] is False
     assert semantic["latest"]["semantic_audit"]["present"] is False
     assert semantic["latest"]["semantic_policy_dry_run"]["present"] is False
     assert semantic["latest"]["semantic_payload_compaction"]["present"] is False
@@ -111,3 +113,36 @@ def test_proxy_debug_semantic_selftest_route(monkeypatch, tmp_path):
     assert data["assertions"]["high_chatty_terminal_preserved"] is True
     assert data["assertions"]["recent_low_risk_preserved"] is True
     assert data["synthetic_rollout"]["safe_to_enable_payload_compaction"] is True
+
+
+def test_proxy_debug_semantic_canary_check_route_blocks_without_allow(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
+
+    app = create_app()
+    client = TestClient(app)
+
+    data = client.get("/v1/proxy/debug/semantic-canary-check").json()
+
+    assert data["status"] == "blocked"
+    assert data["kind"] == "semantic_compaction_canary_check"
+    assert data["ready_for_limited_enabled_session"] is False
+    assert "semantic_payload_canary_allow_enabled_not_set" in data["blockers"]
+
+
+def test_proxy_debug_semantic_canary_check_route_ready_with_allow(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+
+    app = create_app()
+    client = TestClient(app)
+
+    data = client.get("/v1/proxy/debug/semantic-canary-check").json()
+
+    assert data["status"] == "ok"
+    assert data["ready_for_limited_enabled_session"] is True
+    assert data["guard"]["allowed"] is True
+    assert data["selftest"]["status"] == "ok"
+    assert data["required_enable_env"]["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] == "enabled"

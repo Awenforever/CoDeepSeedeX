@@ -1381,6 +1381,21 @@ def _debug(args: argparse.Namespace) -> int:
             return 0 if ok else 1
 
         status_result = _debug_fetch_json(base_url + "/v1/proxy/status", timeout)
+        if bool(getattr(args, "canary_check", False)):
+            canary_result = _debug_fetch_json(base_url + "/v1/proxy/debug/semantic-canary-check", timeout)
+            ok = bool(canary_result.get("ok"))
+            output = {
+                "status": "ok" if ok else "error",
+                "proxy_url": base_url,
+                "debug_command": command,
+                "canary_check": True,
+                "result": canary_result,
+            }
+            if ok:
+                output["semantic_canary_check"] = canary_result.get("json")
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+            return 0 if ok else 1
+
         latest_path = f"/v1/proxy/debug/latest?{urllib.parse.urlencode({'limit': limit})}"
         latest_result = _debug_fetch_json(base_url + latest_path, timeout)
         ok = bool(status_result.get("ok") and latest_result.get("ok"))
@@ -1580,6 +1595,7 @@ def build_parser() -> argparse.ArgumentParser:
     debug_semantic.add_argument("--timeout", type=float, default=3.0)
     debug_semantic.add_argument("--limit", type=int, default=200)
     debug_semantic.add_argument("--self-test", action="store_true", help="run local semantic compaction self-test")
+    debug_semantic.add_argument("--canary-check", action="store_true", help="check whether semantic payload compaction canary rollout is ready")
     debug_semantic.set_defaults(func=_debug)
 
     balance = sub.add_parser("balance", help="query DeepSeek API account balance")

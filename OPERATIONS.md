@@ -659,6 +659,24 @@ dsproxy debug semantic --self-test --thinking
 
 The self-test constructs local low-risk, medium-risk, and high-risk flattened tool transcript samples. It verifies that only low-risk passed pytest output would be compacted under enabled simulation, while stack traces, chatty terminal transcripts, recent messages, SQLite history, and original Responses history remain untouched.
 
+
+
+Canary rollout check:
+
+```bash
+dsproxy debug semantic --canary-check --thinking
+```
+
+A limited enabled session now requires both environment variables:
+
+```bash
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED=1
+DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=enabled
+```
+
+If `MODE=enabled` is set without the canary allow variable, the runtime guard falls back to dry-run behavior and reports `semantic_payload_canary_guard_blocked_enabled`.
+
+
 Safety boundaries:
 
 - SQLite history is not rewritten.

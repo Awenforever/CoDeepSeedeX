@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a16-semantic-compaction-selftest"
+PROXY_VERSION = "v2.7a17-semantic-compaction-canary-rollout"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -757,6 +757,7 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
         "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES": "1",
         "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS": "100",
         "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS": "900",
+        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
     }
 
     def _dry_run_call() -> tuple[Any, dict[str, Any]]:
@@ -877,6 +878,151 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
     }
 
 
+def _semantic_payload_canary_env_config() -> dict[str, Any]:
+    guard_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", "1").strip().lower()
+    allow_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "0").strip().lower()
+    invariant_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", "1").strip().lower()
+
+    return {
+        "guard_enabled": guard_env not in {"0", "false", "off", "no"},
+        "allow_enabled": allow_env in {"1", "true", "on", "yes"},
+        "require_local_invariants": invariant_env not in {"0", "false", "off", "no"},
+        "allow_env_var": "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED",
+        "mode_env_var": "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE",
+    }
+
+
+def _semantic_payload_canary_local_invariants() -> dict[str, Any]:
+    messages = _semantic_compaction_selftest_messages()
+    audit_report = _flattened_tool_transcript_semantic_audit(messages)
+    policy_report = _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages)
+
+    semantic_risks = audit_report.get("semantic_risks") or {}
+    low_count = int((semantic_risks.get("low") or {}).get("count") or 0) if isinstance(semantic_risks, dict) else 0
+    medium_count = int((semantic_risks.get("medium") or {}).get("count") or 0) if isinstance(semantic_risks, dict) else 0
+    high_count = int((semantic_risks.get("high") or {}).get("count") or 0) if isinstance(semantic_risks, dict) else 0
+
+    passed = (
+        int(audit_report.get("flattened_message_count") or 0) == 4
+        and low_count >= 2
+        and medium_count >= 1
+        and high_count >= 1
+        and bool(policy_report.get("would_compact")) is True
+        and int(policy_report.get("eligible_compaction_count") or 0) == 2
+    )
+
+    return {
+        "passed": passed,
+        "audit_flattened_message_count": audit_report.get("flattened_message_count"),
+        "low_risk_count": low_count,
+        "medium_risk_count": medium_count,
+        "high_risk_count": high_count,
+        "policy_would_compact": policy_report.get("would_compact"),
+        "policy_eligible_compaction_count": policy_report.get("eligible_compaction_count"),
+    }
+
+
+def _semantic_payload_canary_guard_for_mode(mode: str) -> dict[str, Any]:
+    config = _semantic_payload_canary_env_config()
+    normalized_mode = str(mode or "dry_run")
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    if normalized_mode != "enabled":
+        return {
+            "allowed": True,
+            "mode": normalized_mode,
+            "config": config,
+            "blockers": [],
+            "warnings": [],
+            "local_invariants": None,
+            "reason": "not_enabled_mode",
+        }
+
+    local_invariants = None
+    if not bool(config.get("guard_enabled")):
+        warnings.append("semantic_payload_canary_guard_disabled")
+        return {
+            "allowed": True,
+            "mode": normalized_mode,
+            "config": config,
+            "blockers": blockers,
+            "warnings": warnings,
+            "local_invariants": local_invariants,
+            "reason": "guard_disabled",
+        }
+
+    if not bool(config.get("allow_enabled")):
+        blockers.append("semantic_payload_canary_allow_enabled_not_set")
+
+    if bool(config.get("require_local_invariants")):
+        local_invariants = _semantic_payload_canary_local_invariants()
+        if not bool(local_invariants.get("passed")):
+            blockers.append("semantic_payload_canary_local_invariants_failed")
+
+    allowed = not blockers
+    return {
+        "allowed": allowed,
+        "mode": normalized_mode,
+        "config": config,
+        "blockers": blockers,
+        "warnings": warnings,
+        "local_invariants": local_invariants,
+        "reason": "allowed" if allowed else "blocked",
+    }
+
+
+def _semantic_compaction_canary_check_report() -> dict[str, Any]:
+    runtime_status = _semantic_compaction_runtime_status()
+    selftest_report = _semantic_compaction_selftest_report()
+    guard = _semantic_payload_canary_guard_for_mode("enabled")
+    payload_config = _flattened_tool_semantic_payload_compaction_env_config()
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    if selftest_report.get("status") != "ok":
+        blockers.append("semantic_selftest_failed")
+
+    if not bool(guard.get("allowed")):
+        blockers.extend(str(item) for item in guard.get("blockers") or [])
+
+    runtime_rollout = runtime_status.get("rollout") if isinstance(runtime_status, dict) else None
+    if isinstance(runtime_rollout, dict) and not bool(runtime_rollout.get("safe_to_enable_payload_compaction")):
+        warnings.append("runtime_rollout_not_yet_safe_based_on_live_trace")
+
+    if payload_config.get("mode") == "enabled":
+        warnings.append("semantic_payload_compaction_already_enabled")
+
+    blockers = sorted(set(blockers))
+    warnings = sorted(set(warnings))
+    ready = not blockers
+
+    return {
+        "status": "ok" if ready else "blocked",
+        "version": PROXY_VERSION,
+        "kind": "semantic_compaction_canary_check",
+        "ready_for_limited_enabled_session": ready,
+        "current_payload_mode": payload_config.get("mode"),
+        "required_enable_env": {
+            "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
+            "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE": "enabled",
+        },
+        "blockers": blockers,
+        "warnings": warnings,
+        "guard": guard,
+        "selftest": {
+            "status": selftest_report.get("status"),
+            "kind": selftest_report.get("kind"),
+            "assertions": selftest_report.get("assertions"),
+            "payload_enabled_simulation": selftest_report.get("payload_enabled_simulation"),
+            "synthetic_rollout": selftest_report.get("synthetic_rollout"),
+        },
+        "runtime_rollout": runtime_rollout,
+    }
+
+
 def _semantic_compaction_runtime_status() -> dict[str, Any]:
     audit_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
     policy_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
@@ -915,6 +1061,7 @@ def _semantic_compaction_runtime_status() -> dict[str, Any]:
             "summary_chars": payload_config.get("summary_chars"),
             "trace_targets": payload_config.get("trace_targets"),
         },
+        "semantic_payload_canary": _semantic_payload_canary_env_config(),
     }
     latest = {
         "semantic_audit": _semantic_compaction_event_summary(latest_audit),
@@ -1402,9 +1549,11 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
     mode = str(config.get("mode") or "dry_run")
     report: dict[str, Any] = {
         "mode": mode,
+        "effective_mode": mode,
         "enabled": mode == "enabled",
         "applied": False,
         "reason": None,
+        "canary_guard": None,
         "input_is_list": isinstance(input_value, list),
         "input_item_count_before": len(input_value) if isinstance(input_value, list) else 0,
         "input_item_count_after": len(input_value) if isinstance(input_value, list) else 0,
@@ -2488,12 +2637,23 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
         "error": None,
     }
 
-    if mode != "enabled":
-        report["reason"] = "semantic_payload_compaction_mode_not_enabled"
-        return messages, report
+    report.setdefault("effective_mode", mode)
+    report.setdefault("canary_guard", None)
 
     if not isinstance(messages, list):
         report["reason"] = "messages_not_list"
+        return messages, report
+
+    canary_guard = _semantic_payload_canary_guard_for_mode(mode)
+    report["canary_guard"] = canary_guard
+    if mode == "enabled" and not bool(canary_guard.get("allowed")):
+        report["enabled"] = False
+        report["effective_mode"] = "dry_run"
+        report["reason"] = "semantic_payload_canary_guard_blocked_enabled"
+        return messages, report
+
+    if mode != "enabled":
+        report["reason"] = "semantic_payload_compaction_mode_not_enabled"
         return messages, report
 
     try:
@@ -8210,6 +8370,10 @@ def create_app(
     @app.get("/v1/proxy/debug/semantic-selftest")
     async def proxy_debug_semantic_selftest() -> dict[str, Any]:
         return _semantic_compaction_selftest_report()
+
+    @app.get("/v1/proxy/debug/semantic-canary-check")
+    async def proxy_debug_semantic_canary_check() -> dict[str, Any]:
+        return _semantic_compaction_canary_check_report()
 
     @app.post("/v1/responses")
     async def create_response(request: Request):
