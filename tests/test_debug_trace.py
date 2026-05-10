@@ -155,6 +155,78 @@ def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_pa
 
 
 
+
+def test_long_session_observability_report_aggregates_trace_files(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+
+    proxy_app._debug_trace_event(
+        "resp_one",
+        "context_budget_breakdown",
+        chat_payload_chars=1000,
+        message_count=10,
+    )
+    proxy_app._debug_trace_event(
+        "resp_one",
+        "flattened_tool_transcript_semantic_payload_compaction_applied",
+        applied=False,
+        mode="dry_run",
+        reason="semantic_payload_compaction_mode_not_enabled",
+        compacted_count=0,
+        chars_removed=0,
+    )
+    proxy_app._debug_trace_event(
+        "resp_two",
+        "context_budget_breakdown",
+        chat_payload_chars=2400,
+        message_count=20,
+    )
+    proxy_app._debug_trace_event(
+        "resp_two",
+        "tool_output_budget_breakdown",
+        function_call_output_chars=5000,
+    )
+    proxy_app._debug_trace_event(
+        "resp_two",
+        "upstream_call_finished",
+        purpose="primary",
+        usage={"prompt_tokens": 2500},
+    )
+
+    report = proxy_app._long_session_observability_report(limit=10, mode="aggregate")
+
+    assert report["mode"] == "aggregate"
+    assert report["trace_file_count"] == 2
+    assert report["aggregate"]["scanned_trace_file_count"] == 2
+    assert report["trace_event_count"] == 5
+    assert report["response_count"] == 2
+    assert report["context_budget"]["event_count"] == 2
+    assert report["context_budget"]["latest_chars"] == 2400
+    assert report["context_budget"]["growth_chars"] == 1400
+    assert report["semantic_payload"]["event_count"] == 1
+    assert report["tool_output_budget"]["event_count"] == 1
+    assert report["primary_usage"]["latest_prompt_tokens"] == 2500
+    assert report["recommendation"] == "continue_dry_run_observation"
+
+
+def test_long_session_observability_report_latest_mode_uses_latest_trace(monkeypatch, tmp_path):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+
+    proxy_app._debug_trace_event("resp_one", "context_budget_breakdown", chat_payload_chars=1000)
+    proxy_app._debug_trace_event("resp_two", "context_budget_breakdown", chat_payload_chars=2400)
+
+    report = proxy_app._long_session_observability_report(limit=10, mode="latest")
+
+    assert report["mode"] == "latest"
+    assert report["trace_file_count"] == 1
+    assert report["trace_event_count"] == 1
+    assert report["response_count"] == 1
+    assert report["context_budget"]["latest_chars"] == 2400
+
+
 def test_long_session_observability_from_events_summarizes_trends():
     events = [
         {"event": "context_budget_breakdown", "chat_payload_chars": 1000, "message_count": 10},

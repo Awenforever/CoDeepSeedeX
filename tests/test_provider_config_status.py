@@ -154,12 +154,14 @@ def test_proxy_debug_long_session_route_without_trace(monkeypatch, tmp_path):
     app = create_app()
     client = TestClient(app)
 
-    data = client.get("/v1/proxy/debug/long-session?limit=25").json()
+    data = client.get("/v1/proxy/debug/long-session?limit=25&mode=aggregate").json()
 
     assert data["status"] == "ok"
     assert data["version"] == PROXY_VERSION
     assert data["kind"] == "runtime_long_session_observability"
+    assert data["mode"] == "aggregate"
     assert data["limit"] == 25
+    assert data["trace_file_count"] == 0
     assert data["trace_event_count"] == 0
     assert data["context_budget"]["event_count"] == 0
     assert data["recommendation"] == "collect_more_trace_data"

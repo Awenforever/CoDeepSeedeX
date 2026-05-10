@@ -620,10 +620,16 @@ This only forwards tool schemas to DeepSeek and restores namespace-aware functio
 
 ## Runtime long-session observability
 
-`debug long-session` is a read-only view over recent debug-trace events. It does not call the upstream model, does not write SQLite, and does not mutate payloads.
+`debug long-session` is a read-only view over recent debug-trace events. It does not call the upstream model, does not write SQLite, and does not mutate payloads. By default it uses aggregate mode and scans recent `trace-*.jsonl` files from the active debug directory.
 
 ```bash
-dsproxy debug long-session --thinking --limit 200
+dsproxy debug long-session --thinking --limit 200 --mode aggregate
+```
+
+Latest-only fallback remains available when you need to inspect just the current `latest.json` target:
+
+```bash
+dsproxy debug long-session --thinking --limit 200 --mode latest
 ```
 
 The report summarizes:

@@ -1365,7 +1365,8 @@ def _debug(args: argparse.Namespace) -> int:
     if command == "long-session":
         limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
         timeout = float(getattr(args, "timeout", 3.0))
-        path = f"/v1/proxy/debug/long-session?{urllib.parse.urlencode({'limit': limit})}"
+        mode = str(getattr(args, "mode", "aggregate") or "aggregate")
+        path = f"/v1/proxy/debug/long-session?{urllib.parse.urlencode({'limit': limit, 'mode': mode})}"
         result = _debug_fetch_json(base_url + path, timeout)
         output = {
             "status": "ok" if result.get("ok") else "error",
@@ -1610,6 +1611,7 @@ def build_parser() -> argparse.ArgumentParser:
     debug_long_session.add_argument("--port", type=int)
     debug_long_session.add_argument("--timeout", type=float, default=3.0)
     debug_long_session.add_argument("--limit", type=int, default=200)
+    debug_long_session.add_argument("--mode", choices=["aggregate", "latest"], default="aggregate")
     debug_long_session.set_defaults(func=_debug)
 
     debug_semantic = debug_sub.add_parser("semantic", help="show semantic compaction rollout status")

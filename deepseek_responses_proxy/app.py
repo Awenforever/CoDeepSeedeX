@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a19-runtime-long-session-observability"
+PROXY_VERSION = "v2.7a20-runtime-long-session-aggregate"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1113,6 +1113,13 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
         events = []
 
     normalized_events = [event for event in events if isinstance(event, dict)]
+    response_ids = sorted(
+        {
+            str(event.get("response_id"))
+            for event in normalized_events
+            if event.get("response_id")
+        }
+    )
     context_events = [
         event for event in normalized_events if event.get("event") == "context_budget_breakdown"
     ]
@@ -1136,6 +1143,8 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
         context_series.append(
             {
                 "ordinal": index,
+                "response_id": event.get("response_id"),
+                "ts": event.get("ts"),
                 "chars": chars,
                 "message_count": event.get("message_count"),
                 "conversation_message_count": event.get("conversation_message_count"),
@@ -1169,6 +1178,18 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
 
     tool_truncated_count = sum(1 for event in tool_output_events if event.get("truncated_event"))
     tool_latest = tool_output_events[-1] if tool_output_events else None
+    max_context_event = max(context_events, key=_long_session_context_chars) if context_events else None
+    max_tool_output_event = max(
+        tool_output_events,
+        key=lambda event: _long_session_observability_int(event.get("function_call_output_chars")),
+    ) if tool_output_events else None
+
+    semantic_audit_events = [
+        event for event in normalized_events if event.get("event") == "flattened_tool_transcript_semantic_audit"
+    ]
+    semantic_policy_events = [
+        event for event in normalized_events if event.get("event") == "flattened_tool_transcript_semantic_policy_dry_run"
+    ]
 
     prompt_tokens = [_long_session_usage_prompt_tokens(event) for event in primary_usage_events]
     latest_prompt_tokens = prompt_tokens[-1] if prompt_tokens else 0
@@ -1191,13 +1212,21 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
         "kind": "runtime_long_session_observability",
         "limit": max(1, min(int(limit), 1000)),
         "trace_event_count": len(normalized_events),
+        "response_count": len(response_ids),
+        "response_ids_tail": response_ids[-20:],
         "context_budget": {
             "event_count": len(context_events),
             "latest_chars": latest_context_chars,
             "max_chars": max_context_chars,
             "min_chars": min_context_chars,
             "growth_chars": growth_chars,
+            "max_event": max_context_event,
             "series_tail": context_series[-20:],
+        },
+        "semantic_trace": {
+            "audit_event_count": len(semantic_audit_events),
+            "policy_dry_run_event_count": len(semantic_policy_events),
+            "payload_event_count": len(semantic_payload_events),
         },
         "semantic_payload": {
             "event_count": len(semantic_payload_events),
@@ -1211,6 +1240,7 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
             "event_count": len(tool_output_events),
             "truncated_count": tool_truncated_count,
             "latest_event": tool_latest,
+            "max_output_event": max_tool_output_event,
         },
         "primary_usage": {
             "event_count": len(primary_usage_events),
@@ -1221,16 +1251,92 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
     }
 
 
-def _long_session_observability_report(*, limit: int = 200) -> dict[str, Any]:
+def _long_session_read_trace_file(path: Path, *, per_file_limit: int = 200) -> list[dict[str, Any]]:
+    if not path.exists() or not path.is_file():
+        return []
+
+    safe_limit = max(1, min(int(per_file_limit), 1000))
+    events: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()[-safe_limit:]
+    except Exception:
+        return []
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(event, dict):
+            event.setdefault("_trace_file", str(path))
+            events.append(event)
+    return events
+
+
+def _long_session_observability_report(*, limit: int = 200, mode: str = "aggregate") -> dict[str, Any]:
     normalized_limit = max(1, min(int(limit), 1000))
-    latest = _debug_trace_latest(limit=normalized_limit)
-    events = latest.get("events") if isinstance(latest, dict) else []
+    normalized_mode = str(mode or "aggregate").strip().lower()
+    if normalized_mode not in {"aggregate", "latest"}:
+        normalized_mode = "aggregate"
+
+    if normalized_mode == "latest":
+        latest = _debug_trace_latest(limit=normalized_limit)
+        events = latest.get("events") if isinstance(latest, dict) else []
+        report = _long_session_observability_from_events(events, limit=normalized_limit)
+        report["mode"] = "latest"
+        report["trace_file_count"] = 1 if isinstance(latest, dict) and latest.get("trace_path") else 0
+        report["aggregate"] = {
+            "mode": "latest",
+            "source": "latest_trace_only",
+            "debug_dir": None,
+            "trace_file_count": report["trace_file_count"],
+            "scanned_trace_file_count": report["trace_file_count"],
+            "latest_trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
+        }
+        report["trace"] = {
+            "status": latest.get("status") if isinstance(latest, dict) else "unknown",
+            "trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
+            "response_id": latest.get("response_id") if isinstance(latest, dict) else None,
+            "debug_enabled": latest.get("enabled") if isinstance(latest, dict) else None,
+        }
+        return report
+
+    status = _debug_trace_status()
+    debug_dir = Path(str(status.get("dir") or ""))
+    trace_files: list[Path] = []
+    try:
+        trace_files = sorted(
+            [path for path in debug_dir.glob("trace-*.jsonl") if path.is_file()],
+            key=lambda path: (path.stat().st_mtime, path.name),
+        )
+    except Exception:
+        trace_files = []
+
+    selected_files = trace_files[-normalized_limit:]
+    events: list[dict[str, Any]] = []
+    per_file_limit = 200
+    for path in selected_files:
+        events.extend(_long_session_read_trace_file(path, per_file_limit=per_file_limit))
+
     report = _long_session_observability_from_events(events, limit=normalized_limit)
+    report["mode"] = "aggregate"
+    report["trace_file_count"] = len(trace_files)
+    report["aggregate"] = {
+        "mode": "aggregate",
+        "source": "debug_dir_trace_files",
+        "debug_dir": str(debug_dir),
+        "trace_file_count": len(trace_files),
+        "scanned_trace_file_count": len(selected_files),
+        "per_file_event_limit": per_file_limit,
+        "selected_trace_files_tail": [str(path) for path in selected_files[-20:]],
+    }
     report["trace"] = {
-        "status": latest.get("status") if isinstance(latest, dict) else "unknown",
-        "trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
-        "response_id": latest.get("response_id") if isinstance(latest, dict) else None,
-        "debug_enabled": latest.get("enabled") if isinstance(latest, dict) else None,
+        "status": "ok" if trace_files else "empty",
+        "trace_path": None,
+        "response_id": None,
+        "debug_enabled": status.get("enabled"),
+        "debug_dir": status.get("dir"),
+        "latest": status.get("latest"),
     }
     return report
 
@@ -8506,8 +8612,8 @@ def create_app(
         return _debug_trace_latest(limit=limit)
 
     @app.get("/v1/proxy/debug/long-session")
-    async def proxy_debug_long_session(limit: int = 200) -> dict[str, Any]:
-        return _long_session_observability_report(limit=limit)
+    async def proxy_debug_long_session(limit: int = 200, mode: str = "aggregate") -> dict[str, Any]:
+        return _long_session_observability_report(limit=limit, mode=mode)
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
