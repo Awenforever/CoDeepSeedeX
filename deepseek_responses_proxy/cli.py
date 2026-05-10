@@ -1378,6 +1378,7 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
                 "has_tool_output_trim_applied": False,
                 "has_development_continuity_categories": False,
                 "recommendation_is_monitor": False,
+                "trace_current": False,
             },
             "metrics": {},
             "blockers": ["long_session_report_missing"],
@@ -1387,6 +1388,7 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
     context_budget = long_session.get("context_budget") or {}
     primary_usage = long_session.get("primary_usage") or {}
     tool_output_trim = long_session.get("tool_output_trim") or {}
+    runtime_payload = long_session.get("runtime_payload") or {}
     by_category = tool_output_trim.get("by_category") or {}
 
     if not isinstance(context_budget, dict):
@@ -1395,6 +1397,8 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
         primary_usage = {}
     if not isinstance(tool_output_trim, dict):
         tool_output_trim = {}
+    if not isinstance(runtime_payload, dict):
+        runtime_payload = {}
     if not isinstance(by_category, dict):
         by_category = {}
 
@@ -1404,6 +1408,11 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
     def _category_trimmed(category: str) -> bool:
         value = by_category.get(category)
         return isinstance(value, dict) and _positive_number(value.get("trimmed_item_count"))
+
+    monitor_state = str(long_session.get("monitor_state") or "")
+    trace_stale = bool(long_session.get("trace_stale"))
+    current_runtime_payload_seen = bool(long_session.get("current_runtime_payload_seen"))
+    trace_current = monitor_state not in {"trace_disabled", "trace_stale"} and not trace_stale
 
     has_long_session_report = (
         long_session.get("status") == "ok"
@@ -1438,12 +1447,16 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
         "has_tool_output_trim_applied": has_tool_output_trim_applied,
         "has_development_continuity_categories": has_development_continuity_categories,
         "recommendation_is_monitor": recommendation_is_monitor,
+        "trace_current": trace_current,
     }
 
     blockers = [name for name, ok in assertions.items() if not ok]
     if not has_long_session_report:
         status = "blocked"
         recommendation = "inspect_debug_long_session_endpoint"
+    elif not trace_current:
+        status = "monitor_stale"
+        recommendation = "inspect_current_runtime_payload_or_enable_debug_trace"
     elif not has_context_budget or not has_primary_usage:
         status = "collect_more_trace_data"
         recommendation = "collect_more_trace_data"
@@ -1453,6 +1466,10 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
     else:
         status = "monitor"
         recommendation = "continue_runtime_observation"
+
+    marker_summary = runtime_payload.get("tool_output_trim_marker_summary") or {}
+    if not isinstance(marker_summary, dict):
+        marker_summary = {}
 
     metrics = {
         "trace_event_count": long_session.get("trace_event_count"),
@@ -1471,6 +1488,15 @@ def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str,
             if isinstance(summary, dict) and _positive_number(summary.get("trimmed_item_count"))
         ),
         "long_session_recommendation": long_session.get("recommendation"),
+        "monitor_state": monitor_state or None,
+        "trace_stale": trace_stale,
+        "current_runtime_payload_seen": current_runtime_payload_seen,
+        "last_responses_payload_mtime": long_session.get("last_responses_payload_mtime"),
+        "last_responses_payload_size": long_session.get("last_responses_payload_size"),
+        "last_deepseek_payload_mtime": long_session.get("last_deepseek_payload_mtime"),
+        "last_deepseek_payload_size": long_session.get("last_deepseek_payload_size"),
+        "runtime_payload_trim_marker_count": marker_summary.get("marker_count"),
+        "runtime_payload_image_payload_trim_count": marker_summary.get("image_payload_trim_count"),
     }
 
     return {

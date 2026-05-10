@@ -1108,6 +1108,221 @@ def _long_session_usage_prompt_tokens(event: dict[str, Any]) -> int:
     return 0
 
 
+
+def _debug_runtime_payload_file_summary(filename: str) -> dict[str, Any]:
+    path = Path(".debug") / filename
+    summary: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+    }
+    if not path.exists() or not path.is_file():
+        return summary
+
+    try:
+        stat = path.stat()
+        summary["size_bytes"] = stat.st_size
+        summary["mtime"] = stat.st_mtime
+        summary["mtime_iso"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(stat.st_mtime))
+    except Exception as exc:
+        summary["stat_error"] = str(exc)[:500]
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception as exc:
+        summary["json_ok"] = False
+        summary["json_error"] = f"{type(exc).__name__}: {exc}"[:500]
+        return summary
+
+    summary["json_ok"] = True
+    summary["root_type"] = type(data).__name__
+    summary["json_chars"] = _debug_trace_json_chars(data)
+
+    if isinstance(data, dict):
+        keys = sorted(str(key) for key in data.keys())
+        summary["keys"] = keys[:40]
+        if "input" in data:
+            input_value = data.get("input")
+            summary["input_type"] = type(input_value).__name__
+            summary["input_chars"] = _debug_trace_json_chars(input_value)
+            if isinstance(input_value, list):
+                summary["input_item_count"] = len(input_value)
+                summary["input_type_counts"] = {}
+                for item in input_value:
+                    item_type = str(item.get("type") or "missing_type") if isinstance(item, dict) else type(item).__name__
+                    summary["input_type_counts"][item_type] = int(summary["input_type_counts"].get(item_type, 0)) + 1
+        if "messages" in data:
+            messages = data.get("messages")
+            summary["messages_type"] = type(messages).__name__
+            summary["messages_chars"] = _debug_trace_json_chars(messages)
+            if isinstance(messages, list):
+                summary["messages_count"] = len(messages)
+                roles: dict[str, int] = {}
+                for message in messages:
+                    role = str(message.get("role") or "missing_role") if isinstance(message, dict) else type(message).__name__
+                    roles[role] = int(roles.get(role, 0)) + 1
+                summary["message_roles"] = roles
+
+    return summary
+
+
+def _debug_runtime_trim_marker_summary(value: Any) -> dict[str, Any]:
+    marker = "[tool output trimmed by CoDeepSeedeX]"
+    records: list[dict[str, Any]] = []
+
+    def walk(item: Any) -> None:
+        if len(records) >= 50:
+            return
+        if isinstance(item, str):
+            if marker not in item:
+                return
+            parsed: dict[str, Any] = {
+                "chars": len(item),
+                "category": "unknown",
+                "tool_name": "unknown",
+            }
+            for line in item.splitlines()[:32]:
+                if ":" not in line:
+                    continue
+                key, raw_value = line.split(":", 1)
+                key = key.strip()
+                raw_value = raw_value.strip()
+                if key in {
+                    "call_id",
+                    "tool_name",
+                    "category",
+                    "original_output_chars",
+                    "original_item_chars",
+                    "kept_head_chars",
+                    "kept_tail_chars",
+                    "omitted_middle_chars",
+                }:
+                    parsed[key] = raw_value
+            records.append(parsed)
+            return
+        if isinstance(item, list):
+            for child in item:
+                walk(child)
+            return
+        if isinstance(item, dict):
+            for child in item.values():
+                walk(child)
+
+    walk(value)
+
+    by_category: dict[str, int] = {}
+    by_tool_name: dict[str, int] = {}
+    for record in records:
+        category = str(record.get("category") or "unknown")
+        tool_name = str(record.get("tool_name") or "unknown")
+        by_category[category] = int(by_category.get(category, 0)) + 1
+        by_tool_name[tool_name] = int(by_tool_name.get(tool_name, 0)) + 1
+
+    return {
+        "marker_count": len(records),
+        "by_category": dict(sorted(by_category.items())),
+        "by_tool_name": dict(sorted(by_tool_name.items())),
+        "image_payload_trim_count": int(by_category.get("image_payload", 0)),
+        "records_tail": records[-10:],
+    }
+
+
+def _debug_runtime_payload_json(filename: str) -> Any:
+    path = Path(".debug") / filename
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
+def _debug_runtime_payload_summary() -> dict[str, Any]:
+    responses = _debug_runtime_payload_file_summary("last_responses_payload.json")
+    deepseek = _debug_runtime_payload_file_summary("last_deepseek_payload.json")
+    compaction = _context_report_summary("context_compaction_report.json")
+    trimming = _context_report_summary("context_trimming_report.json")
+
+    response_payload = _debug_runtime_payload_json("last_responses_payload.json")
+    deepseek_payload = _debug_runtime_payload_json("last_deepseek_payload.json")
+
+    marker_summary = _debug_runtime_trim_marker_summary(
+        {
+            "last_responses_payload": response_payload,
+            "last_deepseek_payload": deepseek_payload,
+        }
+    )
+
+    payload_mtimes = [
+        float(item.get("mtime"))
+        for item in [responses, deepseek]
+        if isinstance(item.get("mtime"), (int, float))
+    ]
+    latest_payload_mtime = max(payload_mtimes) if payload_mtimes else None
+
+    current_runtime_payload_seen = bool(responses.get("exists") or deepseek.get("exists"))
+
+    summary: dict[str, Any] = {
+        "current_runtime_payload_seen": current_runtime_payload_seen,
+        "latest_payload_mtime": latest_payload_mtime,
+        "last_responses_payload": responses,
+        "last_deepseek_payload": deepseek,
+        "context_compaction_report": compaction,
+        "context_trimming_report": trimming,
+        "tool_output_trim_marker_summary": marker_summary,
+        "last_responses_payload_mtime": responses.get("mtime"),
+        "last_responses_payload_size": responses.get("size_bytes"),
+        "last_deepseek_payload_mtime": deepseek.get("mtime"),
+        "last_deepseek_payload_size": deepseek.get("size_bytes"),
+    }
+
+    if latest_payload_mtime is not None:
+        summary["latest_payload_age_seconds"] = max(0.0, time.time() - latest_payload_mtime)
+
+    if isinstance(response_payload, dict):
+        input_value = response_payload.get("input")
+        try:
+            budget = _tool_output_budget_breakdown(input_value)
+            summary["last_responses_tool_output_budget"] = {
+                "function_call_output_count": budget.get("function_call_output_count"),
+                "function_call_output_chars": budget.get("function_call_output_chars"),
+                "large_output_count": budget.get("large_output_count"),
+                "total_output_exceeds_warn_total": budget.get("total_output_exceeds_warn_total"),
+                "largest_outputs": budget.get("largest_outputs", [])[:8],
+            }
+        except Exception as exc:
+            summary["last_responses_tool_output_budget_error"] = f"{type(exc).__name__}: {exc}"[:500]
+
+    return summary
+
+
+def _debug_trace_latest_file_snapshot(trace_files: list[Path]) -> dict[str, Any]:
+    if not trace_files:
+        return {
+            "exists": False,
+            "path": None,
+            "mtime": None,
+            "size_bytes": None,
+        }
+
+    path = trace_files[-1]
+    try:
+        stat = path.stat()
+        return {
+            "exists": True,
+            "path": str(path),
+            "mtime": stat.st_mtime,
+            "mtime_iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(stat.st_mtime)),
+            "size_bytes": stat.st_size,
+        }
+    except Exception as exc:
+        return {
+            "exists": True,
+            "path": str(path),
+            "error": str(exc)[:500],
+            "mtime": None,
+            "size_bytes": None,
+        }
+
 def _long_session_observability_from_events(events: Any, *, limit: int = 200) -> dict[str, Any]:
     if not isinstance(events, list):
         events = []
@@ -1334,65 +1549,115 @@ def _long_session_observability_report(*, limit: int = 200, mode: str = "aggrega
     if normalized_mode not in {"aggregate", "latest"}:
         normalized_mode = "aggregate"
 
-    if normalized_mode == "latest":
-        latest = _debug_trace_latest(limit=normalized_limit)
-        events = latest.get("events") if isinstance(latest, dict) else []
-        report = _long_session_observability_from_events(events, limit=normalized_limit)
-        report["mode"] = "latest"
-        report["trace_file_count"] = 1 if isinstance(latest, dict) and latest.get("trace_path") else 0
-        report["aggregate"] = {
-            "mode": "latest",
-            "source": "latest_trace_only",
-            "debug_dir": None,
-            "trace_file_count": report["trace_file_count"],
-            "scanned_trace_file_count": report["trace_file_count"],
-            "latest_trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
-        }
-        report["trace"] = {
-            "status": latest.get("status") if isinstance(latest, dict) else "unknown",
-            "trace_path": latest.get("trace_path") if isinstance(latest, dict) else None,
-            "response_id": latest.get("response_id") if isinstance(latest, dict) else None,
-            "debug_enabled": latest.get("enabled") if isinstance(latest, dict) else None,
-        }
-        return report
-
     status = _debug_trace_status()
-    debug_dir = Path(str(status.get("dir") or ""))
-    trace_files: list[Path] = []
+    debug_dir = Path(str(status.get("dir") or _debug_trace_dir()))
     try:
         trace_files = sorted(
             [path for path in debug_dir.glob("trace-*.jsonl") if path.is_file()],
             key=lambda path: (path.stat().st_mtime, path.name),
-        )
+        ) if debug_dir.exists() else []
     except Exception:
         trace_files = []
 
-    selected_files = trace_files[-normalized_limit:]
-    events: list[dict[str, Any]] = []
-    per_file_limit = 200
-    for path in selected_files:
-        events.extend(_long_session_read_trace_file(path, per_file_limit=per_file_limit))
+    if normalized_mode == "latest":
+        latest = _debug_trace_latest(limit=normalized_limit)
+        events = latest.get("events") if isinstance(latest, dict) else []
+        report = _long_session_observability_from_events(events, limit=normalized_limit)
+        legacy_trace_file_count = 1 if isinstance(latest, dict) and latest.get("trace_path") else 0
+        selected_trace_files = []
+        latest_trace_path = latest.get("trace_path") if isinstance(latest, dict) else None
+        if latest_trace_path:
+            selected_trace_files = [Path(str(latest_trace_path))]
+        report["mode"] = "latest"
+        report["trace_file_count"] = legacy_trace_file_count
+        report["aggregate"] = {
+            "mode": "latest",
+            "source": "latest_trace_only",
+            "debug_dir": None,
+            "trace_file_count": legacy_trace_file_count,
+            "scanned_trace_file_count": legacy_trace_file_count,
+            "latest_trace_path": latest_trace_path,
+        }
+        report["trace"] = {
+            "status": latest.get("status") if isinstance(latest, dict) else "unknown",
+            "trace_path": latest_trace_path,
+            "response_id": latest.get("response_id") if isinstance(latest, dict) else None,
+            "debug_enabled": latest.get("enabled") if isinstance(latest, dict) else None,
+        }
+    else:
+        selected_trace_files = trace_files[-normalized_limit:]
+        events: list[dict[str, Any]] = []
+        per_file_limit = 200
+        for path in selected_trace_files:
+            events.extend(_long_session_read_trace_file(path, per_file_limit=per_file_limit))
 
-    report = _long_session_observability_from_events(events, limit=normalized_limit)
-    report["mode"] = "aggregate"
-    report["trace_file_count"] = len(trace_files)
-    report["aggregate"] = {
-        "mode": "aggregate",
-        "source": "debug_dir_trace_files",
-        "debug_dir": str(debug_dir),
-        "trace_file_count": len(trace_files),
-        "scanned_trace_file_count": len(selected_files),
-        "per_file_event_limit": per_file_limit,
-        "selected_trace_files_tail": [str(path) for path in selected_files[-20:]],
-    }
-    report["trace"] = {
-        "status": "ok" if trace_files else "empty",
-        "trace_path": None,
-        "response_id": None,
-        "debug_enabled": status.get("enabled"),
-        "debug_dir": status.get("dir"),
-        "latest": status.get("latest"),
-    }
+        report = _long_session_observability_from_events(events, limit=normalized_limit)
+        report["mode"] = "aggregate"
+        report["trace_file_count"] = len(trace_files)
+        report["aggregate"] = {
+            "mode": "aggregate",
+            "source": "debug_dir_trace_files",
+            "debug_dir": str(debug_dir),
+            "trace_file_count": len(trace_files),
+            "scanned_trace_file_count": len(selected_trace_files),
+            "per_file_event_limit": per_file_limit,
+            "selected_trace_files_tail": [str(path) for path in selected_trace_files[-20:]],
+        }
+        report["trace"] = {
+            "status": "ok" if trace_files else "empty",
+            "trace_path": None,
+            "response_id": None,
+            "debug_enabled": status.get("enabled"),
+            "debug_dir": status.get("dir"),
+            "latest": status.get("latest"),
+        }
+
+    debug_trace = _debug_trace_status()
+    runtime_payload = _debug_runtime_payload_summary()
+    latest_trace = _debug_trace_latest_file_snapshot(trace_files)
+
+    payload_latest_mtime = runtime_payload.get("latest_payload_mtime")
+    trace_latest_mtime = latest_trace.get("mtime")
+    current_runtime_payload_seen = bool(runtime_payload.get("current_runtime_payload_seen"))
+
+    if isinstance(payload_latest_mtime, (int, float)) and isinstance(trace_latest_mtime, (int, float)):
+        trace_stale = payload_latest_mtime > trace_latest_mtime + 1.0
+    else:
+        trace_stale = bool(current_runtime_payload_seen and payload_latest_mtime and not trace_latest_mtime)
+
+    if current_runtime_payload_seen and not bool(debug_trace.get("enabled")):
+        monitor_state = "trace_disabled"
+    elif trace_stale:
+        monitor_state = "trace_stale"
+    elif current_runtime_payload_seen:
+        monitor_state = "trace_current"
+    elif trace_files:
+        monitor_state = "trace_only"
+    else:
+        monitor_state = "no_runtime_data"
+
+    recommendation = report.get("recommendation")
+    if monitor_state == "trace_disabled":
+        recommendation = "trace_disabled_last_payload_fallback"
+    elif monitor_state == "trace_stale":
+        recommendation = "trace_stale_last_payload_fallback"
+
+    report.update(
+        {
+            "selected_trace_file_count": len(selected_trace_files),
+            "debug_trace": debug_trace,
+            "latest_trace": latest_trace,
+            "runtime_payload": runtime_payload,
+            "monitor_state": monitor_state,
+            "trace_stale": trace_stale,
+            "current_runtime_payload_seen": current_runtime_payload_seen,
+            "last_responses_payload_mtime": runtime_payload.get("last_responses_payload_mtime"),
+            "last_responses_payload_size": runtime_payload.get("last_responses_payload_size"),
+            "last_deepseek_payload_mtime": runtime_payload.get("last_deepseek_payload_mtime"),
+            "last_deepseek_payload_size": runtime_payload.get("last_deepseek_payload_size"),
+            "recommendation": recommendation,
+        }
+    )
     return report
 
 

@@ -1623,3 +1623,113 @@ def test_flattened_tool_payload_compaction_non_list_fallback(monkeypatch):
     assert compacted == "not messages"
     assert report["applied"] is False
     assert report["reason"] == "messages_not_list"
+
+
+def test_long_session_report_marks_last_payload_fallback_when_trace_disabled(tmp_path, monkeypatch):
+    import json
+    import os
+    import time
+    from pathlib import Path
+
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPSEEK_PROXY_DEBUG_TRACE", raising=False)
+
+    debug_dir = Path(".debug")
+    trace_dir = debug_dir / "traces"
+    trace_dir.mkdir(parents=True)
+
+    old_trace = trace_dir / "trace-resp_old.jsonl"
+    old_events = [
+        {
+            "ts": 1,
+            "event": "context_budget_breakdown",
+            "response_id": "resp_old",
+            "chat_payload_chars": 270012,
+        },
+        {
+            "ts": 2,
+            "event": "tool_output_trim_applied",
+            "response_id": "resp_old",
+            "applied": True,
+            "enabled": True,
+            "effective_mode": "enabled",
+            "chars_removed": 44822,
+            "trimmed_item_count": 1,
+            "targets": [
+                {
+                    "category": "shell_command",
+                    "tool_name": "exec_command",
+                    "estimated_remove_chars": 44822,
+                }
+            ],
+        },
+        {
+            "ts": 3,
+            "event": "upstream_call_finished",
+            "response_id": "resp_old",
+            "purpose": "primary",
+            "usage": {"prompt_tokens": 12345},
+        },
+    ]
+    old_trace.write_text("\n".join(json.dumps(item) for item in old_events) + "\n", encoding="utf-8")
+    os.utime(old_trace, (1000, 1000))
+
+    responses_payload = {
+        "model": "deepseek-thinking",
+        "input": [
+            {"type": "message", "role": "user", "content": "hello"},
+            {
+                "type": "function_call_output",
+                "call_id": "call_img",
+                "output": {"path": "/tmp/adb_screen2.png"},
+            },
+        ],
+    }
+    deepseek_payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "[tool output trimmed by CoDeepSeedeX]\n"
+                    "call_id: call_img\n"
+                    "tool_name: view_image\n"
+                    "category: image_payload\n"
+                    "original_output_chars: 200000\n"
+                    "original_item_chars: 200000\n"
+                ),
+            }
+        ],
+    }
+
+    payload_time = time.time()
+    (debug_dir / "last_responses_payload.json").write_text(
+        json.dumps(responses_payload),
+        encoding="utf-8",
+    )
+    (debug_dir / "last_deepseek_payload.json").write_text(
+        json.dumps(deepseek_payload),
+        encoding="utf-8",
+    )
+    os.utime(debug_dir / "last_responses_payload.json", (payload_time, payload_time))
+    os.utime(debug_dir / "last_deepseek_payload.json", (payload_time, payload_time))
+
+    report = proxy_app._long_session_observability_report(limit=25, mode="aggregate")
+
+    assert report["status"] == "ok"
+    assert report["monitor_state"] == "trace_disabled"
+    assert report["trace_stale"] is True
+    assert report["current_runtime_payload_seen"] is True
+    assert report["last_responses_payload_size"] is not None
+    assert report["last_deepseek_payload_size"] is not None
+    assert report["runtime_payload"]["last_responses_payload"]["input_item_count"] == 2
+    assert report["runtime_payload"]["last_deepseek_payload"]["messages_count"] == 1
+    marker_summary = report["runtime_payload"]["tool_output_trim_marker_summary"]
+    assert marker_summary["marker_count"] == 1
+    assert marker_summary["image_payload_trim_count"] == 1
+    assert marker_summary["by_category"]["image_payload"] == 1
+    assert report["recommendation"] == "trace_disabled_last_payload_fallback"

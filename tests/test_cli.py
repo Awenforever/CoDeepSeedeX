@@ -1002,3 +1002,58 @@ def test_cli_debug_budget_marks_truncated_tool_output_event(monkeypatch, capsys)
 
     assert data["budget"]["tool_output_budget_truncated"] is True
     assert data["budget"]["tool_output_budget_error"] == "tool_output_budget_event_truncated"
+
+
+def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
+    import deepseek_responses_proxy.cli as cli
+
+    long_session = {
+        "status": "ok",
+        "kind": "runtime_long_session_observability",
+        "trace_event_count": 2019,
+        "response_count": 183,
+        "context_budget": {
+            "latest_chars": 270012,
+            "max_chars": 405107,
+        },
+        "primary_usage": {
+            "latest_prompt_tokens": 12345,
+            "max_prompt_tokens": 20000,
+        },
+        "tool_output_trim": {
+            "event_count": 54,
+            "applied_count": 2,
+            "chars_removed": 44822,
+            "image_payload_trim_count": 0,
+            "by_category": {
+                "shell_command": {"trimmed_item_count": 1},
+                "interactive_shell": {"trimmed_item_count": 1},
+            },
+        },
+        "recommendation": "trace_stale_last_payload_fallback",
+        "monitor_state": "trace_stale",
+        "trace_stale": True,
+        "current_runtime_payload_seen": True,
+        "last_responses_payload_mtime": 1778420320.0,
+        "last_responses_payload_size": 835048,
+        "last_deepseek_payload_mtime": 1778420330.0,
+        "last_deepseek_payload_size": 274166,
+        "runtime_payload": {
+            "tool_output_trim_marker_summary": {
+                "marker_count": 2,
+                "image_payload_trim_count": 2,
+            }
+        },
+    }
+
+    behavioral = cli._debug_behavioral_check_from_long_session(long_session)
+
+    assert behavioral["status"] == "monitor_stale"
+    assert behavioral["recommendation"] == "inspect_current_runtime_payload_or_enable_debug_trace"
+    assert behavioral["assertions"]["trace_current"] is False
+    assert "trace_current" in behavioral["blockers"]
+    assert behavioral["metrics"]["current_runtime_payload_seen"] is True
+    assert behavioral["metrics"]["monitor_state"] == "trace_stale"
+    assert behavioral["metrics"]["last_responses_payload_size"] == 835048
+    assert behavioral["metrics"]["last_deepseek_payload_size"] == 274166
+    assert behavioral["metrics"]["runtime_payload_image_payload_trim_count"] == 2
