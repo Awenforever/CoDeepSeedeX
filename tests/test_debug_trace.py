@@ -334,6 +334,78 @@ def test_long_session_observability_summarizes_tool_output_trim_events():
     assert report["recommendation"] == "monitor_limited_enabled_session"
 
 
+def test_long_session_observability_behavioral_validation_preserves_development_continuity_signals():
+    events = [
+        {
+            "event": "context_budget_breakdown",
+            "chat_payload_chars": 180000,
+            "message_count": 42,
+        },
+        {
+            "event": "tool_output_trim_applied",
+            "mode": "dry_run",
+            "effective_mode": "dry_run",
+            "enabled": False,
+            "applied": False,
+            "reason": "trim_mode_not_enabled",
+            "trimmed_item_count": 0,
+            "chars_removed": 0,
+            "targets": [],
+        },
+        {
+            "event": "tool_output_trim_applied",
+            "mode": "enabled",
+            "effective_mode": "enabled",
+            "enabled": True,
+            "applied": True,
+            "reason": "enabled",
+            "trimmed_item_count": 2,
+            "chars_removed": 66000,
+            "targets": [
+                {
+                    "category": "shell_command",
+                    "tool_name": "exec_command",
+                    "estimated_remove_chars": 42000,
+                },
+                {
+                    "category": "interactive_shell",
+                    "tool_name": "feed_chars",
+                    "estimated_remove_chars": 24000,
+                },
+            ],
+        },
+        {
+            "event": "upstream_call_finished",
+            "purpose": "primary",
+            "usage": {"prompt_tokens": 92000},
+        },
+        {
+            "event": "context_budget_breakdown",
+            "chat_payload_chars": 260000,
+            "message_count": 58,
+        },
+    ]
+
+    report = proxy_app._long_session_observability_from_events(events, limit=200)
+
+    assert report["status"] == "ok"
+    assert report["kind"] == "runtime_long_session_observability"
+    assert report["trace_event_count"] == 5
+    assert report["context_budget"]["event_count"] == 2
+    assert report["context_budget"]["latest_chars"] == 260000
+    assert report["context_budget"]["max_chars"] == 260000
+    assert report["context_budget"]["growth_chars"] == 80000
+    assert report["primary_usage"]["latest_prompt_tokens"] == 92000
+    assert report["tool_output_trim"]["event_count"] == 2
+    assert report["tool_output_trim"]["enabled_event_count"] == 1
+    assert report["tool_output_trim"]["applied_count"] == 1
+    assert report["tool_output_trim"]["chars_removed"] == 66000
+    assert report["tool_output_trim"]["trimmed_item_count"] == 2
+    assert report["tool_output_trim"]["by_category"]["shell_command"]["trimmed_item_count"] == 1
+    assert report["tool_output_trim"]["by_category"]["interactive_shell"]["trimmed_item_count"] == 1
+    assert report["recommendation"] == "monitor_limited_enabled_session"
+
+
 def test_long_session_observability_recommends_fixing_canary_when_blocked():
     events = [
         {"event": "context_budget_breakdown", "chat_payload_chars": 1000},
