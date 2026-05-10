@@ -621,3 +621,132 @@ def test_user_tool_control_policy_combination_regressions():
     )
     assert classify_en["user_signal"] == "quoted_or_meta_stop_discussion"
     assert classify_en["decision_if_enabled"] == "allow_tools"
+
+
+def test_user_tool_control_enabled_turn_control_removes_tools(monkeypatch):
+    from deepseek_responses_proxy.app import (
+        _apply_user_tool_control_policy_to_tools,
+        _build_user_tool_control_policy_report,
+    )
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    report = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "不要继续执行命令，先解释原因。"}],
+        shell_tool,
+    )
+    effective_tools, applied = _apply_user_tool_control_policy_to_tools(report, shell_tool)
+
+    assert effective_tools is None
+    assert applied["active"] is True
+    assert applied["policy_applied"] is True
+    assert applied["effective_mode"] == "enabled"
+    assert applied["tools_removed_from_upstream"] == ["shell"]
+    assert applied["effective_tool_names"] == []
+
+
+def test_user_tool_control_dry_run_does_not_remove_tools(monkeypatch):
+    from deepseek_responses_proxy.app import (
+        _apply_user_tool_control_policy_to_tools,
+        _build_user_tool_control_policy_report,
+    )
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
+    report = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "不要继续执行命令，先解释原因。"}],
+        shell_tool,
+    )
+    effective_tools, applied = _apply_user_tool_control_policy_to_tools(report, shell_tool)
+
+    assert effective_tools == shell_tool
+    assert applied["active"] is False
+    assert applied["policy_applied"] is False
+    assert applied["policy_is_dry_run_only"] is True
+    assert applied["tools_removed_from_upstream"] == []
+
+
+def test_user_tool_control_enabled_split_turn_removes_tools(monkeypatch):
+    from deepseek_responses_proxy.app import (
+        _apply_user_tool_control_policy_to_tools,
+        _build_user_tool_control_policy_report,
+    )
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    report = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "先解释原因，然后继续执行测试。"}],
+        shell_tool,
+    )
+    effective_tools, applied = _apply_user_tool_control_policy_to_tools(report, shell_tool)
+
+    assert report["user_signal"] == "ordered_explain_then_continue"
+    assert report["decision_if_enabled"] == "split_turn_required"
+    assert effective_tools is None
+    assert applied["active"] is True
+    assert applied["tools_removed_from_upstream"] == ["shell"]
+
+
+def test_user_tool_control_enabled_ambiguous_stop_does_not_remove_tools(monkeypatch):
+    from deepseek_responses_proxy.app import (
+        _apply_user_tool_control_policy_to_tools,
+        _build_user_tool_control_policy_report,
+    )
+
+    proxy_status_tool = [{"type": "function", "function": {"name": "proxy_status", "parameters": {}}}]
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    report = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "停一下。"}],
+        proxy_status_tool,
+    )
+    effective_tools, applied = _apply_user_tool_control_policy_to_tools(report, proxy_status_tool)
+
+    assert report["user_signal"] == "ambiguous_stop"
+    assert report["decision_if_enabled"] == "observe_only"
+    assert effective_tools == proxy_status_tool
+    assert applied["active"] is False
+    assert applied["policy_applied"] is False
+
+
+def test_user_tool_control_suppressed_response_replaces_tool_call():
+    from deepseek_responses_proxy.app import _user_tool_control_suppressed_deepseek_response
+
+    response = {
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "proxy_time", "arguments": "{}"},
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ]
+    }
+    report = {
+        "user_signal": "explicit_tool_stop",
+        "decision_if_enabled": "would_suppress_tools",
+    }
+    suppressed = _user_tool_control_suppressed_deepseek_response(
+        response,
+        report,
+        response["choices"][0]["message"]["tool_calls"],
+    )
+
+    message = suppressed["choices"][0]["message"]
+    assert message["role"] == "assistant"
+    assert "No tool calls were run" in message["content"]
+    assert "proxy_time" in message["content"]
+    assert "tool_calls" not in message
+    assert suppressed["choices"][0]["finish_reason"] == "stop"

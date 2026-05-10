@@ -8010,9 +8010,11 @@ def _build_user_tool_control_policy_report(input_value: Any, tools: Any) -> dict
     return {
         "version": PROXY_VERSION,
         "mode": config["mode"],
+        "effective_mode": config["mode"],
         "enabled": bool(config["enabled"]),
         "active": False,
         "policy_is_dry_run_only": config["mode"] == "dry_run",
+        "policy_applied": False,
         "user_signal": user_signal,
         "decision_if_enabled": decision_if_enabled,
         "latest_user_text_present": bool(text.strip()),
@@ -8020,11 +8022,18 @@ def _build_user_tool_control_policy_report(input_value: Any, tools: Any) -> dict
         "matched_signals": signal.get("matched_signals", []),
         "negative_evidence": signal.get("negative_evidence", []),
         "tool_names": tool_names,
+        "original_tool_names": tool_names,
+        "effective_tool_names": tool_names,
         "tool_risks": tool_risks,
         "max_tool_risk": max_tool_risk,
+        "tools_removed_from_upstream": [],
+        "liveness_retry_suppressed": False,
+        "tool_calls_suppressed_post_upstream": [],
+        "suppression_message_emitted": False,
         "notes": [
             "dry_run_does_not_change_tools_or_tool_execution",
             "R3 means destructive or overwrite capability, not every visible side effect",
+            "enabled turn-control currently applies only to explicit stop, answer-only, and split-turn sequencing",
         ],
     }
 
@@ -8040,6 +8049,146 @@ def _write_user_tool_control_policy_report(report: dict[str, Any]) -> None:
     except Exception as exc:
         print(f"[deepseek-responses-proxy] failed to write user tool control policy report: {exc}")
 
+
+def _user_tool_control_turn_control_decisions() -> set[str]:
+    return {
+        "would_suppress_tools",
+        "split_turn_required",
+    }
+
+
+def _user_tool_control_policy_enabled(report: dict[str, Any] | None) -> bool:
+    if not isinstance(report, dict):
+        return False
+    return str(report.get("mode") or "").strip().lower() == "enabled"
+
+
+def _user_tool_control_should_apply_turn_control(report: dict[str, Any] | None) -> bool:
+    if not _user_tool_control_policy_enabled(report):
+        return False
+    decision = str((report or {}).get("decision_if_enabled") or "")
+    return decision in _user_tool_control_turn_control_decisions()
+
+
+def _apply_user_tool_control_policy_to_tools(
+    report: dict[str, Any],
+    tools: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]] | None, dict[str, Any]]:
+    effective_report = deepcopy(report)
+    original_tool_names = _tool_function_names_for_policy(tools)
+    effective_tools = tools
+    effective_tool_names = original_tool_names
+    tools_removed: list[str] = []
+    applied = False
+
+    if _user_tool_control_should_apply_turn_control(effective_report):
+        effective_tools = None
+        effective_tool_names = []
+        tools_removed = original_tool_names
+        applied = True
+
+    effective_report.update(
+        {
+            "effective_mode": str(effective_report.get("mode") or "dry_run"),
+            "active": bool(applied),
+            "policy_applied": bool(applied),
+            "original_tool_names": original_tool_names,
+            "effective_tool_names": effective_tool_names,
+            "tools_removed_from_upstream": tools_removed,
+            "tool_names": original_tool_names,
+            "policy_is_dry_run_only": str(effective_report.get("mode") or "") == "dry_run",
+        }
+    )
+    if applied:
+        notes = list(effective_report.get("notes") or [])
+        notes.append("enabled_turn_control_removed_tools_from_upstream_payload")
+        effective_report["notes"] = notes
+
+    return effective_tools, effective_report
+
+
+def _user_tool_control_should_suppress_liveness_retry(
+    report: dict[str, Any] | None,
+) -> bool:
+    return _user_tool_control_should_apply_turn_control(report)
+
+
+def _user_tool_control_should_suppress_post_upstream_tool_calls(
+    report: dict[str, Any] | None,
+) -> bool:
+    return _user_tool_control_should_apply_turn_control(report)
+
+
+def _user_tool_control_suppressed_assistant_content(
+    report: dict[str, Any] | None,
+    tool_names: list[str],
+) -> str:
+    signal = str((report or {}).get("user_signal") or "")
+    decision = str((report or {}).get("decision_if_enabled") or "")
+    tool_part = ", ".join(name for name in tool_names if name) or "tool_call"
+
+    if signal == "explicit_tool_stop":
+        return (
+            "Tool execution was paused for this turn because the latest user message "
+            "asked not to continue tool or command execution. No tool calls were run. "
+            f"Suppressed tool calls: {tool_part}."
+        )
+    if signal == "answer_or_explain_only":
+        return (
+            "Tool execution was paused for this turn because the latest user message "
+            "asked for an answer or explanation first. No tool calls were run. "
+            f"Suppressed tool calls: {tool_part}."
+        )
+    if signal == "ordered_explain_then_continue" or decision == "split_turn_required":
+        return (
+            "Tool execution was paused for this turn because the latest user message "
+            "asked for an explanation before continuing. This requires a split turn: "
+            "answer or explain first, then run tools only after the user continues. "
+            f"Suppressed tool calls: {tool_part}."
+        )
+    return (
+        "Tool execution was paused for this turn by the user tool-control policy. "
+        f"No tool calls were run. Suppressed tool calls: {tool_part}."
+    )
+
+
+def _user_tool_control_suppressed_deepseek_response(
+    deepseek_response: dict[str, Any],
+    report: dict[str, Any] | None,
+    tool_calls: list[dict[str, Any]],
+) -> dict[str, Any]:
+    suppressed_response = deepcopy(deepseek_response)
+    tool_names: list[str] = []
+    for tool_call in tool_calls:
+        if isinstance(tool_call, dict):
+            function = tool_call.get("function") or {}
+            if isinstance(function, dict):
+                tool_names.append(str(function.get("name") or ""))
+
+    choices = suppressed_response.get("choices") or []
+    if not choices:
+        suppressed_response["choices"] = [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": _user_tool_control_suppressed_assistant_content(report, tool_names),
+                },
+                "finish_reason": "stop",
+            }
+        ]
+        return suppressed_response
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        first_choice = {}
+        choices[0] = first_choice
+    first_choice["message"] = {
+        "role": "assistant",
+        "content": _user_tool_control_suppressed_assistant_content(report, tool_names),
+    }
+    first_choice["finish_reason"] = "stop"
+    return suppressed_response
 
 def _assistant_message_is_tool_pause_or_explanation_intent(
     assistant_message: dict[str, Any],
@@ -8585,6 +8734,7 @@ async def _run_chat_with_tool_bridge(
     response_id: str | None = None,
     previous_response_id: str | None = None,
     usage_call_counter: dict[str, int] | None = None,
+    user_tool_control_policy_report: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     deepseek_response = await _chat_completions_with_usage(
         deepseek_client=deepseek_client,
@@ -8617,7 +8767,17 @@ async def _run_chat_with_tool_bridge(
         "tools_available": bool(deepseek_tools),
         "guard_reason": "not_triggered",
         "retry_attempts": [],
+        "user_tool_control_liveness_retry_suppressed": False,
     }
+    tool_control_liveness_suppressed = _user_tool_control_should_suppress_liveness_retry(
+        user_tool_control_policy_report
+    )
+    if tool_control_liveness_suppressed:
+        liveness_report["user_tool_control_liveness_retry_suppressed"] = True
+        liveness_report["guard_reason"] = "user_tool_control_policy_suppressed_liveness_retry"
+        if isinstance(user_tool_control_policy_report, dict):
+            user_tool_control_policy_report["liveness_retry_suppressed"] = True
+            _write_user_tool_control_policy_report(user_tool_control_policy_report)
 
     for round_index in range(max_rounds):
         choices = deepseek_response.get("choices") or []
@@ -8634,6 +8794,7 @@ async def _run_chat_with_tool_bridge(
         while (
             not tool_calls
             and bool(liveness_config["enabled"])
+            and not tool_control_liveness_suppressed
             and int(liveness_report["retry_count"]) < int(liveness_config["max_retries"])
         ):
             heuristic_triggered = _assistant_message_needs_liveness_guard(
@@ -8801,6 +8962,34 @@ async def _run_chat_with_tool_bridge(
 
             _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
+
+        if _user_tool_control_should_suppress_post_upstream_tool_calls(
+            user_tool_control_policy_report
+        ):
+            suppressed_tool_names: list[str] = []
+            if isinstance(tool_calls, list):
+                for tool_call in tool_calls:
+                    if isinstance(tool_call, dict):
+                        function = tool_call.get("function") or {}
+                        if isinstance(function, dict):
+                            suppressed_tool_names.append(str(function.get("name") or ""))
+            if isinstance(user_tool_control_policy_report, dict):
+                user_tool_control_policy_report["tool_calls_suppressed_post_upstream"] = suppressed_tool_names
+                user_tool_control_policy_report["suppression_message_emitted"] = True
+                _write_user_tool_control_policy_report(user_tool_control_policy_report)
+            liveness_report["guard_reason"] = "user_tool_control_policy_suppressed_tool_calls"
+            liveness_report["final_has_tool_calls"] = False
+            liveness_report["suppressed_tool_call_count"] = len(tool_calls) if isinstance(tool_calls, list) else 0
+            liveness_report["suppressed_tool_names"] = suppressed_tool_names
+            _write_agent_liveness_guard_report(liveness_report)
+            return (
+                _user_tool_control_suppressed_deepseek_response(
+                    deepseek_response,
+                    user_tool_control_policy_report,
+                    tool_calls,
+                ),
+                history_messages,
+            )
 
         if not all(_is_proxy_tool_call(tool_call) for tool_call in tool_calls):
             _write_agent_liveness_guard_report(liveness_report)
@@ -9796,14 +9985,19 @@ def create_app(
             messages = []
 
         input_value = payload.get("input")
+        original_deepseek_tools = deepseek_tools
         user_tool_control_policy_report = _build_user_tool_control_policy_report(
             input_value,
-            deepseek_tools,
+            original_deepseek_tools,
+        )
+        deepseek_tools, user_tool_control_policy_report = _apply_user_tool_control_policy_to_tools(
+            user_tool_control_policy_report,
+            original_deepseek_tools,
         )
         _write_user_tool_control_policy_report(user_tool_control_policy_report)
         _debug_trace_event(
             response_id,
-            "user_tool_control_policy_dry_run",
+            "user_tool_control_policy_applied",
             **user_tool_control_policy_report,
         )
 
@@ -9985,6 +10179,7 @@ def create_app(
                 response_id=response_id,
                 previous_response_id=previous_response_id,
                 usage_call_counter=usage_call_counter,
+                user_tool_control_policy_report=user_tool_control_policy_report,
             )
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc

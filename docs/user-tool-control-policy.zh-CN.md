@@ -363,3 +363,46 @@ If I say "do not run commands", how would you classify it?
 ```
 
 这些规则只修正分类，不启用真实工具拦截。
+
+
+## 11.P1b enabled turn-control实现边界
+
+P1b第一版enabled只启用turn-control，不启用命令级危险审计。
+
+启用方式：
+
+```text
+DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE=enabled
+```
+
+实际生效的decision：
+
+```text
+would_suppress_tools
+split_turn_required
+```
+
+生效行为：
+
+```text
+1.本轮传给上游的tools被移除。
+2.本轮liveness retry被抑制。
+3.如果上游仍返回tool_call，proxy不会执行工具，而是返回最终assistant说明消息。
+```
+
+暂不生效的decision：
+
+```text
+observe_only
+would_require_confirmation
+allow_tools
+```
+
+暂不处理：
+
+```text
+delete/overwrite命令级审计
+shell参数级危险命令识别
+ambiguous_stop真实拦截
+ambiguous_answer_first真实拦截
+```
