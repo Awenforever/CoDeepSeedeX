@@ -750,3 +750,36 @@ def test_user_tool_control_suppressed_response_replaces_tool_call():
     assert "proxy_time" in message["content"]
     assert "tool_calls" not in message
     assert suppressed["choices"][0]["finish_reason"] == "stop"
+
+
+def test_user_tool_control_enabled_removes_auto_injected_tools_too(monkeypatch):
+    from deepseek_responses_proxy.app import (
+        _apply_user_tool_control_policy_to_tools,
+        _build_user_tool_control_policy_report,
+    )
+
+    tools = [
+        {"type": "function", "function": {"name": "shell", "parameters": {}}},
+        {"type": "function", "function": {"name": "proxy_echo", "parameters": {}}},
+        {"type": "function", "function": {"name": "proxy_time", "parameters": {}}},
+    ]
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    report = _build_user_tool_control_policy_report(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "不要继续执行命令，先解释原因。",
+            }
+        ],
+        tools,
+    )
+    effective_tools, applied = _apply_user_tool_control_policy_to_tools(report, tools)
+
+    assert effective_tools is None
+    assert applied["active"] is True
+    assert applied["policy_applied"] is True
+    assert applied["original_tool_names"] == ["shell", "proxy_echo", "proxy_time"]
+    assert applied["tools_removed_from_upstream"] == ["shell", "proxy_echo", "proxy_time"]
+    assert applied["effective_tool_names"] == []

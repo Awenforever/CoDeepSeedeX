@@ -406,3 +406,34 @@ shell参数级危险命令识别
 ambiguous_stop真实拦截
 ambiguous_answer_first真实拦截
 ```
+
+
+## 12.自动注入工具的移除语义
+
+P1b enabled turn-control中的`tools_removed_from_upstream`表示本轮实际从上游payload移除的全部工具，而不只表示用户请求中显式提供的工具。
+
+例如用户请求里只显式提供`shell`，但proxy在运行时还自动追加`proxy_echo`和`proxy_time`，那么在以下信号触发时：
+
+```text
+explicit_tool_stop
+answer_or_explain_only
+ordered_explain_then_continue
+```
+
+实际移除结果应为：
+
+```text
+tools_removed_from_upstream=["shell","proxy_echo","proxy_time"]
+effective_tool_names=[]
+```
+
+这是预期行为。原因是用户要求“不要继续调用工具”或“先解释”时，本轮应移除所有可用工具，包括proxy自动注入的只读辅助工具。否则模型仍可能通过自动注入工具进入tool path，违背turn-control边界。
+
+非拦截路径不应移除这些自动注入工具。例如：
+
+```text
+ambiguous_stop → observe_only
+quoted_or_meta_stop_discussion → allow_tools
+```
+
+这类场景下，`effective_tool_names`可以同时包含用户请求工具和`proxy_echo`、`proxy_time`。
