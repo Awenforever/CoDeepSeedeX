@@ -520,6 +520,29 @@ def test_tool_output_image_payload_enabled_trims_copy(monkeypatch):
     assert report["targets"][0]["category"] == "image_payload"
 
 
+
+def test_tool_output_trimming_can_classify_before_previous_response_filter(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+
+    image_output = "IMAGE-BEGIN\\n" + ("abcdef" * 6000) + "\\nIMAGE-END"
+    input_items = [
+        {"type": "function_call", "call_id": "call_image", "name": "view_image", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_image", "output": image_output},
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+    filtered = [item for item in trimmed if item.get("type") != "function_call"]
+
+    assert report["applied"] is True
+    assert report["targets"][0]["category"] == "image_payload"
+    assert report["targets"][0]["tool_name"] == "view_image"
+    assert len(filtered) == 1
+    assert filtered[0]["type"] == "function_call_output"
+    assert "[tool output trimmed by CoDeepSeedeX]" in filtered[0]["output"]
+    assert "category: image_payload" in filtered[0]["output"]
+
+
 def test_tool_output_image_policy_does_not_affect_shell_below_shell_policy(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")

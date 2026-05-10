@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a22-tool-output-trim-runtime-observability"
+PROXY_VERSION = "v2.7a24-trim-before-function-call-filter"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -8802,10 +8802,13 @@ def create_app(
 
         input_value = payload.get("input")
 
-        # When previous_response_id is present, stored.chat_messages already
-        # contains the assistant message with tool_calls from the previous
-        # response. Codex may still include function_call items in the new
-        # input; passing them through again would duplicate assistant tool_calls.
+        # Trim tool outputs before removing function_call items. In
+        # previous_response_id turns, Codex may send both function_call and
+        # function_call_output items. The function_call item must not be
+        # converted into another assistant tool-call message, but its name is
+        # still needed to classify the matching output, for example view_image
+        # as image_payload.
+        input_value, tool_output_trim_report = _apply_tool_output_safe_trimming(input_value)
         if previous_response_id and isinstance(input_value, list):
             input_value = [
                 item
@@ -8813,7 +8816,6 @@ def create_app(
                 if item.get("type") != "function_call"
             ]
 
-        input_value, tool_output_trim_report = _apply_tool_output_safe_trimming(input_value)
         _debug_trace_event(
             response_id,
             "tool_output_trim_applied",
