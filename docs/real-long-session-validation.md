@@ -49,6 +49,17 @@ A passing real long-session smoke should show:
 - Codex preserved branch, working tree state, version, pytest result, behavioral status, trim count, and removed character count.
 - The repository remained clean after the run.
 
+## Guarded smoke script
+
+Use the checked-in smoke runner instead of copying a long inline command:
+
+```bash
+scripts/real-long-session-behavioral-smoke.sh --dry-run
+scripts/real-long-session-behavioral-smoke.sh --allow-bypass
+```
+
+The real run refuses to execute unless `--allow-bypass` is provided.
+
 ## Safety note
 
 The bypass mode is intentionally powerful:

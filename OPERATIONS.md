@@ -622,7 +622,7 @@ This only forwards tool schemas to DeepSeek and restores namespace-aware functio
 
 For controlled real Codex long-session validation, see `docs/real-long-session-validation.md`.
 
-Important boundary: Codex `workspace-write` sandbox may not be able to reach the host WSL listener at `127.0.0.1:8001`. A `blocked` result from inside sandbox can therefore be a sandbox-network boundary, not a proxy failure. The successful v2.7a31 real smoke required `codex exec --dangerously-bypass-approvals-and-sandbox` with a read-only validation prompt.
+Important boundary: Codex `workspace-write` sandbox may not be able to reach the host WSL listener at `127.0.0.1:8001`. A `blocked` result from inside sandbox can therefore be a sandbox-network boundary, not a proxy failure. The successful v2.7a31 real smoke required `codex exec --dangerously-bypass-approvals-and-sandbox` with a read-only validation prompt. Use `scripts/real-long-session-behavioral-smoke.sh --dry-run` first, then `scripts/real-long-session-behavioral-smoke.sh --allow-bypass` for the guarded real run.
 
 ## Runtime long-session observability
 
