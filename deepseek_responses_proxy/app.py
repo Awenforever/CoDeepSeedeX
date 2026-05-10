@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a24-trim-before-function-call-filter"
+PROXY_VERSION = "v2.7a25-tool-output-trim-skip-observability"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1905,6 +1905,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
         "chars_after": _debug_trace_json_chars(input_value),
         "chars_removed": 0,
         "targets": [],
+        "skipped_outputs": [],
         "error": None,
     }
 
@@ -1935,6 +1936,8 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
             }
 
         targets: list[dict[str, Any]] = []
+        skipped_outputs: list[dict[str, Any]] = []
+        skip_trace_limit = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_SKIP_TRACE_TARGETS", 8))
         chars_before = _debug_trace_json_chars(trimmed_input)
 
         for index, item in enumerate(trimmed_input):
@@ -1946,17 +1949,47 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
             report["function_call_output_count"] = int(report["function_call_output_count"]) + 1
 
             output = item.get("output")
-            if not isinstance(output, str):
-                continue
-
             call_id = str(item.get("call_id") or "")
             call_info = calls_by_id.get(call_id) or {}
             tool_name = str(call_info.get("tool_name") or "unknown")
             category = _classify_tool_output_category(tool_name)
             policy = _tool_output_category_policy(category)
             original_item_chars = _debug_trace_json_chars(item)
+            output_chars = _debug_trace_json_chars(output)
+
+            if not isinstance(output, str):
+                if len(skipped_outputs) < skip_trace_limit:
+                    skipped_outputs.append(
+                        {
+                            "index": index,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "category": category,
+                            "skip_reason": "output_not_string",
+                            "output_type": type(output).__name__,
+                            "item_chars": original_item_chars,
+                            "output_chars": output_chars,
+                            "policy_max_item_chars": int(policy["max_item_chars"]),
+                            "has_matching_function_call": bool(call_info),
+                        }
+                    )
+                continue
 
             if original_item_chars <= int(policy["max_item_chars"]):
+                if len(skipped_outputs) < skip_trace_limit:
+                    skipped_outputs.append(
+                        {
+                            "index": index,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "category": category,
+                            "skip_reason": "item_not_over_policy_max",
+                            "item_chars": original_item_chars,
+                            "output_chars": output_chars,
+                            "policy_max_item_chars": int(policy["max_item_chars"]),
+                            "has_matching_function_call": bool(call_info),
+                        }
+                    )
                 continue
 
             trimmed_output = _format_trimmed_tool_output_text(
@@ -1968,6 +2001,20 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                 original_item_chars=original_item_chars,
             )
             if trimmed_output == output:
+                if len(skipped_outputs) < skip_trace_limit:
+                    skipped_outputs.append(
+                        {
+                            "index": index,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "category": category,
+                            "skip_reason": "trimmed_output_equal_original",
+                            "item_chars": original_item_chars,
+                            "output_chars": output_chars,
+                            "policy_max_item_chars": int(policy["max_item_chars"]),
+                            "has_matching_function_call": bool(call_info),
+                        }
+                    )
                 continue
 
             original_output_chars = len(output)
@@ -1976,6 +2023,21 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
             removed_chars = max(0, original_item_chars - trimmed_item_chars)
             if removed_chars <= 0:
                 item["output"] = output
+                if len(skipped_outputs) < skip_trace_limit:
+                    skipped_outputs.append(
+                        {
+                            "index": index,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "category": category,
+                            "skip_reason": "trimmed_item_not_smaller",
+                            "item_chars": original_item_chars,
+                            "output_chars": output_chars,
+                            "trimmed_item_chars": trimmed_item_chars,
+                            "policy_max_item_chars": int(policy["max_item_chars"]),
+                            "has_matching_function_call": bool(call_info),
+                        }
+                    )
                 continue
 
             targets.append(
@@ -2001,6 +2063,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
         if not targets or chars_removed <= 0:
             report["reason"] = "no_outputs_exceeded_policy"
             report["chars_after"] = chars_after
+            report["skipped_outputs"] = skipped_outputs
             return input_value, report
 
         trace_target_limit = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_APPLIED_TRACE_TARGETS", 5))
@@ -2014,6 +2077,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                 "chars_after": chars_after,
                 "chars_removed": chars_removed,
                 "targets": _compact_tool_output_targets_for_trace(targets, max_items=trace_target_limit),
+                "skipped_outputs": skipped_outputs,
             }
         )
         return trimmed_input, report
@@ -2025,6 +2089,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
         report["chars_after"] = report["chars_before"]
         report["chars_removed"] = 0
         report["targets"] = []
+        report["skipped_outputs"] = []
         return input_value, report
 
 

@@ -521,6 +521,37 @@ def test_tool_output_image_payload_enabled_trims_copy(monkeypatch):
 
 
 
+
+def test_tool_output_trimming_reports_skip_reason_for_structured_output(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+
+    input_items = [
+        {
+            "type": "function_call",
+            "call_id": "call_image",
+            "name": "view_image",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_image",
+            "output": {"image": "X" * 34085},
+        },
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+
+    assert trimmed is input_items
+    assert report["applied"] is False
+    assert report["reason"] == "no_outputs_exceeded_policy"
+    assert report["skipped_outputs"][0]["tool_name"] == "view_image"
+    assert report["skipped_outputs"][0]["category"] == "image_payload"
+    assert report["skipped_outputs"][0]["skip_reason"] == "output_not_string"
+    assert report["skipped_outputs"][0]["output_type"] == "dict"
+    assert report["skipped_outputs"][0]["has_matching_function_call"] is True
+
+
 def test_tool_output_trimming_can_classify_before_previous_response_filter(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
