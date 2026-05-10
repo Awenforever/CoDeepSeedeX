@@ -342,3 +342,24 @@ ambiguous_answer_first → require_confirmation
 ```
 
 `split_turn_required`不是拒绝执行后续任务，而是把执行拆到下一轮。原因是同一轮工具调用通常发生在最终回复前，用户无法先看到解释再让工具执行。拆成两轮才能严格满足“先解释，然后执行”的顺序语义。
+
+
+## 10.组合审计修正记录
+
+关键词组合审计发现两类边界问题：
+
+```text
+先解释，再处理目标测试
+日志里出现“不要调用工具”是什么意思
+What does "do not use tools" mean?
+If I say "do not run commands", how would you classify it?
+```
+
+修正规则：
+
+```text
+“再处理”应视为有序后续动作，不应默认归为ambiguous_answer_first。
+引用、日志、字段、句子解释、what does、if I say等元讨论语境，应优先归为quoted_or_meta_stop_discussion。
+```
+
+这些规则只修正分类，不启用真实工具拦截。

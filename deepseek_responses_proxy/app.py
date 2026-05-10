@@ -7588,12 +7588,14 @@ def _text_looks_like_meta_or_quoted_instruction(text: str) -> bool:
         "这句话",
         "这段话",
         "日志里",
+        "日志中",
         "代码里",
         "字段",
         "字符串",
         "引用",
         "解释这句",
         "是什么意思",
+        "出现",
         "what does",
         "if i say",
         "suppose the user says",
@@ -7604,25 +7606,42 @@ def _text_looks_like_meta_or_quoted_instruction(text: str) -> bool:
         "quoted",
         "quote",
         "means",
+        "how would you classify",
     ]
     quote_markers = ["“", "”", "\"", "'", "`"]
-    has_stop_like_text = any(
-        marker in normalized
-        for marker in [
-            "不要继续",
-            "不要执行",
-            "暂停",
-            "stop",
-            "do not continue",
-            "don't continue",
-            "no more tools",
-            "don't use tools",
-        ]
-    )
-    return has_stop_like_text and (
-        any(marker in normalized for marker in meta_markers)
-        or sum(text.count(marker) for marker in quote_markers) >= 2
-    )
+    stop_like_markers = [
+        "不要继续",
+        "不要执行",
+        "不要调用",
+        "不要调用工具",
+        "不要使用工具",
+        "别调用工具",
+        "暂停",
+        "stop",
+        "do not continue",
+        "don't continue",
+        "dont continue",
+        "no more tools",
+        "no more tool",
+        "do not use tools",
+        "don't use tools",
+        "dont use tools",
+        "do not run commands",
+        "don't run commands",
+        "dont run commands",
+        "do not execute commands",
+        "don't execute commands",
+        "dont execute commands",
+        "do not run",
+        "don't run",
+        "dont run",
+    ]
+
+    has_stop_like_text = any(marker in normalized for marker in stop_like_markers)
+    has_meta_context = any(marker in normalized for marker in meta_markers)
+    has_quote_context = sum(text.count(marker) for marker in quote_markers) >= 2
+
+    return has_stop_like_text and (has_meta_context or has_quote_context)
 
 
 def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
@@ -7792,7 +7811,6 @@ def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
     ambiguous_sequence_markers = [
         "看情况",
         "再说",
-        "再处理",
         "看一下再",
         "then maybe",
         "maybe then",

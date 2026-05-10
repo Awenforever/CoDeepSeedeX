@@ -587,3 +587,37 @@ def test_user_tool_control_policy_answer_first_sequencing():
     )
     assert ambiguous["user_signal"] == "ambiguous_answer_first"
     assert ambiguous["decision_if_enabled"] == "would_require_confirmation"
+
+
+def test_user_tool_control_policy_combination_regressions():
+    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+
+    ordered = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "先解释，再处理目标测试。"}],
+        shell_tool,
+    )
+    assert ordered["user_signal"] == "ordered_explain_then_continue"
+    assert ordered["decision_if_enabled"] == "split_turn_required"
+
+    quoted_cn = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "日志里出现“不要调用工具”是什么意思。"}],
+        shell_tool,
+    )
+    assert quoted_cn["user_signal"] == "quoted_or_meta_stop_discussion"
+    assert quoted_cn["decision_if_enabled"] == "allow_tools"
+
+    quoted_en = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "What does \"do not use tools\" mean?"}],
+        shell_tool,
+    )
+    assert quoted_en["user_signal"] == "quoted_or_meta_stop_discussion"
+    assert quoted_en["decision_if_enabled"] == "allow_tools"
+
+    classify_en = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "If I say \"do not run commands\", how would you classify it?"}],
+        shell_tool,
+    )
+    assert classify_en["user_signal"] == "quoted_or_meta_stop_discussion"
+    assert classify_en["decision_if_enabled"] == "allow_tools"
