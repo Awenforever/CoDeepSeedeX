@@ -618,6 +618,12 @@ This only forwards tool schemas to DeepSeek and restores namespace-aware functio
 
 
 
+## Real long-session behavioral validation
+
+For controlled real Codex long-session validation, see `docs/real-long-session-validation.md`.
+
+Important boundary: Codex `workspace-write` sandbox may not be able to reach the host WSL listener at `127.0.0.1:8001`. A `blocked` result from inside sandbox can therefore be a sandbox-network boundary, not a proxy failure. The successful v2.7a31 real smoke required `codex exec --dangerously-bypass-approvals-and-sandbox` with a read-only validation prompt.
+
 ## Runtime long-session observability
 
 `debug long-session` is a read-only view over recent debug-trace events. It does not call the upstream model, does not write SQLite, and does not mutate payloads. By default it uses aggregate mode and scans recent `trace-*.jsonl` files from the active debug directory.
