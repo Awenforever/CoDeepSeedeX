@@ -108,6 +108,8 @@ Continue a previous Codex conversation:
 
     codex --profile deepseek-thinking resume
 
+Thinking limited rollout: `dsproxy start --thinking` defaults tool-output trimming to `enabled` and caps image payload tool outputs at 12000 chars. Stable startup remains unchanged.
+
 ## 🧠 deepseek vs deepseek-thinking
 
 The difference is simple:

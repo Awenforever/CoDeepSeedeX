@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 
+import deepseek_responses_proxy.cli as cli_module
 from deepseek_responses_proxy.cli import default_config_path, main
 
 
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a26-structured-tool-output-trimming" in out
+    assert "v2.7a28-rollout-safety-and-doc-finalization" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -45,7 +46,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a26-structured-tool-output-trimming")
+    assert data["proxy_version"].startswith("v2.7a28-rollout-safety-and-doc-finalization")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -60,6 +61,95 @@ def test_cli_logs_reads_tail(tmp_path, capsys):
     out = capsys.readouterr().out.strip().splitlines()
     assert out == ["b", "c"]
 
+
+
+
+def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_path):
+    captured = {}
+    process_started = {"value": False}
+
+    class FakeProcess:
+        pid = 12345
+
+        def poll(self):
+            return None
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
+    def fake_tcp_port_open(host, port):
+        return process_started["value"]
+
+    monkeypatch.setattr("deepseek_responses_proxy.cli._tcp_port_open", fake_tcp_port_open)
+
+    def fake_healthz_for_port(port, *, timeout=1.0):
+        if not process_started["value"]:
+            return None, None, "connection_refused"
+        return 200, {
+            "status": "ok",
+            "version": "v2.7a28-rollout-safety-and-doc-finalization",
+        }, None
+
+    monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
+
+    def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
+        process_started["value"] = True
+        captured["cmd"] = cmd
+        captured["env"] = env or {}
+        captured["cwd"] = cwd
+        return FakeProcess()
+
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+
+    assert main(["start", "--thinking", "--port", "8766"]) == 0
+
+    assert captured["env"]["DEEPSEEK_THINKING"] == "enabled"
+    assert captured["env"]["DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE"] == "enabled"
+    assert captured["env"]["DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] == "12000"
+
+
+def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch, tmp_path):
+    captured = {}
+    process_started = {"value": False}
+
+    class FakeProcess:
+        pid = 12346
+
+        def poll(self):
+            return None
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
+    def fake_tcp_port_open(host, port):
+        return process_started["value"]
+
+    monkeypatch.setattr("deepseek_responses_proxy.cli._tcp_port_open", fake_tcp_port_open)
+
+    def fake_healthz_for_port(port, *, timeout=1.0):
+        if not process_started["value"]:
+            return None, None, "connection_refused"
+        return 200, {
+            "status": "ok",
+            "version": "v2.7a28-rollout-safety-and-doc-finalization",
+        }, None
+
+    monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
+
+    def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
+        process_started["value"] = True
+        captured["cmd"] = cmd
+        captured["env"] = env or {}
+        captured["cwd"] = cwd
+        return FakeProcess()
+
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
+
+    assert main(["start", "--port", "8765"]) == 0
+
+    assert "DEEPSEEK_THINKING" not in captured["env"]
+    assert "DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE" not in captured["env"]
+    assert "DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS" not in captured["env"]
 
 
 def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path, capsys):
@@ -80,7 +170,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a26-structured-tool-output-trimming")
+    assert data["expected_version"].startswith("v2.7a28-rollout-safety-and-doc-finalization")
     assert data["running_version"] == "v0.old"
 
 

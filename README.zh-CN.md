@@ -108,6 +108,8 @@ CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
 
     codex --profile deepseek-thinking resume
 
+Thinking有限rollout：`dsproxy start --thinking`默认开启tool-output trimming，并将图像payload类工具输出限制为12000字符；stable启动链路保持不变。
+
 ## 🧠 deepseek和deepseek-thinking有什么区别？
 
 区别很简单：

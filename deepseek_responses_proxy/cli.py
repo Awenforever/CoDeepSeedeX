@@ -514,6 +514,14 @@ def _start_proxy(args: argparse.Namespace) -> int:
     env["DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION"] = env.get("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
     if thinking:
         env["DEEPSEEK_THINKING"] = "enabled"
+        env["DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE"] = env.get(
+            "DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE",
+            "enabled",
+        )
+        env["DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] = env.get(
+            "DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS",
+            "12000",
+        )
 
     cmd = [
         sys.executable,
