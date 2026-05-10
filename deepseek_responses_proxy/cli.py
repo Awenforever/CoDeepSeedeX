@@ -1366,9 +1366,145 @@ def _debug_semantic_compaction_summary(
     }
 
 
+def _debug_behavioral_check_from_long_session(long_session: object) -> dict[str, object]:
+    if not isinstance(long_session, dict):
+        return {
+            "status": "blocked",
+            "assertions": {
+                "has_long_session_report": False,
+                "has_context_budget": False,
+                "has_primary_usage": False,
+                "has_tool_output_trim_events": False,
+                "has_tool_output_trim_applied": False,
+                "has_development_continuity_categories": False,
+                "recommendation_is_monitor": False,
+            },
+            "metrics": {},
+            "blockers": ["long_session_report_missing"],
+            "recommendation": "inspect_debug_long_session_endpoint",
+        }
+
+    context_budget = long_session.get("context_budget") or {}
+    primary_usage = long_session.get("primary_usage") or {}
+    tool_output_trim = long_session.get("tool_output_trim") or {}
+    by_category = tool_output_trim.get("by_category") or {}
+
+    if not isinstance(context_budget, dict):
+        context_budget = {}
+    if not isinstance(primary_usage, dict):
+        primary_usage = {}
+    if not isinstance(tool_output_trim, dict):
+        tool_output_trim = {}
+    if not isinstance(by_category, dict):
+        by_category = {}
+
+    def _positive_number(value: object) -> bool:
+        return isinstance(value, (int, float)) and value > 0
+
+    def _category_trimmed(category: str) -> bool:
+        value = by_category.get(category)
+        return isinstance(value, dict) and _positive_number(value.get("trimmed_item_count"))
+
+    has_long_session_report = (
+        long_session.get("status") == "ok"
+        and long_session.get("kind") == "runtime_long_session_observability"
+    )
+    has_context_budget = (
+        _positive_number(context_budget.get("latest_chars"))
+        or _positive_number(context_budget.get("max_chars"))
+        or _positive_number(context_budget.get("event_count"))
+    )
+    has_primary_usage = (
+        _positive_number(primary_usage.get("latest_prompt_tokens"))
+        or _positive_number(primary_usage.get("max_prompt_tokens"))
+        or _positive_number(primary_usage.get("event_count"))
+    )
+    has_tool_output_trim_events = _positive_number(tool_output_trim.get("event_count"))
+    has_tool_output_trim_applied = (
+        _positive_number(tool_output_trim.get("applied_count"))
+        and _positive_number(tool_output_trim.get("chars_removed"))
+    )
+    has_development_continuity_categories = any(
+        _category_trimmed(category)
+        for category in ("shell_command", "interactive_shell", "image_payload")
+    )
+    recommendation_is_monitor = long_session.get("recommendation") == "monitor_limited_enabled_session"
+
+    assertions = {
+        "has_long_session_report": has_long_session_report,
+        "has_context_budget": has_context_budget,
+        "has_primary_usage": has_primary_usage,
+        "has_tool_output_trim_events": has_tool_output_trim_events,
+        "has_tool_output_trim_applied": has_tool_output_trim_applied,
+        "has_development_continuity_categories": has_development_continuity_categories,
+        "recommendation_is_monitor": recommendation_is_monitor,
+    }
+
+    blockers = [name for name, ok in assertions.items() if not ok]
+    if not has_long_session_report:
+        status = "blocked"
+        recommendation = "inspect_debug_long_session_endpoint"
+    elif not has_context_budget or not has_primary_usage:
+        status = "collect_more_trace_data"
+        recommendation = "collect_more_trace_data"
+    elif has_tool_output_trim_applied and has_development_continuity_categories:
+        status = "ready"
+        recommendation = "ready_for_real_long_session_behavioral_test"
+    else:
+        status = "monitor"
+        recommendation = "continue_runtime_observation"
+
+    metrics = {
+        "trace_event_count": long_session.get("trace_event_count"),
+        "response_count": long_session.get("response_count"),
+        "context_latest_chars": context_budget.get("latest_chars"),
+        "context_max_chars": context_budget.get("max_chars"),
+        "latest_prompt_tokens": primary_usage.get("latest_prompt_tokens"),
+        "max_prompt_tokens": primary_usage.get("max_prompt_tokens"),
+        "tool_output_trim_event_count": tool_output_trim.get("event_count"),
+        "tool_output_trim_applied_count": tool_output_trim.get("applied_count"),
+        "tool_output_trim_chars_removed": tool_output_trim.get("chars_removed"),
+        "image_payload_trim_count": tool_output_trim.get("image_payload_trim_count"),
+        "trimmed_categories": sorted(
+            category
+            for category, summary in by_category.items()
+            if isinstance(summary, dict) and _positive_number(summary.get("trimmed_item_count"))
+        ),
+        "long_session_recommendation": long_session.get("recommendation"),
+    }
+
+    return {
+        "status": status,
+        "assertions": assertions,
+        "metrics": metrics,
+        "blockers": blockers,
+        "recommendation": recommendation,
+    }
+
+
 def _debug(args: argparse.Namespace) -> int:
     base_url = _proxy_base_url_from_args(args)
     command = getattr(args, "debug_command", "")
+
+    if command == "behavioral":
+        limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
+        timeout = float(getattr(args, "timeout", 3.0))
+        path = f"/v1/proxy/debug/long-session?{urllib.parse.urlencode({'limit': limit, 'mode': 'aggregate'})}"
+        result = _debug_fetch_json(base_url + path, timeout)
+        long_session = result.get("json") if result.get("ok") else None
+        output = {
+            "status": "ok" if result.get("ok") else "error",
+            "proxy_url": base_url,
+            "debug_command": command,
+            "result": {
+                "ok": result.get("ok"),
+                "status": result.get("status"),
+                "url": result.get("url"),
+            },
+            "behavioral": _debug_behavioral_check_from_long_session(long_session),
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0 if result.get("ok") else 1
 
     if command == "long-session":
         limit = max(1, min(int(getattr(args, "limit", 200)), 1000))
@@ -1613,6 +1749,13 @@ def build_parser() -> argparse.ArgumentParser:
     debug_budget.add_argument("--timeout", type=float, default=3.0)
     debug_budget.add_argument("--limit", type=int, default=200)
     debug_budget.set_defaults(func=_debug)
+
+    debug_behavioral = debug_sub.add_parser("behavioral", help="summarize runtime behavioral readiness from long-session traces")
+    debug_behavioral.add_argument("--thinking", action="store_true")
+    debug_behavioral.add_argument("--port", type=int)
+    debug_behavioral.add_argument("--timeout", type=float, default=3.0)
+    debug_behavioral.add_argument("--limit", type=int, default=200)
+    debug_behavioral.set_defaults(func=_debug)
 
     debug_long_session = debug_sub.add_parser("long-session", help="summarize recent long-session debug trace trends")
     debug_long_session.add_argument("--thinking", action="store_true")

@@ -9,7 +9,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v2.7a28-rollout-safety-and-doc-finalization" in out
+    assert "v2.7a30-runtime-behavioral-check-command" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -46,7 +46,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v2.7a28-rollout-safety-and-doc-finalization")
+    assert data["proxy_version"].startswith("v2.7a30-runtime-behavioral-check-command")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -87,7 +87,7 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v2.7a28-rollout-safety-and-doc-finalization",
+            "version": "v2.7a30-runtime-behavioral-check-command",
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -131,7 +131,7 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v2.7a28-rollout-safety-and-doc-finalization",
+            "version": "v2.7a30-runtime-behavioral-check-command",
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -170,7 +170,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v2.7a28-rollout-safety-and-doc-finalization")
+    assert data["expected_version"].startswith("v2.7a30-runtime-behavioral-check-command")
     assert data["running_version"] == "v0.old"
 
 
@@ -652,6 +652,78 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
     assert data["budget"]["tool_output_budget"]["policy_dry_run"]["targets"][0]["category"] == "shell_command"
     assert data["budget"]["primary_usage"]["usage"]["prompt_tokens"] == 71042
     assert calls == [("http://127.0.0.1:8123/v1/proxy/debug/latest?limit=25", 3.0)]
+
+
+def test_cli_debug_behavioral_summarizes_long_session_readiness(monkeypatch, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "status": "ok",
+                "kind": "runtime_long_session_observability",
+                "trace_event_count": 12,
+                "response_count": 4,
+                "context_budget": {
+                    "event_count": 2,
+                    "latest_chars": 260000,
+                    "max_chars": 300000,
+                },
+                "primary_usage": {
+                    "event_count": 2,
+                    "latest_prompt_tokens": 92000,
+                    "max_prompt_tokens": 98000,
+                },
+                "tool_output_trim": {
+                    "event_count": 3,
+                    "applied_count": 1,
+                    "chars_removed": 66000,
+                    "image_payload_trim_count": 0,
+                    "by_category": {
+                        "shell_command": {
+                            "trimmed_item_count": 1,
+                            "estimated_remove_chars": 42000,
+                        },
+                        "interactive_shell": {
+                            "trimmed_item_count": 1,
+                            "estimated_remove_chars": 24000,
+                        },
+                    },
+                },
+                "recommendation": "monitor_limited_enabled_session",
+            }).encode("utf-8")
+
+    seen_urls = []
+
+    def fake_urlopen(url, timeout=0):
+        seen_urls.append((str(url), timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["debug", "behavioral", "--port", "8123", "--limit", "25"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "ok"
+    assert data["debug_command"] == "behavioral"
+    assert "long_session" not in data
+    assert data["behavioral"]["status"] == "ready"
+    assert data["behavioral"]["recommendation"] == "ready_for_real_long_session_behavioral_test"
+    assert data["behavioral"]["assertions"]["has_context_budget"] is True
+    assert data["behavioral"]["assertions"]["has_primary_usage"] is True
+    assert data["behavioral"]["assertions"]["has_tool_output_trim_applied"] is True
+    assert data["behavioral"]["assertions"]["has_development_continuity_categories"] is True
+    assert data["behavioral"]["metrics"]["tool_output_trim_chars_removed"] == 66000
+    assert data["behavioral"]["metrics"]["trimmed_categories"] == ["interactive_shell", "shell_command"]
+    assert seen_urls == [("http://127.0.0.1:8123/v1/proxy/debug/long-session?limit=25&mode=aggregate", 3.0)]
 
 
 def test_cli_debug_long_session_fetches_long_session_endpoint(monkeypatch, capsys):
