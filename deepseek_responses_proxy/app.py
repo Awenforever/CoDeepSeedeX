@@ -7521,6 +7521,513 @@ def _agent_liveness_env_config() -> dict[str, Any]:
     }
 
 
+def _user_tool_control_policy_env_config() -> dict[str, Any]:
+    raw_mode = os.environ.get("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
+    mode = str(raw_mode or "dry_run").strip().lower()
+    if mode not in {"off", "dry_run", "enabled"}:
+        mode = "dry_run"
+    return {
+        "mode": mode,
+        "enabled": mode != "off",
+        "preview_chars": max(128, _env_int("DEEPSEEK_PROXY_USER_TOOL_CONTROL_PREVIEW_CHARS", 1200)),
+    }
+
+
+def _responses_content_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            text = _responses_content_text(item)
+            if text:
+                parts.append(text)
+        return "\n".join(parts)
+    if isinstance(value, dict):
+        for key in ("text", "input_text", "output_text", "content", "value"):
+            if key in value:
+                text = _responses_content_text(value.get(key))
+                if text:
+                    return text
+        return ""
+    return str(value)
+
+
+def _latest_user_text_from_responses_input(input_value: Any) -> str:
+    if isinstance(input_value, str):
+        return input_value
+    if not isinstance(input_value, list):
+        return ""
+
+    for item in reversed(input_value):
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type") or "")
+        role = str(item.get("role") or "")
+        if item_type == "message" and role == "user":
+            text = _responses_content_text(item.get("content"))
+            if text.strip():
+                return text
+        if item_type in {"input_text", "message"} and role in {"", "user"}:
+            text = _responses_content_text(item)
+            if text.strip():
+                return text
+    return ""
+
+
+def _text_looks_like_meta_or_quoted_instruction(text: str) -> bool:
+    normalized = " ".join(text.strip().lower().split())
+    if not normalized:
+        return False
+
+    meta_markers = [
+        "如果我说",
+        "假设用户说",
+        "这句话",
+        "这段话",
+        "日志里",
+        "代码里",
+        "字段",
+        "字符串",
+        "引用",
+        "解释这句",
+        "是什么意思",
+        "what does",
+        "if i say",
+        "suppose the user says",
+        "this sentence",
+        "this phrase",
+        "in the log",
+        "in this code",
+        "quoted",
+        "quote",
+        "means",
+    ]
+    quote_markers = ["“", "”", "\"", "'", "`"]
+    has_stop_like_text = any(
+        marker in normalized
+        for marker in [
+            "不要继续",
+            "不要执行",
+            "暂停",
+            "stop",
+            "do not continue",
+            "don't continue",
+            "no more tools",
+            "don't use tools",
+        ]
+    )
+    return has_stop_like_text and (
+        any(marker in normalized for marker in meta_markers)
+        or sum(text.count(marker) for marker in quote_markers) >= 2
+    )
+
+
+def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
+    normalized = " ".join(text.strip().lower().split())
+
+    negated_stop_markers = [
+        "不是让你停止",
+        "不是让你停",
+        "不要误以为我让你停",
+        "不是让你不要执行",
+        "不是让你别执行",
+        "don't stop",
+        "do not stop",
+        "not asking you to stop",
+        "i am not asking you to stop",
+    ]
+    if any(marker in normalized for marker in negated_stop_markers):
+        return {
+            "user_signal": "negated_stop",
+            "matched_signals": [marker for marker in negated_stop_markers if marker in normalized],
+            "negative_evidence": ["negated_stop"],
+        }
+
+    if _text_looks_like_meta_or_quoted_instruction(text):
+        return {
+            "user_signal": "quoted_or_meta_stop_discussion",
+            "matched_signals": [],
+            "negative_evidence": ["quoted_or_meta_stop_discussion"],
+        }
+
+    tool_context_markers = [
+        "工具",
+        "命令",
+        "执行",
+        "运行",
+        "调用",
+        "adb",
+        "uiautomator",
+        "截图",
+        "截屏",
+        "shell",
+        "tool",
+        "tools",
+        "command",
+        "commands",
+        "execute",
+        "run",
+        "call",
+        "screenshot",
+        "screen",
+    ]
+    stop_markers = [
+        "不要继续",
+        "别继续",
+        "不要再继续",
+        "先不要继续",
+        "先别继续",
+        "暂停",
+        "停一下",
+        "先停",
+        "先暂停",
+        "不要执行",
+        "别执行",
+        "先不要执行",
+        "先别执行",
+        "不要运行",
+        "别运行",
+        "不要调用",
+        "别调用",
+        "不要操作",
+        "别操作",
+        "先别操作",
+        "先不要操作",
+        "先别动",
+        "不要动",
+        "不要跑命令",
+        "别跑命令",
+        "do not continue",
+        "don't continue",
+        "dont continue",
+        "no more tool",
+        "no more tools",
+        "do not use tools",
+        "don't use tools",
+        "dont use tools",
+        "no tool calls",
+        "do not run",
+        "don't run",
+        "dont run",
+        "do not execute",
+        "don't execute",
+        "dont execute",
+        "no commands",
+        "do not call tools",
+        "don't call tools",
+    ]
+    answer_first_markers = [
+        "先回答",
+        "先解释",
+        "先说明",
+        "先分析",
+        "先讲清楚",
+        "先给我解释",
+        "先给我说明",
+        "先说清楚",
+        "answer first",
+        "explain first",
+        "first answer",
+        "first explain",
+        "just answer",
+        "only answer",
+        "explain before",
+        "before continuing",
+    ]
+    ambiguous_stop_markers = [
+        "停一下",
+        "暂停",
+        "先别急",
+        "hold on",
+        "wait",
+        "pause",
+        "stop",
+        "stop for now",
+    ]
+
+    matched_stop = [marker for marker in stop_markers if marker in normalized]
+    matched_tool_context = [marker for marker in tool_context_markers if marker in normalized]
+    matched_answer_first = [marker for marker in answer_first_markers if marker in normalized]
+    matched_ambiguous = [marker for marker in ambiguous_stop_markers if marker in normalized]
+
+    if matched_stop and matched_tool_context:
+        return {
+            "user_signal": "explicit_tool_stop",
+            "matched_signals": (matched_stop + matched_tool_context)[:30],
+            "negative_evidence": [],
+        }
+    if matched_answer_first:
+        return {
+            "user_signal": "answer_or_explain_first",
+            "matched_signals": matched_answer_first[:20],
+            "negative_evidence": [],
+        }
+    if matched_stop or matched_ambiguous:
+        return {
+            "user_signal": "ambiguous_stop",
+            "matched_signals": (matched_stop + matched_ambiguous)[:20],
+            "negative_evidence": ["tool_context_missing"],
+        }
+    return {
+        "user_signal": "none",
+        "matched_signals": [],
+        "negative_evidence": [],
+    }
+
+
+def _tool_function_names_for_policy(tools: Any) -> list[str]:
+    if not isinstance(tools, list):
+        return []
+    names: list[str] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function") or {}
+        if isinstance(function, dict):
+            name = function.get("name")
+            if name:
+                names.append(str(name))
+    return names
+
+
+def _classify_tool_name_risk_for_policy(name: str) -> str:
+    lowered = name.lower()
+
+    r3_markers = [
+        "delete",
+        "remove",
+        "rmdir",
+        "unlink",
+        "overwrite",
+        "write_file",
+        "truncate",
+        "format",
+        "reset_hard",
+        "clean",
+        "drop",
+        "force_push",
+        "publish_release",
+        "delete_tag",
+    ]
+    if any(marker in lowered for marker in r3_markers):
+        return "R3_destructive_or_overwrite"
+
+    if lowered in {"shell", "exec", "run_command", "mcp__shell__run"}:
+        return "R3_capable_requires_command_audit"
+
+    r2_markers = [
+        "tap",
+        "click",
+        "send",
+        "post",
+        "submit",
+        "input",
+        "keyevent",
+        "start_activity",
+        "am_start",
+    ]
+    if any(marker in lowered for marker in r2_markers):
+        return "R2_external_or_user_visible_side_effect"
+
+    r1_markers = [
+        "screenshot",
+        "screencap",
+        "screen",
+        "uiautomator",
+        "adb",
+        "dump",
+        "read",
+        "list",
+        "grep",
+        "search",
+        "web",
+        "file",
+    ]
+    if any(marker in lowered for marker in r1_markers):
+        return "R1_read_or_privacy_context"
+
+    if lowered in {
+        "proxy_status",
+        "proxy_time",
+        "proxy_usage_summary",
+        "proxy_usage_events",
+        "proxy_balance",
+        "proxy_echo",
+    }:
+        return "R0_safe_readonly"
+
+    return "R1_unknown_default_read_or_context"
+
+
+def _max_tool_risk_for_policy(tool_names: list[str]) -> str:
+    order = {
+        "R0_safe_readonly": 0,
+        "R1_read_or_privacy_context": 1,
+        "R1_unknown_default_read_or_context": 1,
+        "R2_external_or_user_visible_side_effect": 2,
+        "R3_capable_requires_command_audit": 3,
+        "R3_destructive_or_overwrite": 3,
+    }
+    if not tool_names:
+        return "R0_no_tools"
+    risks = [_classify_tool_name_risk_for_policy(name) for name in tool_names]
+    return max(risks, key=lambda risk: order.get(risk, 1))
+
+
+def _decision_if_user_tool_control_enabled(user_signal: str, max_tool_risk: str) -> str:
+    if user_signal in {"negated_stop", "quoted_or_meta_stop_discussion", "none"}:
+        if max_tool_risk.startswith("R3_destructive"):
+            return "would_require_confirmation"
+        return "allow_tools"
+    if user_signal in {"explicit_tool_stop", "answer_or_explain_first"}:
+        return "would_suppress_tools"
+    if user_signal == "ambiguous_stop":
+        if max_tool_risk.startswith("R3"):
+            return "would_require_confirmation"
+        return "observe_only"
+    return "observe_only"
+
+
+def _build_user_tool_control_policy_report(input_value: Any, tools: Any) -> dict[str, Any]:
+    config = _user_tool_control_policy_env_config()
+    text = _latest_user_text_from_responses_input(input_value)
+    signal = _detect_user_tool_control_signal(text)
+    tool_names = _tool_function_names_for_policy(tools)
+    tool_risks = {
+        name: _classify_tool_name_risk_for_policy(name)
+        for name in tool_names
+    }
+    max_tool_risk = _max_tool_risk_for_policy(tool_names)
+    user_signal = str(signal.get("user_signal") or "none")
+    decision_if_enabled = _decision_if_user_tool_control_enabled(user_signal, max_tool_risk)
+    preview, _changed = _truncate_middle_text(text.strip(), int(config["preview_chars"]))
+
+    return {
+        "version": PROXY_VERSION,
+        "mode": config["mode"],
+        "enabled": bool(config["enabled"]),
+        "active": False,
+        "policy_is_dry_run_only": config["mode"] == "dry_run",
+        "user_signal": user_signal,
+        "decision_if_enabled": decision_if_enabled,
+        "latest_user_text_present": bool(text.strip()),
+        "latest_user_text_preview": preview,
+        "matched_signals": signal.get("matched_signals", []),
+        "negative_evidence": signal.get("negative_evidence", []),
+        "tool_names": tool_names,
+        "tool_risks": tool_risks,
+        "max_tool_risk": max_tool_risk,
+        "notes": [
+            "dry_run_does_not_change_tools_or_tool_execution",
+            "R3 means destructive or overwrite capability, not every visible side effect",
+        ],
+    }
+
+
+def _write_user_tool_control_policy_report(report: dict[str, Any]) -> None:
+    try:
+        debug_dir = Path(".debug")
+        debug_dir.mkdir(exist_ok=True)
+        (debug_dir / "user_tool_control_policy_report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write user tool control policy report: {exc}")
+
+
+def _assistant_message_is_tool_pause_or_explanation_intent(
+    assistant_message: dict[str, Any],
+) -> bool:
+    content = _plain_text_from_content(assistant_message.get("content", ""))
+    normalized = " ".join(content.strip().lower().split())
+    if not normalized:
+        return False
+
+    pause_markers = [
+        "暂停执行",
+        "暂停操作",
+        "不继续执行",
+        "不要继续执行",
+        "别继续执行",
+        "不再执行",
+        "不要再执行",
+        "别再执行",
+        "不要再继续执行",
+        "别再继续执行",
+        "先不执行",
+        "先不要执行",
+        "先别执行",
+        "先不继续",
+        "先不要继续",
+        "先别继续",
+        "停止执行",
+        "停止操作",
+        "不要执行命令",
+        "不要继续执行命令",
+        "别继续执行命令",
+        "不要运行命令",
+        "不要跑命令",
+        "不调用工具",
+        "不要调用工具",
+        "别调用工具",
+        "不用工具",
+        "不运行命令",
+        "不跑命令",
+        "pause tool",
+        "pause execution",
+        "pause the task",
+        "stop running",
+        "stop executing",
+        "not continue executing",
+        "do not continue executing",
+        "don't continue executing",
+        "dont continue executing",
+        "not use tools",
+        "do not use tools",
+        "don't use tools",
+        "dont use tools",
+        "without tools",
+        "no more tools",
+        "do not run commands",
+        "don't run commands",
+        "dont run commands",
+        "do not execute commands",
+        "don't execute commands",
+        "dont execute commands",
+    ]
+    explain_markers = [
+        "先解释",
+        "解释清楚",
+        "先说明",
+        "说明原因",
+        "先回答",
+        "向你解释",
+        "给出解释",
+        "answer first",
+        "explain first",
+        "explain clearly",
+        "explain why",
+        "provide an explanation",
+    ]
+    user_reference_markers = [
+        "你要求",
+        "按照你的要求",
+        "你让我",
+        "you asked",
+        "as requested",
+        "per your request",
+    ]
+
+    has_pause = any(marker in normalized for marker in pause_markers)
+    has_explain = any(marker in normalized for marker in explain_markers)
+    refers_to_user_request = any(marker in normalized for marker in user_reference_markers)
+
+    return (has_pause and has_explain) or (has_pause and refers_to_user_request)
+
 def _assistant_message_needs_liveness_guard(
     assistant_message: dict[str, Any],
     *,
@@ -7529,6 +8036,8 @@ def _assistant_message_needs_liveness_guard(
     if not tools_available:
         return False
     if assistant_message.get("tool_calls"):
+        return False
+    if _assistant_message_is_tool_pause_or_explanation_intent(assistant_message):
         return False
 
     content = _plain_text_from_content(assistant_message.get("content", ""))
@@ -7887,7 +8396,8 @@ async def _judge_agent_liveness_with_llm(
         "opening apps, tapping, reading files, taking screenshots, dumping state, "
         "using URL schemes/intents, or verifying device state, but no tool_call was emitted.\n"
         "- final_answer: assistant is done, summarizes results, asks user for "
-        "clarification, or explicitly cannot continue.\n"
+        "clarification, explicitly cannot continue, or says it will pause or stop "
+        "tool execution and answer or explain first.\n"
         "- ambiguous: unclear.\n\n"
         "Return JSON exactly like:\n"
         "{\"decision\":\"needs_tool_call|final_answer|ambiguous\","
@@ -9184,6 +9694,16 @@ def create_app(
             messages = []
 
         input_value = payload.get("input")
+        user_tool_control_policy_report = _build_user_tool_control_policy_report(
+            input_value,
+            deepseek_tools,
+        )
+        _write_user_tool_control_policy_report(user_tool_control_policy_report)
+        _debug_trace_event(
+            response_id,
+            "user_tool_control_policy_dry_run",
+            **user_tool_control_policy_report,
+        )
 
         # Trim tool outputs before removing function_call items. In
         # previous_response_id turns, Codex may send both function_call and

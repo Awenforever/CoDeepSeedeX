@@ -450,3 +450,106 @@ async def test_liveness_retry_without_tool_call_does_not_retry_again(tmp_path, m
     assert decisions
     assert decisions[-1]["should_retry"] is False
     assert decisions[-1]["guard_reason"] == "retry_without_tool_call_no_further_retry"
+
+
+def test_user_tool_control_policy_taxonomy_counterexamples():
+    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+    status_tool = [{"type": "function", "function": {"name": "proxy_status", "parameters": {}}}]
+
+    explicit = _build_user_tool_control_policy_report(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "不要继续执行命令，先解释为什么要这么做",
+            }
+        ],
+        shell_tool,
+    )
+    assert explicit["user_signal"] == "explicit_tool_stop"
+    assert explicit["decision_if_enabled"] == "would_suppress_tools"
+    assert explicit["policy_is_dry_run_only"] is True
+
+    answer_first = _build_user_tool_control_policy_report(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "先回答我这个问题，不要急着往下做",
+            }
+        ],
+        status_tool,
+    )
+    assert answer_first["user_signal"] == "answer_or_explain_first"
+    assert answer_first["decision_if_enabled"] == "would_suppress_tools"
+
+    ambiguous = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "停一下"}],
+        status_tool,
+    )
+    assert ambiguous["user_signal"] == "ambiguous_stop"
+    assert ambiguous["decision_if_enabled"] == "observe_only"
+
+    quoted = _build_user_tool_control_policy_report(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "帮我解释这句：“不要继续执行命令”是什么意思",
+            }
+        ],
+        shell_tool,
+    )
+    assert quoted["user_signal"] == "quoted_or_meta_stop_discussion"
+    assert quoted["decision_if_enabled"] == "allow_tools"
+
+    negated = _build_user_tool_control_policy_report(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "不是让你停止执行，继续运行目标测试",
+            }
+        ],
+        shell_tool,
+    )
+    assert negated["user_signal"] == "negated_stop"
+    assert negated["decision_if_enabled"] == "allow_tools"
+
+
+def test_liveness_guard_does_not_treat_pause_and_explain_as_tool_intent():
+    from deepseek_responses_proxy.app import _assistant_message_needs_liveness_guard
+
+    assert not _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "接下来我将暂停执行任务，并且先向你解释清楚。",
+        },
+        tools_available=True,
+    )
+
+    assert not _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "你要求我不要继续执行命令，所以我先解释当前判断。",
+        },
+        tools_available=True,
+    )
+
+    assert not _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "I will pause tool execution and explain first.",
+        },
+        tools_available=True,
+    )
+
+    assert _assistant_message_needs_liveness_guard(
+        {
+            "role": "assistant",
+            "content": "Now let me inspect the UI and run the next shell command:",
+        },
+        tools_available=True,
+    )
