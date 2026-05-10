@@ -276,6 +276,64 @@ def test_long_session_observability_from_events_summarizes_trends():
     assert report["recommendation"] == "monitor_limited_enabled_session"
 
 
+def test_long_session_observability_summarizes_tool_output_trim_events():
+    events = [
+        {"event": "context_budget_breakdown", "chat_payload_chars": 1000},
+        {
+            "event": "tool_output_trim_applied",
+            "mode": "dry_run",
+            "effective_mode": "dry_run",
+            "enabled": False,
+            "applied": False,
+            "reason": "trim_mode_not_enabled",
+            "trimmed_item_count": 0,
+            "chars_removed": 0,
+            "targets": [],
+        },
+        {
+            "event": "tool_output_trim_applied",
+            "mode": "enabled",
+            "effective_mode": "enabled",
+            "enabled": True,
+            "applied": True,
+            "reason": "enabled",
+            "trimmed_item_count": 2,
+            "chars_removed": 1117203,
+            "targets": [
+                {
+                    "category": "image_payload",
+                    "tool_name": "view_image",
+                    "estimated_remove_chars": 1117000,
+                },
+                {
+                    "category": "shell_command",
+                    "tool_name": "exec_command",
+                    "estimated_remove_chars": 203,
+                },
+            ],
+        },
+        {
+            "event": "upstream_call_finished",
+            "purpose": "primary",
+            "usage": {"prompt_tokens": 2500},
+        },
+    ]
+
+    report = proxy_app._long_session_observability_from_events(events, limit=50)
+
+    assert report["tool_output_trim"]["event_count"] == 2
+    assert report["tool_output_trim"]["enabled_event_count"] == 1
+    assert report["tool_output_trim"]["applied_count"] == 1
+    assert report["tool_output_trim"]["chars_removed"] == 1117203
+    assert report["tool_output_trim"]["trimmed_item_count"] == 2
+    assert report["tool_output_trim"]["target_trace_count"] == 2
+    assert report["tool_output_trim"]["image_payload_trim_count"] == 1
+    assert report["tool_output_trim"]["by_category"]["image_payload"]["trimmed_item_count"] == 1
+    assert report["tool_output_trim"]["by_category"]["image_payload"]["estimated_remove_chars"] == 1117000
+    assert report["tool_output_trim"]["by_category"]["shell_command"]["trimmed_item_count"] == 1
+    assert report["recommendation"] == "monitor_limited_enabled_session"
+
+
 def test_long_session_observability_recommends_fixing_canary_when_blocked():
     events = [
         {"event": "context_budget_breakdown", "chat_payload_chars": 1000},

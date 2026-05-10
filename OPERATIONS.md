@@ -639,6 +639,7 @@ The report summarizes:
 - semantic payload characters removed
 - canary-blocked semantic payload attempts
 - recent `tool_output_budget_breakdown` status
+- aggregate `tool_output_trim_applied` counts, removed chars, category breakdown, and image payload trim count
 - primary upstream usage prompt-token trend
 - a rollout recommendation such as `collect_more_trace_data`, `continue_dry_run_observation`, `keep_dry_run_or_fix_canary`, or `monitor_limited_enabled_session`
 

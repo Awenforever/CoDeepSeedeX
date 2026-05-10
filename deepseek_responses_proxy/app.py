@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a21-tool-output-image-payload-trimming"
+PROXY_VERSION = "v2.7a22-tool-output-trim-runtime-observability"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1131,6 +1131,9 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
     tool_output_events = [
         event for event in normalized_events if event.get("event") == "tool_output_budget_breakdown"
     ]
+    tool_output_trim_events = [
+        event for event in normalized_events if event.get("event") == "tool_output_trim_applied"
+    ]
     primary_usage_events = [
         event
         for event in normalized_events
@@ -1184,6 +1187,47 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
         key=lambda event: _long_session_observability_int(event.get("function_call_output_chars")),
     ) if tool_output_events else None
 
+    tool_trim_applied = [
+        event for event in tool_output_trim_events if bool(event.get("applied"))
+    ]
+    tool_trim_enabled_count = sum(
+        1
+        for event in tool_output_trim_events
+        if bool(event.get("enabled"))
+        or str(event.get("effective_mode") or event.get("mode") or "") == "enabled"
+    )
+    tool_trim_chars_removed = sum(
+        _long_session_observability_int(event.get("chars_removed"))
+        for event in tool_output_trim_events
+    )
+    tool_trim_item_count = sum(
+        _long_session_observability_int(event.get("trimmed_item_count"))
+        for event in tool_output_trim_events
+    )
+    tool_trim_by_category: dict[str, dict[str, int]] = {}
+    tool_trim_target_trace_count = 0
+    for event in tool_output_trim_events:
+        targets = event.get("targets")
+        if not isinstance(targets, list):
+            continue
+        for target in targets:
+            if not isinstance(target, dict):
+                continue
+            category = str(target.get("category") or "unknown")
+            tool_trim_target_trace_count += 1
+            category_summary = tool_trim_by_category.setdefault(
+                category,
+                {"trimmed_item_count": 0, "estimated_remove_chars": 0},
+            )
+            category_summary["trimmed_item_count"] += 1
+            category_summary["estimated_remove_chars"] += _long_session_observability_int(
+                target.get("estimated_remove_chars")
+            )
+    tool_trim_by_category = dict(sorted(tool_trim_by_category.items()))
+    image_payload_trim_count = int(
+        tool_trim_by_category.get("image_payload", {}).get("trimmed_item_count", 0)
+    )
+
     semantic_audit_events = [
         event for event in normalized_events if event.get("event") == "flattened_tool_transcript_semantic_audit"
     ]
@@ -1197,9 +1241,9 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
 
     if semantic_blocked:
         recommendation = "keep_dry_run_or_fix_canary"
-    elif semantic_applied:
+    elif semantic_applied or tool_trim_applied:
         recommendation = "monitor_limited_enabled_session"
-    elif semantic_payload_events:
+    elif semantic_payload_events or tool_output_trim_events:
         recommendation = "continue_dry_run_observation"
     elif context_events:
         recommendation = "collect_semantic_trace_events_before_enabled"
@@ -1241,6 +1285,17 @@ def _long_session_observability_from_events(events: Any, *, limit: int = 200) ->
             "truncated_count": tool_truncated_count,
             "latest_event": tool_latest,
             "max_output_event": max_tool_output_event,
+        },
+        "tool_output_trim": {
+            "event_count": len(tool_output_trim_events),
+            "enabled_event_count": tool_trim_enabled_count,
+            "applied_count": len(tool_trim_applied),
+            "chars_removed": tool_trim_chars_removed,
+            "trimmed_item_count": tool_trim_item_count,
+            "target_trace_count": tool_trim_target_trace_count,
+            "by_category": tool_trim_by_category,
+            "image_payload_trim_count": image_payload_trim_count,
+            "latest_event": tool_output_trim_events[-1] if tool_output_trim_events else None,
         },
         "primary_usage": {
             "event_count": len(primary_usage_events),
