@@ -130,6 +130,8 @@ run_ok=1
   echo "branch_before=$(git branch --show-current)"
   echo "status_count_before=$(git status --short | wc -l)"
   echo "head_before=$(git log --oneline --decorate --max-count=1)"
+  expected_version="$(.venv/bin/python -m deepseek_responses_proxy.cli --version)"
+  echo "expected_version=${expected_version}"
   if [ "$(git status --short | wc -l)" -ne 0 ]; then
     echo "error=working_tree_not_clean"
     exit 20
@@ -158,16 +160,19 @@ Working directory is already the repository root.
 Run these commands in order:
 1. git branch --show-current && git status --short && git log --oneline --decorate --max-count=3
 2. .venv/bin/python -m pytest tests/test_cli.py::test_cli_debug_behavioral_summarizes_long_session_readiness -q
-3. .venv/bin/python - <<'PY_TRIM_TRIGGER'
+3. .venv/bin/python -m deepseek_responses_proxy.cli --version
+4. .venv/bin/python - <<'PY_TRIM_TRIGGER'
 print("REAL_LONG_SESSION_TRIM_TRIGGER_BEGIN")
 for i in range(3000):
     print(f"REAL_LONG_SESSION_TRIM_TRIGGER line={i:04d} " + ("controlled-output-" * 8))
 print("REAL_LONG_SESSION_TRIM_TRIGGER_END")
 PY_TRIM_TRIGGER
-4. .venv/bin/python -m deepseek_responses_proxy.cli debug behavioral --thinking --limit 200 --timeout 5
-5. git status --short
+5. .venv/bin/python -m deepseek_responses_proxy.cli debug behavioral --thinking --limit 200 --timeout 5
+6. git status --short
 
-Your final answer must be valid compact JSON only, with these keys:
+Your final answer must be valid compact JSON only. The first character must be `{` and the last character must be `}`. Do not wrap it in Markdown fences.
+Use the exact version printed by command 3 as `current_version`.
+Return these keys:
 {
   "branch": "...",
   "working_tree_clean": true or false,
@@ -239,12 +244,12 @@ PY_POST_SUMMARY
 
   echo
   echo "===== compare codex final with external postcheck ====="
-  .venv/bin/python - "$codex_final" "$post_behavioral_summary" "$comparison_summary" <<'PY_COMPARE'
+  .venv/bin/python - "$codex_final" "$post_behavioral_summary" "$comparison_summary" "$expected_version" <<'PY_COMPARE'
 import json
 import re
 import sys
 
-final_path, post_path, dst = sys.argv[1:4]
+final_path, post_path, dst, expected_version = sys.argv[1:5]
 final_text = open(final_path, "r", encoding="utf-8", errors="replace").read().strip()
 post = json.load(open(post_path, "r", encoding="utf-8"))
 
@@ -264,7 +269,10 @@ comparison = {
     "final_used_markdown_fence": bool(fence),
     "final_branch": final.get("branch"),
     "final_working_tree_clean": final.get("working_tree_clean"),
+    "working_tree_clean_is_true": final.get("working_tree_clean") is True,
     "final_current_version": final.get("current_version"),
+    "expected_current_version": expected_version,
+    "current_version_matches": final.get("current_version") == expected_version,
     "final_pytest_result": final.get("pytest_result"),
     "final_behavioral_status": final.get("behavioral_status"),
     "post_behavioral_status": post.get("behavioral_status"),
@@ -283,6 +291,40 @@ with open(dst, "w", encoding="utf-8") as f:
     json.dump(comparison, f, ensure_ascii=False, indent=2, sort_keys=True)
 print(json.dumps(comparison, ensure_ascii=False, indent=2, sort_keys=True))
 PY_COMPARE
+
+  echo
+  echo "===== validate comparison ====="
+  .venv/bin/python - "$comparison_summary" <<'PY_VALIDATE_COMPARISON'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+required_true = [
+    "final_json_parse_ok",
+    "working_tree_clean_is_true",
+    "current_version_matches",
+    "behavioral_status_matches",
+    "trim_applied_count_matches",
+    "trim_chars_removed_matches",
+]
+failed = [key for key in required_true if data.get(key) is not True]
+
+if data.get("final_used_markdown_fence") is True:
+    failed.append("final_used_markdown_fence")
+
+if data.get("final_behavioral_status") != "ready":
+    failed.append("final_behavioral_status_not_ready")
+
+if failed:
+    print("comparison_validation=failed")
+    print("failed_keys=" + ",".join(failed))
+    raise SystemExit(40)
+
+print("comparison_validation=passed")
+PY_VALIDATE_COMPARISON
 
   echo
   echo "===== codex stderr filtered ====="
