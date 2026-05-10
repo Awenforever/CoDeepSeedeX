@@ -108,24 +108,37 @@ CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
 
     codex --profile deepseek-thinking resume
 
-Thinking有限rollout：`dsproxy start --thinking`默认开启tool-output trimming，并将图像payload类工具输出限制为12000字符；stable启动链路保持不变。
+### 上下文效率与长会话可靠性
 
-### 长会话可靠性检查
+对于`deepseek-thinking`profile，CoDeepSeedeX默认启用一组受限rollout的tool-outputtrimming。超大的工具输出会在重新进入模型上下文之前被压缩，从而降低长Codex开发会话中的上下文增长速度。
 
-CoDeepSeedeX现在提供面向thinking profile的长Codex会话运行态检查：
+这主要改善以下工具密集型场景：
+
+- 长时间`pytest`输出
+- shell日志和诊断输出
+- interactive shell输出
+- 大型结构化工具返回值
+- imagepayload类工具输出
+
+imagepayload路径另有12000字符的专门上限，因为图片查看类工具可能返回特别大的结构化payload。这个上限是通用tool-outputtrimming之外的额外限制，并不表示只裁剪图片输出。
+
+预期效果是提高长会话稳定性：大工具输出占用的上下文更少，同时Codex仍保留足够的头部和尾部信息以继续开发任务。代价是超大输出的中间部分可能被省略。如果某段完整日志很重要，应将其保存为文件，再显式检查或上传该文件。
+
+可以用下面命令查看当前长会话状态：
 
 ```bash
 dsproxy debug behavioral --thinking --limit 200 --timeout 5
+```
+
+如果需要受控验证，也可以先运行受保护smoke脚本的dry-run：
+
+```bash
 scripts/real-long-session-behavioral-smoke.sh --dry-run
 ```
 
-受保护的真实smoke可用于受控本地验证：
+完整真实会话smoke流程见`docs/real-long-session-validation.md`。
 
-```bash
-scripts/real-long-session-behavioral-smoke.sh --allow-bypass
-```
-
-注意：Codex的`workspace-write`沙箱可能无法访问宿主WSL上的`127.0.0.1:8001`监听端口。因此，沙箱内出现`blocked` behavioral结果时，可能是沙箱网络边界，而不是proxy故障。详见`docs/real-long-session-validation.md`。
+stable启动链路保持不变，不会默认启用thinking limited rollout。
 
 ## 🧠 deepseek和deepseek-thinking有什么区别？
 

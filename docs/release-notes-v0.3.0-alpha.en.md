@@ -4,28 +4,32 @@
 
 Internal milestone: `v2.7a32-real-session-validation-hardening`.
 
-This release focuses on long-session reliability for Codex + DeepSeek thinking mode. It closes the loop from tool-output trimming to runtime observability, behavioral readiness checks, and a guarded real Codex smoke test.
+This release focuses on context efficiency and long-session reliability for Codex + DeepSeek thinking mode. The main improvement is that oversized tool outputs are trimmed before they repeatedly re-enter the model context, reducing context pressure in long, tool-heavy development sessions.
 
-## Highlights
+## What changed for long sessions
 
-- Added `dsproxy debug behavioral` as a compact runtime readiness check for long sessions.
-- Aggregated long-session debug traces into actionable behavioral status, blockers, context-budget signals, prompt-token signals, and tool-output trim metrics.
-- Hardened thinking-mode tool-output trimming rollout for shell and interactive-shell heavy sessions.
-- Preserved structured tool-output trimming for image payloads, with image-specific caps still staged by rollout configuration.
-- Added `docs/real-long-session-validation.md` for real long-session validation.
-- Added `scripts/real-long-session-behavioral-smoke.sh` as a guarded smoke runner.
-- Documented the Codex `workspace-write` sandbox boundary for local WSL proxy access at `127.0.0.1:8001`.
+- Thinking-mode startup now enables a limited rollout of tool-output trimming by default.
+- Oversized shell and interactive-shell outputs can be compacted before they are sent back into model context.
+- Large structured tool outputs are normalized before trimming where possible.
+- Image-payload style tool outputs have a dedicated 12000-character cap in addition to the general tool-output trimming path.
+- Long-session debug traces are aggregated into a behavioral readiness summary with blockers, context-budget signals, prompt-token signals, and tool-output trim metrics.
+- `dsproxy debug behavioral --thinking` gives a compact view of whether the current long-session state is ready, blocked, or needs more trace data.
 
-## Validation
+## Expected user impact
 
-The guarded smoke runner supports:
+For long Codex sessions, especially sessions that repeatedly run tests, shell diagnostics, or log-heavy commands, CoDeepSeedeX should now spend less context on oversized tool outputs. This improves the chance that the session can continue without exhausting the prompt budget.
 
-```bash
-scripts/real-long-session-behavioral-smoke.sh --dry-run
-scripts/real-long-session-behavioral-smoke.sh --allow-bypass
-```
+The trade-off is intentional: the middle of very large tool outputs may be omitted. The retained head and tail usually preserve the command result, summary, and most recent error context. If the full output matters, save it to a file and inspect or attach that file explicitly.
 
-The real smoke uses `codex exec --dangerously-bypass-approvals-and-sandbox` because Codex `workspace-write` sandbox cannot reliably reach the host WSL listener at `127.0.0.1:8001`.
+## Validation and diagnostics
+
+This release adds:
+
+- `docs/real-long-session-validation.md`
+- `scripts/real-long-session-behavioral-smoke.sh`
+- `dsproxy debug behavioral --thinking --limit 200 --timeout 5`
+
+The smoke script is primarily for maintainers and controlled local validation. Most users only need the behavioral debug command when diagnosing long-session behavior.
 
 ## Upgrade
 
@@ -49,6 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scr
 
 ## Known limitations
 
-- This release validates tool-output trimming and long-session observability. It does not claim full semantic compaction parity with native Codex.
+- This release improves tool-output trimming and long-session observability. It does not claim full semantic compaction parity with native Codex.
+- The full middle content of very large tool outputs may be removed. Save exact logs to files when exact reproduction is required.
 - Large image-payload real-session validation remains separate.
 - The guarded real smoke uses a powerful Codex bypass mode and should only be used for controlled local validation.

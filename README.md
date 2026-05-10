@@ -108,24 +108,37 @@ Continue a previous Codex conversation:
 
     codex --profile deepseek-thinking resume
 
-Thinking limited rollout: `dsproxy start --thinking` defaults tool-output trimming to `enabled` and caps image payload tool outputs at 12000 chars. Stable startup remains unchanged.
+### Context efficiency and long-session reliability
 
-### Long-session reliability checks
+For the `deepseek-thinking` profile, CoDeepSeedeX enables a limited rollout of tool-output trimming by default. Oversized tool outputs are compacted before they are sent back into the model context, which reduces context growth during long Codex development sessions.
 
-CoDeepSeedeX now includes runtime checks for long Codex sessions using the thinking profile:
+This is most useful for tool-heavy workflows such as:
+
+- long `pytest` runs
+- shell logs and diagnostics
+- interactive shell output
+- large structured tool responses
+- image payload style tool outputs
+
+The image-payload path also has a dedicated 12000-character cap, because image-viewing tools can return especially large structured payloads. This cap is in addition to general tool-output trimming; it does not mean only image outputs are trimmed.
+
+The expected effect is better long-session stability: large tool outputs should consume less context, while Codex still keeps enough head/tail information to continue the development task. The trade-off is that the middle of very large outputs may be omitted. If an exact full log is important, save it to a file and inspect or attach that file explicitly.
+
+You can inspect the current long-session state with:
 
 ```bash
 dsproxy debug behavioral --thinking --limit 200 --timeout 5
+```
+
+For controlled validation, a guarded smoke runner is also available:
+
+```bash
 scripts/real-long-session-behavioral-smoke.sh --dry-run
 ```
 
-The guarded real smoke is available for controlled local validation:
+The full real-session smoke is documented in `docs/real-long-session-validation.md`.
 
-```bash
-scripts/real-long-session-behavioral-smoke.sh --allow-bypass
-```
-
-Note: Codex `workspace-write` sandbox may not be able to reach the host WSL listener at `127.0.0.1:8001`. A `blocked` behavioral result from inside sandbox can therefore be a sandbox-network boundary rather than a proxy failure. See `docs/real-long-session-validation.md`.
+Stable startup remains unchanged and does not enable the thinking limited rollout by default.
 
 ## 🧠 deepseek vs deepseek-thinking
 
