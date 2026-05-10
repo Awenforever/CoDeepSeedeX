@@ -41,3 +41,13 @@ It is not intended to be a generic model gateway. The priority is improving the 
 - Test missing API key diagnostics
 - Test Codex profile install and uninstall
 - Run a secret scan
+
+## v0.3.0-alpha long-session reliability handoff
+
+- Runtime release line: `v0.3.0-alpha`.
+- Internal milestone: `v2.7a32-real-session-validation-hardening`.
+- `dsproxy debug behavioral --thinking` is the compact runtime readiness check for long Codex thinking sessions.
+- `docs/real-long-session-validation.md` records the real-session validation boundary and acceptance criteria.
+- `scripts/real-long-session-behavioral-smoke.sh --dry-run` validates the guarded smoke runner without invoking Codex.
+- `scripts/real-long-session-behavioral-smoke.sh --allow-bypass` runs the controlled real smoke. It intentionally uses `codex exec --dangerously-bypass-approvals-and-sandbox` because Codex `workspace-write` sandbox cannot reliably reach the host WSL listener at `127.0.0.1:8001`.
+- Do not interpret a sandbox-local `blocked` behavioral result as a proxy failure until localhost reachability from that execution environment is confirmed.

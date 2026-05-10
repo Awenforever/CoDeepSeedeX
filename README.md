@@ -110,6 +110,23 @@ Continue a previous Codex conversation:
 
 Thinking limited rollout: `dsproxy start --thinking` defaults tool-output trimming to `enabled` and caps image payload tool outputs at 12000 chars. Stable startup remains unchanged.
 
+### Long-session reliability checks
+
+CoDeepSeedeX now includes runtime checks for long Codex sessions using the thinking profile:
+
+```bash
+dsproxy debug behavioral --thinking --limit 200 --timeout 5
+scripts/real-long-session-behavioral-smoke.sh --dry-run
+```
+
+The guarded real smoke is available for controlled local validation:
+
+```bash
+scripts/real-long-session-behavioral-smoke.sh --allow-bypass
+```
+
+Note: Codex `workspace-write` sandbox may not be able to reach the host WSL listener at `127.0.0.1:8001`. A `blocked` behavioral result from inside sandbox can therefore be a sandbox-network boundary rather than a proxy failure. See `docs/real-long-session-validation.md`.
+
 ## 🧠 deepseek vs deepseek-thinking
 
 The difference is simple:

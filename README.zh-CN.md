@@ -110,6 +110,23 @@ CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
 
 Thinking有限rollout：`dsproxy start --thinking`默认开启tool-output trimming，并将图像payload类工具输出限制为12000字符；stable启动链路保持不变。
 
+### 长会话可靠性检查
+
+CoDeepSeedeX现在提供面向thinking profile的长Codex会话运行态检查：
+
+```bash
+dsproxy debug behavioral --thinking --limit 200 --timeout 5
+scripts/real-long-session-behavioral-smoke.sh --dry-run
+```
+
+受保护的真实smoke可用于受控本地验证：
+
+```bash
+scripts/real-long-session-behavioral-smoke.sh --allow-bypass
+```
+
+注意：Codex的`workspace-write`沙箱可能无法访问宿主WSL上的`127.0.0.1:8001`监听端口。因此，沙箱内出现`blocked` behavioral结果时，可能是沙箱网络边界，而不是proxy故障。详见`docs/real-long-session-validation.md`。
+
 ## 🧠 deepseek和deepseek-thinking有什么区别？
 
 区别很简单：
