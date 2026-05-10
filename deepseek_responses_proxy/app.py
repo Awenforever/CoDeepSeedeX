@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a20-runtime-long-session-aggregate"
+PROXY_VERSION = "v2.7a21-tool-output-image-payload-trimming"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1428,28 +1428,43 @@ def _classify_tool_output_category(tool_name: str | None) -> str:
     if not name:
         return "unknown"
 
-    if name in {"write_stdin", "send_stdin", "terminal_input"} or "stdin" in name:
+    image_names = {
+        "view_image",
+        "open_image",
+        "display_image",
+        "show_image",
+        "render_image",
+        "image_viewer",
+        "python.open_image",
+        "container.open_image",
+    }
+    if (
+        name in image_names
+        or name.endswith(".view_image")
+        or name.endswith("_view_image")
+        or name.endswith(".open_image")
+        or name.endswith("_open_image")
+        or ("image" in name and any(marker in name for marker in ("view", "open", "display", "show", "render")))
+    ):
+        return "image_payload"
+
+    if any(marker in name for marker in ("interactive", "session", "feed_chars", "stdin", "write_stdin", "send_stdin")):
         return "interactive_shell"
 
-    if "user_input" in name or "request_user" in name or "ask_user" in name:
-        return "user_interaction"
-
-    if "search" in name or name in {"rg", "grep", "ripgrep"}:
+    if any(marker in name for marker in ("search", "web", "browser", "serp", "query")):
         return "search"
 
-    if "read" in name or "file" in name or name in {"cat", "cat_file"}:
+    if any(marker in name for marker in ("file", "read", "mclick", "open_file")):
         return "file_read"
 
-    if (
-        name in {"exec_command", "shell", "run_command", "terminal_exec"}
-        or "exec" in name
-        or "command" in name
-        or "shell" in name
-        or "terminal" in name
-    ):
+    if any(marker in name for marker in ("ask", "approval", "user", "confirm")):
+        return "user_interaction"
+
+    if any(marker in name for marker in ("shell", "bash", "zsh", "powershell", "cmd", "exec", "terminal", "python")):
         return "shell_command"
 
     return "unknown"
+
 
 
 def _tool_output_category_policy(category: str) -> dict[str, Any]:
@@ -1483,6 +1498,12 @@ def _tool_output_category_policy(category: str) -> dict[str, Any]:
             "max_item_chars": 50000,
             "keep_head_chars": 10000,
             "keep_tail_chars": 10000,
+            "notice_chars": 512,
+        },
+        "image_payload": {
+            "max_item_chars": 6000,
+            "keep_head_chars": 1200,
+            "keep_tail_chars": 1200,
             "notice_chars": 512,
         },
         "unknown": {

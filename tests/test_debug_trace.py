@@ -394,6 +394,103 @@ def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):
     assert len(budget["largest_outputs"]) == 2
 
 
+
+def test_tool_output_image_payload_category_and_policy(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+
+    image_output = "IMAGE-BEGIN\\n" + ("0123456789" * 800) + "\\nIMAGE-END"
+    input_items = [
+        {
+            "type": "function_call",
+            "id": "call_image",
+            "call_id": "call_image",
+            "name": "view_image",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_image",
+            "output": image_output,
+        },
+    ]
+
+    budget = proxy_app._tool_output_budget_breakdown(input_items)
+    policy = budget["policy_dry_run"]
+
+    assert budget["largest_outputs"][0]["tool_name"] == "view_image"
+    assert budget["largest_outputs"][0]["category"] == "image_payload"
+    assert policy["would_trim"] is True
+    assert policy["targets"][0]["category"] == "image_payload"
+    assert policy["targets"][0]["policy_name"] == "image_payload"
+    assert policy["targets"][0]["estimated_remove_chars"] > 0
+
+
+def test_tool_output_image_payload_enabled_trims_copy(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+
+    image_output = "IMAGE-BEGIN\\n" + ("abcdef" * 2000) + "\\nIMAGE-END"
+    input_items = [
+        {
+            "type": "function_call",
+            "id": "call_image",
+            "call_id": "call_image",
+            "name": "view_image",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_image",
+            "output": image_output,
+        },
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+
+    assert trimmed is not input_items
+    assert input_items[1]["output"] == image_output
+    assert trimmed[1]["output"] != image_output
+    assert "[tool output trimmed by CoDeepSeedeX]" in trimmed[1]["output"]
+    assert "tool_name: view_image" in trimmed[1]["output"]
+    assert "category: image_payload" in trimmed[1]["output"]
+    assert report["trimmed_item_count"] == 1
+    assert report["targets"][0]["tool_name"] == "view_image"
+    assert report["targets"][0]["category"] == "image_payload"
+
+
+def test_tool_output_image_policy_does_not_affect_shell_below_shell_policy(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+
+    shell_output = "Traceback (most recent call last):\\n" + ("shell-log\\n" * 300)
+    input_items = [
+        {
+            "type": "function_call",
+            "id": "call_shell",
+            "call_id": "call_shell",
+            "name": "exec_command",
+            "arguments": "{}",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_shell",
+            "output": shell_output,
+        },
+    ]
+
+    trimmed, report = proxy_app._apply_tool_output_safe_trimming(input_items)
+
+    assert trimmed[1]["output"] == shell_output
+    assert report["trimmed_item_count"] == 0
+    assert report["targets"] == []
+
+
 def test_debug_trace_none_mode_preserves_largest_outputs_metadata(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
     monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
