@@ -482,7 +482,7 @@ def test_user_tool_control_policy_taxonomy_counterexamples():
         ],
         status_tool,
     )
-    assert answer_first["user_signal"] == "answer_or_explain_first"
+    assert answer_first["user_signal"] == "answer_or_explain_only"
     assert answer_first["decision_if_enabled"] == "would_suppress_tools"
 
     ambiguous = _build_user_tool_control_policy_report(
@@ -553,3 +553,37 @@ def test_liveness_guard_does_not_treat_pause_and_explain_as_tool_intent():
         },
         tools_available=True,
     )
+
+
+def test_user_tool_control_policy_answer_first_sequencing():
+    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+
+    shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
+
+    only = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "先解释清楚。"}],
+        shell_tool,
+    )
+    assert only["user_signal"] == "answer_or_explain_only"
+    assert only["decision_if_enabled"] == "would_suppress_tools"
+
+    ordered_cn = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "先解释原因，然后继续执行测试。"}],
+        shell_tool,
+    )
+    assert ordered_cn["user_signal"] == "ordered_explain_then_continue"
+    assert ordered_cn["decision_if_enabled"] == "split_turn_required"
+
+    ordered_en = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "Explain first, then run the command."}],
+        shell_tool,
+    )
+    assert ordered_en["user_signal"] == "ordered_explain_then_continue"
+    assert ordered_en["decision_if_enabled"] == "split_turn_required"
+
+    ambiguous = _build_user_tool_control_policy_report(
+        [{"type": "message", "role": "user", "content": "先解释一下，然后看情况继续。"}],
+        shell_tool,
+    )
+    assert ambiguous["user_signal"] == "ambiguous_answer_first"
+    assert ambiguous["decision_if_enabled"] == "would_require_confirmation"

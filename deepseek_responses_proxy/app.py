@@ -7737,6 +7737,68 @@ def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
         "explain before",
         "before continuing",
     ]
+    ordered_sequence_markers = [
+        "然后",
+        "再",
+        "接着",
+        "随后",
+        "之后",
+        "再继续",
+        "然后继续",
+        "再运行",
+        "再执行",
+        "再测试",
+        "再提交",
+        "再推送",
+        "then",
+        "after that",
+        "afterwards",
+        "then continue",
+        "then run",
+        "then execute",
+        "then test",
+        "then commit",
+        "then push",
+    ]
+    followup_action_markers = [
+        "继续",
+        "执行",
+        "运行",
+        "测试",
+        "处理",
+        "修改",
+        "生成",
+        "检查",
+        "提交",
+        "推送",
+        "发布",
+        "合并",
+        "帮我",
+        "run",
+        "execute",
+        "continue",
+        "test",
+        "process",
+        "modify",
+        "update",
+        "generate",
+        "check",
+        "commit",
+        "push",
+        "publish",
+        "merge",
+        "do ",
+    ]
+    ambiguous_sequence_markers = [
+        "看情况",
+        "再说",
+        "再处理",
+        "看一下再",
+        "then maybe",
+        "maybe then",
+        "if needed",
+        "if necessary",
+    ]
     ambiguous_stop_markers = [
         "停一下",
         "暂停",
@@ -7751,6 +7813,9 @@ def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
     matched_stop = [marker for marker in stop_markers if marker in normalized]
     matched_tool_context = [marker for marker in tool_context_markers if marker in normalized]
     matched_answer_first = [marker for marker in answer_first_markers if marker in normalized]
+    matched_ordered = [marker for marker in ordered_sequence_markers if marker in normalized]
+    matched_followup_action = [marker for marker in followup_action_markers if marker in normalized]
+    matched_ambiguous_sequence = [marker for marker in ambiguous_sequence_markers if marker in normalized]
     matched_ambiguous = [marker for marker in ambiguous_stop_markers if marker in normalized]
 
     if matched_stop and matched_tool_context:
@@ -7759,18 +7824,33 @@ def _detect_user_tool_control_signal(text: str) -> dict[str, Any]:
             "matched_signals": (matched_stop + matched_tool_context)[:30],
             "negative_evidence": [],
         }
+
     if matched_answer_first:
+        if matched_ambiguous_sequence:
+            return {
+                "user_signal": "ambiguous_answer_first",
+                "matched_signals": (matched_answer_first + matched_ambiguous_sequence + matched_followup_action)[:30],
+                "negative_evidence": ["ambiguous_followup_sequence"],
+            }
+        if matched_ordered and matched_followup_action:
+            return {
+                "user_signal": "ordered_explain_then_continue",
+                "matched_signals": (matched_answer_first + matched_ordered + matched_followup_action)[:30],
+                "negative_evidence": [],
+            }
         return {
-            "user_signal": "answer_or_explain_first",
+            "user_signal": "answer_or_explain_only",
             "matched_signals": matched_answer_first[:20],
-            "negative_evidence": [],
+            "negative_evidence": ["no_ordered_followup_action_detected"],
         }
+
     if matched_stop or matched_ambiguous:
         return {
             "user_signal": "ambiguous_stop",
             "matched_signals": (matched_stop + matched_ambiguous)[:20],
             "negative_evidence": ["tool_context_missing"],
         }
+
     return {
         "user_signal": "none",
         "matched_signals": [],
@@ -7882,8 +7962,12 @@ def _decision_if_user_tool_control_enabled(user_signal: str, max_tool_risk: str)
         if max_tool_risk.startswith("R3_destructive"):
             return "would_require_confirmation"
         return "allow_tools"
-    if user_signal in {"explicit_tool_stop", "answer_or_explain_first"}:
+    if user_signal in {"explicit_tool_stop", "answer_or_explain_only"}:
         return "would_suppress_tools"
+    if user_signal == "ordered_explain_then_continue":
+        return "split_turn_required"
+    if user_signal == "ambiguous_answer_first":
+        return "would_require_confirmation"
     if user_signal == "ambiguous_stop":
         if max_tool_risk.startswith("R3"):
             return "would_require_confirmation"

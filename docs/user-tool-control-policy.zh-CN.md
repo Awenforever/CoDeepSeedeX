@@ -53,9 +53,9 @@ dry-run预期：
 decision_if_enabled=would_suppress_tools
 ```
 
-### 3.2answer_or_explain_first
+### 3.2answer_or_explain_only
 
-用户要求先回答、先解释、先说明、answer first、explain first。
+用户只要求先回答、先解释、先说明，没有明确授权同一轮继续执行后续工具任务。
 
 例子：
 
@@ -71,6 +71,45 @@ dry-run预期：
 
 ```text
 decision_if_enabled=would_suppress_tools
+```
+
+### 3.2.1ordered_explain_then_continue
+
+用户明确表达有序并列任务：先解释或先回答，然后继续执行后续任务。
+
+例子：
+
+```text
+先解释原因，然后继续执行测试
+先说明方案，再运行命令
+Explain first, then run the command
+Answer first, then continue the test
+```
+
+dry-run预期：
+
+```text
+decision_if_enabled=split_turn_required
+```
+
+含义：enabled阶段不应在同一轮中一边解释一边执行工具。应先返回解释和计划，等待下一轮“继续”后再执行。否则用户并不能在工具执行前真正看到解释。
+
+### 3.2.2ambiguous_answer_first
+
+用户要求先解释，同时提到后续处理，但是否授权同轮继续执行不明确。
+
+例子：
+
+```text
+先解释一下，然后看情况继续
+先说说，再处理
+Explain first, then maybe continue
+```
+
+dry-run预期：
+
+```text
+decision_if_enabled=would_require_confirmation
 ```
 
 ### 3.3ambiguous_stop
@@ -260,7 +299,9 @@ P1a不启用真实拦截。后续P1b若启用，应遵循：
 
 ```text
 explicit_tool_stop + 任意工具 = suppress_tools
-answer_or_explain_first + 任意工具 = suppress_tools
+answer_or_explain_only + 任意工具 = suppress_tools
+ordered_explain_then_continue + 任意工具 = split_turn_required
+ambiguous_answer_first + 任意工具 = require_confirmation
 ambiguous_stop + R3 = require_confirmation
 ambiguous_stop + R0/R1/R2 = observe_only或require_confirmation
 无停止信号 + R3_destructive_or_overwrite = require_confirmation
@@ -280,3 +321,24 @@ dry-run不会改变执行行为
 后续enabled可以fail-closed
 误判样本可加入反例库回归测试
 ```
+
+
+## 9.P1b顺序任务修正
+
+P1b实现前必须区分“只要求先解释”和“先解释后继续执行”。
+
+错误做法：
+
+```text
+answer_or_explain_first → 一律suppress_tools
+```
+
+修正做法：
+
+```text
+answer_or_explain_only → suppress_tools
+ordered_explain_then_continue → split_turn_required
+ambiguous_answer_first → require_confirmation
+```
+
+`split_turn_required`不是拒绝执行后续任务，而是把执行拆到下一轮。原因是同一轮工具调用通常发生在最终回复前，用户无法先看到解释再让工具执行。拆成两轮才能严格满足“先解释，然后执行”的顺序语义。
