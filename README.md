@@ -82,19 +82,6 @@ curl -sS http://127.0.0.1:8000/healthz
 curl -sS http://127.0.0.1:8001/healthz
 ```
 
-## 🔌 MCP behavior in v2.6a+
-
-CoDeepSeedeX treats Codex MCP configuration as the default trust boundary.
-
-- Default MCP policy: `codex`
-- Default MCP backend: `stdio`
-- Proxy-side MCP allowlists are not required by default
-- Write-capable MCP tools are not rejected by default
-- The target server must exist in `~/.codex/config.toml`
-- The target tool must be exposed by the server's runtime `tools/list`
-- Currently supported MCP transport: stdio `command` + `args`
-- Not yet supported: HTTP/SSE/remote MCP transports
-
 ## 🚀 Quick start
 
 After installation:
@@ -108,37 +95,70 @@ Continue a previous Codex conversation:
 
     codex --profile deepseek-thinking resume
 
-### Context efficiency and long-session reliability
+## 🔌 MCP behavior in v2.6a+
 
-For the `deepseek-thinking` profile, CoDeepSeedeX enables a limited rollout of tool-output trimming by default. Oversized tool outputs are compacted before they are sent back into the model context, which reduces context growth during long Codex development sessions.
+CoDeepSeedeX treats Codex MCP configuration as the default trust boundary.
 
-This is most useful for tool-heavy workflows such as:
+- Default MCP policy: `codex`
+- Default MCP backend: `stdio`
+- Proxy-side MCP allowlists are not required by default
+- Write-capable MCP tools are not rejected by default
+- The target server must exist in `~/.codex/config.toml`
+- The target tool must be exposed by the server's runtime `tools/list`
+- Currently supported MCP transport: stdio `command` + `args`
+- Not yet supported: HTTP/SSE/remote MCP transports
 
-- long `pytest` runs
-- shell logs and diagnostics
-- interactive shell output
-- large structured tool responses
-- image payload style tool outputs
+## 🧠 Long session compaction behavior in v2.7a+
 
-The image-payload path also has a dedicated 12000-character cap, because image-viewing tools can return especially large structured payloads. This cap is in addition to general tool-output trimming; it does not mean only image outputs are trimmed.
+CoDeepSeedeX v2.7a+ reduces repeated context growth in long `deepseek-thinking` sessions by trimming oversized tool outputs before they are sent back into the model context.
 
-The expected effect is better long-session stability: large tool outputs should consume less context, while Codex still keeps enough head/tail information to continue the development task. The trade-off is that the middle of very large outputs may be omitted. If an exact full log is important, save it to a file and inspect or attach that file explicitly.
+Behavior summary:
 
-You can inspect the current long-session state with:
+- `deepseek-thinking` enables tool-output trimming by default.
+- `deepseek` stable mode remains unchanged.
+- Oversized `shell_command` and `interactive_shell` outputs are trimmed with head/tail retention.
+- Large structured tool outputs are serialized compactly before trimming when possible.
+- `image_payload` outputs have an additional 12000-character item cap.
+- Trimming runs before previous-response function-call filtering, so outputs can still be classified while duplicate assistant tool-call replay remains avoided.
+
+Latest real validation snapshot:
+
+| Metric | Value |
+| --- | --- |
+| Trimmed categories | `shell_command`, `interactive_shell` |
+| Characters removed by applied trimming | `44822` |
+| Latest observed context size | `270012` chars |
+| Max observed context size | `405107` chars |
+| Removed chars vs latest context | about `16.6%` |
+| Removed chars vs max context | about `11.1%` |
+
+These numbers are a latest aggregate-trace snapshot, not a fixed compression ratio and not the total lifetime saving. Because previous tool outputs are replayed across later turns, removing oversized historical output reduces repeated context growth in subsequent requests. The cumulative prompt-budget effect can be larger than the one-time removed-char count.
+
+Trade-off: the middle of very large outputs may be omitted. The retained head and tail usually preserve command setup, summaries, exits and recent error context. If exact full output matters, save it to a file and inspect or attach that file explicitly.
+
+Inspect current long-session state:
 
 ```bash
 dsproxy debug behavioral --thinking --limit 200 --timeout 5
 ```
 
-For controlled validation, a guarded smoke runner is also available:
+## 🧩 Current compaction strategy
 
-```bash
-scripts/real-long-session-behavioral-smoke.sh --dry-run
-```
+Tool outputs are classified before trimming. Only oversized outputs are rewritten.
 
-The full real-session smoke is documented in `docs/real-long-session-validation.md`.
+| Category | Typical source | Current behavior |
+| --- | --- | --- |
+| `shell_command` | Non-interactive shell commands, tests, logs | Trim oversized outputs with head/tail retention. The middle may be omitted. |
+| `interactive_shell` | Long-running or PTY-style command sessions | Trim oversized outputs with head/tail retention, preserving recent interaction context where possible. |
+| `image_payload` | Image-view or image-returning tools with large structured payloads | Serialize structured output compactly where possible, then apply an image-specific 12000-character item cap. |
+| `search` | Web/search style tool outputs | Classified separately so future policies do not treat search results as raw shell logs. Oversized output follows conservative trimming. |
+| `file_read` | File inspection or file-read tools | Classified separately to preserve file-reading semantics. Oversized output follows conservative trimming. |
+| `user_interaction` | Prompts, approvals or user-facing interaction tool outputs | Classified separately and handled conservatively because it may contain interaction state. |
+| `unknown` | Tools without a known category | Uses conservative fallback trimming only when oversized, so the proxy can run without a fixed local tool list. |
 
-Stable startup remains unchanged and does not enable the thinking limited rollout by default.
+Structured list/dict tool outputs are serialized to compact JSON before trimming. This helps large structured payloads enter the same budget path as plain text output.
+
+For controlled maintainer validation, see `docs/real-long-session-validation.md`.
 
 ## 🧠 deepseek vs deepseek-thinking
 

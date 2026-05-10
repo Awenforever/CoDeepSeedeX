@@ -82,19 +82,6 @@ curl -sS http://127.0.0.1:8000/healthz
 curl -sS http://127.0.0.1:8001/healthz
 ```
 
-## 🔌 v2.6a+的MCP行为
-
-CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
-
-- 默认MCP策略：`codex`
-- 默认MCP后端：`stdio`
-- 默认不需要proxy侧MCP allowlist
-- 默认不拒绝写入型MCP tool
-- 目标server必须存在于`~/.codex/config.toml`
-- 目标tool必须存在于server运行时`tools/list`
-- 当前支持的MCP传输：stdio `command` + `args`
-- 暂不支持：HTTP/SSE/远程MCP传输
-
 ## 🚀 快速开始
 
 安装完成后：
@@ -108,37 +95,70 @@ CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
 
     codex --profile deepseek-thinking resume
 
-### 上下文效率与长会话可靠性
+## 🔌 v2.6a+的MCP行为
 
-对于`deepseek-thinking`profile，CoDeepSeedeX默认启用一组受限rollout的tool-outputtrimming。超大的工具输出会在重新进入模型上下文之前被压缩，从而降低长Codex开发会话中的上下文增长速度。
+CoDeepSeedeX现在默认把Codex MCP配置作为信任边界。
 
-这主要改善以下工具密集型场景：
+- 默认MCP策略：`codex`
+- 默认MCP后端：`stdio`
+- 默认不需要proxy侧MCP allowlist
+- 默认不拒绝写入型MCP tool
+- 目标server必须存在于`~/.codex/config.toml`
+- 目标tool必须存在于server运行时`tools/list`
+- 当前支持的MCP传输：stdio `command` + `args`
+- 暂不支持：HTTP/SSE/远程MCP传输
 
-- 长时间`pytest`输出
-- shell日志和诊断输出
-- interactive shell输出
-- 大型结构化工具返回值
-- imagepayload类工具输出
+## 🧠 v2.7a+长会话compaction行为
 
-imagepayload路径另有12000字符的专门上限，因为图片查看类工具可能返回特别大的结构化payload。这个上限是通用tool-outputtrimming之外的额外限制，并不表示只裁剪图片输出。
+CoDeepSeedeX v2.7a+通过在超大工具输出重新进入模型上下文之前进行裁剪，降低`deepseek-thinking`长会话中的重复上下文增长。
 
-预期效果是提高长会话稳定性：大工具输出占用的上下文更少，同时Codex仍保留足够的头部和尾部信息以继续开发任务。代价是超大输出的中间部分可能被省略。如果某段完整日志很重要，应将其保存为文件，再显式检查或上传该文件。
+行为摘要：
 
-可以用下面命令查看当前长会话状态：
+- `deepseek-thinking`默认启用tool-outputtrimming。
+- `deepseek`stable模式保持不变。
+- 超大的`shell_command`和`interactive_shell`输出会以头尾保留方式裁剪。
+- 大型结构化工具输出会尽量先紧凑序列化，再进入裁剪路径。
+- `image_payload`输出有额外的12000字符单项上限。
+- 裁剪发生在previous-response function-call过滤之前，因此仍能先识别工具输出类别，同时避免重复assistant tool-call replay。
+
+最新真实验证快照：
+
+| 指标 | 数值 |
+| --- | --- |
+| 发生裁剪的类别 | `shell_command`、`interactive_shell` |
+| 实际裁掉字符数 | `44822` |
+| latest observed context size | `270012`字符 |
+| max observed context size | `405107`字符 |
+| 裁掉字符数占latest context比例 | 约`16.6%` |
+| 裁掉字符数占max context比例 | 约`11.1%` |
+
+这些数值是最新aggregate trace快照，不是固定压缩率，也不是整个会话生命周期的总收益。由于历史工具输出会在后续turn中反复进入上下文，移除超大的历史输出会减少后续请求中的重复上下文增长。因此，累计prompt预算收益可能大于一次性的removed-char计数。
+
+代价：超大输出的中间部分可能被省略。保留的头部和尾部通常能覆盖命令前置信息、摘要、退出结果和最近错误上下文。如果必须保留完整输出，应把日志保存为文件，再显式检查或上传该文件。
+
+查看当前长会话状态：
 
 ```bash
 dsproxy debug behavioral --thinking --limit 200 --timeout 5
 ```
 
-如果需要受控验证，也可以先运行受保护smoke脚本的dry-run：
+## 🧩 当前compaction策略
 
-```bash
-scripts/real-long-session-behavioral-smoke.sh --dry-run
-```
+工具输出会先分类，再裁剪。只有超大输出会被重写。
 
-完整真实会话smoke流程见`docs/real-long-session-validation.md`。
+| 类别 | 常见来源 | 当前行为 |
+| --- | --- | --- |
+| `shell_command` | 非交互式shell命令、测试、日志 | 对超大输出执行头尾保留式裁剪，中间部分可能省略。 |
+| `interactive_shell` | 长时间运行或PTY风格命令会话 | 对超大输出执行头尾保留式裁剪，尽量保留最近交互上下文。 |
+| `image_payload` | 图片查看或图片返回工具的大型结构化payload | 尽量先紧凑序列化结构化输出，再应用image专用12000字符单项上限。 |
+| `search` | web/search类工具输出 | 单独分类，避免把搜索结果简单等同于shell日志。超大输出走保守裁剪。 |
+| `file_read` | 文件检查或文件读取工具 | 单独分类以保留文件读取语义。超大输出走保守裁剪。 |
+| `user_interaction` | prompts、approvals或用户交互类工具输出 | 单独分类并保守处理，因为其中可能包含交互状态。 |
+| `unknown` | 未知工具 | 只在超大时使用保守fallback裁剪，保证proxy不依赖固定本地工具表。 |
 
-stable启动链路保持不变，不会默认启用thinking limited rollout。
+结构化list/dict工具输出会先序列化为紧凑JSON，再进入裁剪逻辑。这样大型结构化payload也能进入统一预算路径。
+
+受控维护者验证流程见`docs/real-long-session-validation.md`。
 
 ## 🧠 deepseek和deepseek-thinking有什么区别？
 
