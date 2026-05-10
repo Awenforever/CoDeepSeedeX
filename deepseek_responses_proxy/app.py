@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v2.7a25-tool-output-trim-skip-observability"
+PROXY_VERSION = "v2.7a26-structured-tool-output-trimming"
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -1752,11 +1752,45 @@ def _compact_tool_output_target_for_trace(target: dict[str, Any]) -> dict[str, A
 def _compact_tool_output_targets_for_trace(
     targets: list[dict[str, Any]],
     *,
-    max_items: int,
+    max_items: int = 5,
 ) -> list[dict[str, Any]]:
-    safe_max = max(1, int(max_items))
-    return [_compact_tool_output_target_for_trace(target) for target in targets[:safe_max]]
+    try:
+        safe_limit = max(0, int(max_items))
+    except (TypeError, ValueError):
+        safe_limit = 5
 
+    compacted: list[dict[str, Any]] = []
+    compact_keys = (
+        "index",
+        "call_id",
+        "tool_name",
+        "category",
+        "policy_name",
+        "trim_reason",
+        "item_chars",
+        "output_chars",
+        "original_chars",
+        "output_type",
+        "output_was_serialized",
+        "estimated_after_chars",
+        "estimated_remove_chars",
+        "exceeds_warn_item_chars",
+        "matching_function_call_index",
+        "matching_function_call_arguments_chars",
+    )
+
+    for target in targets[:safe_limit]:
+        if not isinstance(target, dict):
+            continue
+        compacted.append(
+            {
+                key: target.get(key)
+                for key in compact_keys
+                if key in target
+            }
+        )
+
+    return compacted
 
 def _tool_output_trim_dry_run(
     outputs: list[dict[str, Any]],
@@ -1956,24 +1990,39 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
             policy = _tool_output_category_policy(category)
             original_item_chars = _debug_trace_json_chars(item)
             output_chars = _debug_trace_json_chars(output)
+            output_type = type(output).__name__
+            output_was_serialized = False
 
-            if not isinstance(output, str):
-                if len(skipped_outputs) < skip_trace_limit:
-                    skipped_outputs.append(
-                        {
-                            "index": index,
-                            "call_id": call_id,
-                            "tool_name": tool_name,
-                            "category": category,
-                            "skip_reason": "output_not_string",
-                            "output_type": type(output).__name__,
-                            "item_chars": original_item_chars,
-                            "output_chars": output_chars,
-                            "policy_max_item_chars": int(policy["max_item_chars"]),
-                            "has_matching_function_call": bool(call_info),
-                        }
+            if isinstance(output, str):
+                output_text = output
+            else:
+                try:
+                    output_text = json.dumps(
+                        output,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                        default=str,
                     )
-                continue
+                    output_was_serialized = True
+                except Exception as exc:
+                    if len(skipped_outputs) < skip_trace_limit:
+                        skipped_outputs.append(
+                            {
+                                "index": index,
+                                "call_id": call_id,
+                                "tool_name": tool_name,
+                                "category": category,
+                                "skip_reason": "output_not_json_serializable",
+                                "output_type": output_type,
+                                "serialization_error": f"{type(exc).__name__}: {exc}",
+                                "item_chars": original_item_chars,
+                                "output_chars": output_chars,
+                                "policy_max_item_chars": int(policy["max_item_chars"]),
+                                "has_matching_function_call": bool(call_info),
+                            }
+                        )
+                    continue
 
             if original_item_chars <= int(policy["max_item_chars"]):
                 if len(skipped_outputs) < skip_trace_limit:
@@ -1986,6 +2035,8 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                             "skip_reason": "item_not_over_policy_max",
                             "item_chars": original_item_chars,
                             "output_chars": output_chars,
+                            "output_type": output_type,
+                            "output_was_serialized": output_was_serialized,
                             "policy_max_item_chars": int(policy["max_item_chars"]),
                             "has_matching_function_call": bool(call_info),
                         }
@@ -1993,14 +2044,14 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                 continue
 
             trimmed_output = _format_trimmed_tool_output_text(
-                original_text=output,
+                original_text=output_text,
                 call_id=call_id,
                 tool_name=tool_name,
                 category=category,
                 policy=policy,
                 original_item_chars=original_item_chars,
             )
-            if trimmed_output == output:
+            if trimmed_output == output_text:
                 if len(skipped_outputs) < skip_trace_limit:
                     skipped_outputs.append(
                         {
@@ -2017,7 +2068,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                     )
                 continue
 
-            original_output_chars = len(output)
+            original_output_chars = len(output_text)
             item["output"] = trimmed_output
             trimmed_item_chars = _debug_trace_json_chars(item)
             removed_chars = max(0, original_item_chars - trimmed_item_chars)
@@ -2051,6 +2102,8 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                     "item_chars": original_item_chars,
                     "output_chars": original_output_chars,
                     "original_chars": original_item_chars,
+                    "output_type": output_type,
+                    "output_was_serialized": output_was_serialized,
                     "estimated_after_chars": trimmed_item_chars,
                     "estimated_remove_chars": removed_chars,
                     "exceeds_warn_item_chars": True,
