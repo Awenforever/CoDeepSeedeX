@@ -311,3 +311,13 @@ Expected behavior:
 - Suppressed C4 actions are not resumed by “continue”.
 
 For diagnosis, inspect `.debug/user_tool_command_risk_report.json`.
+
+## Installer fails with Python >= 3.11 required
+
+Use the bootstrap entrypoint on fresh Ubuntu/Debian/WSL systems:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+```
+
+The bootstrap layer installs or selects a Python 3.11+ interpreter and then passes it to `scripts/install.sh` through `--python-bin`.

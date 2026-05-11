@@ -96,6 +96,16 @@ Default SQLite database:
 ~/.local/state/deepseek-responses-proxy/responses-thinking.sqlite3
 ```
 
+## Bootstrap one-line install
+
+For fresh Ubuntu/Debian/WSL systems, prefer the bootstrap installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+```
+
+The bootstrap layer installs missing apt prerequisites and selects a Python 3.11+ interpreter before invoking `scripts/install.sh`.
+
 ## Status checks
 
 Stable:

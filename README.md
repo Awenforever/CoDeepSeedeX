@@ -24,7 +24,7 @@ Then run the CoDeepSeedeX installer.
 
 ## ⚡ One-line install
 
-    curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
 
 The installer will:
 
@@ -36,6 +36,8 @@ The installer will:
 - save the API key in a local `chmod 600` env file
 
 The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
+
+The bootstrap script installs missing apt-based prerequisites when needed, including `git`, `curl`, `ca-certificates`, and a Python 3.11+ interpreter for the installer.
 
 ## ⬆️ Upgrade
 

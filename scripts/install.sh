@@ -8,6 +8,7 @@ CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
 MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
 INSTALL_LOG="${DEEPSEEK_PROXY_INSTALL_LOG:-/tmp/codeepseedex-install-$(date +%Y%m%d_%H%M%S).log}"
+PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"
 
 DRY_RUN=0
 NON_INTERACTIVE=0
@@ -44,6 +45,7 @@ Options:
   --bin-dir DIR          Directory for dsproxy and optional codex wrapper
   --config-dir DIR       Config directory
   --env-file FILE        Env file path
+  --python-bin PATH     Python interpreter for venv, default: $DEEPSEEK_PROXY_PYTHON_BIN or python3
   --no-codex-profile     Skip Codex profile installation
   --no-codex-wrapper     Skip safe codex wrapper installation
   --no-shell-profile    Do not update shell startup files for PATH/env loading
@@ -222,7 +224,7 @@ find_real_codex() {
 
 
 json_string() {
-  python3 - "$1" <<'PY'
+  "$PYTHON_BIN" - "$1" <<'PY'
 import json
 import sys
 print(json.dumps(sys.argv[1]))
@@ -235,7 +237,7 @@ test_deepseek_api_key() {
     return 1
   fi
   local result
-  result="$(python3 - "$api_key" <<'PY'
+  result="$("$PYTHON_BIN" - "$api_key" <<'PY'
 import json
 import sys
 import urllib.request
@@ -346,7 +348,7 @@ env_file_value() {
     return 0
   fi
 
-  python3 - "$ENV_FILE" "$key" <<'PYENV'
+  "$PYTHON_BIN" - "$ENV_FILE" "$key" <<'PYENV'
 import shlex
 import sys
 from pathlib import Path
@@ -724,6 +726,7 @@ while [ "$#" -gt 0 ]; do
     --repo-url) REPO_URL="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
     --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; shift ;;
+    --python-bin) PYTHON_BIN="$2"; shift ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
     --no-codex-wrapper) INSTALL_CODEX_WRAPPER=0 ;;
@@ -759,14 +762,14 @@ printf '  %s\n' "$INSTALL_LOG"
 
 step "Checking requirements"
 
-PY_VERSION="$(python3 - <<'PY'
+PY_VERSION="$("$PYTHON_BIN" - <<'PY'
 import sys
 if sys.version_info < (3, 11):
-    raise SystemExit("ERROR: Python >= 3.11 is required")
+    raise SystemExit("ERROR: Python >= 3.11 is required by the selected interpreter")
 print(sys.version.split()[0])
 PY
 )"
-ok "Python $PY_VERSION"
+ok "Python $PY_VERSION via $PYTHON_BIN"
 
 if ! command -v git >/dev/null 2>&1; then
   echo "ERROR: git is required" >&2
@@ -806,7 +809,7 @@ else
   run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
-run_quiet "Virtual environment ready" python3 -m venv "$INSTALL_DIR/.venv"
+run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 run_quiet "pip upgraded" "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip
 run_quiet "Python package installed" "$INSTALL_DIR/.venv/bin/python" -m pip install -e "$INSTALL_DIR"
 
