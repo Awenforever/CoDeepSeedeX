@@ -806,18 +806,20 @@ def test_user_tool_command_risk_report_classifies_shell_destructive_dry_run():
 
     assert report["mode"] == "dry_run"
     assert report["active"] is False
-    assert report["max_command_risk"] == "C3_destructive_or_overwrite"
-    assert report["decision_if_enabled"] == "would_require_confirmation"
+    assert report["max_command_risk"] == "C2_routine_side_effect"
+    assert report["decision_if_enabled"] == "allow_routine_side_effect"
+    assert report["proxy_gate_scope"] == "C4_only_future_gate"
+    assert report["codex_is_default_sandbox_boundary"] is True
     assert report["tool_calls"][0]["tool_name"] == "shell"
-    assert report["tool_calls"][0]["command_risk"] == "C3_destructive_or_overwrite"
-    assert "shell_rm_delete" in report["tool_calls"][0]["candidates"][0]["reasons"]
+    assert report["tool_calls"][0]["command_risk"] == "C2_routine_side_effect"
+    assert "routine_tmp_cleanup" in report["tool_calls"][0]["candidates"][0]["reasons"]
 
 
 def test_user_tool_command_risk_report_classifies_apply_patch_update_dry_run():
     import json
     from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
 
-    patch = "*** Begin Patch\\n*** Update File: demo.txt\\n@@\\n-old\\n+new\\n*** End Patch"
+    patch = "*** Begin Patch\\n*** Update File: deepseek_responses_proxy/app.py\\n@@\\n-old\\n+new\\n*** End Patch"
     report = _build_user_tool_command_risk_report(
         [
             {
@@ -832,10 +834,10 @@ def test_user_tool_command_risk_report_classifies_apply_patch_update_dry_run():
         phase="test",
     )
 
-    assert report["max_command_risk"] == "C3_destructive_or_overwrite"
-    assert report["decision_if_enabled"] == "would_require_confirmation"
+    assert report["max_command_risk"] == "C2_routine_side_effect"
+    assert report["decision_if_enabled"] == "allow_routine_side_effect"
     assert report["tool_calls"][0]["tool_name_risk"] == "R3_capable_requires_command_audit"
-    assert report["tool_calls"][0]["command_risk"] == "C3_destructive_or_overwrite"
+    assert report["tool_calls"][0]["command_risk"] == "C2_routine_side_effect"
 
 
 def test_user_tool_command_risk_report_observes_readonly_shell_command():
@@ -867,3 +869,51 @@ def test_tool_name_policy_marks_shell_aliases_and_apply_patch_as_command_audit()
     assert _classify_tool_name_risk_for_policy("run_shell") == "R3_capable_requires_command_audit"
     assert _classify_tool_name_risk_for_policy("execute_command") == "R3_capable_requires_command_audit"
     assert _classify_tool_name_risk_for_policy("apply_patch") == "R3_capable_requires_command_audit"
+
+
+def test_user_tool_command_risk_report_classifies_c4_catastrophic_rm_drive():
+    import json
+    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_shell",
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert report["max_command_risk"] == "C4_catastrophic_or_out_of_sandbox"
+    assert report["decision_if_enabled"] == "would_require_c4_confirmation"
+    assert report["tool_calls"][0]["codex_sandbox_boundary"] is False
+    assert "catastrophic_rm_root_home_or_drive" in report["tool_calls"][0]["candidates"][0]["reasons"]
+
+
+def test_user_tool_command_risk_report_classifies_write_file_as_codex_governed_not_proxy_blocked():
+    import json
+    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_write",
+                "type": "function",
+                "function": {
+                    "name": "write_file",
+                    "arguments": json.dumps({"path": "docs/new.md", "content": "hello"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert report["max_command_risk"] == "C3_codex_governed_destructive"
+    assert report["decision_if_enabled"] == "allow_codex_governed"
+    assert report["tool_calls"][0]["tool_name_risk"] == "R3_destructive_or_overwrite"
+    assert report["tool_calls"][0]["codex_sandbox_boundary"] is True

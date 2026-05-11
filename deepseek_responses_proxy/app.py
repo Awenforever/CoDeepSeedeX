@@ -8233,6 +8233,10 @@ def _command_risk_severity_key(risk: str) -> int:
     order = {
         "C0_no_command_or_no_arguments": 0,
         "C1_readonly_or_unknown": 1,
+        "C2_routine_side_effect": 2,
+        "C3_codex_governed_destructive": 3,
+        "C4_catastrophic_or_out_of_sandbox": 4,
+        # Backward-compatible aliases from v2.7a40 dry-run reports.
         "C2_side_effect": 2,
         "C3_destructive_or_overwrite": 3,
     }
@@ -8248,57 +8252,84 @@ def _max_command_risk_level(levels: list[str]) -> str:
 def _classify_command_text_risk(text: str) -> tuple[str, list[str]]:
     import re
 
-    lowered = text.lower()
+    lowered = text.lower().strip()
     reasons: list[str] = []
 
-    destructive_patterns = [
-        (r"(^|[;&|]\s*)rm\s+(-[^\n;&|]*[rf][^\n;&|]*\s+)?[^\n;&|]+", "shell_rm_delete"),
-        (r"\brmdir\b|\brd\s+/s\b", "directory_delete"),
-        (r"\bdel\s+|\berase\s+", "windows_delete"),
-        (r"\bremove-item\b|\bremove\s+-item\b", "powershell_remove_item"),
-        (r"\bgit\s+reset\s+--hard\b", "git_reset_hard"),
-        (r"\bgit\s+clean\s+-[^\n;&|]*[fdx]", "git_clean_force"),
-        (r"\bgit\s+push\b[^\n;&|]*(--force|-f)\b", "git_force_push"),
-        (r"\bgit\s+branch\s+-d\b|\bgit\s+branch\s+-D\b", "git_branch_delete"),
-        (r"\bgit\s+tag\s+-d\b", "git_tag_delete"),
-        (r"\b(drop\s+table|drop\s+database|truncate\s+table)\b", "sql_drop_or_truncate"),
-        (r"\bdelete\s+from\b", "sql_delete"),
-        (r"\bupdate\s+\S+\s+set\b", "sql_update"),
-        (r"(^|[^<])>\s*[^&\s][^\n]*", "shell_redirection_overwrite"),
-        (r"\btee\s+(-a\s+)?\S+", "tee_file_write"),
-        (r"\bmv\s+(-f\s+)?\S+\s+\S+", "mv_may_overwrite"),
-        (r"\bcp\s+-[^\n;&|]*f[^\n;&|]*\s+\S+\s+\S+", "cp_force_overwrite"),
-        (r"\brsync\b[^\n;&|]*--delete\b", "rsync_delete"),
-        (r"\bdd\b[^\n;&|]*\bof=", "dd_write_output"),
-        (r"\*\*\*\s+delete file:", "apply_patch_delete_file"),
-        (r"\*\*\*\s+update file:", "apply_patch_update_file"),
-        (r"\*\*\*\s+add file:", "apply_patch_add_file"),
+    catastrophic_patterns = [
+        (r"\brm\s+-[^\n;&|]*[rf][^\n;&|]*\s+(/\s*$|/\*(\s|$)|~(/|\*|\s|$)|/home(/|\*|\s|$)|/root(/|\*|\s|$)|/mnt/[a-zA-Z](/|\*|\s|$)|/[a-zA-Z]:(/|\*|\s|$)|[a-zA-Z]:\\(\*|$)|[a-zA-Z]:/\*(\s|$))", "catastrophic_rm_root_home_or_drive"),
+        (r"\brm\s+-[^\n;&|]*[rf][^\n;&|]*\s+\$HOME(/\*)?(\s|$)", "catastrophic_rm_home_env"),
+        (r"\b(remove-item|rm|del|erase)\b[^\n;&|]*(c:|d:|e:|/mnt/[a-zA-Z])", "catastrophic_windows_or_mounted_drive_delete"),
+        (r"\b(del|erase)\s+(/s\s+)?(/q\s+)?[a-zA-Z]:\\\*", "catastrophic_windows_drive_wildcard_delete"),
+        (r"\bformat\s+[a-zA-Z]:", "catastrophic_format_drive"),
+        (r"\bdiskpart\b|\bclean\b.*\bdisk\b", "catastrophic_diskpart_or_disk_clean"),
+        (r"\bmkfs(\.\w+)?\b", "catastrophic_mkfs"),
+        (r"\bdd\b[^\n;&|]*\bof=/dev/(sd|nvme|vd|xvd|hd)[a-z0-9]+", "catastrophic_dd_block_device"),
+        (r"\b(drop\s+database|drop\s+schema)\b", "catastrophic_database_drop"),
+        (r"\btruncate\s+table\s+(prod|production|public\.|main\.)", "catastrophic_production_table_truncate"),
+        (r"\bdelete\s+from\s+(prod|production|public\.|main\.)", "catastrophic_production_table_delete"),
+        (r"\bgit\s+push\b[^\n;&|]*(--force|-f)\b[^\n;&|]*(main|master|prod|production)", "catastrophic_force_push_protected_branch"),
     ]
-    for pattern, reason in destructive_patterns:
+    for pattern, reason in catastrophic_patterns:
         if re.search(pattern, lowered):
             reasons.append(reason)
 
     if reasons:
-        return "C3_destructive_or_overwrite", reasons
+        return "C4_catastrophic_or_out_of_sandbox", reasons
 
-    side_effect_patterns = [
-        (r"\bgit\s+commit\b", "git_commit"),
-        (r"\bgit\s+add\b", "git_add"),
-        (r"\bmkdir\b", "mkdir"),
-        (r"\btouch\b", "touch"),
-        (r"\bchmod\b|\bchown\b", "permission_change"),
-        (r"\b(pip|npm|pnpm|yarn|apt|apt-get|brew)\s+install\b", "install_command"),
-        (r"\bsed\s+-i\b", "in_place_edit"),
+    routine_patterns = [
+        (r"\brm\s+-[^\n;&|]*[rf]?[^\n;&|]*\s+(\.pytest_cache|__pycache__|\.mypy_cache|\.ruff_cache|\.tox|dist|build|\.coverage|htmlcov)(/|\s|$)", "routine_cache_or_build_cleanup"),
+        (r"\brm\s+-[^\n;&|]*[rf]?[^\n;&|]*\s+/tmp/[^\n;&|]+", "routine_tmp_cleanup"),
+        (r"\b(remove-item|rm)\b[^\n;&|]*(\.pytest_cache|__pycache__|dist|build|/tmp/)", "routine_cleanup"),
+        (r"\bgit\s+add\b", "routine_git_add"),
+        (r"\bgit\s+commit\b", "routine_git_commit"),
+        (r"\bmkdir\b", "routine_mkdir"),
+        (r"\btouch\b", "routine_touch"),
+        (r"\b(pip|npm|pnpm|yarn|apt|apt-get|brew)\s+install\b", "routine_dependency_install"),
+        (r"\bsed\s+-i\b", "routine_in_place_project_edit"),
+        (r"\*\*\*\s+update file:\s+(?!/|~|[a-zA-Z]:|/mnt/)", "routine_apply_patch_update_project_file"),
+        (r"\*\*\*\s+add file:\s+(?!/|~|[a-zA-Z]:|/mnt/)", "routine_apply_patch_add_project_file"),
+        (r"(^|[^<])>\s*/tmp/[^\n;&|]+", "routine_tmp_redirection_write"),
     ]
-    for pattern, reason in side_effect_patterns:
+    for pattern, reason in routine_patterns:
         if re.search(pattern, lowered):
             reasons.append(reason)
 
     if reasons:
-        return "C2_side_effect", reasons
+        return "C2_routine_side_effect", reasons
+
+    codex_governed_patterns = [
+        (r"\brm\s+-[^\n;&|]*[rf][^\n;&|]*\s+[^\n;&|]+", "codex_governed_rm_delete"),
+        (r"\brmdir\b|\brd\s+/s\b", "codex_governed_directory_delete"),
+        (r"\bdel\s+|\berase\s+", "codex_governed_delete"),
+        (r"\bremove-item\b|\bremove\s+-item\b", "codex_governed_powershell_remove_item"),
+        (r"\bgit\s+reset\s+--hard\b", "codex_governed_git_reset_hard"),
+        (r"\bgit\s+clean\s+-[^\n;&|]*[fdx]", "codex_governed_git_clean_force"),
+        (r"\bgit\s+push\b[^\n;&|]*(--force|-f)\b", "codex_governed_git_force_push"),
+        (r"\bgit\s+branch\s+-d\b|\bgit\s+branch\s+-D\b", "codex_governed_git_branch_delete"),
+        (r"\bgit\s+tag\s+-d\b", "codex_governed_git_tag_delete"),
+        (r"\b(drop\s+table|truncate\s+table)\b", "codex_governed_sql_drop_or_truncate"),
+        (r"\bdelete\s+from\b", "codex_governed_sql_delete"),
+        (r"\bupdate\s+\S+\s+set\b", "codex_governed_sql_update"),
+        (r"(^|[^<])>\s*[^&\s][^\n]*", "codex_governed_shell_redirection_overwrite"),
+        (r"\btee\s+(-a\s+)?\S+", "codex_governed_tee_file_write"),
+        (r"\bmv\s+(-f\s+)?\S+\s+\S+", "codex_governed_mv_may_overwrite"),
+        (r"\bcp\s+-[^\n;&|]*f[^\n;&|]*\s+\S+\s+\S+", "codex_governed_cp_force_overwrite"),
+        (r"\brsync\b[^\n;&|]*--delete\b", "codex_governed_rsync_delete"),
+        (r"\bdd\b[^\n;&|]*\bof=", "codex_governed_dd_write_output"),
+        (r"\*\*\*\s+delete file:", "codex_governed_apply_patch_delete_file"),
+        (r"\*\*\*\s+update file:\s+(/|~|[a-zA-Z]:|/mnt/)", "codex_governed_apply_patch_external_update"),
+        (r"\*\*\*\s+add file:\s+(/|~|[a-zA-Z]:|/mnt/)", "codex_governed_apply_patch_external_add"),
+    ]
+    for pattern, reason in codex_governed_patterns:
+        if re.search(pattern, lowered):
+            reasons.append(reason)
+
+    if reasons:
+        return "C3_codex_governed_destructive", reasons
 
     readonly_patterns = [
-        (r"\b(cat|head|tail|grep|rg|find|ls|pwd|git\s+status|git\s+diff|git\s+log)\b", "readonly_command"),
+        (r"\b(cat|head|tail|grep|rg|find|ls|pwd)\b", "readonly_command"),
+        (r"\bgit\s+(status|diff|log|show|branch)\b", "readonly_git_command"),
     ]
     for pattern, reason in readonly_patterns:
         if re.search(pattern, lowered):
@@ -8338,18 +8369,23 @@ def _classify_tool_call_command_risk(tool_call: dict[str, Any]) -> dict[str, Any
 
     tool_name_reasons: list[str] = []
     if tool_name_risk == "R3_destructive_or_overwrite":
-        candidate_levels.append("C3_destructive_or_overwrite")
-        tool_name_reasons.append("tool_name_destructive_or_overwrite")
+        # Tool names such as write_file/delete_file indicate destructive capability,
+        # but Codex remains the default sandbox and approval boundary. Without a
+        # catastrophic target path, proxy should not narrow that boundary.
+        candidate_levels.append("C3_codex_governed_destructive")
+        tool_name_reasons.append("tool_name_destructive_or_overwrite_codex_governed")
     elif tool_name_risk == "R3_capable_requires_command_audit":
         if not candidate_levels:
             candidate_levels.append("C1_readonly_or_unknown")
             tool_name_reasons.append("tool_name_requires_command_audit_no_arguments")
 
     max_command_risk = _max_command_risk_level(candidate_levels)
-    if max_command_risk == "C3_destructive_or_overwrite":
-        decision_if_enabled = "would_require_confirmation"
-    elif max_command_risk == "C2_side_effect":
-        decision_if_enabled = "would_observe_or_confirm"
+    if max_command_risk == "C4_catastrophic_or_out_of_sandbox":
+        decision_if_enabled = "would_require_c4_confirmation"
+    elif max_command_risk == "C3_codex_governed_destructive":
+        decision_if_enabled = "allow_codex_governed"
+    elif max_command_risk == "C2_routine_side_effect":
+        decision_if_enabled = "allow_routine_side_effect"
     else:
         decision_if_enabled = "observe_only"
 
@@ -8369,6 +8405,7 @@ def _classify_tool_call_command_risk(tool_call: dict[str, Any]) -> dict[str, Any
         "candidates": candidate_reports,
         "arguments_preview": argument_preview,
         "arguments_preview_truncated": argument_preview_truncated,
+        "codex_sandbox_boundary": max_command_risk != "C4_catastrophic_or_out_of_sandbox",
     }
 
 
@@ -8384,10 +8421,12 @@ def _build_user_tool_command_risk_report(
     max_command_risk = _max_command_risk_level(
         [str(item.get("command_risk") or "C1_readonly_or_unknown") for item in call_reports]
     )
-    if max_command_risk == "C3_destructive_or_overwrite":
-        decision_if_enabled = "would_require_confirmation"
-    elif max_command_risk == "C2_side_effect":
-        decision_if_enabled = "would_observe_or_confirm"
+    if max_command_risk == "C4_catastrophic_or_out_of_sandbox":
+        decision_if_enabled = "would_require_c4_confirmation"
+    elif max_command_risk == "C3_codex_governed_destructive":
+        decision_if_enabled = "allow_codex_governed"
+    elif max_command_risk == "C2_routine_side_effect":
+        decision_if_enabled = "allow_routine_side_effect"
     else:
         decision_if_enabled = "observe_only"
 
@@ -8404,10 +8443,14 @@ def _build_user_tool_command_risk_report(
         "max_command_risk": max_command_risk,
         "decision_if_enabled": decision_if_enabled,
         "tool_calls": call_reports,
+        "proxy_gate_scope": "C4_only_future_gate",
+        "codex_is_default_sandbox_boundary": True,
         "notes": [
             "dry_run_only_no_tool_execution_changes",
             "command_risk_arguments_are_available_only_after_upstream_tool_call",
             "P1c does not enable destructive command blocking yet",
+            "proxy_must_not_create_a_narrower_boundary_than_codex_for_normal_development",
+            "only_C4_catastrophic_or_out_of_sandbox_is_a_future_proxy_gate_candidate",
         ],
     }
 

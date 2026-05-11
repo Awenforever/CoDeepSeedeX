@@ -503,3 +503,93 @@ apply_patch Add/Update/Delete File
 ```
 
 当前不会真实拦截这些命令。`decision_if_enabled=would_require_confirmation`只表示未来enabled阶段应要求确认或阻止自动执行。
+
+
+## 14.P1c Codex-aligned C4-only边界
+
+P1c后续策略必须遵循以下原则：
+
+```text
+Proxy must not create a narrower safety boundary than Codex for normal development workflows.
+```
+
+中文表述：
+
+```text
+proxy不得把正常开发工作流的安全边界缩得比Codex更窄。
+Codex沙箱仍然是常规编辑、写文件、apply_patch、依赖安装、项目内清理的默认安全边界。
+proxy只补充C4灾难级风险门，用于磁盘级、系统根目录、用户目录、Windows挂载盘、生产数据库等大范围不可逆操作。
+```
+
+因此，P1c风险等级调整为：
+
+```text
+C0_no_command_or_no_arguments
+C1_readonly_or_unknown
+C2_routine_side_effect
+C3_codex_governed_destructive
+C4_catastrophic_or_out_of_sandbox
+```
+
+默认执行边界：
+
+```text
+C0/C1：只观察
+C2：允许，属于正常开发副作用
+C3：允许，交给Codex沙箱和Codex审批策略
+C4：未来proxy gate候选，需要强确认或拦截
+```
+
+正常开发动作不应被proxy拦截：
+
+```text
+apply_patch Update File: deepseek_responses_proxy/app.py
+apply_patch Add File: tests/test_x.py
+write_file docs/new.md
+write_file /tmp/report.txt
+rm -rf .pytest_cache
+rm -rf __pycache__
+rm -rf dist
+rm -rf build
+rm -rf /tmp/v2.7*.txt
+git add
+git commit
+依赖安装
+```
+
+C4灾难级动作示例：
+
+```text
+rm -rf /
+rm -rf /*
+rm -rf ~
+rm -rf /home
+rm -rf /home/*
+rm -rf /mnt/c
+rm -rf /mnt/c/*
+rm -rf /mnt/d
+rm -rf /mnt/d/*
+Remove-Item -Recurse -Force C:\
+Remove-Item -Recurse -Force D:\
+del /s /q C:\*
+del /s /q D:\*
+format C:
+format D:
+diskpart clean
+mkfs.*
+dd if=... of=/dev/sdX
+drop database
+truncate production table
+git push --force到main/master/production
+```
+
+`decision_if_enabled`的新语义：
+
+```text
+observe_only：只观察
+allow_routine_side_effect：允许，正常开发副作用
+allow_codex_governed：允许，交给Codex沙箱或审批策略
+would_require_c4_confirmation：未来C4-only gate候选
+```
+
+当前阶段仍是dry-run，不启用真实拦截。
