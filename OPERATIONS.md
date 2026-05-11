@@ -781,3 +781,14 @@ Operational boundary:
 - C2/C3 development operations remain Codex-governed.
 - C4 suppression does not support automatic resume execution.
 - A normal “continue” must not execute a previously suppressed C4 action.
+
+### Tool provider API keys
+
+The installer can optionally configure tool-provider API keys. Press Enter to skip any provider during installation, then configure later:
+
+```bash
+dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-image-api-key --provider glm
+```
+
+Current installer support is intentionally narrow: web search uses `serpapi`, and image generation uses `glm`. Other providers should be configured manually through the env file until first-class support is added.

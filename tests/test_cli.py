@@ -1139,3 +1139,46 @@ def test_cli_install_codex_profile_writes_model_catalog_json(tmp_path, capsys):
     text = config_path.read_text(encoding="utf-8")
     assert "model_catalog_json" in text
     assert "/tmp/deepseek-proxy-models.json" in text
+
+
+def test_cli_config_set_web_search_api_key(monkeypatch, tmp_path, capsys):
+    env_file = tmp_path / "env"
+    rc = main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "serpapi",
+        "--value",
+        "serpapi-test-key",
+    ])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi" in text
+    assert "SERPAPI_API_KEY=serpapi-test-key" in text
+    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+
+
+def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
+    env_file = tmp_path / "env"
+    rc = main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "glm",
+        "--value",
+        "glm-test-key",
+    ])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=glm" in text
+    assert "DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=glm-test-key" in text
+    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text

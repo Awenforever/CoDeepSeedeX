@@ -91,6 +91,8 @@ The installer stores the DeepSeek API key in the local env file, by default `~/.
 dsproxy config show
 dsproxy config set-api-key
 dsproxy config test-api-key
+dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-image-api-key --provider glm
 ```
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.

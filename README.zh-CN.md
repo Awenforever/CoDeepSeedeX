@@ -91,6 +91,8 @@ curl -sS http://127.0.0.1:8001/healthz
 dsproxy config show
 dsproxy config set-api-key
 dsproxy config test-api-key
+dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-image-api-key --provider glm
 ```
 
 安装脚本也会把该env文件和`dsproxy`包装命令目录接入shell profile。新终端可以直接找到`dsproxy`，Codex也可以读取`DEEPSEEK_API_KEY`。如果当前终端仍提示找不到`dsproxy`，打开新终端，或执行安装脚本最后打印的`source`命令。

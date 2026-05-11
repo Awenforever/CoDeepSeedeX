@@ -1053,6 +1053,84 @@ def _config(args: argparse.Namespace) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result.get("ok") else 1
 
+
+    if args.config_command == "set-web-search-api-key":
+        provider = str(getattr(args, "provider", "serpapi") or "serpapi").strip().lower()
+        if provider != "serpapi":
+            print(json.dumps({
+                "status": "error",
+                "error": "unsupported_web_search_provider",
+                "supported_providers": ["serpapi"],
+            }, ensure_ascii=False, indent=2))
+            return 1
+        api_key = str(getattr(args, "value", "") or "")
+        if not api_key:
+            import getpass
+
+            api_key = getpass.getpass("SerpAPI API key: ").strip()
+        if not api_key:
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_serpapi_api_key",
+                "env_file": str(env_file),
+            }, ensure_ascii=False, indent=2))
+            return 1
+        values = _read_env_exports(env_file)
+        values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+        values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = "serpapi"
+        values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
+        values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+        values["SERPAPI_API_KEY"] = api_key
+        _write_env_exports(env_file, values)
+        print(json.dumps({
+            "status": "ok",
+            "env_file": str(env_file),
+            "web_search_provider": "serpapi",
+            "serpapi_api_key_configured": True,
+            "serpapi_api_key_preview": _mask_api_key(api_key),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.config_command == "set-image-api-key":
+        provider = str(getattr(args, "provider", "glm") or "glm").strip().lower()
+        if provider != "glm":
+            print(json.dumps({
+                "status": "error",
+                "error": "unsupported_image_provider",
+                "supported_providers": ["glm"],
+            }, ensure_ascii=False, indent=2))
+            return 1
+        api_key = str(getattr(args, "value", "") or "")
+        if not api_key:
+            import getpass
+
+            api_key = getpass.getpass("GLM image API key: ").strip()
+        if not api_key:
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_glm_image_api_key",
+                "env_file": str(env_file),
+            }, ensure_ascii=False, indent=2))
+            return 1
+        values = _read_env_exports(env_file)
+        values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+        values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "glm"
+        values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "cogView-4-250304")
+        values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+        values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+        values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+        values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = api_key
+        _write_env_exports(env_file, values)
+        print(json.dumps({
+            "status": "ok",
+            "env_file": str(env_file),
+            "image_provider": "glm",
+            "image_model": values["DEEPSEEK_PROXY_IMAGE_MODEL"],
+            "image_api_key_configured": True,
+            "image_api_key_preview": _mask_api_key(api_key),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
     if args.config_command == "set-model":
         allowed = {"deepseek-v4-pro", "deepseek-v4-flash"}
         if args.model not in allowed:
@@ -1858,6 +1936,19 @@ def build_parser() -> argparse.ArgumentParser:
     config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)
     config_test_api_key.set_defaults(func=_config)
+
+
+    config_set_web_search_api_key = config_sub.add_parser("set-web-search-api-key", help="store web search API key; currently supports provider=serpapi")
+    config_set_web_search_api_key.add_argument("--env-file")
+    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi"])
+    config_set_web_search_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_web_search_api_key.set_defaults(func=_config)
+
+    config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key; currently supports provider=glm")
+    config_set_image_api_key.add_argument("--env-file")
+    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm"])
+    config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_image_api_key.set_defaults(func=_config)
 
     config_set_model = config_sub.add_parser("set-model", help="set DeepSeek upstream model")
     config_set_model.add_argument("model")
