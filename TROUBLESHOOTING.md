@@ -317,10 +317,20 @@ For diagnosis, inspect `.debug/user_tool_command_risk_report.json`.
 Use the bootstrap entrypoint on fresh Ubuntu/Debian/WSL systems:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 The bootstrap layer installs or selects a Python 3.11+ interpreter and then passes it to `scripts/install.sh` through `--python-bin`.
+
+## GitHub Release installer asset is missing
+
+The recommended installer entry is:
+
+```bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
+```
+
+If this URL returns 404, the most likely cause is that the latest tag does not have a GitHub Release asset named `bootstrap.sh`. Check the `Release installer assets` workflow for the tag and confirm that both `bootstrap.sh` and `install.sh` were uploaded as fixed-name assets.
 
 ## raw.githubusercontent.com connection reset or refused
 

@@ -24,16 +24,19 @@ Then run the CoDeepSeedeX installer.
 
 ## ⚡ One-line install
 
-    curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+    curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
+
+The recommended one-line installer is served from the latest GitHub Release asset. The fallback downloader below keeps raw GitHub and CDN mirrors as secondary entry points.
 
 ### Fallback install command
 
-If `raw.githubusercontent.com` is unstable or blocked, use the fallback downloader:
+If the GitHub Release asset, `raw.githubusercontent.com`, or a CDN mirror is unstable or blocked, use the fallback downloader:
 
 ```bash
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs" ||
@@ -87,7 +90,7 @@ dsproxy upgrade --tag <tag-or-branch>
 Use this when upgrading from older releases such as `v0.1.0-alpha`, or when `dsproxy upgrade` is not available:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh | bash
 ```
 
 This path is intentionally compatible with Path A. The installer tracks the current `master` one-line installer, refreshes the installation and profiles, and preserves local env and Codex configuration by default.

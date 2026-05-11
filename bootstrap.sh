@@ -2,8 +2,9 @@
 set -euo pipefail
 
 REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
-INSTALLER_URL="${DEEPSEEK_PROXY_INSTALLER_URL:-https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh}"
-ALT_INSTALLER_URL="${DEEPSEEK_PROXY_ALT_INSTALLER_URL:-https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/scripts/install.sh}"
+INSTALLER_URL="${DEEPSEEK_PROXY_INSTALLER_URL:-https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh}"
+ALT_INSTALLER_URL="${DEEPSEEK_PROXY_ALT_INSTALLER_URL:-https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh}"
+THIRD_INSTALLER_URL="${DEEPSEEK_PROXY_THIRD_INSTALLER_URL:-https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/scripts/install.sh}"
 INSTALL_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S).log}"
 BOOTSTRAP_WORKDIR="${DEEPSEEK_PROXY_BOOTSTRAP_WORKDIR:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S)-work}"
 INSTALLER_PATH="$BOOTSTRAP_WORKDIR/install.sh"
@@ -37,7 +38,7 @@ Bootstrap options:
   -h, -H, --help             Show help
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+  curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
   bash bootstrap.sh -- --non-interactive
   bash bootstrap.sh -- --repo-url /path/to/local/CoDeepSeedeX
 USAGE
@@ -141,7 +142,7 @@ download_installer() {
 
   if [ "$DRY_RUN" = "1" ]; then
     warn "dry-run: would download install.sh from $INSTALLER_URL"
-    warn "dry-run: fallback URL is $ALT_INSTALLER_URL"
+    warn "dry-run: fallback URLs are $ALT_INSTALLER_URL and $THIRD_INSTALLER_URL"
     return 0
   fi
 
@@ -150,9 +151,16 @@ download_installer() {
     return 0
   fi
 
-  warn "Primary install.sh download failed. Trying alternate GitHub raw URL."
+  warn "Primary install.sh download failed. Trying raw.githubusercontent.com fallback."
 
   if curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$ALT_INSTALLER_URL" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
+    chmod +x "$INSTALLER_PATH"
+    return 0
+  fi
+
+  warn "raw.githubusercontent.com install.sh download failed. Trying alternate GitHub raw URL."
+
+  if curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$THIRD_INSTALLER_URL" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
     chmod +x "$INSTALLER_PATH"
     return 0
   fi

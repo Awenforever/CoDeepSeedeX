@@ -101,7 +101,7 @@ Default SQLite database:
 For fresh Ubuntu/Debian/WSL systems, prefer the bootstrap installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 The bootstrap layer installs missing apt prerequisites and selects a Python 3.11+ interpreter before invoking `scripts/install.sh`.
@@ -805,12 +805,13 @@ Current installer support is intentionally narrow: web search uses `serpapi`, an
 
 ### Fallback install command
 
-If `raw.githubusercontent.com` is unstable or blocked, use the fallback downloader:
+If the GitHub Release asset, `raw.githubusercontent.com`, or a CDN mirror is unstable or blocked, use the fallback downloader:
 
 ```bash
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/bootstrap.sh -o "$bs" ||
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs" ||
@@ -819,3 +820,18 @@ bs="$tmp/bootstrap.sh"
 ```
 
 After installation, start a new shell or run `source ~/.bashrc` so that `~/.local/bin` takes priority. Verify with `command -v codex` and `command -v dsproxy`.
+
+## Release installer assets
+
+The recommended one-line installer downloads `bootstrap.sh` from the latest GitHub Release asset:
+
+```bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
+```
+
+The tag publishing workflow uploads two fixed-name assets for every `v*` tag:
+
+- `bootstrap.sh`, used by the public one-line installer
+- `install.sh`, used by `bootstrap.sh` before falling back to raw URLs and shallow git clone
+
+If the latest Release asset is missing, confirm that the `Release installer assets` workflow ran for the tag and that the Release contains both fixed-name assets.
