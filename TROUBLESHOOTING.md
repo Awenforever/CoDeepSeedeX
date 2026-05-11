@@ -298,3 +298,16 @@ As of v2.3a2, Codex tool forwarding is default-open for DeepSeek profiles:
 Set any flag to `0` to disable that forwarding class.
 
 This only forwards tool schemas to DeepSeek and restores namespace-aware function calls. The proxy does not execute MCP tools directly and does not bypass Codex local MCP runtime, AGENTS.md, approval policy, or MCP server permissions.
+
+## Command-risk and C4gate troubleshooting
+
+If normal development commands appear blocked, first check `proxy_status.command_risk_policy`.
+
+Expected behavior:
+
+- Project-local edits, `apply_patch`, file writes, cache cleanup, `/tmp` cleanup, dependency installation, and project-local cleanup should not be blocked by the proxy command-risk gate.
+- Only `C4_catastrophic_or_out_of_sandbox` should be suppressed when `DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE=enabled`.
+- C4 examples include root/home/drive deletion, disk formatting, block-device overwrite, production database drop, and force-push to protected branches.
+- Suppressed C4 actions are not resumed by “continue”.
+
+For diagnosis, inspect `.debug/user_tool_command_risk_report.json`.

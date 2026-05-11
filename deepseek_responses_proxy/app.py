@@ -7312,6 +7312,7 @@ async def _execute_proxy_tool_call(
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
             "tool_bridge": _tool_bridge_status(),
+            "command_risk_policy": _command_risk_policy_status(),
             "store": _store_info(store) if store is not None else None,
             "deepseek_base_url": getattr(deepseek_client, "base_url", None) if deepseek_client is not None else None,
         }
@@ -8143,6 +8144,34 @@ def _user_tool_command_risk_env_config() -> dict[str, Any]:
         "mode": mode,
         "enabled": mode == "enabled",
         "preview_chars": _env_int("DEEPSEEK_PROXY_COMMAND_RISK_PREVIEW_CHARS", 700),
+    }
+
+
+
+def _command_risk_policy_status() -> dict[str, Any]:
+    config = _user_tool_command_risk_env_config()
+    mode = str(config.get("mode") or "dry_run")
+    enabled = bool(config.get("enabled"))
+    return {
+        "mode": mode,
+        "enabled": enabled,
+        "active_when_enabled": enabled,
+        "policy_is_dry_run_only": mode == "dry_run",
+        "env_var": "DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE",
+        "preview_chars": int(config.get("preview_chars") or 700),
+        "supported_modes": ["off", "dry_run", "enabled"],
+        "gate_scope": "C4_only_future_gate",
+        "codex_is_default_sandbox_boundary": True,
+        "c4_gate_available": True,
+        "c4_gate_action_when_enabled": "suppress_and_explain",
+        "c4_gate_resume_supported": False,
+        "c4_risk_level": "C4_catastrophic_or_out_of_sandbox",
+        "normal_development_risks_allowed": [
+            "C0_no_command_or_no_arguments",
+            "C1_readonly_or_unknown",
+            "C2_routine_side_effect",
+            "C3_codex_governed_destructive",
+        ],
     }
 
 
@@ -10248,6 +10277,7 @@ def create_app(
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
             "tool_bridge": _tool_bridge_status(),
+            "command_risk_policy": _command_risk_policy_status(),
             "context": _proxy_context_status(),
             "agent_liveness": _proxy_agent_liveness_status(),
             "semantic_compaction": _semantic_compaction_runtime_status(),
@@ -10264,6 +10294,7 @@ def create_app(
             "status": "ok",
             "version": PROXY_VERSION,
             "tool_bridge": _tool_bridge_status(),
+            "command_risk_policy": _command_risk_policy_status(),
         }
 
     @app.get("/v1/proxy/mcp/discovery")

@@ -313,3 +313,17 @@ Read:
 
 - docs/security.en.md
 - docs/security.zh-CN.md
+
+### C4 command-risk gate visibility
+
+The proxy exposes command-risk policy status through `proxy_status` as `command_risk_policy`.
+
+`DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE` supports:
+
+- `off`: disables command-risk policy reporting and gating.
+- `dry_run`: records risk reports without changing tool execution.
+- `enabled`: enables the C4 suppress-only gate.
+
+The gate is intentionally Codex-aligned. Normal development operations such as project-local `apply_patch`, project file writes, cache cleanup, `/tmp` cleanup, dependency installation, and project-local destructive operations remain Codex-governed. The proxy suppresses only `C4_catastrophic_or_out_of_sandbox` operations, such as root/home/drive deletion, disk formatting, block-device overwrite, production database drop, or force-push to protected branches.
+
+C4 suppression is suppress-only. It returns an assistant explanation and does not support automatic resume through “continue”.

@@ -761,3 +761,23 @@ Safety boundaries:
 - Only the upstream DeepSeek payload copy may be compacted.
 - The enabled semantic payload compactor only compacts low-risk passed test output summaries.
 - Medium-risk or high-risk transcripts are preserved.
+
+## C4 command-risk gate operations
+
+Use `proxy_status` to inspect the current command-risk policy. The returned `command_risk_policy` object includes the mode, supported modes, C4gate scope, whether enabled mode is active, and whether C4 resume is supported.
+
+Runtime mode is controlled by:
+
+```bash
+export DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE=dry_run
+export DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE=enabled
+export DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE=off
+```
+
+Operational boundary:
+
+- `dry_run` is the safe observation mode.
+- `enabled` suppresses only `C4_catastrophic_or_out_of_sandbox`.
+- C2/C3 development operations remain Codex-governed.
+- C4 suppression does not support automatic resume execution.
+- A normal “continue” must not execute a previously suppressed C4 action.

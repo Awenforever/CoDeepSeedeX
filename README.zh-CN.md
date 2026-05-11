@@ -317,3 +317,17 @@ Codex可能根据你的配置调用工具、修改文件、执行命令或访问
 
 - docs/security.zh-CN.md
 - docs/security.en.md
+
+### C4命令风险gate可见性
+
+proxy会通过`proxy_status`暴露`command_risk_policy`状态。
+
+`DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE`支持：
+
+- `off`：关闭命令风险策略报告和gate。
+- `dry_run`：只记录风险报告，不改变工具执行。
+- `enabled`：启用C4 suppress-only gate。
+
+该gate遵循Codex边界。项目内`apply_patch`、项目文件写入、缓存清理、`/tmp`清理、依赖安装和项目内破坏性开发操作仍交给Codex沙箱和审批机制处理。proxy只抑制`C4_catastrophic_or_out_of_sandbox`，例如删除根目录、删除home、删除整块挂载盘、格式化磁盘、写块设备、删除生产数据库或强推受保护分支。
+
+C4抑制是suppress-only。它只返回assistant说明，不支持通过“继续”自动恢复执行。
