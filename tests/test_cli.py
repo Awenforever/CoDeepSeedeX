@@ -101,7 +101,7 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
 
-    assert main(["start", "--thinking", "--port", "8766"]) == 0
+    assert main(["start", "--thinking", "--port", "8766", "--state-dir", str(tmp_path)]) == 0
 
     assert captured["env"]["DEEPSEEK_THINKING"] == "enabled"
     assert captured["env"]["DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE"] == "enabled"
@@ -145,7 +145,7 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
 
-    assert main(["start", "--port", "8765"]) == 0
+    assert main(["start", "--port", "8765", "--state-dir", str(tmp_path)]) == 0
 
     assert "DEEPSEEK_THINKING" not in captured["env"]
     assert "DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE" not in captured["env"]
@@ -386,7 +386,8 @@ def test_cli_upgrade_rejects_non_git_checkout_with_one_line_hint(monkeypatch, tm
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "error"
     assert data["error"] == "not_a_git_checkout"
-    assert "install.sh" in data["one_line_upgrade"]
+    assert "bootstrap.sh" in data["one_line_upgrade"]
+    assert "releases/latest/download/bootstrap.sh" in data["one_line_upgrade"]
 
 
 

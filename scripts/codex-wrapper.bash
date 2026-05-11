@@ -35,13 +35,13 @@ codex() {
   case "$selected_profile" in
     deepseek)
       source "$HOME/.config/deepseek-responses-proxy/env"
-      dsproxy-start
+      dsproxy start
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
       ;;
     deepseek-thinking)
       source "$HOME/.config/deepseek-responses-proxy/env"
-      dsproxy-start
-      dsproxy-start-thinking
+      dsproxy start
+      dsproxy start thinking
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
       ;;
     *)

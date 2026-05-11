@@ -25,7 +25,7 @@ dsproxy stop
 Status:
 
 ```bash
-dsproxy-status
+dsproxy status
 ```
 
 Logs:
@@ -69,7 +69,7 @@ dsproxy stop thinking
 Status:
 
 ```bash
-dsproxy-status-thinking
+dsproxy status thinking
 ```
 
 Logs:
@@ -280,6 +280,14 @@ Avoid relying on `--last` when both profiles have recent sessions in the same di
 
 ## Development rule
 
+### Real HOME safety for maintainer validation
+
+Installer, upgrade, uninstall, and upgrade-matrix tests can write user-level state such as `~/.local`, `~/.config/deepseek-responses-proxy`, `~/.codex/config.toml`, `~/.bashrc`, or `~/.profile`.
+
+Run real-HOME upgrade-matrix or uninstall smoke tests only in a disposable VM or an explicitly isolated test HOME. Do not run those commands on a development machine unless the command header explicitly says that it will modify real HOME and names the affected paths.
+
+When simulating GitHub for upgrade tests, create any temporary local bare repository only under `/tmp` inside the VM. Do not describe that as a production remote, and do not run that test on a development HOME.
+
 Before editing:
 
 ```bash
@@ -359,8 +367,8 @@ dsproxy start
 dsproxy start thinking
 dsproxy stop
 dsproxy stop thinking
-dsproxy-status
-dsproxy-status-thinking
+dsproxy status
+dsproxy status thinking
 ```
 
 The scripts always bypass system HTTP proxies for localhost checks by using:

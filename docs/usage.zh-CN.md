@@ -12,11 +12,11 @@
 
 启动thinking proxy：
 
-    dsproxy start --thinking
+    dsproxy start thinking
 
 查看状态：
 
-    dsproxy status --thinking
+    dsproxy status thinking
 
 诊断：
 
@@ -28,7 +28,7 @@
 
 停止：
 
-    dsproxy stop --thinking
+    dsproxy stop thinking
 
 ## Codex
 

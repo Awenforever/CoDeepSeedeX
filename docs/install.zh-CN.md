@@ -34,6 +34,8 @@
 
     ~/.codex/config.toml
 
+这些命令会写入用户级配置。安装器或升级测试应在一次性虚拟机或显式隔离的测试HOME中运行，不要直接使用开发账号。
+
 生成profile：
 
     deepseek-thinking
@@ -41,7 +43,7 @@
 ## 启动proxy
 
     export DEEPSEEK_API_KEY="..."
-    .venv/bin/dsproxy start --thinking
+    .venv/bin/dsproxy start thinking
     .venv/bin/dsproxy doctor --thinking
 
 ## 运行Codex

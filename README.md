@@ -55,6 +55,10 @@ The installer will:
 - ask for stable/thinking ports and your DeepSeek API key
 - save the API key in a local `chmod 600` env file
 
+- modify user-level Codex/profile files only in your current user account
+
+Maintainer safety note: installer, upgrade, uninstall, and upgrade-matrix tests can modify real user-level paths such as `~/.local`, `~/.config`, `~/.codex`, `~/.bashrc`, or `~/.profile`. Run those tests in a disposable VM or an explicitly isolated test HOME unless you deliberately want to modify your development account.
+
 The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
 
 The bootstrap script installs missing apt-based prerequisites when needed, including `git`, `curl`, `ca-certificates`, and a Python 3.11+ interpreter for the installer.
@@ -90,10 +94,10 @@ dsproxy upgrade --tag <tag-or-branch>
 Use this when upgrading from older releases such as `v0.1.0-alpha`, or when `dsproxy upgrade` is not available:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-This path is intentionally compatible with Path A. The installer tracks the current `master` one-line installer, refreshes the installation and profiles, and preserves local env and Codex configuration by default.
+This path is intentionally compatible with Path A. The bootstrap entrypoint fetches the current Release installer, refreshes the installation and profiles, and preserves local env and Codex configuration by default.
 
 Verify after either path:
 

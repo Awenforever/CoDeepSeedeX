@@ -12,11 +12,11 @@ Initialize config:
 
 Start thinking proxy:
 
-    dsproxy start --thinking
+    dsproxy start thinking
 
 Check status:
 
-    dsproxy status --thinking
+    dsproxy status thinking
 
 Run diagnostics:
 
@@ -28,7 +28,7 @@ Read logs:
 
 Stop:
 
-    dsproxy stop --thinking
+    dsproxy stop thinking
 
 ## Codex
 

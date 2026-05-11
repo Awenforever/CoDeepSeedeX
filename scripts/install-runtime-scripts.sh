@@ -1,29 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT="${DEEPSEEK_PROXY_PROJECT:-$HOME/projects/deepseek-responses-proxy}"
-BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/bin}"
+cat <<'__CODEEPSEEDEX_RUNTIME_SCRIPT_DEPRECATED_MESSAGE__'
+install-runtime-scripts.sh is deprecated.
 
-mkdir -p "$BIN_DIR"
+Use scripts/install.sh for normal installation, or use the installed dsproxy CLI directly:
 
-for name in \
-  dsproxy-start \
-  dsproxy-start-thinking \
-  dsproxy-stop \
-  dsproxy-stop-thinking \
-  dsproxy-status \
-  dsproxy-status-thinking \
-  dsproxy-config
-do
-  install -m 0755 "$PROJECT/scripts/$name" "$BIN_DIR/$name"
-  echo "installed $BIN_DIR/$name"
-done
+  dsproxy start
+  dsproxy start thinking
+  dsproxy stop
+  dsproxy stop thinking
+  dsproxy status
+  dsproxy status thinking
 
-echo
-echo "Runtime scripts installed."
-echo
-echo "To enable Codex auto-start, copy the function from:"
-echo "  $PROJECT/scripts/codex-wrapper.bash"
-echo "into ~/.bashrc, then run:"
-echo "  source ~/.bashrc"
-echo "  hash -r"
+The old standalone shortcut scripts are no longer the recommended runtime entrypoints.
+__CODEEPSEEDEX_RUNTIME_SCRIPT_DEPRECATED_MESSAGE__

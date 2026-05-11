@@ -12,7 +12,7 @@
 
 停止thinking proxy：
 
-    dsproxy stop --thinking
+    dsproxy stop thinking
 
 如果仍有旧进程，手动kill后再启动。
 

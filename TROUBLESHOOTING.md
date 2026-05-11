@@ -11,14 +11,14 @@ curl: Failed to connect to 127.0.0.1 port 8000
 Check stable proxy:
 
 ```bash
-dsproxy-status
+dsproxy status
 dsproxy-log
 ```
 
 Check thinking proxy:
 
 ```bash
-dsproxy-status-thinking
+dsproxy status thinking
 dsproxy-log-thinking
 ```
 
@@ -214,8 +214,8 @@ If `codex --profile deepseek-thinking` opens the TUI but `/healthz` fails, separ
 Check host-side runtime status:
 
 ```bash
-dsproxy-status
-dsproxy-status-thinking
+dsproxy status
+dsproxy status thinking
 curl --noproxy '*' -sS http://127.0.0.1:8000/healthz | python3 -m json.tool
 curl --noproxy '*' -sS http://127.0.0.1:8001/healthz | python3 -m json.tool
 ```
@@ -353,3 +353,11 @@ codex --profile deepseek-thinking
 ```
 
 If the shell still resolves the npm-global Codex first, prepend `~/.local/bin` to PATH or open a new shell.
+
+Next inspect the installed Codex profile:
+
+```bash
+grep -nA40 'profiles.deepseek-thinking' ~/.codex/config.toml
+```
+
+Confirm that the profile points at the DeepSeek proxy provider and includes `model_catalog_json`. If `/model` still shows GPT-family models, first repair the profile or wrapper/PATH ordering. A missing DeepSeek API key can break requests, but it should not be the first explanation for a GPT-only `/model` list.

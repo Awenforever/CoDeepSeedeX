@@ -55,6 +55,10 @@ bs="$tmp/bootstrap.sh"
 - 询问stable/thinking端口和DeepSeek API key
 - 把API key写入权限为`chmod 600`的本地env文件
 
+- 只在当前用户账号下修改Codex/profile相关用户级文件
+
+维护者安全提示：安装、升级、卸载和升级矩阵测试可能修改真实用户级路径，例如`~/.local`、`~/.config`、`~/.codex`、`~/.bashrc`或`~/.profile`。除非明确要修改开发账号，否则应在一次性虚拟机或显式隔离的测试HOME中运行。
+
 API key输入时不会回显，也不会打印到终端。这是基于本地文件权限的保存方式，不是严格意义上的加密存储。
 
 bootstrap脚本会在apt系系统上自动安装缺失的基础依赖，包括`git`、`curl`、`ca-certificates`和供安装器使用的Python 3.11+解释器。
@@ -90,10 +94,10 @@ dsproxy upgrade --tag <tag-or-branch>
 适用于从`v0.1.0-alpha`等旧版本升级，或当前环境还没有`dsproxy upgrade`命令的情况：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-该方式与方式A兼容。one-line installer默认跟随当前`master`，会刷新安装目录和profile，并默认保留本地env和Codex配置。
+该方式与方式A兼容。bootstrap入口会拉取当前Release安装器，刷新安装目录和profile，并默认保留本地env和Codex配置。
 
 任一方式完成后验证：
 

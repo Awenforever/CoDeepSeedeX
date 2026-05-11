@@ -12,7 +12,7 @@ Check:
 
 Stop thinking proxy:
 
-    dsproxy stop --thinking
+    dsproxy stop thinking
 
 If an old process remains, kill it manually and restart.
 

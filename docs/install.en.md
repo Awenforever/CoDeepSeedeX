@@ -34,6 +34,8 @@ Default target:
 
     ~/.codex/config.toml
 
+These commands write user-level configuration. For installer or upgrade tests, use a disposable VM or an explicitly isolated HOME rather than a development account.
+
 Generated profile:
 
     deepseek-thinking
@@ -41,7 +43,7 @@ Generated profile:
 ## Start proxy
 
     export DEEPSEEK_API_KEY="..."
-    .venv/bin/dsproxy start --thinking
+    .venv/bin/dsproxy start thinking
     .venv/bin/dsproxy doctor --thinking
 
 ## Run Codex

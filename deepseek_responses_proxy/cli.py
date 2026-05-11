@@ -1299,7 +1299,7 @@ def _upgrade(args: argparse.Namespace) -> int:
             {
                 "status": "error",
                 "error": "not_a_git_checkout",
-                "one_line_upgrade": "curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/scripts/install.sh | bash",
+                "one_line_upgrade": "curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash",
                 "hint": "This command supports git checkout installs. Older or non-git installs should upgrade by rerunning the one-line installer.",
             }
         )
