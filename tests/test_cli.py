@@ -1057,3 +1057,85 @@ def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
     assert behavioral["metrics"]["last_responses_payload_size"] == 835048
     assert behavioral["metrics"]["last_deepseek_payload_size"] == 274166
     assert behavioral["metrics"]["runtime_payload_image_payload_trim_count"] == 2
+
+
+def test_cli_config_set_api_key_writes_env_and_masks(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main(["config", "set-api-key", "--env-file", str(env_file), "--value", "sk-test-123456"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["env_file"] == str(env_file)
+    assert result["deepseek_api_key_configured"] is True
+    assert result["deepseek_api_key_preview"] == "sk-t...3456"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_API_KEY=sk-test-123456" in text
+
+    assert main(["config", "show", "--env-file", str(env_file)]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["values"]["DEEPSEEK_API_KEY"] == "***"
+
+
+def test_cli_config_test_api_key_reads_env_file(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"is_available": true, "balance_infos": []}'
+
+    seen = {}
+
+    def fake_urlopen(request, timeout=0):
+        seen["authorization"] = request.headers.get("Authorization")
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_API_KEY=sk-file-123456\n", encoding="utf-8")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main(["config", "test-api-key", "--env-file", str(env_file), "--timeout", "2"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["ok"] is True
+    assert result["api_key_source"] == str(env_file)
+    assert result["deepseek_api_key_preview"] == "sk-f...3456"
+    assert seen["authorization"] == "Bearer sk-file-123456"
+    assert seen["timeout"] == 2.0
+
+
+def test_cli_install_codex_profile_writes_model_catalog_json(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    config_path = tmp_path / "codex.toml"
+    catalog_json = '"/tmp/deepseek-proxy-models.json"'
+    assert main([
+        "install-codex-profile",
+        "--name",
+        "deepseek-thinking",
+        "--provider-name",
+        "deepseek-thinking-proxy",
+        "--base-url",
+        "http://127.0.0.1:8001/v1",
+        "--model",
+        "deepseek-v4-pro",
+        "--model-catalog-json",
+        catalog_json,
+        "--path",
+        str(config_path),
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["profile"] == "deepseek-thinking"
+    text = config_path.read_text(encoding="utf-8")
+    assert "model_catalog_json" in text
+    assert "/tmp/deepseek-proxy-models.json" in text

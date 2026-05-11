@@ -923,6 +923,77 @@ def _logs(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _mask_api_key(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "***"
+    return value[:4] + "..." + value[-4:]
+
+
+def _load_deepseek_api_key(*, env_file: Path | None = None) -> tuple[str, str | None]:
+    env_value = os.environ.get("DEEPSEEK_API_KEY", "")
+    if env_value:
+        return env_value, "environment"
+    path = env_file or default_env_file_path()
+    values = _read_env_exports(path)
+    file_value = values.get("DEEPSEEK_API_KEY", "")
+    if file_value:
+        return file_value, str(path)
+    return "", str(path)
+
+
+def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[str, Any]:
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "error",
+            "error": "missing_deepseek_api_key",
+            "message": "DEEPSEEK_API_KEY is empty.",
+        }
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read()
+            try:
+                data = json.loads(raw.decode("utf-8"))
+            except Exception:
+                data = {"raw_preview": raw[:500].decode("utf-8", errors="replace")}
+            return {
+                "ok": 200 <= int(response.status) < 300,
+                "status": "ok" if 200 <= int(response.status) < 300 else "error",
+                "http_status": int(response.status),
+                "url": url,
+                "balance": data,
+            }
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:500]
+        return {
+            "ok": False,
+            "status": "error",
+            "http_status": int(exc.code),
+            "url": url,
+            "error": "http_error",
+            "body_preview": body,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "error",
+            "url": url,
+            "error": type(exc).__name__,
+            "message": str(exc)[:500],
+        }
+
 def _config(args: argparse.Namespace) -> int:
     path = Path(args.path).expanduser() if getattr(args, "path", None) else default_config_path()
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
@@ -943,6 +1014,44 @@ def _config(args: argparse.Namespace) -> int:
             safe_values["DEEPSEEK_API_KEY"] = "***"
         print(json.dumps({"env_file": str(env_file), "values": safe_values}, ensure_ascii=False, indent=2))
         return 0
+
+    if args.config_command == "set-api-key":
+        api_key = str(getattr(args, "value", "") or "")
+        if not api_key:
+            import getpass
+
+            api_key = getpass.getpass("DeepSeek API key: ").strip()
+        if not api_key:
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_deepseek_api_key",
+                "env_file": str(env_file),
+            }, ensure_ascii=False, indent=2))
+            return 1
+        values = _read_env_exports(env_file)
+        values["DEEPSEEK_API_KEY"] = api_key
+        _write_env_exports(env_file, values)
+        print(json.dumps({
+            "status": "ok",
+            "env_file": str(env_file),
+            "deepseek_api_key_configured": True,
+            "deepseek_api_key_preview": _mask_api_key(api_key),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.config_command == "test-api-key":
+        api_key, source = _load_deepseek_api_key(env_file=env_file)
+        result = _check_deepseek_api_key(
+            api_key,
+            url=args.url,
+            timeout=float(args.timeout),
+        )
+        result["env_file"] = str(env_file)
+        result["api_key_source"] = source
+        result["deepseek_api_key_configured"] = bool(api_key)
+        result["deepseek_api_key_preview"] = _mask_api_key(api_key)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("ok") else 1
 
     if args.config_command == "set-model":
         allowed = {"deepseek-v4-pro", "deepseek-v4-flash"}
@@ -1738,6 +1847,17 @@ def build_parser() -> argparse.ArgumentParser:
     config_show = config_sub.add_parser("show", help="show local env configuration")
     config_show.add_argument("--env-file")
     config_show.set_defaults(func=_config)
+
+    config_set_api_key = config_sub.add_parser("set-api-key", help="store DeepSeek API key in the local env file")
+    config_set_api_key.add_argument("--env-file")
+    config_set_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_api_key.set_defaults(func=_config)
+
+    config_test_api_key = config_sub.add_parser("test-api-key", help="validate DeepSeek API key with DeepSeek balance endpoint")
+    config_test_api_key.add_argument("--env-file")
+    config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
+    config_test_api_key.add_argument("--timeout", type=float, default=10.0)
+    config_test_api_key.set_defaults(func=_config)
 
     config_set_model = config_sub.add_parser("set-model", help="set DeepSeek upstream model")
     config_set_model.add_argument("model")

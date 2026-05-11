@@ -82,6 +82,21 @@ curl -sS http://127.0.0.1:8000/healthz
 curl -sS http://127.0.0.1:8001/healthz
 ```
 
+
+### API key and model metadata
+
+The installer stores the DeepSeek API key in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. Use:
+
+```bash
+dsproxy config show
+dsproxy config set-api-key
+dsproxy config test-api-key
+```
+
+The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
+
+Codex profiles installed by the script include the project model catalog metadata so `deepseek-v4-pro` and `deepseek-v4-flash` do not fall back to unknown-model metadata.
+
 ## 🚀 Quick start
 
 After installation:

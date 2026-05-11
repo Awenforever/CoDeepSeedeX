@@ -13,6 +13,8 @@ DRY_RUN=0
 NON_INTERACTIVE=0
 INSTALL_CODEX_PROFILE=1
 INSTALL_CODEX_WRAPPER=1
+INSTALL_SHELL_PROFILE=1
+SHELL_PROFILE_FILE=""
 UNINSTALL=0
 REMOVE_FILES=0
 
@@ -44,6 +46,7 @@ Options:
   --env-file FILE        Env file path
   --no-codex-profile     Skip Codex profile installation
   --no-codex-wrapper     Skip safe codex wrapper installation
+  --no-shell-profile    Do not update shell startup files for PATH/env loading
   --uninstall            Remove profiles and wrappers installed by CoDeepSeedeX
   --remove-files         With --uninstall, also remove install dir and env files
   -h, -H, --help         Show help
@@ -181,6 +184,130 @@ find_real_codex() {
   done < <(type -P -a codex 2>/dev/null || true)
 
   return 1
+}
+
+
+json_string() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+print(json.dumps(sys.argv[1]))
+PY
+}
+
+test_deepseek_api_key() {
+  local api_key="$1"
+  if [ -z "$api_key" ]; then
+    return 1
+  fi
+  local result
+  result="$(python3 - "$api_key" <<'PY'
+import json
+import sys
+import urllib.request
+import urllib.error
+
+api_key = sys.argv[1]
+request = urllib.request.Request(
+    "https://api.deepseek.com/user/balance",
+    headers={
+        "Authorization": "Bearer " + api_key,
+        "Accept": "application/json",
+    },
+    method="GET",
+)
+try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
+        print("ok" if 200 <= int(response.status) < 300 else "bad")
+except Exception:
+    print("bad")
+PY
+)"
+  [ "$result" = "ok" ]
+}
+
+prompt_deepseek_api_key() {
+  PROMPTED_API_KEY=""
+  local attempts=0
+  local candidate=""
+
+  while [ "$attempts" -lt 3 ]; do
+    candidate="$(read_secret_from_tty "DeepSeek API key" "${DEEPSEEK_API_KEY:-}")"
+    if [ -z "$candidate" ]; then
+      PROMPTED_API_KEY=""
+      return 0
+    fi
+
+    if test_deepseek_api_key "$candidate"; then
+      PROMPTED_API_KEY="$candidate"
+      ok "DeepSeek API key validated"
+      return 0
+    fi
+
+    warn "DeepSeek API key validation failed. Please paste it again."
+    attempts=$((attempts + 1))
+  done
+
+  PROMPTED_API_KEY="$candidate"
+  warn "DeepSeek API key was saved but did not validate. You can update it with: dsproxy config set-api-key"
+}
+
+choose_shell_profile_file() {
+  if [ -n "${DEEPSEEK_PROXY_SHELL_PROFILE:-}" ]; then
+    printf '%s\n' "$DEEPSEEK_PROXY_SHELL_PROFILE"
+    return 0
+  fi
+
+  case "$(basename "${SHELL:-}")" in
+    zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+ensure_shell_profile_integration() {
+  if [ "$INSTALL_SHELL_PROFILE" != "1" ]; then
+    ok "Shell profile update skipped"
+    return 0
+  fi
+
+  local profile_file
+  profile_file="$(choose_shell_profile_file)"
+  SHELL_PROFILE_FILE="$profile_file"
+
+  mkdir -p "$(dirname "$profile_file")"
+  touch "$profile_file"
+
+  if grep -q "CoDeepSeedeX environment" "$profile_file" 2>/dev/null; then
+    ok "Shell profile already contains CoDeepSeedeX environment"
+    return 0
+  fi
+
+  cat >> "$profile_file" <<EOF
+
+# CoDeepSeedeX environment
+if [ -d "$BIN_DIR" ]; then
+  case ":\$PATH:" in
+    *:"$BIN_DIR":*) ;;
+    *) export PATH="$BIN_DIR:\$PATH" ;;
+  esac
+fi
+if [ -f "$ENV_FILE" ]; then
+  . "$ENV_FILE"
+fi
+EOF
+
+  ok "Shell profile updated: $profile_file"
+}
+
+model_catalog_json_value() {
+  local catalog_path="$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json"
+  if [ ! -f "$catalog_path" ]; then
+    printf '%s\n' ""
+    return 0
+  fi
+  json_string "$catalog_path"
 }
 
 write_env_file() {
@@ -410,6 +537,7 @@ while [ "$#" -gt 0 ]; do
     --env-file) ENV_FILE="$2" ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
     --no-codex-wrapper) INSTALL_CODEX_WRAPPER=0 ;;
+    --no-shell-profile) INSTALL_SHELL_PROFILE=0 ;;
     --uninstall) UNINSTALL=1 ;;
     --remove-files) REMOVE_FILES=1 ;;
     -h|--help|-H) usage; exit 0 ;;
@@ -462,7 +590,8 @@ DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
 DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
 STABLE_PORT="$(read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT")"
 THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
-API_KEY="$(read_secret_from_tty "DeepSeek API key" "${DEEPSEEK_API_KEY:-}")"
+prompt_deepseek_api_key
+API_KEY="$PROMPTED_API_KEY"
 WRAPPER_CHOICE="$(read_yes_no "Install codex wrapper for deepseek/deepseek-thinking profiles? [Y/n] (Recommended):" "Y")"
 
 case "$WRAPPER_CHOICE" in
@@ -489,8 +618,15 @@ run_quiet "Python package installed" "$INSTALL_DIR/.venv/bin/python" -m pip inst
 
 write_env_file "$STABLE_PORT" "$THINKING_PORT" "$API_KEY"
 write_dsproxy_wrapper
+ensure_shell_profile_integration
 
 run_quiet "dsproxy config initialized" "$INSTALL_DIR/.venv/bin/dsproxy" config init
+
+MODEL_CATALOG_JSON="$(model_catalog_json_value)"
+MODEL_CATALOG_ARGS=()
+if [ -n "$MODEL_CATALOG_JSON" ]; then
+  MODEL_CATALOG_ARGS=(--model-catalog-json "$MODEL_CATALOG_JSON")
+fi
 
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
   run_quiet "Codex profile installed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
@@ -498,7 +634,8 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
     --provider-name deepseek-proxy \
     --base-url "http://127.0.0.1:${STABLE_PORT}/v1" \
     --model deepseek-v4-flash \
-    --reasoning-effort medium
+    --reasoning-effort medium \
+    "${MODEL_CATALOG_ARGS[@]}"
 
   run_quiet "Codex profile installed: deepseek-thinking" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
     --name deepseek-thinking \
@@ -512,6 +649,14 @@ write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"
 
 step "Done"
 
+sub_title "Installation files"
+printf '%s\n' "  env file: $ENV_FILE"
+printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
+if [ -n "$SHELL_PROFILE_FILE" ]; then
+  printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"
+  printf '%s\n' "  current shell may need: source $SHELL_PROFILE_FILE"
+fi
+
 sub_title "Next steps"
 printf '%s\n' "  codex --profile deepseek"
 printf '%s\n' "  codex --profile deepseek-thinking"
@@ -523,8 +668,10 @@ printf '%s\n' "  /plan         plan before implementation"
 printf '%s\n' "  check balance"
 
 sub_title "Shell commands"
+printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy balance"
 printf '%s\n' "  dsproxy config show"
+printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"
 

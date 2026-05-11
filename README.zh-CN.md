@@ -82,6 +82,21 @@ curl -sS http://127.0.0.1:8000/healthz
 curl -sS http://127.0.0.1:8001/healthz
 ```
 
+
+### API密钥和模型元数据
+
+安装脚本会把DeepSeek API密钥保存到本地env文件，默认路径为`~/.config/deepseek-responses-proxy/env`，并设置受限文件权限。可使用：
+
+```bash
+dsproxy config show
+dsproxy config set-api-key
+dsproxy config test-api-key
+```
+
+安装脚本也会把该env文件和`dsproxy`包装命令目录接入shell profile。新终端可以直接找到`dsproxy`，Codex也可以读取`DEEPSEEK_API_KEY`。如果当前终端仍提示找不到`dsproxy`，打开新终端，或执行安装脚本最后打印的`source`命令。
+
+安装脚本写入Codex profile时会携带项目内置model catalog metadata，避免`deepseek-v4-pro`和`deepseek-v4-flash`回退到未知模型元数据。
+
 ## 🚀 快速开始
 
 安装完成后：
