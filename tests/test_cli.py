@@ -379,7 +379,18 @@ def test_cli_upgrade_rejects_non_git_checkout_with_one_line_hint(monkeypatch, tm
             return FakeCompleted(returncode=128, stderr="not a git repository")
         raise AssertionError(f"unexpected command: {argv}")
 
+    class FakeUrlResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"tag_name":"v9.9-latest"}'
+
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", lambda request, timeout=0: FakeUrlResponse())
 
     assert main(["upgrade", "--repo", str(repo), "--dry-run"]) == 1
 
@@ -391,7 +402,7 @@ def test_cli_upgrade_rejects_non_git_checkout_with_one_line_hint(monkeypatch, tm
 
 
 
-def test_cli_upgrade_dry_run_defaults_to_latest_master(monkeypatch, tmp_path, capsys):
+def test_cli_upgrade_dry_run_defaults_to_latest_release(monkeypatch, tmp_path, capsys):
     import deepseek_responses_proxy.cli as cli
 
     repo = tmp_path / "repo"
@@ -410,7 +421,22 @@ def test_cli_upgrade_dry_run_defaults_to_latest_master(monkeypatch, tmp_path, ca
             return FakeCompleted(stdout="")
         raise AssertionError(f"unexpected command: {argv}")
 
+    class FakeUrlResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"tag_name":"v9.9-latest","name":"CoDeepSeedeX v9.9-latest","html_url":"https://example.test/release"}'
+
+    def fake_urlopen(request, timeout=0):
+        assert "releases/latest" in request.full_url
+        return FakeUrlResponse()
+
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
     assert main([
         "upgrade",
@@ -424,15 +450,15 @@ def test_cli_upgrade_dry_run_defaults_to_latest_master(monkeypatch, tmp_path, ca
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "ok"
     assert data["dry_run"] is True
-    assert data["target_ref"] == "master"
-    assert data["target_source"] == "latest_master"
+    assert data["target_ref"] == "v9.9-latest"
+    assert data["target_source"] == "latest_release"
+    assert data["latest_release"]["tag_name"] == "v9.9-latest"
 
     commands = [" ".join(step["cmd"]) for step in data["steps"]]
     assert any("fetch --tags origin" in cmd for cmd in commands)
-    assert any("checkout master" in cmd for cmd in commands)
-    assert any("pull --ff-only origin master" in cmd for cmd in commands)
-
-
+    assert any("checkout v9.9-latest" in cmd for cmd in commands)
+    assert not any("checkout master" in cmd for cmd in commands)
+    assert not any("pull --ff-only origin master" in cmd for cmd in commands)
 def test_cli_debug_status(monkeypatch, capsys):
     import deepseek_responses_proxy.cli as cli
 

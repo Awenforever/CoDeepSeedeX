@@ -1273,22 +1273,75 @@ def _upgrade_run_step(
     return True
 
 
+
+LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest"
+
+
+def _resolve_latest_release_tag(api_url: str | None = None) -> tuple[str, dict[str, Any]]:
+    url = api_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        raw = response.read().decode("utf-8")
+    data = json.loads(raw)
+    tag = data.get("tag_name") or data.get("tagName")
+    if not isinstance(tag, str) or not tag.strip():
+        raise RuntimeError("latest release response did not contain tag_name")
+    return tag.strip(), {
+        "api_url": url,
+        "tag_name": tag.strip(),
+        "name": data.get("name"),
+        "html_url": data.get("html_url"),
+        "prerelease": data.get("prerelease"),
+        "draft": data.get("draft"),
+    }
+
+
 def _upgrade(args: argparse.Namespace) -> int:
     repo_hint = Path(args.repo).expanduser() if args.repo else Path(__file__).resolve().parents[1]
     requested_ref = args.tag
-    target_ref = requested_ref or "master"
     dry_run = bool(args.dry_run)
+
+    latest_release: dict[str, Any] | None = None
+    if requested_ref:
+        target_ref = requested_ref
+        target_source = "explicit_ref"
+    else:
+        try:
+            target_ref, latest_release = _resolve_latest_release_tag(args.latest_release_url)
+        except Exception as exc:
+            result = {
+                "status": "error",
+                "operation": "upgrade",
+                "current_runtime_version": PROXY_VERSION,
+                "error": "latest_release_resolution_failed",
+                "detail": f"{type(exc).__name__}: {exc}",
+                "latest_release_url": args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL,
+                "repo_hint": str(repo_hint),
+                "dry_run": dry_run,
+                "mode": "dsproxy_upgrade",
+                "hint": "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer.",
+            }
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1
+        target_source = "latest_release"
 
     result: dict[str, Any] = {
         "status": "ok",
         "operation": "upgrade",
         "current_runtime_version": PROXY_VERSION,
         "target_ref": target_ref,
-        "target_source": "explicit_ref" if requested_ref else "latest_master",
+        "target_source": target_source,
+        "latest_release": latest_release,
         "repo_hint": str(repo_hint),
         "dry_run": dry_run,
         "mode": "dsproxy_upgrade",
-        "fallback": "If this install is not a git checkout, rerun the one-line installer from the target release.",
+        "fallback": "If this install is not a git checkout, rerun the one-line installer from the GitHub Latest Release.",
         "skip_profile": bool(args.skip_profile),
         "no_restart": bool(args.no_restart),
     }
@@ -1335,12 +1388,7 @@ def _upgrade(args: argparse.Namespace) -> int:
     if requested_ref:
         commands.append(("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_ref], False))
     else:
-        commands.extend(
-            [
-                ("git_checkout_master", ["git", "-C", str(repo_root), "checkout", "master"], False),
-                ("git_pull_latest_master", ["git", "-C", str(repo_root), "pull", "--ff-only", "origin", "master"], False),
-            ]
-        )
+        commands.append(("git_checkout_latest_release", ["git", "-C", str(repo_root), "checkout", target_ref], False))
 
     commands.append(("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False))
 
@@ -2021,7 +2069,8 @@ def build_parser() -> argparse.ArgumentParser:
     balance.set_defaults(func=_balance)
 
     upgrade = sub.add_parser("upgrade", help="upgrade a git checkout installation")
-    upgrade.add_argument("--tag", help="target git tag or ref; defaults to latest master")
+    upgrade.add_argument("--tag", help="target git tag or ref; defaults to the GitHub Latest Release tag")
+    upgrade.add_argument("--latest-release-url", help="GitHub latest Release API URL; defaults to the CoDeepSeedeX releases/latest endpoint")
     upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
     upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
     upgrade.add_argument("--allow-dirty", action="store_true", help="allow upgrade with a dirty git worktree")

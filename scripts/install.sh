@@ -3,6 +3,8 @@ set -euo pipefail
 
 INSTALL_DIR="${DEEPSEEK_PROXY_INSTALL_DIR:-$HOME/.local/share/deepseek-responses-proxy}"
 REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
+LATEST_RELEASE_API_URL="${DEEPSEEK_PROXY_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
+INSTALL_REF="${DEEPSEEK_PROXY_INSTALL_REF:-}"
 BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}"
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
@@ -42,6 +44,7 @@ Options:
   --non-interactive      Do not prompt; use environment/default values
   --install-dir DIR      Installation directory
   --repo-url URL         Git repository URL
+  --install-ref REF      Target release tag or explicit git ref; defaults to GitHub Latest Release
   --bin-dir DIR          Directory for dsproxy and optional codex wrapper
   --config-dir DIR       Config directory
   --env-file FILE        Env file path
@@ -133,6 +136,24 @@ run_git_quiet() {
   } >> "$INSTALL_LOG"
 
   return 1
+}
+
+
+resolve_install_ref() {
+  if [ -n "$INSTALL_REF" ]; then
+    printf '%s\n' "$INSTALL_REF"
+    return 0
+  fi
+
+  local tag
+  tag="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 "$LATEST_RELEASE_API_URL" |
+    sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' |
+    head -n 1)"
+  if [ -z "$tag" ]; then
+    echo "ERROR: could not resolve GitHub Latest Release tag; set DEEPSEEK_PROXY_INSTALL_REF or pass --install-ref" >&2
+    return 1
+  fi
+  printf '%s\n' "$tag"
 }
 
 read_from_tty() {
@@ -724,6 +745,7 @@ while [ "$#" -gt 0 ]; do
     --non-interactive) NON_INTERACTIVE=1 ;;
     --install-dir) INSTALL_DIR="$2"; shift ;;
     --repo-url) REPO_URL="$2"; shift ;;
+    --install-ref) INSTALL_REF="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
     --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; shift ;;
     --python-bin) PYTHON_BIN="$2"; shift ;;
@@ -802,12 +824,18 @@ fi
 
 step "Installing"
 
+INSTALL_TARGET_REF="$(resolve_install_ref)"
+ok "Install target ref: $INSTALL_TARGET_REF"
+
 if [ -d "$INSTALL_DIR/.git" ]; then
-  run_git_quiet "Repository updated" "git pull --ff-only" git -C "$INSTALL_DIR" pull --ff-only
+  run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin
 else
   run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
   run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR"
+  run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin
 fi
+
+run_git_quiet "Repository target checked out" "git checkout $INSTALL_TARGET_REF" git -C "$INSTALL_DIR" checkout "$INSTALL_TARGET_REF"
 
 run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 run_quiet "pip upgraded" "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip

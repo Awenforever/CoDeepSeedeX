@@ -23,12 +23,13 @@ def test_install_repairs_codex_model_catalog_before_final_output() -> None:
     assert "model_catalog_json" in text
 
 
-def test_docs_include_fallback_install_domains() -> None:
+def test_docs_include_latest_tag_fallback_install_domains() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh" in readme
-    assert "fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh" in readme
-
-
+    assert "cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" in readme
+    assert "fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" in readme
+    assert "github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh" in readme
+    assert "@master/bootstrap.sh" not in readme
+    assert "refs/heads/master/bootstrap.sh" not in readme
 def test_troubleshooting_mentions_model_path_resolution() -> None:
     text = (ROOT / "TROUBLESHOOTING.md").read_text(encoding="utf-8")
     assert "/model" in text

@@ -37,10 +37,10 @@ tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs"
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs"
 ) && bash "$bs"
 ```
 
@@ -81,7 +81,7 @@ dsproxy upgrade
 dsproxy upgrade --dry-run
 ```
 
-默认情况下，`dsproxy upgrade`会把git checkout更新到`origin/master`上的最新`master`，重新安装包，刷新`deepseek`和`deepseek-thinking`两个Codex profile，并重启本地proxy。
+默认情况下，`dsproxy upgrade`会把git checkout解析GitHub Latest Release tag并checkout到该受控Release版本，重新安装包，刷新`deepseek`和`deepseek-thinking`两个Codex profile，并重启本地proxy。
 
 如果确实需要固定到某个release或分支，可以显式指定ref：
 

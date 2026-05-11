@@ -26,6 +26,9 @@ Then run the CoDeepSeedeX installer.
 
     curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 
+# Fallback mirrors use the GitHub Latest Release tag:
+tag="$(curl -fsSL https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)"
+
 The recommended one-line installer is served from the latest GitHub Release asset. The fallback downloader below keeps raw GitHub and CDN mirrors as secondary entry points.
 
 ### Fallback install command
@@ -37,10 +40,10 @@ tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
   curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs"
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs"
 ) && bash "$bs"
 ```
 
@@ -81,7 +84,7 @@ Preview first:
 dsproxy upgrade --dry-run
 ```
 
-By default, `dsproxy upgrade` updates the git checkout to the latest `master` from `origin`, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, and restarts the local proxies.
+By default, `dsproxy upgrade` resolves the GitHub Latest Release tag and checks out that controlled release, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, and restarts the local proxies.
 
 If you intentionally need a fixed release or branch, pass an explicit ref:
 
