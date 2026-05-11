@@ -13,13 +13,13 @@ cd ~/projects/deepseek-responses-proxy
 Start:
 
 ```bash
-dsproxy-start
+dsproxy start
 ```
 
 Stop:
 
 ```bash
-dsproxy-stop
+dsproxy stop
 ```
 
 Status:
@@ -57,13 +57,13 @@ Default SQLite database:
 Start:
 
 ```bash
-dsproxy-start-thinking
+dsproxy start thinking
 ```
 
 Stop:
 
 ```bash
-dsproxy-stop-thinking
+dsproxy stop thinking
 ```
 
 Status:
@@ -151,8 +151,8 @@ Debug trace mode records a structured JSONL activity timeline for each Responses
 Enable it only when diagnosing a local proxy session:
 
 ```bash
-DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy-start
-DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy-start-thinking
+DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy start
+DEEPSEEK_PROXY_DEBUG_TRACE=1 dsproxy start thinking
 ```
 
 Useful optional settings:
@@ -200,7 +200,7 @@ Important safety notes:
 * Debug traces should not be committed.
 
 
-Real flattened-tool transcript payload compaction is disabled by default. Set `DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE=enabled` to compact old `flattened_tool_transcript` messages only in the upstream payload copy. The `flattened_tool_transcript_payload_compaction_applied` trace event records whether it changed the payload. SQLite response history remains unchanged. The `flattened_tool_transcript_compaction_dry_run` trace event estimates how many characters could be removed by summarizing old flattened tool transcripts. It is dry-run only and does not alter payloads or persisted SQLite response history. The `history_growth_breakdown` trace event audits accumulated chat history by role and by history category, including flattened tool transcripts, assistant tool-call messages, tool protocol messages, plain user messages, and plain assistant messages. It is audit-only and does not alter payloads or persisted SQLite response history. Tool output trimming is applied before previous-response function_call filtering so image outputs can still be classified by their matching tool name while duplicate assistant tool-call replay remains avoided. Real tool-output trimming is disabled by default. Set `DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE=enabled` to rewrite oversized `function_call_output.output` fields before they are converted into chat messages. The `tool_output_trim_applied` trace event records whether trimming actually changed the request and how many characters were removed. The `tool_output_trim_applied` trace event also records bounded `skipped_outputs` diagnostics so canary runs can explain why an oversized output was not trimmed. Tool output budget diagnostics are included in `dsproxy debug budget`. The category policy dry-run report `policy_dry_run` classifies tool outputs into `shell_command`, `interactive_shell`, `search`, `file_read`, `user_interaction`, `image_payload`, or `unknown`. Image viewing tools such as `view_image` are classified as `image_payload` so large encoded or textual image payloads can be capped separately. Thinking limited rollout: both `dsproxy start --thinking` and the installed `dsproxy-start-thinking` wrapper default tool-output trimming to `enabled` with `DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS=12000`. Stable startup does not set these defaults. Structured tool outputs such as list or dict payloads are serialized to compact JSON before trimming, so large image-view payloads can be capped even when the tool returns structured content. Unknown tools still use a conservative fallback policy, so the feature can run on other users' machines without depending on a fixed local tool list. The dry-run trimming report estimates how many characters would be removed if tool output trimming were enabled, but it does not alter upstream payloads. Relevant knobs: `DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE=off|dry_run|enabled`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS`, and image-specific overrides such as `DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS`. They identify how much of the Responses input is made of `function_call` and `function_call_output` items, and list the largest tool outputs by `call_id`, tool name and character size. This mode is audit-only and does not truncate tool outputs by default.
+Real flattened-tool transcript payload compaction is disabled by default. Set `DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE=enabled` to compact old `flattened_tool_transcript` messages only in the upstream payload copy. The `flattened_tool_transcript_payload_compaction_applied` trace event records whether it changed the payload. SQLite response history remains unchanged. The `flattened_tool_transcript_compaction_dry_run` trace event estimates how many characters could be removed by summarizing old flattened tool transcripts. It is dry-run only and does not alter payloads or persisted SQLite response history. The `history_growth_breakdown` trace event audits accumulated chat history by role and by history category, including flattened tool transcripts, assistant tool-call messages, tool protocol messages, plain user messages, and plain assistant messages. It is audit-only and does not alter payloads or persisted SQLite response history. Tool output trimming is applied before previous-response function_call filtering so image outputs can still be classified by their matching tool name while duplicate assistant tool-call replay remains avoided. Real tool-output trimming is disabled by default. Set `DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE=enabled` to rewrite oversized `function_call_output.output` fields before they are converted into chat messages. The `tool_output_trim_applied` trace event records whether trimming actually changed the request and how many characters were removed. The `tool_output_trim_applied` trace event also records bounded `skipped_outputs` diagnostics so canary runs can explain why an oversized output was not trimmed. Tool output budget diagnostics are included in `dsproxy debug budget`. The category policy dry-run report `policy_dry_run` classifies tool outputs into `shell_command`, `interactive_shell`, `search`, `file_read`, `user_interaction`, `image_payload`, or `unknown`. Image viewing tools such as `view_image` are classified as `image_payload` so large encoded or textual image payloads can be capped separately. Thinking limited rollout: both `dsproxy start thinking` and the `dsproxy start thinking` command default tool-output trimming to `enabled` with `DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS=12000`. Stable startup does not set these defaults. Structured tool outputs such as list or dict payloads are serialized to compact JSON before trimming, so large image-view payloads can be capped even when the tool returns structured content. Unknown tools still use a conservative fallback policy, so the feature can run on other users' machines without depending on a fixed local tool list. The dry-run trimming report estimates how many characters would be removed if tool output trimming were enabled, but it does not alter upstream payloads. Relevant knobs: `DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE=off|dry_run|enabled`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS`, `DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS`, and image-specific overrides such as `DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS`. They identify how much of the Responses input is made of `function_call` and `function_call_output` items, and list the largest tool outputs by `call_id`, tool name and character size. This mode is audit-only and does not truncate tool outputs by default.
 
 Context budget diagnostics are available after a traced request:
 
@@ -345,10 +345,10 @@ scripts/install-runtime-scripts.sh
 Installed commands:
 
 ```text
-dsproxy-start
-dsproxy-start-thinking
-dsproxy-stop
-dsproxy-stop-thinking
+dsproxy start
+dsproxy start thinking
+dsproxy stop
+dsproxy stop thinking
 dsproxy-status
 dsproxy-status-thinking
 ```
@@ -389,7 +389,7 @@ codex --profile deepseek-thinking
 
 The thinking wrapper starts both proxies because the DeepSeek account/usage skill queries both profiles by default.
 
-For thinking mode, `dsproxy-start-thinking` sets:
+For thinking mode, `dsproxy start thinking` sets:
 
 ```bash
 DEEPSEEK_THINKING=enabled
@@ -399,7 +399,7 @@ DEEPSEEK_REASONING_EFFORT=high
 Override reasoning effort with:
 
 ```bash
-DEEPSEEK_REASONING_EFFORT=high dsproxy-start-thinking
+DEEPSEEK_REASONING_EFFORT=high dsproxy start thinking
 ```
 
 ## Model and reasoning-effort switching
@@ -463,8 +463,8 @@ is equivalent to:
 
 ```bash
 dsproxy-config set model deepseek-v4-pro effort max
-dsproxy-stop-thinking
-dsproxy-start-thinking
+dsproxy stop thinking
+dsproxy start thinking
 ```
 
 Use this only when you want the new model or reasoning effort to affect the currently running thinking proxy.
@@ -674,7 +674,7 @@ DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE=dry_run
 To inspect rollout readiness:
 
 ```bash
-dsproxy status --thinking
+dsproxy status thinking
 dsproxy debug budget --thinking
 dsproxy debug semantic --thinking
 ```

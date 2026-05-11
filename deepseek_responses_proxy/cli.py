@@ -1865,6 +1865,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     start = sub.add_parser("start", help="start the local proxy")
+    start.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
     start.add_argument("--thinking", action="store_true", help="start thinking proxy on port 8001")
     start.add_argument("--port", type=int)
     start.add_argument("--state-dir")
@@ -1874,6 +1875,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.set_defaults(func=_start_proxy)
 
     stop = sub.add_parser("stop", help="stop the local proxy")
+    stop.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
     stop.add_argument("--thinking", action="store_true")
     stop.add_argument("--state-dir")
     stop.add_argument("--pid-file")
@@ -1881,6 +1883,7 @@ def build_parser() -> argparse.ArgumentParser:
     stop.set_defaults(func=_stop_proxy)
 
     status = sub.add_parser("status", help="print /v1/proxy/status")
+    status.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
     status.add_argument("--thinking", action="store_true")
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
@@ -2058,6 +2061,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "target", None) == "thinking":
+        setattr(args, "thinking", True)
 
     if args.version:
         print(PROXY_VERSION)

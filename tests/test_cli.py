@@ -1182,3 +1182,86 @@ def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=glm-test-key" in text
     assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+
+def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+    status_base_url_calls = []
+    status_http_calls = []
+
+    def fake_start(args):
+        calls.append(("start", bool(args.thinking), getattr(args, "target", None)))
+        return 0
+
+    def fake_stop(args):
+        calls.append(("stop", bool(args.thinking), getattr(args, "target", None)))
+        return 0
+
+    def fake_base_url(*, thinking, port=None):
+        status_base_url_calls.append((bool(thinking), port))
+        return "http://127.0.0.1:8001" if thinking else "http://127.0.0.1:8000"
+
+    def fake_http_json(url, *, timeout=10.0):
+        status_http_calls.append((url, timeout))
+        return 200, {"status": "ok"}, None
+
+    monkeypatch.setattr(cli, "_start_proxy", fake_start)
+    monkeypatch.setattr(cli, "_stop_proxy", fake_stop)
+    monkeypatch.setattr(cli, "_base_url", fake_base_url)
+    monkeypatch.setattr(cli, "_http_json", fake_http_json)
+
+    assert cli.main(["start", "thinking"]) == 0
+    assert cli.main(["stop", "thinking"]) == 0
+    assert cli.main(["status", "thinking", "--timeout", "1"]) == 0
+
+    assert calls == [
+        ("start", True, "thinking"),
+        ("stop", True, "thinking"),
+    ]
+    assert status_base_url_calls == [(True, 8001)]
+    assert status_http_calls
+    assert status_http_calls[-1][0].startswith("http://127.0.0.1:8001/")
+    assert status_http_calls[-1][1] == 1.0
+
+
+def test_lifecycle_commands_keep_thinking_flag_compatibility(monkeypatch):
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+    status_base_url_calls = []
+    status_http_calls = []
+
+    def fake_start(args):
+        calls.append(("start", bool(args.thinking), getattr(args, "target", None)))
+        return 0
+
+    def fake_stop(args):
+        calls.append(("stop", bool(args.thinking), getattr(args, "target", None)))
+        return 0
+
+    def fake_base_url(*, thinking, port=None):
+        status_base_url_calls.append((bool(thinking), port))
+        return "http://127.0.0.1:8001" if thinking else "http://127.0.0.1:8000"
+
+    def fake_http_json(url, *, timeout=10.0):
+        status_http_calls.append((url, timeout))
+        return 200, {"status": "ok"}, None
+
+    monkeypatch.setattr(cli, "_start_proxy", fake_start)
+    monkeypatch.setattr(cli, "_stop_proxy", fake_stop)
+    monkeypatch.setattr(cli, "_base_url", fake_base_url)
+    monkeypatch.setattr(cli, "_http_json", fake_http_json)
+
+    assert cli.main(["start", "--thinking"]) == 0
+    assert cli.main(["stop", "--thinking"]) == 0
+    assert cli.main(["status", "--thinking", "--timeout", "1"]) == 0
+
+    assert calls == [
+        ("start", True, None),
+        ("stop", True, None),
+    ]
+    assert status_base_url_calls == [(True, 8001)]
+    assert status_http_calls
+    assert status_http_calls[-1][0].startswith("http://127.0.0.1:8001/")
+    assert status_http_calls[-1][1] == 1.0

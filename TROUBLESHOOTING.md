@@ -223,8 +223,8 @@ curl --noproxy '*' -sS http://127.0.0.1:8001/healthz | python3 -m json.tool
 If ports are down, start explicitly:
 
 ```bash
-dsproxy-start
-dsproxy-start-thinking
+dsproxy start
+dsproxy start thinking
 ```
 
 If `curl` returns `502 Bad Gateway` for localhost, check proxy variables. Local checks must bypass system proxies:
