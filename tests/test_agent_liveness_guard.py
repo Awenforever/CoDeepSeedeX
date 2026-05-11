@@ -1010,3 +1010,189 @@ def test_user_tool_command_risk_report_c3_remains_codex_governed_not_c4_gate():
     assert report["c4_gate_action"] == "allow"
     assert report["c4_gate_confirmation_required"] is False
     assert report["c4_gate_effective"] is False
+
+
+def test_user_tool_command_risk_enabled_c4_suppresses_deepseek_response(monkeypatch):
+    import json
+    from deepseek_responses_proxy.app import (
+        _build_user_tool_command_risk_report,
+        _user_tool_command_risk_should_suppress_tool_calls,
+        _user_tool_command_risk_suppressed_deepseek_response,
+    )
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_c4",
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert _user_tool_command_risk_should_suppress_tool_calls(report) is True
+    assert report["c4_gate_triggered"] is True
+    assert report["c4_gate_effective"] is False
+
+    report["active"] = True
+    report["c4_gate_effective"] = True
+    report["c4_gate_action"] = "suppress_and_explain"
+
+    response = {
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_c4",
+                            "type": "function",
+                            "function": {
+                                "name": "shell",
+                                "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ]
+    }
+
+    suppressed = _user_tool_command_risk_suppressed_deepseek_response(response, report)
+    message = suppressed["choices"][0]["message"]
+    assert message["role"] == "assistant"
+    assert "tool_calls" not in message
+    assert "已阻止C4级高风险工具调用" in message["content"]
+    assert "不支持通过“继续”自动恢复执行" in message["content"]
+    assert suppressed["choices"][0]["finish_reason"] == "stop"
+
+
+def test_user_tool_command_risk_dry_run_c4_does_not_suppress(monkeypatch):
+    import json
+    from deepseek_responses_proxy.app import (
+        _build_user_tool_command_risk_report,
+        _user_tool_command_risk_should_suppress_tool_calls,
+    )
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "dry_run")
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_c4",
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert report["max_command_risk"] == "C4_catastrophic_or_out_of_sandbox"
+    assert report["c4_gate_triggered"] is True
+    assert report["c4_gate_effective"] is False
+    assert _user_tool_command_risk_should_suppress_tool_calls(report) is False
+
+
+def test_user_tool_command_risk_enabled_c3_does_not_suppress(monkeypatch):
+    import json
+    from deepseek_responses_proxy.app import (
+        _build_user_tool_command_risk_report,
+        _user_tool_command_risk_should_suppress_tool_calls,
+    )
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_write",
+                "type": "function",
+                "function": {
+                    "name": "write_file",
+                    "arguments": json.dumps({"path": "docs/new.md", "content": "hello"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert report["max_command_risk"] == "C3_codex_governed_destructive"
+    assert report["c4_gate_triggered"] is False
+    assert report["c4_gate_action"] == "allow"
+    assert _user_tool_command_risk_should_suppress_tool_calls(report) is False
+
+
+async def test_run_chat_with_tool_bridge_enabled_c4_suppresses_before_tool_execution(monkeypatch, tmp_path):
+    import importlib
+    import json
+
+    app = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", "1")
+
+    async def fake_chat_completions_with_usage(**kwargs):
+        return {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_c4",
+                                "type": "function",
+                                "function": {
+                                    "name": "shell",
+                                    "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                                },
+                            }
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        }
+
+    async def forbidden_execute_proxy_tool_call(*args, **kwargs):
+        raise AssertionError("C4 gate should suppress before proxy tool execution")
+
+    monkeypatch.setattr(app, "_chat_completions_with_usage", fake_chat_completions_with_usage)
+    monkeypatch.setattr(app, "_execute_proxy_tool_call", forbidden_execute_proxy_tool_call)
+
+    response, history = await app._run_chat_with_tool_bridge(
+        deepseek_client=object(),
+        chat_payload={"messages": []},
+        messages_for_deepseek=[],
+        history_messages=[],
+        model="deepseek-test",
+        deepseek_tools=[{"type": "function", "function": {"name": "shell", "parameters": {}}}],
+        reasoning_effort=None,
+        request_payload={"model": "deepseek-test"},
+        response_id="resp_test",
+    )
+
+    assert history == []
+    message = response["choices"][0]["message"]
+    assert message["role"] == "assistant"
+    assert "tool_calls" not in message
+    assert "已阻止C4级高风险工具调用" in message["content"]
+
+    report_path = tmp_path / ".debug" / "user_tool_command_risk_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["mode"] == "enabled"
+    assert report["active"] is True
+    assert report["c4_gate_triggered"] is True
+    assert report["c4_gate_effective"] is True
+    assert report["c4_gate_action"] == "suppress_and_explain"
+    assert report["c4_gate_resume_supported"] is False

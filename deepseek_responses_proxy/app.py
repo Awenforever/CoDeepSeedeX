@@ -8150,6 +8150,102 @@ def _command_risk_debug_report_path() -> Path:
     return Path(".debug") / "user_tool_command_risk_report.json"
 
 
+
+def _user_tool_command_risk_should_suppress_tool_calls(report: dict[str, Any] | None) -> bool:
+    if not isinstance(report, dict):
+        return False
+    return (
+        str(report.get("mode") or "").lower() == "enabled"
+        and bool(report.get("enabled"))
+        and bool(report.get("c4_gate_triggered"))
+        and report.get("max_command_risk") == "C4_catastrophic_or_out_of_sandbox"
+    )
+
+
+def _user_tool_command_risk_c4_preview_lines(report: dict[str, Any] | None) -> list[str]:
+    if not isinstance(report, dict):
+        return []
+    lines: list[str] = []
+    for item in report.get("c4_gate_argument_previews") or []:
+        if not isinstance(item, dict):
+            continue
+        tool_name = str(item.get("tool_name") or "")
+        for candidate in item.get("candidate_previews") or []:
+            if not isinstance(candidate, dict):
+                continue
+            preview = str(candidate.get("preview") or "").strip()
+            if not preview:
+                continue
+            path = str(candidate.get("path") or "")
+            reason_text = ", ".join(str(reason) for reason in (candidate.get("reasons") or []))
+            line = f"- tool={tool_name} path={path} preview={preview}"
+            if reason_text:
+                line = f"{line} reasons={reason_text}"
+            lines.append(line)
+    return lines[:8]
+
+
+def _user_tool_command_risk_suppressed_assistant_content(report: dict[str, Any] | None) -> str:
+    tool_names = []
+    reasons = []
+    if isinstance(report, dict):
+        tool_names = [str(item) for item in (report.get("c4_gate_tool_names") or []) if item]
+        reasons = [str(item) for item in (report.get("c4_gate_reasons") or []) if item]
+
+    preview_lines = _user_tool_command_risk_c4_preview_lines(report)
+    parts = [
+        "已阻止C4级高风险工具调用。",
+        "",
+        "该操作被判定为灾难级或超出普通Codex沙箱边界的操作，因此proxy未执行任何tool_call。",
+        "当前阶段是suppress-only gate，不支持通过“继续”自动恢复执行。",
+    ]
+    if tool_names:
+        parts.extend(["", "涉及工具：", ", ".join(tool_names)])
+    if reasons:
+        parts.extend(["", "触发原因：", ", ".join(reasons)])
+    if preview_lines:
+        parts.extend(["", "命令预览：", *preview_lines])
+    parts.extend(
+        [
+            "",
+            "C2/C3级正常开发操作不受该gate影响，仍交给Codex沙箱和审批机制处理。",
+        ]
+    )
+    return "\n".join(parts)
+
+
+def _user_tool_command_risk_suppressed_deepseek_response(
+    deepseek_response: dict[str, Any],
+    report: dict[str, Any] | None,
+) -> dict[str, Any]:
+    suppressed_response = deepcopy(deepseek_response)
+    choices = suppressed_response.get("choices") or []
+    content = _user_tool_command_risk_suppressed_assistant_content(report)
+
+    if not choices:
+        suppressed_response["choices"] = [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+                "finish_reason": "stop",
+            }
+        ]
+        return suppressed_response
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        first_choice = {}
+        choices[0] = first_choice
+    first_choice["message"] = {
+        "role": "assistant",
+        "content": content,
+    }
+    first_choice["finish_reason"] = "stop"
+    return suppressed_response
+
 def _write_user_tool_command_risk_report(report: dict[str, Any]) -> None:
     try:
         debug_dir = Path(".debug")
@@ -9359,6 +9455,31 @@ async def _run_chat_with_tool_bridge(
             "user_tool_command_risk_dry_run",
             **command_risk_trace_report,
         )
+
+        if _user_tool_command_risk_should_suppress_tool_calls(user_tool_command_risk_report):
+            user_tool_command_risk_report["active"] = True
+            user_tool_command_risk_report["c4_gate_effective"] = True
+            user_tool_command_risk_report["c4_gate_action"] = "suppress_and_explain"
+            _write_user_tool_command_risk_report(user_tool_command_risk_report)
+            _debug_trace_event(
+                response_id,
+                "user_tool_command_risk_c4_gate_suppressed",
+                **{
+                    key: value
+                    for key, value in user_tool_command_risk_report.items()
+                    if key != "response_id"
+                },
+            )
+            liveness_report["guard_reason"] = "user_tool_command_risk_c4_gate_suppressed"
+            _write_agent_liveness_guard_report(liveness_report)
+            return (
+                _user_tool_command_risk_suppressed_deepseek_response(
+                    deepseek_response,
+                    user_tool_command_risk_report,
+                ),
+                history_messages,
+            )
+
 
         if _user_tool_control_should_suppress_post_upstream_tool_calls(
             user_tool_control_policy_report

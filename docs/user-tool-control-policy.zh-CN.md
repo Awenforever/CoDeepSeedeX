@@ -630,3 +630,32 @@ C2_routine_side_effect不触发C4gate。
 C3_codex_governed_destructive不触发C4gate。
 只有C4_catastrophic_or_out_of_sandbox触发C4gate dry-run字段。
 ```
+
+
+## 16.P1c C4 suppress-only gate
+
+`v2.7a43`引入C4 suppress-only gate。该gate只在以下条件同时满足时生效：
+
+```text
+DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE=enabled
+max_command_risk=C4_catastrophic_or_out_of_sandbox
+c4_gate_triggered=true
+```
+
+执行语义：
+
+```text
+C2_routine_side_effect：不拦截，继续交给Codex沙箱和审批。
+C3_codex_governed_destructive：不拦截，继续交给Codex沙箱和审批。
+C4_catastrophic_or_out_of_sandbox：抑制tool_call，不执行工具，返回synthetic assistant说明。
+```
+
+恢复语义：
+
+```text
+当前不支持“继续”自动恢复C4执行。
+c4_gate_resume_supported=false。
+如果后续要支持恢复执行，必须新增独立pending action、过期时间和强确认语义。
+```
+
+该阶段的目标是阻断灾难级或越界破坏，不改变正常开发工作流。
