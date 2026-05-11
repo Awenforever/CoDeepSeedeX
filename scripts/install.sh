@@ -846,17 +846,74 @@ write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"
 
 step "Done"
 
+
+# codeepseedex_repair_codex_model_catalog_json_v2746a1
+if [ "$DRY_RUN" != "1" ]; then
+  "$PYTHON_BIN" - "$HOME/.codex/config.toml" "$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json" <<'PYCODEXCAT'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+config = Path(sys.argv[1])
+catalog = sys.argv[2]
+if not config.exists():
+    raise SystemExit(0)
+
+lines = config.read_text(encoding="utf-8").splitlines()
+targets = {"profiles.deepseek", "profiles.deepseek-thinking"}
+out = []
+current = None
+pending_insert = None
+
+def flush_pending() -> None:
+    global pending_insert
+    if pending_insert is not None:
+        out.append(f'model_catalog_json = "{catalog}"')
+        pending_insert = None
+
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        flush_pending()
+        current = stripped.strip("[]")
+        out.append(line)
+        pending_insert = "profile" if current in targets else None
+        continue
+
+    if current in targets and stripped.startswith("model_catalog_json"):
+        if pending_insert is not None:
+            out.append(f'model_catalog_json = "{catalog}"')
+            pending_insert = None
+        continue
+
+    out.append(line)
+
+    if current in targets and pending_insert is not None and stripped.startswith("model_provider"):
+        out.append(f'model_catalog_json = "{catalog}"')
+        pending_insert = None
+
+flush_pending()
+config.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+PYCODEXCAT
+  ok "Codex model catalog linked"
+else
+  ok "Codex model catalog linked"
+fi
+
 sub_title "Installation files"
 printf '%s\n' "  env file: $ENV_FILE"
 printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
 if [ -n "$SHELL_PROFILE_FILE" ]; then
   printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"
   printf '%s\n' "  current shell may need: source $SHELL_PROFILE_FILE"
+  printf '  current shell immediate PATH: export PATH="%s:$PATH"\n' "$BIN_DIR"
+  printf '  verify wrapper: command -v codex && command -v dsproxy\n'
 fi
 
 sub_title "Next steps"
 printf '%s\n' "  codex --profile deepseek"
-printf '%s\n' "  codex --profile deepseek-thinking"
+printf '%s\n' "  codex --profile deepseek-thinking  # recommended"
 
 sub_title "Inside Codex TUI"
 printf '%s\n' "  /status       show session/runtime status"
@@ -885,7 +942,7 @@ sub_title "Continue a previous Codex conversation"
 printf '%s\n' "  codex --profile deepseek-thinking resume"
 
 sub_title "Uninstall integration"
-printf '%s\n' "  bash scripts/install.sh --uninstall"
+printf '  bash %s --uninstall\n' "$INSTALL_DIR/scripts/install.sh"
 
 sub_title "Install log"
 printf '  %s\n' "$INSTALL_LOG"

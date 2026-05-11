@@ -26,6 +26,23 @@ Then run the CoDeepSeedeX installer.
 
     curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh | bash
 
+### Fallback install command
+
+If `raw.githubusercontent.com` is unstable or blocked, use the fallback downloader:
+
+```bash
+tmp="$(mktemp -d)"
+bs="$tmp/bootstrap.sh"
+(
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/heads/master/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh -o "$bs"
+) && bash "$bs"
+```
+
+After installation, start a new shell or run `source ~/.bashrc` so that `~/.local/bin` takes priority. Verify with `command -v codex` and `command -v dsproxy`.
+
 The installer will:
 
 - install CoDeepSeedeX into `~/.local/share/deepseek-responses-proxy`

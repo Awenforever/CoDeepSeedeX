@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_install_output_uses_absolute_uninstall_command() -> None:
+    text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'bash %s --uninstall' in text
+    assert '"$INSTALL_DIR/scripts/install.sh"' in text
+
+
+def test_install_repairs_codex_model_catalog_before_final_output() -> None:
+    text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    marker = "codeepseedex_repair_codex_model_catalog_json_v2746a1"
+    final_output = 'sub_title "Installation files"'
+    assert marker in text
+    assert text.index(marker) < text.index(final_output)
+    assert "profiles.deepseek-thinking" in text
+    assert "model_catalog_json" in text
+
+
+def test_docs_include_fallback_install_domains() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh" in readme
+    assert "fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@master/bootstrap.sh" in readme
+
+
+def test_troubleshooting_mentions_model_path_resolution() -> None:
+    text = (ROOT / "TROUBLESHOOTING.md").read_text(encoding="utf-8")
+    assert "/model" in text
+    assert "command -v codex" in text
+    assert "deepseek-thinking" in text

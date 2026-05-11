@@ -321,3 +321,25 @@ curl -fsSL https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/master/boo
 ```
 
 The bootstrap layer installs or selects a Python 3.11+ interpreter and then passes it to `scripts/install.sh` through `--python-bin`.
+
+## raw.githubusercontent.com connection reset or refused
+
+If the one-line raw GitHub installer fails with `OpenSSL SSL_read: Connection reset by peer` or `Connection refused`, use the fallback install command from README. It tries raw GitHub, the normal GitHub raw endpoint, jsDelivr, and the Fastly jsDelivr endpoint.
+
+## `/model` shows GPT models after installing DeepSeek profiles
+
+First check that the installed wrapper is first on PATH:
+
+```bash
+source ~/.bashrc
+command -v codex
+command -v dsproxy
+```
+
+`command -v codex` should usually resolve to `~/.local/bin/codex`, not an npm-global Codex path. Then launch with:
+
+```bash
+codex --profile deepseek-thinking
+```
+
+If the shell still resolves the npm-global Codex first, prepend `~/.local/bin` to PATH or open a new shell.
