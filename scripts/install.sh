@@ -99,6 +99,40 @@ run_quiet() {
   fi
 }
 
+run_git_quiet() {
+  local label="$1"
+  local operation="$2"
+  shift 2
+  printf '  ... %s\n' "$label"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ %s\n' "$*" >> "$INSTALL_LOG"
+    ok "$label"
+    return 0
+  fi
+
+  if "$@" >> "$INSTALL_LOG" 2>&1; then
+    ok "$label"
+    return 0
+  fi
+
+  warn "$label failed. See log: $INSTALL_LOG"
+  warn "Git repository setup failed during: $operation"
+  warn "Possible causes: network/TLS/proxy interruption, GitHub access failure, invalid --repo-url, repository permission issue, or a conflicting install directory."
+  warn "Next step: retry after checking network/proxy/CA certificates, or use --repo-url /path/to/local-or-mirrored-repo."
+
+  {
+    printf '\n===== CoDeepSeedeX git setup diagnosis =====\n'
+    printf 'operation=%s\n' "$operation"
+    printf 'repo_url=%s\n' "$REPO_URL"
+    printf 'install_dir=%s\n' "$INSTALL_DIR"
+    printf 'hint=%s\n' "If this is a GitHub TLS/network failure, retry later or rerun with --repo-url pointing to a local or mirrored repository."
+    printf 'hint=%s\n' "If the install directory exists but is not a valid clone, move it aside or choose another --install-dir."
+  } >> "$INSTALL_LOG"
+
+  return 1
+}
+
 read_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
@@ -596,7 +630,7 @@ case "\$profile" in
     "\$DSPROXY" start >/dev/null
     ;;
   deepseek-thinking)
-    "\$DSPROXY" start --thinking >/dev/null
+    "\$DSPROXY" start thinking >/dev/null
     ;;
 esac
 
@@ -766,10 +800,10 @@ fi
 step "Installing"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
-  run_quiet "Repository updated" git -C "$INSTALL_DIR" pull --ff-only
+  run_git_quiet "Repository updated" "git pull --ff-only" git -C "$INSTALL_DIR" pull --ff-only
 else
   run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
-  run_quiet "Repository installed" git clone "$REPO_URL" "$INSTALL_DIR"
+  run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
 run_quiet "Virtual environment ready" python3 -m venv "$INSTALL_DIR/.venv"
