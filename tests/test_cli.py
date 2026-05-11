@@ -9,7 +9,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v0.3.0-alpha" in out
+    assert "v0.3.1" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -46,7 +46,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v0.3.0-alpha")
+    assert data["proxy_version"].startswith("v0.3.1")
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -87,7 +87,7 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v0.3.0-alpha",
+            "version": "v0.3.1",
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -131,7 +131,7 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v0.3.0-alpha",
+            "version": "v0.3.1",
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -170,7 +170,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v0.3.0-alpha")
+    assert data["expected_version"].startswith("v0.3.1")
     assert data["running_version"] == "v0.old"
 
 

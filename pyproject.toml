@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepseek-responses-proxy"
-version = "0.3.0a0"
+version = "0.3.1"
 description = "Minimal FastAPI OpenAI Responses-compatible proxy for DeepSeek ChatCompletions"
 license = { text = "MIT" }
 requires-python = ">=3.11"
