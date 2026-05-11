@@ -8430,6 +8430,40 @@ def _build_user_tool_command_risk_report(
     else:
         decision_if_enabled = "observe_only"
 
+    c4_call_reports = [
+        item
+        for item in call_reports
+        if item.get("command_risk") == "C4_catastrophic_or_out_of_sandbox"
+    ]
+    c4_gate_triggered = bool(c4_call_reports)
+    c4_gate_reasons = sorted(
+        {
+            reason
+            for item in c4_call_reports
+            for candidate in item.get("candidates", [])
+            for reason in candidate.get("reasons", [])
+        }
+    )
+    c4_gate_argument_previews = [
+        {
+            "tool_call_id": item.get("tool_call_id"),
+            "tool_name": item.get("tool_name"),
+            "arguments_preview": item.get("arguments_preview"),
+            "arguments_preview_truncated": item.get("arguments_preview_truncated"),
+            "candidate_previews": [
+                {
+                    "path": candidate.get("path"),
+                    "preview": candidate.get("preview"),
+                    "preview_truncated": candidate.get("preview_truncated"),
+                    "reasons": candidate.get("reasons", []),
+                }
+                for candidate in item.get("candidates", [])
+                if candidate.get("risk") == "C4_catastrophic_or_out_of_sandbox"
+            ],
+        }
+        for item in c4_call_reports
+    ]
+
     return {
         "version": PROXY_VERSION,
         "mode": config["mode"],
@@ -8445,12 +8479,23 @@ def _build_user_tool_command_risk_report(
         "tool_calls": call_reports,
         "proxy_gate_scope": "C4_only_future_gate",
         "codex_is_default_sandbox_boundary": True,
+        "c4_gate_mode": "dry_run_fields_only",
+        "c4_gate_triggered": c4_gate_triggered,
+        "c4_gate_action": "would_suppress_and_explain" if c4_gate_triggered else "allow",
+        "c4_gate_tool_call_ids": [item.get("tool_call_id") for item in c4_call_reports],
+        "c4_gate_tool_names": [item.get("tool_name") for item in c4_call_reports],
+        "c4_gate_reasons": c4_gate_reasons,
+        "c4_gate_argument_previews": c4_gate_argument_previews,
+        "c4_gate_confirmation_required": c4_gate_triggered,
+        "c4_gate_resume_supported": False,
+        "c4_gate_effective": False,
         "notes": [
             "dry_run_only_no_tool_execution_changes",
             "command_risk_arguments_are_available_only_after_upstream_tool_call",
             "P1c does not enable destructive command blocking yet",
             "proxy_must_not_create_a_narrower_boundary_than_codex_for_normal_development",
             "only_C4_catastrophic_or_out_of_sandbox_is_a_future_proxy_gate_candidate",
+            "v2.7a42a1_adds_c4_gate_dry_run_fields_without_blocking",
         ],
     }
 

@@ -593,3 +593,40 @@ would_require_c4_confirmation：未来C4-only gate候选
 ```
 
 当前阶段仍是dry-run，不启用真实拦截。
+
+
+## 15.P1c C4gate dry-run字段
+
+`v2.7a42a1`只增加C4gate观测字段，不启用真实拦截。该阶段用于在真实长会话中观察未来C4gate会如何判定。
+
+新增字段：
+
+```text
+c4_gate_mode
+c4_gate_triggered
+c4_gate_action
+c4_gate_tool_call_ids
+c4_gate_tool_names
+c4_gate_reasons
+c4_gate_argument_previews
+c4_gate_confirmation_required
+c4_gate_resume_supported
+c4_gate_effective
+```
+
+字段语义：
+
+```text
+c4_gate_triggered=true表示当前tool_call中存在C4_catastrophic_or_out_of_sandbox。
+c4_gate_action=would_suppress_and_explain表示未来enabled gate会抑制工具执行并返回说明。
+c4_gate_effective=false表示当前阶段没有真实拦截。
+c4_gate_resume_supported=false表示当前不支持“继续”后自动恢复执行C4。
+```
+
+边界保持不变：
+
+```text
+C2_routine_side_effect不触发C4gate。
+C3_codex_governed_destructive不触发C4gate。
+只有C4_catastrophic_or_out_of_sandbox触发C4gate dry-run字段。
+```

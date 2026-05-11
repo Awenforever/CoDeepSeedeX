@@ -917,3 +917,96 @@ def test_user_tool_command_risk_report_classifies_write_file_as_codex_governed_n
     assert report["decision_if_enabled"] == "allow_codex_governed"
     assert report["tool_calls"][0]["tool_name_risk"] == "R3_destructive_or_overwrite"
     assert report["tool_calls"][0]["codex_sandbox_boundary"] is True
+
+
+def test_user_tool_command_risk_report_c4_gate_fields_trigger_only_for_c4():
+    import json
+    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+
+    safe_report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_tmp",
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "arguments": json.dumps({"cmd": "rm -rf /tmp/demo"}),
+                },
+            },
+            {
+                "id": "call_patch",
+                "type": "function",
+                "function": {
+                    "name": "apply_patch",
+                    "arguments": json.dumps(
+                        {
+                            "input": "*** Begin Patch\n*** Update File: deepseek_responses_proxy/app.py\n*** End Patch"
+                        }
+                    ),
+                },
+            },
+        ],
+        phase="test",
+    )
+
+    assert safe_report["max_command_risk"] == "C2_routine_side_effect"
+    assert safe_report["c4_gate_mode"] == "dry_run_fields_only"
+    assert safe_report["c4_gate_triggered"] is False
+    assert safe_report["c4_gate_action"] == "allow"
+    assert safe_report["c4_gate_tool_call_ids"] == []
+    assert safe_report["c4_gate_confirmation_required"] is False
+    assert safe_report["c4_gate_resume_supported"] is False
+    assert safe_report["c4_gate_effective"] is False
+
+    c4_report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_c4",
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "arguments": json.dumps({"cmd": "rm -rf /mnt/d/*"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert c4_report["max_command_risk"] == "C4_catastrophic_or_out_of_sandbox"
+    assert c4_report["decision_if_enabled"] == "would_require_c4_confirmation"
+    assert c4_report["c4_gate_mode"] == "dry_run_fields_only"
+    assert c4_report["c4_gate_triggered"] is True
+    assert c4_report["c4_gate_action"] == "would_suppress_and_explain"
+    assert c4_report["c4_gate_tool_call_ids"] == ["call_c4"]
+    assert c4_report["c4_gate_tool_names"] == ["shell"]
+    assert "catastrophic_rm_root_home_or_drive" in c4_report["c4_gate_reasons"]
+    assert c4_report["c4_gate_confirmation_required"] is True
+    assert c4_report["c4_gate_resume_supported"] is False
+    assert c4_report["c4_gate_effective"] is False
+    assert c4_report["c4_gate_argument_previews"][0]["tool_call_id"] == "call_c4"
+
+
+def test_user_tool_command_risk_report_c3_remains_codex_governed_not_c4_gate():
+    import json
+    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+
+    report = _build_user_tool_command_risk_report(
+        [
+            {
+                "id": "call_write",
+                "type": "function",
+                "function": {
+                    "name": "write_file",
+                    "arguments": json.dumps({"path": "docs/new.md", "content": "hello"}),
+                },
+            }
+        ],
+        phase="test",
+    )
+
+    assert report["max_command_risk"] == "C3_codex_governed_destructive"
+    assert report["decision_if_enabled"] == "allow_codex_governed"
+    assert report["c4_gate_triggered"] is False
+    assert report["c4_gate_action"] == "allow"
+    assert report["c4_gate_confirmation_required"] is False
+    assert report["c4_gate_effective"] is False
