@@ -839,7 +839,8 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
     --provider-name deepseek-thinking-proxy \
     --base-url "http://127.0.0.1:${THINKING_PORT}/v1" \
     --model deepseek-v4-pro \
-    --reasoning-effort xhigh
+    --reasoning-effort xhigh \
+    "${MODEL_CATALOG_ARGS[@]}"
 fi
 
 write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"

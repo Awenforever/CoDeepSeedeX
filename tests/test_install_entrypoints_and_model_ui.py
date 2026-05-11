@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
+INSTALL_SH = ROOT / "scripts" / "install.sh"
 
 
 def test_install_output_uses_absolute_uninstall_command() -> None:
@@ -32,3 +34,26 @@ def test_troubleshooting_mentions_model_path_resolution() -> None:
     assert "/model" in text
     assert "command -v codex" in text
     assert "deepseek-thinking" in text
+
+def test_installer_passes_model_catalog_to_both_codex_profiles() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    deepseek = re.search(
+        r'install-codex-profile \\\n'
+        r'\s+--name deepseek \\\n'
+        r'(?P<body>.*?)(?=\n\n\s+run_quiet "Codex profile installed: deepseek-thinking")',
+        text,
+        re.DOTALL,
+    )
+    assert deepseek is not None
+    assert '"${MODEL_CATALOG_ARGS[@]}"' in deepseek.group("body")
+
+    thinking = re.search(
+        r'install-codex-profile \\\n'
+        r'\s+--name deepseek-thinking \\\n'
+        r'(?P<body>.*?)(?=\nfi\n\nwrite_codex_wrapper)',
+        text,
+        re.DOTALL,
+    )
+    assert thinking is not None
+    assert '"${MODEL_CATALOG_ARGS[@]}"' in thinking.group("body")
