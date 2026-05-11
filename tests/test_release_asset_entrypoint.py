@@ -17,17 +17,32 @@ def text(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
-def test_release_bootstrap_workflow_uploads_fixed_name_assets() -> None:
+def test_release_bootstrap_workflow_validates_assets_without_auto_release() -> None:
     workflow = text(".github/workflows/release-bootstrap.yml")
 
-    assert "tags:" in workflow
-    assert "\"v*\"" in workflow
-    assert "contents: write" in workflow
-    assert "gh release create" in workflow
-    assert "gh release upload" in workflow
-    assert "--clobber" in workflow
-    assert "/tmp/codeepseedex-release-assets/bootstrap.sh" in workflow
-    assert "/tmp/codeepseedex-release-assets/install.sh" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "contents: read" in workflow
+    assert "test -s bootstrap.sh" in workflow
+    assert "test -s scripts/install.sh" in workflow
+    assert "bash -n bootstrap.sh" in workflow
+    assert "bash -n scripts/install.sh" in workflow
+
+    forbidden = [
+        "push:",
+        "tags:",
+        "\"v*\"",
+        "contents: write",
+        "gh release create",
+        "gh release edit",
+        "gh release upload",
+        "--clobber",
+        "--latest",
+        "softprops/action-gh-release",
+        "ncipollo/release-action",
+        "actions/create-release",
+    ]
+    for marker in forbidden:
+        assert marker not in workflow
 
 
 def test_docs_prefer_release_latest_bootstrap_with_fallbacks() -> None:
