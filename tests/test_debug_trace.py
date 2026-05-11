@@ -557,11 +557,12 @@ def test_tool_output_image_payload_category_and_policy(monkeypatch):
     assert policy["targets"][0]["estimated_remove_chars"] > 0
 
 
-def test_tool_output_image_payload_enabled_trims_copy(monkeypatch):
+def test_tool_output_image_payload_enabled_preserves_artifact_ref(monkeypatch, tmp_path):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     image_output = "IMAGE-BEGIN\\n" + ("abcdef" * 2000) + "\\nIMAGE-END"
     input_items = [
@@ -583,20 +584,29 @@ def test_tool_output_image_payload_enabled_trims_copy(monkeypatch):
 
     assert trimmed is not input_items
     assert input_items[1]["output"] == image_output
-    assert trimmed[1]["output"] != image_output
-    assert "[tool output trimmed by CoDeepSeedeX]" in trimmed[1]["output"]
-    assert "tool_name: view_image" in trimmed[1]["output"]
-    assert "category: image_payload" in trimmed[1]["output"]
+    ref = trimmed[1]["output"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "image_payload_artifact_ref"
+    assert ref["tool_name"] == "view_image"
+    assert ref["category"] == "image_payload"
+    assert ref["preserved"] is True
+    assert "[tool output trimmed by CoDeepSeedeX]" not in json.dumps(ref)
+    artifact = json.loads(Path(ref["artifact_path"]).read_text(encoding="utf-8"))
+    assert artifact["payload"] == image_output
+    assert artifact["serialized_output"] == image_output
+    assert artifact["sha256"] == ref["sha256"]
     assert report["trimmed_item_count"] == 1
     assert report["targets"][0]["tool_name"] == "view_image"
     assert report["targets"][0]["category"] == "image_payload"
+    assert report["targets"][0]["artifact_preserved"] is True
 
 
 
 
-def test_tool_output_trimming_serializes_and_trims_structured_image_output(monkeypatch):
+def test_tool_output_trimming_serializes_and_preserves_structured_image_artifact(monkeypatch, tmp_path):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     input_items = [
         {
@@ -621,9 +631,15 @@ def test_tool_output_trimming_serializes_and_trims_structured_image_output(monke
     assert report["targets"][0]["category"] == "image_payload"
     assert report["targets"][0]["output_type"] == "list"
     assert report["targets"][0]["output_was_serialized"] is True
-    assert isinstance(trimmed[1]["output"], str)
-    assert "[tool output trimmed by CoDeepSeedeX]" in trimmed[1]["output"]
-    assert "category: image_payload" in trimmed[1]["output"]
+    assert report["targets"][0]["artifact_preserved"] is True
+    ref = trimmed[1]["output"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "image_payload_artifact_ref"
+    assert ref["category"] == "image_payload"
+    artifact = json.loads(Path(ref["artifact_path"]).read_text(encoding="utf-8"))
+    assert artifact["payload"] == [{"image": "X" * 34085}]
+    assert artifact["output_type"] == "list"
+    assert artifact["output_was_serialized"] is True
 
 
 def test_tool_output_trimming_preserves_small_structured_output(monkeypatch):
@@ -645,9 +661,10 @@ def test_tool_output_trimming_preserves_small_structured_output(monkeypatch):
     assert report["skipped_outputs"][0]["output_was_serialized"] is True
 
 
-def test_tool_output_trimming_can_classify_before_previous_response_filter(monkeypatch):
+def test_tool_output_trimming_can_classify_before_previous_response_filter(monkeypatch, tmp_path):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     image_output = "IMAGE-BEGIN\\n" + ("abcdef" * 6000) + "\\nIMAGE-END"
     input_items = [
@@ -663,8 +680,11 @@ def test_tool_output_trimming_can_classify_before_previous_response_filter(monke
     assert report["targets"][0]["tool_name"] == "view_image"
     assert len(filtered) == 1
     assert filtered[0]["type"] == "function_call_output"
-    assert "[tool output trimmed by CoDeepSeedeX]" in filtered[0]["output"]
-    assert "category: image_payload" in filtered[0]["output"]
+    ref = filtered[0]["output"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "image_payload_artifact_ref"
+    assert ref["category"] == "image_payload"
+    assert Path(ref["artifact_path"]).exists()
 
 
 def test_tool_output_image_policy_does_not_affect_shell_below_shell_policy(monkeypatch):

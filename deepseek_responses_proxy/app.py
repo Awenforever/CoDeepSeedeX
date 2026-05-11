@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sqlite3
 import time
@@ -2039,6 +2040,11 @@ def _compact_tool_output_targets_for_trace(
         "output_was_serialized",
         "estimated_after_chars",
         "estimated_remove_chars",
+        "artifact_preserved",
+        "artifact_path",
+        "artifact_uri",
+        "artifact_sha256",
+        "artifact_format",
         "exceeds_warn_item_chars",
         "matching_function_call_index",
         "matching_function_call_arguments_chars",
@@ -2185,6 +2191,116 @@ def _format_trimmed_tool_output_text(
     )
 
 
+
+def _tool_output_artifact_dir() -> Path:
+    raw = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR") or ".generated/tool-output-artifacts"
+    return Path(raw)
+
+
+def _tool_output_artifact_max_files() -> int:
+    return _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_MAX_FILES", 100)
+
+
+def _safe_tool_output_artifact_component(value: str | None) -> str:
+    raw = str(value or "unknown")
+    safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in raw)
+    safe = safe.strip("_") or "unknown"
+    return safe[:80]
+
+
+def _prune_tool_output_artifacts(output_dir: Path | None = None) -> None:
+    limit = _tool_output_artifact_max_files()
+    if limit <= 0:
+        return
+
+    root_dir = output_dir or _tool_output_artifact_dir()
+    if not root_dir.exists() or not root_dir.is_dir():
+        return
+
+    candidates = sorted(
+        (path for path in root_dir.glob("tool_output_image_*.json") if path.is_file()),
+        key=lambda path: (path.stat().st_mtime if path.exists() else 0.0, path.name),
+        reverse=True,
+    )
+    for path in candidates[limit:]:
+        try:
+            path.unlink()
+        except OSError as exc:
+            print(f"[deepseek-responses-proxy] failed to prune tool output artifact {path}: {exc}")
+
+
+def _write_tool_output_image_payload_artifact(
+    *,
+    output: Any,
+    output_text: str,
+    call_id: str,
+    tool_name: str,
+    category: str,
+    output_type: str,
+    output_was_serialized: bool,
+    original_item_chars: int,
+) -> dict[str, Any] | None:
+    digest = hashlib.sha256(output_text.encode("utf-8", errors="replace")).hexdigest()
+    output_dir = _tool_output_artifact_dir()
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to create tool output artifact dir {output_dir}: {exc}")
+        return None
+
+    safe_call_id = _safe_tool_output_artifact_component(call_id)
+    safe_tool_name = _safe_tool_output_artifact_component(tool_name)
+    filename = f"tool_output_image_{safe_tool_name}_{safe_call_id}_{digest[:12]}_{uuid.uuid4().hex[:8]}.json"
+    path = output_dir / filename
+
+    payload = {
+        "version": PROXY_VERSION,
+        "kind": "tool_output_image_payload",
+        "category": category,
+        "tool_name": tool_name or "unknown",
+        "call_id": call_id or "unknown",
+        "created_at": time.time(),
+        "sha256": digest,
+        "original_output_chars": len(output_text),
+        "original_item_chars": int(original_item_chars),
+        "output_type": output_type,
+        "output_was_serialized": bool(output_was_serialized),
+        "payload": output,
+        "serialized_output": output_text,
+    }
+
+    try:
+        path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str), encoding="utf-8")
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write tool output artifact {path}: {exc}")
+        return None
+
+    _prune_tool_output_artifacts(output_dir)
+
+    resolved = str(path.resolve())
+    return {
+        "ok": True,
+        "type": "image_payload_artifact_ref",
+        "kind": "tool_output_image_payload_ref",
+        "category": category,
+        "tool_name": tool_name or "unknown",
+        "call_id": call_id or "unknown",
+        "artifact_path": resolved,
+        "artifact_uri": _image_file_uri(resolved),
+        "artifact_format": "json",
+        "artifact_payload_key": "payload",
+        "artifact_serialized_output_key": "serialized_output",
+        "original_output_chars": len(output_text),
+        "original_item_chars": int(original_item_chars),
+        "sha256": digest,
+        "output_type": output_type,
+        "output_was_serialized": bool(output_was_serialized),
+        "preserved": True,
+        "note": "Full image payload was preserved on disk. The chat context contains only this lightweight reference.",
+    }
+
+
+
 def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, Any]]:
     config = _tool_output_trim_dry_run_env_config()
     mode = str(config.get("mode") or "dry_run")
@@ -2307,6 +2423,66 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                         }
                     )
                 continue
+
+            if category == "image_payload":
+                artifact_output = _write_tool_output_image_payload_artifact(
+                    output=output,
+                    output_text=output_text,
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    category=category,
+                    output_type=output_type,
+                    output_was_serialized=output_was_serialized,
+                    original_item_chars=original_item_chars,
+                )
+                if artifact_output is not None:
+                    item["output"] = artifact_output
+                    trimmed_item_chars = _debug_trace_json_chars(item)
+                    removed_chars = max(0, original_item_chars - trimmed_item_chars)
+                    if removed_chars > 0:
+                        targets.append(
+                            {
+                                "index": index,
+                                "call_id": call_id,
+                                "tool_name": tool_name,
+                                "category": category,
+                                "policy_name": str(policy.get("policy_name") or category),
+                                "trim_reason": "enabled_image_payload_artifact_preserved",
+                                "item_chars": original_item_chars,
+                                "output_chars": len(output_text),
+                                "original_chars": original_item_chars,
+                                "output_type": output_type,
+                                "output_was_serialized": output_was_serialized,
+                                "estimated_after_chars": trimmed_item_chars,
+                                "estimated_remove_chars": removed_chars,
+                                "exceeds_warn_item_chars": True,
+                                "artifact_preserved": True,
+                                "artifact_path": artifact_output.get("artifact_path"),
+                                "artifact_uri": artifact_output.get("artifact_uri"),
+                                "artifact_sha256": artifact_output.get("sha256"),
+                                "artifact_format": artifact_output.get("artifact_format"),
+                            }
+                        )
+                        continue
+
+                    item["output"] = output
+                    if len(skipped_outputs) < skip_trace_limit:
+                        skipped_outputs.append(
+                            {
+                                "index": index,
+                                "call_id": call_id,
+                                "tool_name": tool_name,
+                                "category": category,
+                                "skip_reason": "artifact_ref_not_smaller",
+                                "item_chars": original_item_chars,
+                                "output_chars": output_chars,
+                                "trimmed_item_chars": trimmed_item_chars,
+                                "policy_max_item_chars": int(policy["max_item_chars"]),
+                                "has_matching_function_call": bool(call_info),
+                                "artifact_path": artifact_output.get("artifact_path"),
+                            }
+                        )
+                    continue
 
             trimmed_output = _format_trimmed_tool_output_text(
                 original_text=output_text,
