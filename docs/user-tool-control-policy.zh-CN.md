@@ -437,3 +437,69 @@ quoted_or_meta_stop_discussion → allow_tools
 ```
 
 这类场景下，`effective_tool_names`可以同时包含用户请求工具和`proxy_echo`、`proxy_time`。
+
+
+## 13.P1c命令级风险dry-run报告
+
+P1c第一版只新增命令级风险dry-run报告，不改变工具执行行为。
+
+报告路径：
+
+```text
+.debug/user_tool_command_risk_report.json
+```
+
+触发位置：
+
+```text
+模型返回tool_call之后
+proxy本地执行proxy工具或MCP代理工具之前
+```
+
+原因是命令参数只在`tool_call["function"]["arguments"]`中出现。pre-upstream阶段只能看到工具schema和工具名，无法判断具体命令是否包含删除、覆写或破坏性操作。
+
+当前dry-run报告字段包括：
+
+```text
+mode
+phase
+tool_call_count
+tool_names
+max_command_risk
+decision_if_enabled
+tool_calls[].tool_name
+tool_calls[].tool_name_risk
+tool_calls[].command_risk
+tool_calls[].candidate_count
+tool_calls[].candidates
+tool_calls[].arguments_preview
+```
+
+风险级别：
+
+```text
+C0_no_command_or_no_arguments
+C1_readonly_or_unknown
+C2_side_effect
+C3_destructive_or_overwrite
+```
+
+第一版识别范围包括：
+
+```text
+rm/rmdir/del/Remove-Item
+git reset --hard
+git clean -fd/-fdx
+git push --force
+git branch -D
+git tag -d
+SQL drop/truncate/delete/update
+shell重定向覆写
+tee文件写入
+mv/cp -f潜在覆写
+rsync --delete
+dd of=
+apply_patch Add/Update/Delete File
+```
+
+当前不会真实拦截这些命令。`decision_if_enabled=would_require_confirmation`只表示未来enabled阶段应要求确认或阻止自动执行。

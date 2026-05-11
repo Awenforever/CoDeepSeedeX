@@ -7913,7 +7913,22 @@ def _classify_tool_name_risk_for_policy(name: str) -> str:
     if any(marker in lowered for marker in r3_markers):
         return "R3_destructive_or_overwrite"
 
-    if lowered in {"shell", "exec", "run_command", "mcp__shell__run"}:
+    if lowered in {
+        "shell",
+        "exec",
+        "run_command",
+        "execute_command",
+        "run_shell",
+        "shell_command",
+        "interactive_shell",
+        "mcp__shell__run",
+        "bash",
+        "sh",
+        "zsh",
+        "powershell",
+        "pwsh",
+        "apply_patch",
+    }:
         return "R3_capable_requires_command_audit"
 
     r2_markers = [
@@ -8118,6 +8133,283 @@ def _user_tool_control_should_suppress_post_upstream_tool_calls(
 ) -> bool:
     return _user_tool_control_should_apply_turn_control(report)
 
+
+def _user_tool_command_risk_env_config() -> dict[str, Any]:
+    raw_mode = os.environ.get("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "dry_run")
+    mode = raw_mode.strip().lower()
+    if mode not in {"off", "dry_run", "enabled"}:
+        mode = "dry_run"
+    return {
+        "mode": mode,
+        "enabled": mode == "enabled",
+        "preview_chars": _env_int("DEEPSEEK_PROXY_COMMAND_RISK_PREVIEW_CHARS", 700),
+    }
+
+
+def _command_risk_debug_report_path() -> Path:
+    return Path(".debug") / "user_tool_command_risk_report.json"
+
+
+def _write_user_tool_command_risk_report(report: dict[str, Any]) -> None:
+    try:
+        debug_dir = Path(".debug")
+        debug_dir.mkdir(exist_ok=True)
+        _command_risk_debug_report_path().write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write command risk report: {exc}")
+
+
+def _command_risk_tool_call_name(tool_call: dict[str, Any]) -> str:
+    function = tool_call.get("function") or {}
+    if isinstance(function, dict):
+        return str(function.get("name") or "")
+    return ""
+
+
+def _command_risk_tool_call_arguments(tool_call: dict[str, Any]) -> dict[str, Any]:
+    function = tool_call.get("function") or {}
+    if not isinstance(function, dict):
+        return {}
+    arguments = function.get("arguments", "")
+    decoded = _decode_tool_arguments(arguments)
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _collect_command_risk_text_candidates(value: Any, *, key_path: str = "") -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+    interesting_keys = {
+        "cmd",
+        "command",
+        "commands",
+        "script",
+        "input",
+        "patch",
+        "args",
+        "arguments",
+        "path",
+        "file",
+        "filename",
+        "content",
+        "query",
+    }
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            candidates.append({"path": key_path or "$", "text": stripped})
+        return candidates
+
+    if isinstance(value, list):
+        for index, item in enumerate(value[:30]):
+            candidates.extend(
+                _collect_command_risk_text_candidates(
+                    item,
+                    key_path=f"{key_path}[{index}]" if key_path else f"$[{index}]",
+                )
+            )
+        return candidates
+
+    if isinstance(value, dict):
+        for key, item in list(value.items())[:80]:
+            key_text = str(key)
+            child_path = f"{key_path}.{key_text}" if key_path else key_text
+            if key_text.lower() in interesting_keys:
+                candidates.extend(
+                    _collect_command_risk_text_candidates(item, key_path=child_path)
+                )
+            elif isinstance(item, (dict, list)):
+                candidates.extend(
+                    _collect_command_risk_text_candidates(item, key_path=child_path)
+                )
+        return candidates
+
+    return candidates
+
+
+def _command_risk_severity_key(risk: str) -> int:
+    order = {
+        "C0_no_command_or_no_arguments": 0,
+        "C1_readonly_or_unknown": 1,
+        "C2_side_effect": 2,
+        "C3_destructive_or_overwrite": 3,
+    }
+    return order.get(risk, 1)
+
+
+def _max_command_risk_level(levels: list[str]) -> str:
+    if not levels:
+        return "C0_no_command_or_no_arguments"
+    return max(levels, key=_command_risk_severity_key)
+
+
+def _classify_command_text_risk(text: str) -> tuple[str, list[str]]:
+    import re
+
+    lowered = text.lower()
+    reasons: list[str] = []
+
+    destructive_patterns = [
+        (r"(^|[;&|]\s*)rm\s+(-[^\n;&|]*[rf][^\n;&|]*\s+)?[^\n;&|]+", "shell_rm_delete"),
+        (r"\brmdir\b|\brd\s+/s\b", "directory_delete"),
+        (r"\bdel\s+|\berase\s+", "windows_delete"),
+        (r"\bremove-item\b|\bremove\s+-item\b", "powershell_remove_item"),
+        (r"\bgit\s+reset\s+--hard\b", "git_reset_hard"),
+        (r"\bgit\s+clean\s+-[^\n;&|]*[fdx]", "git_clean_force"),
+        (r"\bgit\s+push\b[^\n;&|]*(--force|-f)\b", "git_force_push"),
+        (r"\bgit\s+branch\s+-d\b|\bgit\s+branch\s+-D\b", "git_branch_delete"),
+        (r"\bgit\s+tag\s+-d\b", "git_tag_delete"),
+        (r"\b(drop\s+table|drop\s+database|truncate\s+table)\b", "sql_drop_or_truncate"),
+        (r"\bdelete\s+from\b", "sql_delete"),
+        (r"\bupdate\s+\S+\s+set\b", "sql_update"),
+        (r"(^|[^<])>\s*[^&\s][^\n]*", "shell_redirection_overwrite"),
+        (r"\btee\s+(-a\s+)?\S+", "tee_file_write"),
+        (r"\bmv\s+(-f\s+)?\S+\s+\S+", "mv_may_overwrite"),
+        (r"\bcp\s+-[^\n;&|]*f[^\n;&|]*\s+\S+\s+\S+", "cp_force_overwrite"),
+        (r"\brsync\b[^\n;&|]*--delete\b", "rsync_delete"),
+        (r"\bdd\b[^\n;&|]*\bof=", "dd_write_output"),
+        (r"\*\*\*\s+delete file:", "apply_patch_delete_file"),
+        (r"\*\*\*\s+update file:", "apply_patch_update_file"),
+        (r"\*\*\*\s+add file:", "apply_patch_add_file"),
+    ]
+    for pattern, reason in destructive_patterns:
+        if re.search(pattern, lowered):
+            reasons.append(reason)
+
+    if reasons:
+        return "C3_destructive_or_overwrite", reasons
+
+    side_effect_patterns = [
+        (r"\bgit\s+commit\b", "git_commit"),
+        (r"\bgit\s+add\b", "git_add"),
+        (r"\bmkdir\b", "mkdir"),
+        (r"\btouch\b", "touch"),
+        (r"\bchmod\b|\bchown\b", "permission_change"),
+        (r"\b(pip|npm|pnpm|yarn|apt|apt-get|brew)\s+install\b", "install_command"),
+        (r"\bsed\s+-i\b", "in_place_edit"),
+    ]
+    for pattern, reason in side_effect_patterns:
+        if re.search(pattern, lowered):
+            reasons.append(reason)
+
+    if reasons:
+        return "C2_side_effect", reasons
+
+    readonly_patterns = [
+        (r"\b(cat|head|tail|grep|rg|find|ls|pwd|git\s+status|git\s+diff|git\s+log)\b", "readonly_command"),
+    ]
+    for pattern, reason in readonly_patterns:
+        if re.search(pattern, lowered):
+            reasons.append(reason)
+
+    if reasons:
+        return "C1_readonly_or_unknown", reasons
+
+    return "C1_readonly_or_unknown", ["no_destructive_pattern_matched"]
+
+
+def _classify_tool_call_command_risk(tool_call: dict[str, Any]) -> dict[str, Any]:
+    config = _user_tool_command_risk_env_config()
+    preview_chars = int(config["preview_chars"])
+
+    name = _command_risk_tool_call_name(tool_call)
+    arguments = _command_risk_tool_call_arguments(tool_call)
+    tool_name_risk = _classify_tool_name_risk_for_policy(name)
+    text_candidates = _collect_command_risk_text_candidates(arguments)
+
+    candidate_reports: list[dict[str, Any]] = []
+    candidate_levels: list[str] = []
+    for candidate in text_candidates[:40]:
+        text = candidate["text"]
+        risk, reasons = _classify_command_text_risk(text)
+        preview, changed = _truncate_middle_text(text, preview_chars)
+        candidate_reports.append(
+            {
+                "path": candidate["path"],
+                "risk": risk,
+                "reasons": reasons,
+                "preview": preview,
+                "preview_truncated": changed,
+            }
+        )
+        candidate_levels.append(risk)
+
+    tool_name_reasons: list[str] = []
+    if tool_name_risk == "R3_destructive_or_overwrite":
+        candidate_levels.append("C3_destructive_or_overwrite")
+        tool_name_reasons.append("tool_name_destructive_or_overwrite")
+    elif tool_name_risk == "R3_capable_requires_command_audit":
+        if not candidate_levels:
+            candidate_levels.append("C1_readonly_or_unknown")
+            tool_name_reasons.append("tool_name_requires_command_audit_no_arguments")
+
+    max_command_risk = _max_command_risk_level(candidate_levels)
+    if max_command_risk == "C3_destructive_or_overwrite":
+        decision_if_enabled = "would_require_confirmation"
+    elif max_command_risk == "C2_side_effect":
+        decision_if_enabled = "would_observe_or_confirm"
+    else:
+        decision_if_enabled = "observe_only"
+
+    argument_preview, argument_preview_truncated = _truncate_middle_text(
+        json.dumps(arguments, ensure_ascii=False, sort_keys=True),
+        preview_chars,
+    )
+
+    return {
+        "tool_call_id": tool_call.get("id"),
+        "tool_name": name,
+        "tool_name_risk": tool_name_risk,
+        "command_risk": max_command_risk,
+        "decision_if_enabled": decision_if_enabled,
+        "tool_name_reasons": tool_name_reasons,
+        "candidate_count": len(text_candidates),
+        "candidates": candidate_reports,
+        "arguments_preview": argument_preview,
+        "arguments_preview_truncated": argument_preview_truncated,
+    }
+
+
+def _build_user_tool_command_risk_report(
+    tool_calls: list[dict[str, Any]] | None,
+    *,
+    phase: str,
+    response_id: str | None = None,
+) -> dict[str, Any]:
+    config = _user_tool_command_risk_env_config()
+    calls = [call for call in (tool_calls or []) if isinstance(call, dict)]
+    call_reports = [_classify_tool_call_command_risk(call) for call in calls]
+    max_command_risk = _max_command_risk_level(
+        [str(item.get("command_risk") or "C1_readonly_or_unknown") for item in call_reports]
+    )
+    if max_command_risk == "C3_destructive_or_overwrite":
+        decision_if_enabled = "would_require_confirmation"
+    elif max_command_risk == "C2_side_effect":
+        decision_if_enabled = "would_observe_or_confirm"
+    else:
+        decision_if_enabled = "observe_only"
+
+    return {
+        "version": PROXY_VERSION,
+        "mode": config["mode"],
+        "enabled": bool(config["enabled"]),
+        "active": False,
+        "policy_is_dry_run_only": config["mode"] == "dry_run",
+        "phase": phase,
+        "response_id": response_id,
+        "tool_call_count": len(calls),
+        "tool_names": [item.get("tool_name") for item in call_reports],
+        "max_command_risk": max_command_risk,
+        "decision_if_enabled": decision_if_enabled,
+        "tool_calls": call_reports,
+        "notes": [
+            "dry_run_only_no_tool_execution_changes",
+            "command_risk_arguments_are_available_only_after_upstream_tool_call",
+            "P1c does not enable destructive command blocking yet",
+        ],
+    }
 
 def _user_tool_control_suppressed_assistant_content(
     report: dict[str, Any] | None,
@@ -8962,6 +9254,23 @@ async def _run_chat_with_tool_bridge(
 
             _write_agent_liveness_guard_report(liveness_report)
             return deepseek_response, history_messages
+
+        user_tool_command_risk_report = _build_user_tool_command_risk_report(
+            tool_calls,
+            phase="post_upstream_before_proxy_execution",
+            response_id=response_id,
+        )
+        _write_user_tool_command_risk_report(user_tool_command_risk_report)
+        command_risk_trace_report = deepcopy(user_tool_command_risk_report)
+        command_risk_trace_report["command_risk_response_id"] = command_risk_trace_report.pop(
+            "response_id",
+            None,
+        )
+        _debug_trace_event(
+            response_id,
+            "user_tool_command_risk_dry_run",
+            **command_risk_trace_report,
+        )
 
         if _user_tool_control_should_suppress_post_upstream_tool_calls(
             user_tool_control_policy_report
