@@ -689,8 +689,8 @@ while [ "$#" -gt 0 ]; do
     --install-dir) INSTALL_DIR="$2"; shift ;;
     --repo-url) REPO_URL="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
-    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env" ;;
-    --env-file) ENV_FILE="$2" ;;
+    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; shift ;;
+    --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
     --no-codex-wrapper) INSTALL_CODEX_WRAPPER=0 ;;
     --no-shell-profile) INSTALL_SHELL_PROFILE=0 ;;
