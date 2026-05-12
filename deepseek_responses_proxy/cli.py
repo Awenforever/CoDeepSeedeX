@@ -1061,7 +1061,415 @@ def _usage(args: argparse.Namespace) -> int:
     return 1
 
 
+
+_PROVIDER_PROBE_PROMPT = "A small red cube on a white background, minimal style."
+
+_WEB_SEARCH_PROVIDER_ENV_KEYS = {
+    "serpapi": ["SERPAPI_API_KEY", "DEEPSEEK_PROXY_SERPAPI_API_KEY"],
+    "tavily": ["TAVILY_API_KEY", "DEEPSEEK_PROXY_TAVILY_API_KEY"],
+    "brave": ["BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY", "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY"],
+    "exa": ["EXA_API_KEY", "DEEPSEEK_PROXY_EXA_API_KEY"],
+    "firecrawl": ["FIRECRAWL_API_KEY", "DEEPSEEK_PROXY_FIRECRAWL_API_KEY"],
+}
+
+_IMAGE_PROVIDER_ALIASES = {
+    "zhipu": "zhipu",
+    "zhipuai": "zhipu",
+    "bigmodel": "zhipu",
+    "zai": "zai",
+    "z.ai": "zai",
+    "glm": "zai",
+    "qwen": "qwen_image",
+    "qwen_image": "qwen_image",
+    "qwen-image": "qwen_image",
+    "dashscope": "qwen_image",
+    "aliyun": "qwen_image",
+    "stability": "stability",
+    "stability_ai": "stability",
+    "stable_image": "stability",
+    "fal": "fal",
+    "fal_ai": "fal",
+    "fal.ai": "fal",
+}
+
+_IMAGE_PROVIDER_ENV_KEYS = {
+    "zhipu": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "ZHIPUAI_API_KEY", "ZHIPU_API_KEY"],
+    "zai": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "ZAI_API_KEY", "GLM_API_KEY"],
+    "qwen_image": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY", "DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY"],
+    "stability": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "STABILITY_API_KEY", "DEEPSEEK_PROXY_STABILITY_API_KEY"],
+    "fal": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "FAL_KEY", "FAL_API_KEY", "DEEPSEEK_PROXY_FAL_API_KEY"],
+}
+
+
+def _provider_probe_env_values(env_file: Path | None) -> tuple[Path, dict[str, str]]:
+    path = env_file or default_env_file_path()
+    return path, _read_env_exports(path)
+
+
+def _provider_probe_secret(keys: list[str], env_values: dict[str, str], env_file: Path) -> tuple[str, str | None, str | None]:
+    for key in keys:
+        value = os.environ.get(key, "")
+        if value:
+            return value, f"environment:{key}", key
+    for key in keys:
+        value = env_values.get(key, "")
+        if value:
+            return value, f"env_file:{key}", key
+    return "", None, None
+
+
+def _canonical_probe_image_provider(provider: str) -> str:
+    selected = str(provider or "").strip().lower()
+    return _IMAGE_PROVIDER_ALIASES.get(selected, selected)
+
+
+def _provider_probe_web_targets(kind: str, provider: str) -> list[tuple[str, str]]:
+    selected_kind = str(kind or "all").strip().lower()
+    selected_provider = str(provider or "all").strip().lower()
+    targets: list[tuple[str, str]] = []
+    if selected_kind in {"all", "web-search", "web_search", "web"}:
+        web_providers = list(_WEB_SEARCH_PROVIDER_ENV_KEYS)
+        if selected_provider not in {"all", "*"}:
+            web_providers = [selected_provider]
+        for item in web_providers:
+            targets.append(("web_search", item))
+    if selected_kind in {"all", "image", "image-generation", "image_generation"}:
+        image_providers = ["zhipu", "zai", "qwen_image", "stability", "fal"]
+        if selected_provider not in {"all", "*"}:
+            image_providers = [_canonical_probe_image_provider(selected_provider)]
+        for item in image_providers:
+            targets.append(("image_generation", item))
+    return targets
+
+
+def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, bytes, dict[str, str]]:
+    if provider == "zhipu":
+        endpoint = "https://open.bigmodel.cn/api/paas/v4/images/generations"
+        payload = {"model": "cogView-4-250304", "prompt": prompt, "size": "1024x1024"}
+        return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
+    if provider == "zai":
+        endpoint = "https://api.z.ai/api/paas/v4/images/generations"
+        payload = {"model": "cogView-4-250304", "prompt": prompt, "size": "1024x1024"}
+        return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
+    if provider == "qwen_image":
+        endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        payload = {
+            "model": "qwen-image-2.0-pro",
+            "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]},
+            "parameters": {"size": "1024*1024", "n": 1},
+        }
+        return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
+    if provider == "stability":
+        endpoint = "https://api.stability.ai/v2beta/stable-image/generate/core"
+        boundary = "----CoDeepSeedeXProviderProbeBoundary"
+        parts = []
+        for name, value in [("prompt", prompt), ("output_format", "png")]:
+            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
+        parts.append(f"--{boundary}--\r\n")
+        return endpoint, "".join(parts).encode("utf-8"), {"Content-Type": f"multipart/form-data; boundary={boundary}", "Accept": "application/json"}
+    if provider == "fal":
+        endpoint = "https://fal.run/fal-ai/flux/schnell"
+        payload = {"prompt": prompt, "num_images": 1}
+        return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
+    raise ValueError(f"unsupported_image_provider:{provider}")
+
+
+def _provider_probe_image_evidence(provider: str, data: Any, raw: bytes, content_type: str) -> dict[str, Any]:
+    content_type_l = str(content_type or "").lower()
+    if raw and ("image/" in content_type_l or "application/octet-stream" in content_type_l):
+        return {"has_image": True, "evidence": "binary_image_response", "content_type": content_type}
+    if not isinstance(data, dict):
+        return {"has_image": False, "evidence": "unparseable_response", "content_type": content_type}
+
+    if provider in {"zhipu", "zai"}:
+        items = data.get("data") or []
+        for item in items:
+            if isinstance(item, dict) and (item.get("url") or item.get("b64_json")):
+                return {"has_image": True, "evidence": "data_url_or_base64", "content_type": content_type}
+    if provider == "qwen_image":
+        output = data.get("output") if isinstance(data.get("output"), dict) else {}
+        for item in output.get("results") or []:
+            if isinstance(item, dict) and (item.get("url") or item.get("image")):
+                return {"has_image": True, "evidence": "output_results_image", "content_type": content_type}
+        for choice in output.get("choices") or []:
+            message = choice.get("message") if isinstance(choice, dict) else {}
+            for item in (message or {}).get("content") or []:
+                if isinstance(item, dict) and (item.get("image") or item.get("url")):
+                    return {"has_image": True, "evidence": "output_choice_image", "content_type": content_type}
+    if provider == "stability":
+        if data.get("image"):
+            return {"has_image": True, "evidence": "json_image_base64", "content_type": content_type}
+        for item in data.get("artifacts") or data.get("images") or []:
+            if isinstance(item, dict) and (item.get("base64") or item.get("url") or item.get("image_url")):
+                return {"has_image": True, "evidence": "json_artifact_image", "content_type": content_type}
+    if provider == "fal":
+        items = data.get("images") or (data.get("data") or {}).get("images") or []
+        for item in items:
+            if isinstance(item, dict) and (item.get("url") or item.get("image_url")):
+                return {"has_image": True, "evidence": "images_url", "content_type": content_type}
+
+    return {"has_image": False, "evidence": "no_image_field", "content_type": content_type}
+
+
+def _live_image_generation_probe(provider: str, api_key: str, *, timeout: float, prompt: str) -> dict[str, Any]:
+    canonical = _canonical_probe_image_provider(provider)
+    if canonical not in _IMAGE_PROVIDER_ENV_KEYS:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": canonical,
+            "error": "unsupported_image_provider",
+            "supported_providers": list(_IMAGE_PROVIDER_ENV_KEYS),
+        }
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": canonical,
+            "error": "missing_api_key",
+        }
+
+    try:
+        endpoint, body, extra_headers = _provider_probe_image_payload(canonical, prompt)
+    except ValueError:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": canonical,
+            "error": "unsupported_image_provider",
+            "supported_providers": list(_IMAGE_PROVIDER_ENV_KEYS),
+        }
+
+    headers = {
+        **extra_headers,
+        "Authorization": f"Key {api_key}" if canonical == "fal" else f"Bearer {api_key}",
+        "Accept": extra_headers.get("Accept", "application/json"),
+    }
+    request = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read()
+            content_type = response.headers.get("content-type", "")
+            try:
+                data = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
+            except json.JSONDecodeError:
+                data = None
+            evidence = _provider_probe_image_evidence(canonical, data, raw, content_type)
+            ok = 200 <= int(response.status) < 300 and bool(evidence.get("has_image"))
+            return {
+                "ok": ok,
+                "status": "ok" if ok else "error",
+                "kind": "image_generation",
+                "provider": canonical,
+                "endpoint": endpoint,
+                "http_status": int(response.status),
+                "validation_method": "live_image_generation",
+                "validation_strength": "live_generation_probe",
+                "functional_probe": True,
+                "functional_validation": "performed",
+                "may_consume_quota": True,
+                "prompt": prompt,
+                **evidence,
+            }
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": canonical,
+            "endpoint": endpoint,
+            "error": "http_error",
+            "http_status": int(exc.code),
+            "body_preview": raw[:1000],
+            "validation_method": "live_image_generation",
+            "validation_strength": "live_generation_probe",
+            "functional_probe": True,
+            "functional_validation": "performed",
+            "may_consume_quota": True,
+            "prompt": prompt,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": canonical,
+            "endpoint": endpoint,
+            "error": type(exc).__name__,
+            "message": str(exc)[:500],
+            "validation_method": "live_image_generation",
+            "validation_strength": "live_generation_probe",
+            "functional_probe": True,
+            "functional_validation": "performed",
+            "may_consume_quota": True,
+            "prompt": prompt,
+        }
+
+
+def _doctor_provider_probe_result(
+    kind: str,
+    provider: str,
+    *,
+    env_values: dict[str, str],
+    env_file: Path,
+    live: bool,
+    allow_spend: bool,
+    timeout: float,
+    prompt: str,
+) -> dict[str, Any]:
+    if kind == "web_search":
+        keys = _WEB_SEARCH_PROVIDER_ENV_KEYS.get(provider)
+        if not keys:
+            return {
+                "ok": False,
+                "kind": kind,
+                "provider": provider,
+                "configured": False,
+                "error": "unsupported_web_search_provider",
+                "supported_providers": list(_WEB_SEARCH_PROVIDER_ENV_KEYS),
+            }
+        api_key, source, env_key = _provider_probe_secret(keys, env_values, env_file)
+        result: dict[str, Any] = {
+            "kind": kind,
+            "provider": provider,
+            "configured": bool(api_key),
+            "api_key_source": source,
+            "api_key_env_key": env_key,
+            "api_key_value_logged": False,
+            "live_requested": bool(live),
+        }
+        if not live:
+            result["ok"] = bool(api_key)
+            result["status"] = "configured" if api_key else "missing_api_key"
+            return result
+        if not allow_spend:
+            result.update({
+                "ok": False,
+                "status": "error",
+                "error": "allow_spend_required",
+                "message": "Live web search probes may consume provider search quota. Re-run with --allow-spend.",
+            })
+            return result
+        if not api_key:
+            result.update({"ok": False, "status": "error", "error": "missing_api_key"})
+            return result
+        probe = _validate_web_search_api_key(provider, api_key, timeout=timeout)
+        result.update({
+            "ok": bool(probe.get("ok")),
+            "status": "ok" if probe.get("ok") else "error",
+            "probe": probe,
+        })
+        return result
+
+    if kind == "image_generation":
+        canonical = _canonical_probe_image_provider(provider)
+        keys = _IMAGE_PROVIDER_ENV_KEYS.get(canonical)
+        if not keys:
+            return {
+                "ok": False,
+                "kind": kind,
+                "provider": canonical,
+                "configured": False,
+                "error": "unsupported_image_provider",
+                "supported_providers": list(_IMAGE_PROVIDER_ENV_KEYS),
+            }
+        api_key, source, env_key = _provider_probe_secret(keys, env_values, env_file)
+        result = {
+            "kind": kind,
+            "provider": canonical,
+            "configured": bool(api_key),
+            "api_key_source": source,
+            "api_key_env_key": env_key,
+            "api_key_value_logged": False,
+            "live_requested": bool(live),
+        }
+        if not live:
+            result["ok"] = bool(api_key)
+            result["status"] = "configured" if api_key else "missing_api_key"
+            return result
+        if not allow_spend:
+            result.update({
+                "ok": False,
+                "status": "error",
+                "error": "allow_spend_required",
+                "message": "Live image generation probes create a real image and may consume provider credits. Re-run with --allow-spend.",
+            })
+            return result
+        if not api_key:
+            result.update({"ok": False, "status": "error", "error": "missing_api_key"})
+            return result
+        probe = _live_image_generation_probe(canonical, api_key, timeout=timeout, prompt=prompt)
+        result.update({
+            "ok": bool(probe.get("ok")),
+            "status": "ok" if probe.get("ok") else "error",
+            "probe": probe,
+        })
+        return result
+
+    return {"ok": False, "kind": kind, "provider": provider, "error": "unsupported_provider_kind"}
+
+
+def _doctor_providers(args: argparse.Namespace) -> int:
+    env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
+    env_file, env_values = _provider_probe_env_values(env_file)
+    kind = str(getattr(args, "kind", "all") or "all").strip().lower()
+    provider = str(getattr(args, "provider", "all") or "all").strip().lower()
+    live = bool(getattr(args, "live", False))
+    allow_spend = bool(getattr(args, "allow_spend", False))
+    timeout = float(getattr(args, "timeout", 10.0))
+    prompt = str(getattr(args, "prompt", "") or _PROVIDER_PROBE_PROMPT).strip() or _PROVIDER_PROBE_PROMPT
+
+    targets = _provider_probe_web_targets(kind, provider)
+    if not targets:
+        output = {
+            "status": "error",
+            "error": "no_provider_targets",
+            "kind": kind,
+            "provider": provider,
+            "supported_kinds": ["all", "web-search", "image"],
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 1
+
+    results = [
+        _doctor_provider_probe_result(
+            item_kind,
+            item_provider,
+            env_values=env_values,
+            env_file=env_file,
+            live=live,
+            allow_spend=allow_spend,
+            timeout=timeout,
+            prompt=prompt,
+        )
+        for item_kind, item_provider in targets
+    ]
+    output = {
+        "status": "ok" if all(bool(item.get("ok")) for item in results) else "partial",
+        "command": "doctor providers",
+        "env_file": str(env_file),
+        "kind": kind,
+        "provider": provider,
+        "live": live,
+        "allow_spend": allow_spend,
+        "api_key_values_logged": False,
+        "results": results,
+    }
+    if live:
+        output["warning"] = "Live provider probes can consume external provider quota or image credits."
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if (not live or all(bool(item.get("ok")) for item in results)) else 1
+
+
+
 def _doctor(args: argparse.Namespace) -> int:
+    if getattr(args, "doctor_command", None) == "providers":
+        return _doctor_providers(args)
+
     thinking = bool(args.thinking)
     port = _port_for(thinking, args.port)
     config_path = default_config_path()
@@ -3200,6 +3608,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--port", type=int)
     doctor.add_argument("--timeout", type=float, default=3.0)
     doctor.add_argument("--allow-down", action="store_true", help="exit 0 even when proxy is not running")
+    doctor_sub = doctor.add_subparsers(dest="doctor_command")
+    doctor_providers = doctor_sub.add_parser("providers", help="check or live-probe web search and image providers")
+    doctor_providers.add_argument("--env-file")
+    doctor_providers.add_argument("--kind", choices=["all", "web-search", "image"], default="all")
+    doctor_providers.add_argument("--provider", default="all")
+    doctor_providers.add_argument("--live", action="store_true", help="run real provider requests")
+    doctor_providers.add_argument("--allow-spend", action="store_true", help="allow live probes that may consume quota or credits")
+    doctor_providers.add_argument("--timeout", type=float, default=10.0)
+    doctor_providers.add_argument("--prompt", default=_PROVIDER_PROBE_PROMPT, help="prompt for live image generation probes")
     doctor.set_defaults(func=_doctor)
 
     logs = sub.add_parser("logs", help="print recent proxy logs")

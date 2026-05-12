@@ -1263,6 +1263,151 @@ def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, 
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zai-test-key" in text
 
 
+
+def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export SERPAPI_API_KEY='serpapi-test-key'\n"
+        "export DEEPSEEK_PROXY_IMAGE_API_KEY='zhipu-test-key'\n",
+        encoding="utf-8",
+    )
+
+    assert main(["doctor", "providers", "--env-file", str(env_file)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["command"] == "doctor providers"
+    assert result["live"] is False
+    assert result["api_key_values_logged"] is False
+    assert "serpapi-test-key" not in json.dumps(result)
+    assert "zhipu-test-key" not in json.dumps(result)
+    providers = {(item["kind"], item["provider"]): item for item in result["results"]}
+    assert providers[("web_search", "serpapi")]["configured"] is True
+    assert providers[("image_generation", "zhipu")]["configured"] is True
+
+
+def test_cli_doctor_providers_live_requires_allow_spend(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    env_file.write_text("export SERPAPI_API_KEY='serpapi-test-key'\n", encoding="utf-8")
+
+    assert main(["doctor", "providers", "--env-file", str(env_file), "--kind", "web-search", "--provider", "serpapi", "--live"]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["results"][0]["error"] == "allow_spend_required"
+    assert "serpapi-test-key" not in json.dumps(result)
+
+
+def test_cli_doctor_providers_web_live_uses_validation(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+    env_file.write_text("export SERPAPI_API_KEY='serpapi-test-key'\n", encoding="utf-8")
+    seen = {}
+
+    def fake_validate(provider, api_key, *, timeout=10.0):
+        seen["provider"] = provider
+        seen["api_key"] = api_key
+        seen["timeout"] = timeout
+        return {
+            "ok": True,
+            "status": "ok",
+            "kind": "web_search",
+            "provider": provider,
+            "validation_strength": "live_query_probe",
+            "functional_probe": True,
+            "functional_validation": "performed",
+            "may_consume_quota": True,
+        }
+
+    monkeypatch.setattr(cli, "_validate_web_search_api_key", fake_validate)
+
+    assert cli.main([
+        "doctor",
+        "providers",
+        "--env-file",
+        str(env_file),
+        "--kind",
+        "web-search",
+        "--provider",
+        "serpapi",
+        "--live",
+        "--allow-spend",
+        "--timeout",
+        "2",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["results"][0]["probe"]["validation_strength"] == "live_query_probe"
+    assert seen == {"provider": "serpapi", "api_key": "serpapi-test-key", "timeout": 2.0}
+    assert "serpapi-test-key" not in json.dumps(result)
+
+
+def test_cli_doctor_providers_image_live_zhipu_posts_generation(monkeypatch, tmp_path, capsys):
+    import io
+    import urllib.request
+
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_PROXY_IMAGE_API_KEY='zhipu-test-key'\n", encoding="utf-8")
+    seen = {}
+
+    class FakeHeaders(dict):
+        def get(self, key, default=None):
+            return super().get(key.lower(), default)
+
+    class FakeResponse:
+        status = 200
+        headers = FakeHeaders({"content-type": "application/json"})
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"data":[{"url":"https://example.test/zhipu-image.png"}]}'
+
+    def fake_urlopen(request, timeout=0):
+        seen["url"] = request.full_url
+        seen["headers"] = dict(request.header_items())
+        seen["body"] = request.data.decode("utf-8")
+        seen["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main([
+        "doctor",
+        "providers",
+        "--env-file",
+        str(env_file),
+        "--kind",
+        "image",
+        "--provider",
+        "zhipu",
+        "--live",
+        "--allow-spend",
+        "--timeout",
+        "3",
+        "--prompt",
+        "probe image",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    probe = result["results"][0]["probe"]
+    assert probe["validation_strength"] == "live_generation_probe"
+    assert probe["functional_probe"] is True
+    assert probe["functional_validation"] == "performed"
+    assert probe["has_image"] is True
+    assert probe["evidence"] == "data_url_or_base64"
+    assert seen["url"] == "https://open.bigmodel.cn/api/paas/v4/images/generations"
+    assert "probe image" in seen["body"]
+    assert "zhipu-test-key" in seen["headers"].get("Authorization", "")
+    assert "zhipu-test-key" not in json.dumps(result)
+
+
+
 def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
     import deepseek_responses_proxy.cli as cli
 

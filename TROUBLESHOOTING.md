@@ -190,6 +190,16 @@ Notes:
 * Image generation setup uses non-generating probes by default. Zhipu/Z.AI and Qwen/DashScope use authentication probes, Stability uses account balance, and fal.ai uses model metadata. These checks verify key and endpoint acceptance but do not prove that real image generation can produce an image.
 * For custom servers, use the `Other custom server` path and the checklist in `docs/custom_api_handoff.md`.
 
+Live provider probe:
+
+```bash
+dsproxy doctor providers
+dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend
+dsproxy doctor providers --kind image --provider zhipu --live --allow-spend
+```
+
+`dsproxy doctor providers` without `--live` only checks whether keys are configured. `--live --allow-spend` sends real provider requests. Web search probes may consume search quota, and image probes create a real test image and may consume credits.
+
 ## Usage summary is empty
 
 Usage records are written only after successful proxy requests with usage fields returned by DeepSeek.

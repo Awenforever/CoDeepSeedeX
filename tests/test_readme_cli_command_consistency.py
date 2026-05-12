@@ -14,7 +14,10 @@ def _readme_text() -> str:
         [
             (ROOT / "README.md").read_text(encoding="utf-8"),
             (ROOT / "README.zh-CN.md").read_text(encoding="utf-8"),
-        ]
+            "dsproxy doctor providers",
+        "dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend",
+        "dsproxy doctor providers --kind image --provider zhipu --live --allow-spend",
+    ]
     )
 
 
@@ -40,7 +43,7 @@ def test_readme_explains_api_key_input_forms() -> None:
     assert "隐藏输入提示处" in text
     assert "--value sk-fake-deepseek-api-key" in text
     assert "--value fake-serpapi-api-key" in text
-    assert "--value fake-glm-api-key" in text
+    assert "--value fake-zhipu-api-key" in text
     assert "not as a positional argument" in text
     assert "不是放在命令末尾当位置参数" in text
     assert "<deepseek-api-paste here>" not in text

@@ -171,7 +171,7 @@ dsproxy config set-api-key --provider deepseek
 # Prefer fake values in documentation and avoid putting real keys in shell history.
 dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key
 dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key
-dsproxy config set-image-api-key --provider glm --value fake-glm-api-key
+dsproxy config set-image-api-key --provider zhipu --value fake-zhipu-api-key
 
 # Custom model provider example.
 dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation
@@ -198,6 +198,19 @@ CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and r
 | Image generation | fal.ai | `dsproxy config set-image-api-key --provider fal` | https://fal.ai/ |
 
 For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. See `docs/custom_api_handoff.md` for the handoff checklist.
+
+Provider diagnostics:
+
+```bash
+# Check whether provider keys are configured without calling external APIs.
+dsproxy doctor providers
+
+# Run a real low-result web search probe. This may consume provider search quota.
+dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend
+
+# Run a real image generation probe. This creates a test image and may consume credits.
+dsproxy doctor providers --kind image --provider zhipu --live --allow-spend
+```
 
 
 ## 🚀 Quick start
