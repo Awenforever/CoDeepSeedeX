@@ -194,3 +194,20 @@ CoDeepSeedeX v0.3.5-alpha
 Release notes正文应直接从Highlights、Changes、Fixes、Install或Validation等内容开始。发布前检查Release notes时，必须确认正文没有重复的产品名加版本号标题行，避免GitHub页面出现双标题。
 
 <!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_END -->
+
+<!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_START -->
+## v0.3.6-alpha发布后移交状态，p2.9a6同步
+
+- 当前仓库状态：`master = origin/master = 7fd8fb6`。
+- 公开Release tag：`v0.3.6-alpha -> 7fd8fb6`。
+- 发布点对应内部开发tag：`p2.9a5-release-v0.3.6-alpha -> 7fd8fb6`。
+- 旧公开Release tag `v0.3.5-alpha`仍保留在`53897ad`，不得移动。
+- 普通公开tag `v0.3.5`必须保持不存在。
+- GitHub Release `v0.3.6-alpha`已发布，标题为`CoDeepSeedeX v0.3.6-alpha`，`targetCommitish=master`，`isDraft=false`，`isPrerelease=false`。
+- Release资产`bootstrap.sh`和`install.sh`均已上传，并已通过HTTP 200检查。
+- 发布后运行时预期：`dsproxy --version`输出`public version: v0.3.6-alpha | 7fd8fb6`和`internal version: p2.9a5-release-v0.3.6-alpha | 7fd8fb6`。
+- 发布后健康检查预期：`http://127.0.0.1:8000/healthz`和`http://127.0.0.1:8001/healthz`均返回版本`v0.3.6-alpha`。
+- Release notes正文不得重复GitHub Release页面已有的标题行，例如不得再写`CoDeepSeedeX v0.3.6-alpha`；正文应直接从`Highlights`、`Changes`、`Fixes`、`Install`或`Validation`等部分开始。
+- 后续Release body检查脚本必须先把`gh release view --json ...`输出保存为`/tmp/*.json`文件，再由Python读取该文件。不要在含heredoc的脚本中把Release JSON通过stdin管道传给Python。
+- debug trace汇总必须读取正在运行的proxy进程实际继承的`DEEPSEEK_PROXY_DEBUG_DIR`，不得读取新建或猜测的trace目录。
+<!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_END -->

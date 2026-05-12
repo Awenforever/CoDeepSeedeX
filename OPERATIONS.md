@@ -892,3 +892,20 @@ Operational constraints:
 - Do not create a plain `v0.3.5` tag for this alpha release.
 - Automatic Release creation from push or tag workflows must remain disabled.
 <!-- CODEEPSEEDEX_RELEASE_HANDOFF_STATUS_END -->
+
+<!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_START -->
+## v0.3.6-alpha release handoff state, p2.9a6 sync
+
+- Current repository state: `master = origin/master = 7fd8fb6`.
+- Public Release tag: `v0.3.6-alpha -> 7fd8fb6`.
+- Internal development tag for the release point: `p2.9a5-release-v0.3.6-alpha -> 7fd8fb6`.
+- Previous public Release tag `v0.3.5-alpha` remains at `53897ad` and must not be moved.
+- Plain public tag `v0.3.5` must remain absent.
+- GitHub Release `v0.3.6-alpha` has been published with title `CoDeepSeedeX v0.3.6-alpha`, `targetCommitish=master`, `isDraft=false`, and `isPrerelease=false`.
+- Release assets `bootstrap.sh` and `install.sh` are uploaded and were verified by HTTP 200 checks.
+- Runtime expectation after the release: `dsproxy --version` reports `public version: v0.3.6-alpha | 7fd8fb6` and `internal version: p2.9a5-release-v0.3.6-alpha | 7fd8fb6`.
+- Runtime health expectation: both `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:8001/healthz` report version `v0.3.6-alpha`.
+- Release notes body must not repeat the GitHub Release title line such as `CoDeepSeedeX v0.3.6-alpha`; the body should start directly from sections such as `Highlights`, `Changes`, `Fixes`, `Install`, or `Validation`.
+- Future Release body validation scripts must first save `gh release view --json ...` output to a `/tmp/*.json` file, then let Python read that file. Do not pipe Release JSON into Python stdin in a heredoc-based script.
+- Debug trace summaries must read the running proxy process inherited `DEEPSEEK_PROXY_DEBUG_DIR`, not a newly created or guessed trace directory.
+<!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_END -->
