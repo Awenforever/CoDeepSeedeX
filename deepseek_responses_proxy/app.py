@@ -18,7 +18,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_VERSION = "v0.3.2"
+PROXY_PUBLIC_VERSION = "v0.3.5-alpha"
+PROXY_PUBLIC_COMMIT = "53897ad"
+PROXY_INTERNAL_VERSION = "p2.9a3-version-metadata-dev-handbook"
+PROXY_INTERNAL_COMMIT = "unknown"
+PROXY_VERSION = PROXY_PUBLIC_VERSION
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.

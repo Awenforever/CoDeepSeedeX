@@ -9,7 +9,8 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "v0.3.2" in out
+    assert "public version: v0.3.5-alpha |" in out
+    assert "internal version: p" in out
 
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
@@ -46,7 +47,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["proxy_version"].startswith("v0.3.2")
+    assert data["proxy_version"] == cli_module.PROXY_VERSION
     assert data["target"] == "thinking"
     assert data["port"] == 9
     assert data["ok"] is False
@@ -87,7 +88,7 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v0.3.2",
+            "version": cli_module.PROXY_VERSION,
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -131,7 +132,7 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
             return None, None, "connection_refused"
         return 200, {
             "status": "ok",
-            "version": "v0.3.2",
+            "version": cli_module.PROXY_VERSION,
         }, None
 
     monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
@@ -170,7 +171,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
     assert rc == 1
     data = json.loads(capsys.readouterr().out)
     assert data["error"] == "port_in_use_by_different_proxy_version"
-    assert data["expected_version"].startswith("v0.3.2")
+    assert data["expected_version"] == cli_module.PROXY_VERSION
     assert data["running_version"] == "v0.old"
 
 
@@ -180,7 +181,7 @@ def test_cli_start_accepts_matching_running_proxy_version(monkeypatch, capsys):
     monkeypatch.setattr(
         cli,
         "_healthz_for_port",
-        lambda port, timeout=1.0: (200, {"version": cli.PROXY_VERSION}, None),
+        lambda port, timeout=1.0: (200, {"version": cli_module.PROXY_VERSION}, None),
     )
 
     rc = cli.main(["start", "--thinking", "--port", "8766"])
@@ -188,7 +189,7 @@ def test_cli_start_accepts_matching_running_proxy_version(monkeypatch, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "already_running" in out
-    assert cli.PROXY_VERSION in out
+    assert cli_module.PROXY_VERSION in out
 
 
 def test_cli_doctor_reports_version_mismatch(monkeypatch, tmp_path, capsys):
@@ -1320,7 +1321,7 @@ def test_cli_start_prints_latest_release_update_notice(monkeypatch, tmp_path, ca
     def fake_healthz_for_port(port, *, timeout=1.0):
         if not process_started["value"]:
             return None, None, "connection_refused"
-        return 200, {"status": "ok", "version": cli.PROXY_VERSION}, None
+        return 200, {"status": "ok", "version": cli_module.PROXY_VERSION}, None
 
     def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
         process_started["value"] = True
@@ -1353,7 +1354,7 @@ def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_pat
     monkeypatch.setattr(
         cli,
         "_resolve_latest_release_tag",
-        lambda *args, **kwargs: (cli.PROXY_VERSION + "-alpha", {"html_url": "https://example.test/releases/current"}),
+        lambda *args, **kwargs: (cli_module.PROXY_VERSION + "-alpha", {"html_url": "https://example.test/releases/current"}),
     )
 
     def fake_tcp_port_open(host, port):
@@ -1362,7 +1363,7 @@ def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_pat
     def fake_healthz_for_port(port, *, timeout=1.0):
         if not process_started["value"]:
             return None, None, "connection_refused"
-        return 200, {"status": "ok", "version": cli.PROXY_VERSION}, None
+        return 200, {"status": "ok", "version": cli_module.PROXY_VERSION}, None
 
     def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
         process_started["value"] = True

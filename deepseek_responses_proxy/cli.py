@@ -17,10 +17,78 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from .app import PROXY_VERSION
+from .app import PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION
 
 
 APP_NAME = "deepseek-responses-proxy"
+
+
+def _repo_root_for_version_metadata() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _git_version_value(args: list[str], *, fallback: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=_repo_root_for_version_metadata(),
+            text=True,
+            capture_output=True,
+            timeout=2.0,
+        )
+    except Exception:
+        return fallback
+    value = result.stdout.strip()
+    if result.returncode != 0 or not value:
+        return fallback
+    return value.splitlines()[0].strip() or fallback
+
+
+def _git_internal_tag_for_head(*, fallback: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--points-at", "HEAD", "--list", "p*"],
+            cwd=_repo_root_for_version_metadata(),
+            text=True,
+            capture_output=True,
+            timeout=2.0,
+        )
+    except Exception:
+        return fallback
+    if result.returncode != 0:
+        return fallback
+    tags = sorted(line.strip() for line in result.stdout.splitlines() if line.strip().startswith("p"))
+    return tags[-1] if tags else fallback
+
+
+def _version_metadata() -> dict[str, str]:
+    public_commit = _git_version_value(
+        ["rev-parse", "--short", PROXY_PUBLIC_VERSION + "^{}"],
+        fallback=PROXY_PUBLIC_COMMIT,
+    )
+    internal_commit = _git_version_value(
+        ["rev-parse", "--short", "HEAD"],
+        fallback=PROXY_INTERNAL_COMMIT,
+    )
+    internal_version = _git_internal_tag_for_head(fallback=PROXY_INTERNAL_VERSION)
+    return {
+        "public_version": PROXY_PUBLIC_VERSION,
+        "public_commit": public_commit,
+        "internal_version": internal_version,
+        "internal_commit": internal_commit,
+    }
+
+
+def _format_version_metadata(metadata: dict[str, str] | None = None) -> str:
+    data = metadata or _version_metadata()
+    return "\n".join(
+        [
+            f"public version: {data['public_version']} | {data['public_commit']}",
+            f"internal version: {data['internal_version']} | {data['internal_commit']}",
+        ]
+    )
+
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_STABLE_PORT = 8000
 DEFAULT_THINKING_PORT = 8001
@@ -3182,7 +3250,7 @@ def main(argv: list[str] | None = None) -> int:
         setattr(args, "thinking", True)
 
     if args.version:
-        print(PROXY_VERSION)
+        print(_format_version_metadata())
         return 0
 
     if getattr(args, "thinking_filter", None) is not None:
