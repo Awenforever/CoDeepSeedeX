@@ -306,6 +306,22 @@ TMPDIR=~/projects/deepseek-responses-proxy/.tmp PYTHONPATH=. python -m pytest -q
 
 For endpoint or protocol changes, also run real Codex regression described in `REGRESSION.md`.
 
+
+## Tag taxonomy
+
+Public Release tags and internal development markers have different meanings.
+
+- Public Release tags are user-facing and may have GitHub Release assets such as `bootstrap.sh` and `install.sh`.
+- During the alpha stage, public Release tags must use the `v0.3.x-alpha` shape, for example `v0.3.2-alpha`.
+- Do not use plain `v0.3.x` tags as public alpha Release tags.
+- Plain stable tags such as `v0.3.3` are reserved for a future stable public Release after the maintainer explicitly decides the release is no longer alpha.
+- Internal development tags must not create GitHub Releases and must not be used as installer or upgrade targets.
+- New internal tags should use `internal/<topic>` or `dev/<topic>` if a tag is really needed.
+- Prefer `work/<version-description>` branches and commits for normal development.
+- Legacy internal `v*` tags are historical markers. Do not add new internal `v*` tags, because they can collide with future stable Release tags such as `v0.3.3`.
+- Do not delete or move remote tags without an explicit maintainer confirmation naming the exact tag set.
+
+
 ## Release rule
 
 A release tag should only be created after:

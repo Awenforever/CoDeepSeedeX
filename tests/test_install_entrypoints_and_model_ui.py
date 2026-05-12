@@ -58,3 +58,19 @@ def test_installer_passes_model_catalog_to_both_codex_profiles() -> None:
     )
     assert thinking is not None
     assert '"${MODEL_CATALOG_ARGS[@]}"' in thinking.group("body")
+
+def test_installer_guided_api_provider_catalogs_are_visible() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Configure model API now? [Y/n]" in text
+    assert "Configure web search API now? [y/N]" in text
+    assert "Configure image generation API now? [y/N]" in text
+    assert "DeepSeek" in text
+    assert "Kimi / Moonshot" in text
+    assert "Mimo" in text
+    assert "Qwen" in text
+    assert "SerpAPI" in text
+    assert "Tavily" in text
+    assert "GLM / CogView" in text
+    assert "Qwen Image" in text
+    assert "Unsupported" in text
+    assert "dsproxy config wizard" in text

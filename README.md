@@ -48,8 +48,9 @@ The installer will:
 - create the `dsproxy` command
 - create two Codex profiles: `deepseek` and `deepseek-thinking`
 - optionally install a safe `codex` wrapper for these two profiles only
-- ask for stable/thinking ports and your DeepSeek API key
-- save the API key in a local `chmod 600` env file
+- ask for stable/thinking ports
+- open a guided API configuration menu, where DeepSeek, SerpAPI, and GLM/CogView are currently supported and other listed providers are shown as unsupported
+- save configured API keys in a local `chmod 600` env file
 
 - modify user-level Codex/profile files only in your current user account
 
@@ -75,7 +76,7 @@ Preview first:
 dsproxy upgrade --dry-run
 ```
 
-By default, `dsproxy upgrade` resolves the GitHub Latest Release tag and checks out that controlled release, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, and restarts the local proxies.
+By default, `dsproxy upgrade` resolves the GitHub Latest Release tag and checks out that controlled release, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, restarts the local proxies, and opens the guided API configuration wizard when model, web search, or image generation API keys are still missing. The wizard can be skipped.
 
 If you intentionally need a fixed release or branch, pass an explicit ref:
 
@@ -109,6 +110,7 @@ The installer stores the DeepSeek API key in the local env file, by default `~/.
 
 ```bash
 dsproxy config show
+dsproxy config wizard
 dsproxy config set-api-key
 dsproxy config test-api-key
 dsproxy config set-web-search-api-key --provider serpapi

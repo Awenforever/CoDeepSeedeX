@@ -430,6 +430,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
     port = _port_for(thinking, args.port)
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)
+    _maybe_print_startup_release_update_notice()
 
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
     log_path = Path(args.log_file).expanduser() if args.log_file else state_dir / ("proxy-thinking.log" if thinking else "proxy.log")
@@ -994,7 +995,260 @@ def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[s
             "message": str(exc)[:500],
         }
 
+
+def _release_tag_matches_runtime(tag: str, runtime_version: str = PROXY_VERSION) -> bool:
+    normalized_tag = str(tag or "").strip()
+    normalized_runtime = str(runtime_version or "").strip()
+    if not normalized_tag or not normalized_runtime:
+        return True
+    return normalized_tag == normalized_runtime or normalized_tag.startswith(normalized_runtime + "-")
+
+
+def _startup_release_check_mode() -> str:
+    value = (
+        os.environ.get("DEEPSEEK_PROXY_RELEASE_CHECK")
+        or os.environ.get("CODEEPSEEDEX_RELEASE_CHECK")
+        or "auto"
+    )
+    return str(value).strip().lower()
+
+
+def _startup_release_check_enabled() -> bool:
+    mode = _startup_release_check_mode()
+    if mode in {"0", "false", "no", "off", "disabled", "never"}:
+        return False
+    if mode in {"1", "true", "yes", "on", "enabled", "always"}:
+        return True
+    return bool(getattr(sys.stderr, "isatty", lambda: False)())
+
+
+def _maybe_print_startup_release_update_notice() -> None:
+    if not _startup_release_check_enabled():
+        return
+    try:
+        latest_tag, release = _resolve_latest_release_tag(timeout=float(os.environ.get("DEEPSEEK_PROXY_RELEASE_CHECK_TIMEOUT", "1.5")))
+    except Exception:
+        return
+    if _release_tag_matches_runtime(latest_tag):
+        return
+    release_url = release.get("html_url") if isinstance(release, dict) else None
+    print(
+        f"[CoDeepSeedeX] update available: current runtime {PROXY_VERSION}, latest Release {latest_tag}. Run: dsproxy upgrade",
+        file=sys.stderr,
+    )
+    if release_url:
+        print(f"[CoDeepSeedeX] release notes: {release_url}", file=sys.stderr)
+
+
+def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
+    path = env_file or default_env_file_path()
+    values = _read_env_exports(path)
+    missing = {
+        "model_api": not bool(values.get("DEEPSEEK_API_KEY")),
+        "web_search_api": not bool(values.get("SERPAPI_API_KEY")),
+        "image_generation_api": not bool(values.get("DEEPSEEK_PROXY_IMAGE_API_KEY")),
+    }
+    return {
+        "env_file": str(path),
+        "missing": missing,
+        "all_configured": not any(missing.values()),
+        "commands": {
+            "guided": "dsproxy config wizard",
+            "model_api": "dsproxy config set-api-key",
+            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi",
+            "image_generation_api": "dsproxy config set-image-api-key --provider glm",
+        },
+        "supported": {
+            "model_api": ["deepseek"],
+            "web_search_api": ["serpapi"],
+            "image_generation_api": ["glm"],
+        },
+        "unsupported_catalog": {
+            "model_api": ["kimi", "mimo", "glm", "qwen", "baichuan"],
+            "web_search_api": ["tavily", "bing", "google_pse", "brave"],
+            "image_generation_api": ["qwen_image", "kolors", "hunyuan", "volcengine_ark"],
+        },
+    }
+
+
+def _wizard_read_line(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
+    if non_interactive or not sys.stdin.isatty():
+        return default
+    suffix = f" [{default}]" if default else ""
+    print(f"{prompt}{suffix}: ", end="", file=sys.stderr, flush=True)
+    value = sys.stdin.readline().strip()
+    return value or default
+
+
+def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
+    if non_interactive or not sys.stdin.isatty():
+        return default
+    import getpass
+
+    suffix = " [hidden, press Enter to keep saved]" if default else " [hidden]"
+    value = getpass.getpass(f"{prompt}{suffix}: ", stream=sys.stderr).strip()
+    return value or default
+
+
+def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
+    value = _wizard_read_line(prompt, default, non_interactive=non_interactive).strip().lower()
+    return value in {"y", "yes", "1", "true", "on"}
+
+
+def _print_wizard_catalog(title: str, options: list[tuple[str, str, bool]], *, stream: Any = sys.stderr) -> None:
+    print(f"\n{title}", file=stream)
+    for number, name, supported in options:
+        status = "Supported" if supported else "Unsupported"
+        prefix = "✓" if supported else "·"
+        print(f"  {number}. {prefix} {name} ({status})", file=stream)
+    print("  0. Skip", file=stream)
+
+
+def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_json: bool = True) -> dict[str, Any]:
+    values = _read_env_exports(env_file)
+    before = _api_configuration_status(env_file)
+    configured: list[str] = []
+    skipped: list[str] = []
+    unsupported: list[str] = []
+
+    if non_interactive or not sys.stdin.isatty():
+        result = {
+            "status": "ok",
+            "mode": "config_wizard",
+            "interactive": False,
+            "env_file": str(env_file),
+            "configuration_status": before,
+            "configured": configured,
+            "skipped": ["interactive_prompt_unavailable"],
+            "unsupported": unsupported,
+        }
+        if emit_json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        return result
+
+    print("\nCoDeepSeedeX guided API configuration", file=sys.stderr)
+    print("You can skip any item and configure it later.", file=sys.stderr)
+
+    if _wizard_yes_no("Configure model API now? [Y/n]", "Y", non_interactive=non_interactive):
+        _print_wizard_catalog(
+            "Model providers",
+            [
+                ("1", "DeepSeek", True),
+                ("2", "Kimi / Moonshot", False),
+                ("3", "Mimo", False),
+                ("4", "GLM", False),
+                ("5", "Qwen", False),
+                ("6", "Baichuan", False),
+            ],
+        )
+        choice = _wizard_read_line("Select model provider", "1", non_interactive=non_interactive).strip().lower()
+        if choice in {"1", "deepseek"}:
+            key = _wizard_read_secret("DeepSeek API key", values.get("DEEPSEEK_API_KEY", ""), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_API_KEY"] = key
+                configured.append("model_api:deepseek")
+            else:
+                skipped.append("model_api")
+        elif choice in {"0", "skip"}:
+            skipped.append("model_api")
+        else:
+            unsupported.append("model_api")
+            print("Selected model provider is currently unsupported.", file=sys.stderr)
+    else:
+        skipped.append("model_api")
+
+    if _wizard_yes_no("Configure web search API now? [y/N]", "N", non_interactive=non_interactive):
+        _print_wizard_catalog(
+            "Web search providers",
+            [
+                ("1", "SerpAPI", True),
+                ("2", "Tavily", False),
+                ("3", "Bing Web Search", False),
+                ("4", "Google Programmable Search", False),
+                ("5", "Brave Search", False),
+            ],
+        )
+        choice = _wizard_read_line("Select web search provider", "1", non_interactive=non_interactive).strip().lower()
+        if choice in {"1", "serpapi"}:
+            key = _wizard_read_secret("SerpAPI API key", values.get("SERPAPI_API_KEY", ""), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = "serpapi"
+                values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
+                values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+                values["SERPAPI_API_KEY"] = key
+                configured.append("web_search_api:serpapi")
+            else:
+                skipped.append("web_search_api")
+        elif choice in {"0", "skip"}:
+            skipped.append("web_search_api")
+        else:
+            unsupported.append("web_search_api")
+            print("Selected web search provider is currently unsupported.", file=sys.stderr)
+    else:
+        skipped.append("web_search_api")
+
+    if _wizard_yes_no("Configure image generation API now? [y/N]", "N", non_interactive=non_interactive):
+        _print_wizard_catalog(
+            "Image generation providers",
+            [
+                ("1", "GLM / CogView", True),
+                ("2", "Qwen Image", False),
+                ("3", "Kolors", False),
+                ("4", "Hunyuan Image", False),
+                ("5", "Volcengine Ark", False),
+            ],
+        )
+        choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
+        if choice in {"1", "glm", "cogview"}:
+            key = _wizard_read_secret("GLM image API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "glm"
+                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "cogView-4-250304")
+                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                configured.append("image_generation_api:glm")
+            else:
+                skipped.append("image_generation_api")
+        elif choice in {"0", "skip"}:
+            skipped.append("image_generation_api")
+        else:
+            unsupported.append("image_generation_api")
+            print("Selected image generation provider is currently unsupported.", file=sys.stderr)
+    else:
+        skipped.append("image_generation_api")
+
+    if configured:
+        _write_env_exports(env_file, values)
+
+    after = _api_configuration_status(env_file)
+    result = {
+        "status": "ok",
+        "mode": "config_wizard",
+        "interactive": True,
+        "env_file": str(env_file),
+        "configured": configured,
+        "skipped": skipped,
+        "unsupported": unsupported,
+        "configuration_status": after,
+    }
+    if emit_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def _config_wizard(args: argparse.Namespace) -> int:
+    env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
+    _run_guided_config(env_file, non_interactive=bool(getattr(args, "non_interactive", False)), emit_json=True)
+    return 0
+
+
 def _config(args: argparse.Namespace) -> int:
+    if args.config_command == "wizard":
+        return _config_wizard(args)
     path = Path(args.path).expanduser() if getattr(args, "path", None) else default_config_path()
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
 
@@ -1277,7 +1531,7 @@ def _upgrade_run_step(
 LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest"
 
 
-def _resolve_latest_release_tag(api_url: str | None = None) -> tuple[str, dict[str, Any]]:
+def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
     url = api_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
     request = urllib.request.Request(
         url,
@@ -1286,7 +1540,7 @@ def _resolve_latest_release_tag(api_url: str | None = None) -> tuple[str, dict[s
             "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
         },
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
+    with urllib.request.urlopen(request, timeout=15 if timeout is None else timeout) as response:
         raw = response.read().decode("utf-8")
     data = json.loads(raw)
     tag = data.get("tag_name") or data.get("tagName")
@@ -1469,6 +1723,12 @@ def _upgrade(args: argparse.Namespace) -> int:
             "stable": {"http_status": stable_status, "data": stable_data, "error": stable_error},
             "thinking": {"http_status": thinking_status, "data": thinking_data, "error": thinking_error},
         }
+
+    result["configuration_guidance"] = _api_configuration_status(default_env_file_path())
+    missing_api = any(result["configuration_guidance"].get("missing", {}).values())
+    if not dry_run and missing_api and not getattr(args, "skip_config_wizard", False) and sys.stdin.isatty():
+        result["configuration_wizard"] = _run_guided_config(default_env_file_path(), emit_json=False)
+        result["configuration_guidance"] = _api_configuration_status(default_env_file_path())
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -1977,6 +2237,11 @@ def build_parser() -> argparse.ArgumentParser:
     config_show.add_argument("--env-file")
     config_show.set_defaults(func=_config)
 
+    config_wizard = config_sub.add_parser("wizard", help="guided API configuration wizard")
+    config_wizard.add_argument("--env-file")
+    config_wizard.add_argument("--non-interactive", action="store_true", help="report missing API configuration without prompting")
+    config_wizard.set_defaults(func=_config)
+
     config_set_api_key = config_sub.add_parser("set-api-key", help="store DeepSeek API key in the local env file")
     config_set_api_key.add_argument("--env-file")
     config_set_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
@@ -2079,6 +2344,7 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade.add_argument("--skip-profile", action="store_true", help="do not refresh Codex profiles")
     upgrade.add_argument("--no-restart", action="store_true", help="do not restart local proxy processes")
     upgrade.add_argument("--no-verify", action="store_true", help="skip post-upgrade health checks")
+    upgrade.add_argument("--skip-config-wizard", action="store_true", help="do not open the guided API configuration wizard after upgrade")
     upgrade.set_defaults(func=_upgrade)
 
     install_profile = sub.add_parser("install-codex-profile", help="install a Codex config profile")

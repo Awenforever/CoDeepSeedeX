@@ -284,11 +284,64 @@ PY
   [ "$result" = "ok" ]
 }
 
+provider_option_line() {
+  local number="$1"
+  local name="$2"
+  local status="$3"
+  if [ "$status" = "supported" ]; then
+    printf '  [1;32m%s[0m %s  [1;32mSupported[0m
+' "$number." "$name"
+  else
+    printf '  [2m%s %s  Unsupported[0m
+' "$number." "$name"
+  fi
+}
+
 prompt_deepseek_api_key() {
   PROMPTED_API_KEY=""
+
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
+    return 0
+  fi
+
+  local configure=""
+  configure="$(read_yes_no "Configure model API now? [Y/n]" "Y")"
+  case "$configure" in
+    n|N|no|NO|No)
+      warn "Model API skipped. Configure later with: dsproxy config wizard"
+      return 0
+      ;;
+  esac
+
+  sub_title "Model providers"
+  provider_option_line "1" "DeepSeek" "supported"
+  provider_option_line "2" "Kimi / Moonshot" "unsupported"
+  provider_option_line "3" "Mimo" "unsupported"
+  provider_option_line "4" "GLM" "unsupported"
+  provider_option_line "5" "Qwen" "unsupported"
+  provider_option_line "6" "Baichuan" "unsupported"
+  printf '%s
+' "  0. Skip"
+
+  local provider=""
+  provider="$(read_from_tty "Select model provider" "1")"
+  case "$provider" in
+    1|deepseek|DeepSeek|DEEPSEEK)
+      ;;
+    0|skip|Skip|SKIP)
+      warn "Model API skipped. Configure later with: dsproxy config set-api-key"
+      return 0
+      ;;
+    *)
+      warn "Selected model provider is currently unsupported. Only DeepSeek can be configured now."
+      warn "Configure later with: dsproxy config wizard"
+      return 0
+      ;;
+  esac
+
   local attempts=0
   local candidate=""
-
   while [ "$attempts" -lt 3 ]; do
     candidate="$(read_secret_from_tty "DeepSeek API key (optional; press Enter to skip)" "${DEEPSEEK_API_KEY:-}")"
     if [ -z "$candidate" ]; then
@@ -316,13 +369,34 @@ prompt_serpapi_api_key() {
   PROMPTED_SERPAPI_API_KEY=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
+    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-}"
     return 0
   fi
 
-  local choice=""
-  choice="$(read_yes_no "Configure web search API now? provider=serpapi only [y/N]:" "N")"
-  case "$choice" in
+  local configure=""
+  configure="$(read_yes_no "Configure web search API now? [y/N]" "N")"
+  case "$configure" in
     y|Y|yes|YES|Yes)
+      ;;
+    *)
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
+      return 0
+      ;;
+  esac
+
+  sub_title "Web search providers"
+  provider_option_line "1" "SerpAPI" "supported"
+  provider_option_line "2" "Tavily" "unsupported"
+  provider_option_line "3" "Bing Web Search" "unsupported"
+  provider_option_line "4" "Google Programmable Search" "unsupported"
+  provider_option_line "5" "Brave Search" "unsupported"
+  printf '%s
+' "  0. Skip"
+
+  local provider=""
+  provider="$(read_from_tty "Select web search provider" "1")"
+  case "$provider" in
+    1|serpapi|SerpAPI|SERPAPI)
       PROMPTED_SERPAPI_API_KEY="$(read_secret_from_tty "SerpAPI API key (optional; press Enter to skip)" "${SERPAPI_API_KEY:-}")"
       if [ -z "$PROMPTED_SERPAPI_API_KEY" ]; then
         warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
@@ -330,8 +404,11 @@ prompt_serpapi_api_key() {
         ok "Web search provider configured: serpapi"
       fi
       ;;
-    *)
+    0|skip|Skip|SKIP)
       warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
+      ;;
+    *)
+      warn "Selected web search provider is currently unsupported. Only SerpAPI can be configured now."
       ;;
   esac
 }
@@ -340,13 +417,34 @@ prompt_image_generation_api_key() {
   PROMPTED_IMAGE_API_KEY=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
+    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-}"
     return 0
   fi
 
-  local choice=""
-  choice="$(read_yes_no "Configure image generation API now? provider=glm only [y/N]:" "N")"
-  case "$choice" in
+  local configure=""
+  configure="$(read_yes_no "Configure image generation API now? [y/N]" "N")"
+  case "$configure" in
     y|Y|yes|YES|Yes)
+      ;;
+    *)
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
+      return 0
+      ;;
+  esac
+
+  sub_title "Image generation providers"
+  provider_option_line "1" "GLM / CogView" "supported"
+  provider_option_line "2" "Qwen Image" "unsupported"
+  provider_option_line "3" "Kolors" "unsupported"
+  provider_option_line "4" "Hunyuan Image" "unsupported"
+  provider_option_line "5" "Volcengine Ark" "unsupported"
+  printf '%s
+' "  0. Skip"
+
+  local provider=""
+  provider="$(read_from_tty "Select image generation provider" "1")"
+  case "$provider" in
+    1|glm|GLM|cogview|CogView)
       PROMPTED_IMAGE_API_KEY="$(read_secret_from_tty "GLM image API key (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
       if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
         warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
@@ -354,11 +452,15 @@ prompt_image_generation_api_key() {
         ok "Image generation provider configured: glm"
       fi
       ;;
-    *)
+    0|skip|Skip|SKIP)
       warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
+      ;;
+    *)
+      warn "Selected image generation provider is currently unsupported. Only GLM / CogView can be configured now."
       ;;
   esac
 }
+
 
 env_file_value() {
   local key="$1"
@@ -776,7 +878,7 @@ printf '%s\n' "  1. Check Python and Git"
 printf '%s\n' "  2. Install or update repository"
 printf '%s\n' "  3. Create virtual environment"
 printf '%s\n' "  4. Install dsproxy"
-printf '%s\n' "  5. Save local env file"
+printf '%s\n' "  5. Guided API configuration and local env file"
 printf '%s\n' "  6. Install Codex profiles"
 printf '%s\n' "  7. Install safe Codex wrapper, recommended"
 sub_title "Install log"
@@ -799,7 +901,7 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 ok "Git available"
 
-step "Configuration"
+step "Guided configuration"
 
 DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
 DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
@@ -960,6 +1062,7 @@ printf '%s\n' "  dsproxy stop thinking"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy balance"
 printf '%s\n' "  dsproxy config show"
+printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi"

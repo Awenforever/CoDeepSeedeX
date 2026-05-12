@@ -1292,3 +1292,98 @@ def test_lifecycle_commands_keep_thinking_flag_compatibility(monkeypatch):
     assert status_http_calls
     assert status_http_calls[-1][0].startswith("http://127.0.0.1:8001/")
     assert status_http_calls[-1][1] == 1.0
+
+def test_cli_start_prints_latest_release_update_notice(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    process_started = {"value": False}
+
+    class FakeProcess:
+        pid = 33333
+
+        def poll(self):
+            return None
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_RELEASE_CHECK", "always")
+    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        cli,
+        "_resolve_latest_release_tag",
+        lambda *args, **kwargs: ("v0.3.3-alpha", {"html_url": "https://example.test/releases/v0.3.3-alpha"}),
+    )
+
+    def fake_tcp_port_open(host, port):
+        return process_started["value"]
+
+    def fake_healthz_for_port(port, *, timeout=1.0):
+        if not process_started["value"]:
+            return None, None, "connection_refused"
+        return 200, {"status": "ok", "version": cli.PROXY_VERSION}, None
+
+    def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
+        process_started["value"] = True
+        return FakeProcess()
+
+    monkeypatch.setattr(cli, "_tcp_port_open", fake_tcp_port_open)
+    monkeypatch.setattr(cli, "_healthz_for_port", fake_healthz_for_port)
+    monkeypatch.setattr(cli.subprocess, "Popen", fake_popen)
+
+    assert cli.main(["start", "--port", "8876", "--state-dir", str(tmp_path)]) == 0
+    err = capsys.readouterr().err
+    assert "update available" in err
+    assert "v0.3.3-alpha" in err
+    assert "dsproxy upgrade" in err
+
+
+def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    process_started = {"value": False}
+
+    class FakeProcess:
+        pid = 33334
+
+        def poll(self):
+            return None
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_RELEASE_CHECK", "always")
+    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        cli,
+        "_resolve_latest_release_tag",
+        lambda *args, **kwargs: (cli.PROXY_VERSION + "-alpha", {"html_url": "https://example.test/releases/current"}),
+    )
+
+    def fake_tcp_port_open(host, port):
+        return process_started["value"]
+
+    def fake_healthz_for_port(port, *, timeout=1.0):
+        if not process_started["value"]:
+            return None, None, "connection_refused"
+        return 200, {"status": "ok", "version": cli.PROXY_VERSION}, None
+
+    def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
+        process_started["value"] = True
+        return FakeProcess()
+
+    monkeypatch.setattr(cli, "_tcp_port_open", fake_tcp_port_open)
+    monkeypatch.setattr(cli, "_healthz_for_port", fake_healthz_for_port)
+    monkeypatch.setattr(cli.subprocess, "Popen", fake_popen)
+
+    assert cli.main(["start", "--port", "8877", "--state-dir", str(tmp_path)]) == 0
+    assert "update available" not in capsys.readouterr().err
+
+
+def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "ok"
+    assert data["mode"] == "config_wizard"
+    assert data["interactive"] is False
+    assert data["configuration_status"]["missing"]["model_api"] is True
+    assert data["configuration_status"]["missing"]["web_search_api"] is True
+    assert data["configuration_status"]["missing"]["image_generation_api"] is True
+    assert data["configuration_status"]["commands"]["guided"] == "dsproxy config wizard"

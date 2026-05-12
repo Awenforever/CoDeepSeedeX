@@ -50,8 +50,9 @@ bs="$tmp/bootstrap.sh"
 - 创建`dsproxy`命令
 - 创建两个Codex配置：`deepseek`和`deepseek-thinking`
 - 询问是否安装安全的`codex`包装器，只接管这两个profile
-- 询问stable/thinking端口和DeepSeek API key
-- 把API key写入权限为`chmod 600`的本地env文件
+- 询问stable/thinking端口
+- 进入API配置引导菜单，目前DeepSeek、SerpAPI和GLM/CogView可配置，其他列出的国产模型、搜索服务和文生图服务显示为Unsupported
+- 把已配置的API key写入权限为`chmod 600`的本地env文件
 
 - 只在当前用户账号下修改Codex/profile相关用户级文件
 
@@ -79,7 +80,7 @@ dsproxy upgrade
 dsproxy upgrade --dry-run
 ```
 
-默认情况下，`dsproxy upgrade`会把git checkout解析GitHub Latest Release tag并checkout到该受控Release版本，重新安装包，刷新`deepseek`和`deepseek-thinking`两个Codex profile，并重启本地proxy。
+默认情况下，`dsproxy upgrade`会解析GitHub Latest Release tag并checkout到该受控Release版本，重新安装包，刷新`deepseek`和`deepseek-thinking`两个Codex profile，重启本地proxy，并在模型、web search或文生图API仍未配置时进入API配置引导。该引导仍允许跳过。
 
 如果确实需要固定到某个release或分支，可以显式指定ref：
 
@@ -113,6 +114,7 @@ curl -sS http://127.0.0.1:8001/healthz
 
 ```bash
 dsproxy config show
+dsproxy config wizard
 dsproxy config set-api-key
 dsproxy config test-api-key
 dsproxy config set-web-search-api-key --provider serpapi
