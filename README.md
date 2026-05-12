@@ -49,13 +49,14 @@ The installer will:
 - create two Codex profiles: `deepseek` and `deepseek-thinking`
 - optionally install a safe `codex` wrapper for these two profiles only
 - ask for stable/thinking ports
-- open a guided API configuration menu for DeepSeek, supported web search providers, and supported image generation providers
-- validate configured API keys before saving them, unless the user skips validation or skips that provider
+- open a guided API configuration menu for the model API, optional web search providers, and optional image generation providers
+- ask you to paste each API key at the corresponding hidden prompt
+- validate configured API keys before saving them, unless you skip validation or skip that provider
 - save validated API keys in a local `chmod 600` env file
 
 - modify user-level Codex/profile files only in your current user account
 
-The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption. Failed validation does not save the key, and the guided menu can be skipped so keys can be configured later.
+When the installer or `dsproxy config wizard` asks for an API key, paste the key directly at that prompt and press Enter. Hidden input means the key will not appear on screen while you type or paste it. This is local permission-based storage, not cryptographic encryption. Failed validation does not save the key, and the guided menu can be skipped so keys can be configured later.
 
 The bootstrap script installs missing apt-based prerequisites when needed, including `git`, `curl`, `ca-certificates`, and a Python 3.11+ interpreter for the installer.
 
@@ -109,26 +110,61 @@ curl -sS http://127.0.0.1:8001/healthz
 
 ### API key and model metadata
 
-The installer and `dsproxy config wizard` validate API keys before saving them in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. Use:
+There are three different configuration layers:
+
+1. The model API key is required for Codex to talk to the upstream model provider through CoDeepSeedeX.
+2. Web search API keys are optional. Configure one only if you want Codex tool calls to use web search.
+3. Image generation API keys are optional. Configure one only if you want Codex tool calls to generate images.
+
+The installer and `dsproxy config wizard` validate API keys before saving them in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. When a command asks for a key, paste it at the hidden `API key:` prompt and press Enter. The key is not printed back to the terminal.
+
+Common commands:
 
 ```bash
+# Show saved provider settings. Secret values remain hidden.
 dsproxy config show
+
+# Open the guided menu. Use this if you are not sure which provider to configure.
 dsproxy config wizard
-dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom
-dsproxy config set-api-key --skip-validation
+
+# Configure the model API provider used by Codex itself.
+dsproxy config set-api-key --provider deepseek
+dsproxy config set-api-key --provider kimi
+dsproxy config set-api-key --provider glm
+dsproxy config set-api-key --provider qwen
+dsproxy config set-api-key --provider custom
+
+# Test the currently configured model API key.
 dsproxy config test-api-key
+
+# Configure optional web search tool providers.
 dsproxy config set-web-search-api-key --provider serpapi
-dsproxy config set-web-search-api-key --provider serpapi --skip-validation
+dsproxy config set-web-search-api-key --provider tavily
+dsproxy config set-web-search-api-key --provider brave
+dsproxy config set-web-search-api-key --provider exa
+dsproxy config set-web-search-api-key --provider firecrawl
+
+# Configure optional image generation tool providers.
 dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider qwen_image
+dsproxy config set-image-api-key --provider stability
+dsproxy config set-image-api-key --provider fal
+```
+
+Add `--skip-validation` only when you intentionally want to save the key without a live provider check, for example when you are offline, the provider validation endpoint is temporarily unavailable, or you are configuring a custom provider that cannot be validated automatically:
+
+```bash
+dsproxy config set-api-key --provider custom --skip-validation
+dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider glm --skip-validation
 ```
 
-The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
+The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see the configured model API key. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
 
 
 ### Provider access quick reference
 
-CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and GLM/Z.ai plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
+CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search and image generation are separate from the model API: the model API powers Codex answers, while these optional providers power tool calls when Codex needs current web results or generated images. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and GLM/Z.ai plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
 
 | Tool | Supported provider | Configure | Apply / quota page |
 | --- | --- | --- | --- |
@@ -295,35 +331,35 @@ Codex will usually call local tools to run `dsproxy balance`. The most determini
 
 ## 🔧 Shell operations
 
-Check proxy health:
+Check the thinking proxy health and configuration:
 
     dsproxy doctor --thinking
 
-Show DeepSeek balance:
+Show the current model-provider balance when the provider supports it:
 
     dsproxy balance
 
-Show local configuration:
+Show local provider, model, tool, and validation settings without printing saved secrets:
 
     dsproxy config show
 
-Switch DeepSeek upstream model:
+Switch the upstream model used by CoDeepSeedeX:
 
     dsproxy config set-model deepseek-v4-pro
     dsproxy config set-model deepseek-v4-flash
 
-Change Codex reasoning effort:
+Change Codex-side reasoning effort for the installed profiles:
 
     dsproxy config set-effort medium
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
     dsproxy config set-effort max
 
-View usage:
+View local usage totals for the thinking proxy:
 
     dsproxy usage --thinking --summary
 
-Full CLI help:
+Show full CLI help:
 
     dsproxy -H
 ### 🤝 WeClaw integration
