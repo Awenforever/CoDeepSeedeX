@@ -60,6 +60,8 @@ The bootstrap script installs missing apt-based prerequisites when needed, inclu
 
 ## ⬆️ Upgrade
 
+**Users on versions earlier than `v0.3.3-alpha` are strongly encouraged to run the `curl` installer command once. After that, `dsproxy upgrade` can handle seamless updates.**
+
 CoDeepSeedeX supports two compatible upgrade paths.
 
 ### Path A: `dsproxy upgrade`

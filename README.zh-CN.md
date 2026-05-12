@@ -64,6 +64,8 @@ bootstrap脚本会在apt系系统上自动安装缺失的基础依赖，包括`g
 
 ## ⬆️ 升级
 
+**强烈建议所有版本在`v0.3.3-alpha`之前的用户，用`curl`那条命令更新一次，以后都可以直接用`dsproxy upgrade`无缝更新了。**
+
 CoDeepSeedeX支持两种互相兼容的升级方式。
 
 ### 方式A：`dsproxy upgrade`
