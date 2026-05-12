@@ -122,3 +122,19 @@ def test_installer_image_validation_requires_error_body_for_non_generation_probe
     assert "(400, 422), True" in text
     assert "api.stability.ai/v1/user/balance" in text
     assert "api.fal.ai/v1/models" in text
+
+def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'provider_option_line "1" "DeepSeek" "supported"' in text
+    assert 'provider_option_line "2" "Kimi / Moonshot" "supported"' in text
+    assert 'provider_option_line "3" "GLM / Z.AI" "supported"' in text
+    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' in text
+    assert 'provider_option_line "5" "Mimo" "custom endpoint required"' in text
+    assert 'provider_option_line "6" "Baichuan" "custom endpoint required"' in text
+    assert "https://api.moonshot.ai/v1" in text
+    assert "https://api.z.ai/api/paas/v4" in text
+    assert "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
+    assert "DEEPSEEK_BASE_URL" in text
+    assert "DEEPSEEK_PROXY_MODEL_PROVIDER" in text
+    assert "PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4" in text
+    assert "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom" in text

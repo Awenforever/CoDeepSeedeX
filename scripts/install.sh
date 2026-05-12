@@ -20,6 +20,9 @@ INSTALL_SHELL_PROFILE=1
 SHELL_PROFILE_FILE=""
 UNINSTALL=0
 REMOVE_FILES=0
+PROMPTED_MODEL_PROVIDER=""
+PROMPTED_MODEL_BASE_URL=""
+PROMPTED_MODEL_NAME=""
 
 logo() {
   cat <<'LOGO'
@@ -467,6 +470,65 @@ PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
 }
 
 
+model_api_base_url() {
+  local provider="$1"
+  case "$provider" in
+    deepseek) printf '%s\n' "https://api.deepseek.com" ;;
+    kimi|moonshot) printf '%s\n' "https://api.moonshot.ai/v1" ;;
+    glm|zai|zhipu|zhipuai|bigmodel) printf '%s\n' "https://api.z.ai/api/paas/v4" ;;
+    qwen|dashscope|aliyun) printf '%s\n' "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" ;;
+    *) printf '%s\n' "" ;;
+  esac
+}
+
+model_api_default_model() {
+  local provider="$1"
+  case "$provider" in
+    deepseek) printf '%s\n' "deepseek-v4-pro" ;;
+    kimi|moonshot) printf '%s\n' "kimi-latest" ;;
+    glm|zai|zhipu|zhipuai|bigmodel) printf '%s\n' "glm-5.1" ;;
+    qwen|dashscope|aliyun) printf '%s\n' "qwen-plus" ;;
+    *) printf '%s\n' "" ;;
+  esac
+}
+
+test_model_api_key() {
+  local provider="$1"
+  local api_key="$2"
+  local base_url="$3"
+  if [ -z "$api_key" ]; then
+    return 1
+  fi
+  if [ "$provider" = "deepseek" ]; then
+    test_deepseek_api_key "$api_key"
+    return $?
+  fi
+  if [ -z "$base_url" ]; then
+    return 1
+  fi
+  local result
+  result="$($PYTHON_BIN - "$api_key" "$base_url" <<'PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4'
+import sys
+import urllib.request
+
+api_key = sys.argv[1]
+base_url = sys.argv[2].rstrip("/")
+request = urllib.request.Request(
+    base_url + "/models",
+    headers={"Authorization": "Bearer " + api_key, "Accept": "application/json"},
+    method="GET",
+)
+try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
+        print("ok" if 200 <= int(response.status) < 300 else "bad")
+except Exception:
+    print("bad")
+PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4
+)"
+  [ "$result" = "ok" ]
+}
+
 provider_option_line() {
   local number="$1"
   local name="$2"
@@ -479,11 +541,18 @@ provider_option_line() {
 }
 
 
+
 prompt_deepseek_api_key() {
   PROMPTED_API_KEY=""
+  PROMPTED_MODEL_PROVIDER=""
+  PROMPTED_MODEL_BASE_URL=""
+  PROMPTED_MODEL_NAME=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
     PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
+    PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-deepseek}"
+    PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")}"
+    PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")}"
     return 0
   fi
 
@@ -498,51 +567,82 @@ prompt_deepseek_api_key() {
 
   sub_title "Model providers"
   provider_option_line "1" "DeepSeek" "supported"
-  provider_option_line "2" "Kimi / Moonshot" "unsupported"
-  provider_option_line "3" "Mimo" "unsupported"
-  provider_option_line "4" "GLM" "unsupported"
-  provider_option_line "5" "Qwen" "unsupported"
-  provider_option_line "6" "Baichuan" "unsupported"
-  printf '%s\n' "  0. Skip"
+  provider_option_line "2" "Kimi / Moonshot" "supported"
+  provider_option_line "3" "GLM / Z.AI" "supported"
+  provider_option_line "4" "Qwen / DashScope" "supported"
+  provider_option_line "5" "Mimo" "custom endpoint required"
+  provider_option_line "6" "Baichuan" "custom endpoint required"
+  provider_option_line "7" "Other OpenAI-compatible server" "custom"
+  printf '%s
+' "  0. Skip"
 
   local provider=""
   provider="$(read_from_tty "Select model provider" "1")"
   case "$provider" in
     1|deepseek|DeepSeek|DEEPSEEK)
+      PROMPTED_MODEL_PROVIDER="deepseek"
+      ;;
+    2|kimi|moonshot|Kimi|Moonshot|KIMI|MOONSHOT)
+      PROMPTED_MODEL_PROVIDER="kimi"
+      ;;
+    3|glm|zai|z.ai|zhipu|GLM|ZAI|Z.AI|ZHIPU)
+      PROMPTED_MODEL_PROVIDER="glm"
+      ;;
+    4|qwen|dashscope|aliyun|Qwen|QWEN|DASHSCOPE|ALIYUN)
+      PROMPTED_MODEL_PROVIDER="qwen"
+      ;;
+    5|mimo|Mimo|MIMO|6|baichuan|Baichuan|BAICHUAN|7|custom|other|Other|CUSTOM)
+      PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)
-      warn "Model API skipped. Configure later with: dsproxy config set-api-key"
+      warn "Model API skipped. Configure later with: dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom"
       return 0
       ;;
     *)
-      warn "Selected model provider is currently unsupported. Only DeepSeek can be configured now."
-      warn "Configure later with: dsproxy config wizard"
-      return 0
+      warn "Selected model provider is currently unsupported. Configure as custom only if it is OpenAI-compatible."
+      PROMPTED_MODEL_PROVIDER="custom"
       ;;
   esac
+
+  PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
+  PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+  if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+    PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${DEEPSEEK_BASE_URL:-}")"
+    PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${DEEPSEEK_PROXY_MODEL:-}")"
+    if [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; then
+      warn "Custom model API skipped because base URL or model name is empty."
+      PROMPTED_API_KEY=""
+      PROMPTED_MODEL_PROVIDER=""
+      return 0
+    fi
+  fi
 
   local attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "DeepSeek API key (optional; press Enter to skip)" "${DEEPSEEK_API_KEY:-}")"
+    candidate="$(read_secret_from_tty "Model API key (optional; press Enter to skip)" "${DEEPSEEK_API_KEY:-}")"
     if [ -z "$candidate" ]; then
       PROMPTED_API_KEY=""
-      warn "DeepSeek API key skipped. Configure later with: dsproxy config set-api-key"
+      warn "Model API key skipped. Configure later with: dsproxy config set-api-key --provider $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
 
-    if test_deepseek_api_key "$candidate"; then
+    if test_model_api_key "$PROMPTED_MODEL_PROVIDER" "$candidate" "$PROMPTED_MODEL_BASE_URL"; then
       PROMPTED_API_KEY="$candidate"
-      ok "DeepSeek API key validated"
+      ok "Model API key validated for provider: $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
 
-    warn "DeepSeek API key validation failed. Please paste it again, or press Enter to skip."
+    warn "Model API key validation failed. Please paste it again, or press Enter to skip."
     attempts=$((attempts + 1))
   done
 
   PROMPTED_API_KEY=""
-  warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-api-key"
+  if [ "$PROMPTED_MODEL_PROVIDER" = "deepseek" ]; then
+    warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-api-key"
+  else
+    warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-api-key --provider $PROMPTED_MODEL_PROVIDER"
+  fi
 }
 
 
@@ -817,9 +917,36 @@ write_env_file() {
   local final_image_api_key="$image_api_key"
   local final_web_search_provider="${PROMPTED_WEB_SEARCH_PROVIDER:-}"
   local final_image_provider="${PROMPTED_IMAGE_PROVIDER:-}"
+  local final_model_provider="${PROMPTED_MODEL_PROVIDER:-}"
+  local final_model_base_url="${PROMPTED_MODEL_BASE_URL:-}"
+  local final_model_name="${PROMPTED_MODEL_NAME:-}"
 
   if [ -z "$final_api_key" ]; then
     final_api_key="$(env_file_value DEEPSEEK_API_KEY)"
+  fi
+  if [ -z "$final_model_provider" ]; then
+    final_model_provider="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+  fi
+  if [ -z "$final_model_provider" ]; then
+    final_model_provider="deepseek"
+  fi
+  if [ -z "$final_model_base_url" ]; then
+    final_model_base_url="$(env_file_value DEEPSEEK_BASE_URL)"
+  fi
+  if [ -z "$final_model_base_url" ]; then
+    final_model_base_url="$(model_api_base_url "$final_model_provider")"
+  fi
+  if [ -z "$final_model_name" ]; then
+    final_model_name="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+  fi
+  if [ -z "$final_model_name" ]; then
+    final_model_name="$(model_api_default_model "$final_model_provider")"
+  fi
+  if [ -z "$final_model_base_url" ]; then
+    final_model_base_url="https://api.deepseek.com"
+  fi
+  if [ -z "$final_model_name" ]; then
+    final_model_name="deepseek-v4-pro"
   fi
   if [ -z "$final_web_search_provider" ]; then
     final_web_search_provider="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
@@ -862,12 +989,16 @@ write_env_file() {
 '
     printf 'export DEEPSEEK_API_KEY=%q
 ' "$final_api_key"
+    printf 'export DEEPSEEK_BASE_URL=%q
+' "$final_model_base_url"
+    printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER=%q
+' "$final_model_provider"
     printf 'export DEEPSEEK_PROXY_PORT=%q
 ' "$stable_port"
     printf 'export DEEPSEEK_PROXY_THINKING_PORT=%q
 ' "$thinking_port"
     printf 'export DEEPSEEK_PROXY_MODEL=%q
-' "deepseek-v4-pro"
+' "$final_model_name"
     printf 'export DEEPSEEK_REASONING_EFFORT=%q
 ' "xhigh"
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q

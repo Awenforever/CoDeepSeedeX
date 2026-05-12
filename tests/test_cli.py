@@ -1759,3 +1759,99 @@ def test_cli_non_generation_probe_rejects_empty_400_422_body(monkeypatch):
     assert result["ok"] is False
     assert result["error"] == "missing_provider_error_body"
     assert result["require_provider_error_body"] is True
+
+def test_cli_config_set_qwen_model_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-api-key",
+        "--skip-validation",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "qwen",
+        "--value",
+        "qwen-test-key",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["model_provider"] == "qwen"
+    assert result["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    assert result["model"] == "qwen-plus"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_API_KEY=qwen-test-key" in text
+    assert "DEEPSEEK_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
+    assert "DEEPSEEK_PROXY_MODEL_PROVIDER=qwen" in text
+    assert "DEEPSEEK_PROXY_MODEL=qwen-plus" in text
+
+
+def test_cli_config_set_custom_model_api_requires_base_url(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-api-key",
+        "--skip-validation",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "custom",
+        "--model",
+        "custom-model",
+        "--value",
+        "custom-key",
+    ]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["error"] == "missing_custom_model_api_details"
+    assert not env_file.exists()
+
+
+def test_cli_config_set_kimi_model_api_validation_failure_does_not_write(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+
+    def fake_validate(provider, api_key, *, base_url, timeout):
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": provider,
+            "base_url": base_url,
+            "error": "http_error",
+            "http_status": 401,
+        }
+
+    monkeypatch.setattr(cli, "_validate_model_api_key", fake_validate)
+
+    assert cli.main([
+        "config",
+        "set-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "kimi",
+        "--value",
+        "bad-kimi-key",
+    ]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["model_provider"] == "kimi"
+    assert result["model_api_key_configured"] is False
+    assert not env_file.exists()
+
+
+def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    status = result["configuration_status"]
+    assert status["commands"]["model_api"] == "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom"
+    assert status["supported"]["model_api"] == ["deepseek", "kimi", "glm", "qwen", "custom"]
+    assert status["unsupported_catalog"]["model_api"] == ["mimo", "baichuan"]

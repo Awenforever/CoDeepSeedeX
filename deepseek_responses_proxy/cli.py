@@ -26,6 +26,75 @@ DEFAULT_STABLE_PORT = 8000
 DEFAULT_THINKING_PORT = 8001
 
 
+MODEL_API_PROVIDER_ALIASES = {
+    "deepseek": "deepseek",
+    "kimi": "kimi",
+    "moonshot": "kimi",
+    "glm": "glm",
+    "zai": "glm",
+    "z.ai": "glm",
+    "zhipu": "glm",
+    "zhipuai": "glm",
+    "bigmodel": "glm",
+    "qwen": "qwen",
+    "dashscope": "qwen",
+    "aliyun": "qwen",
+    "custom": "custom",
+    "openai_compatible": "custom",
+    "openai-compatible": "custom",
+}
+
+MODEL_API_PROVIDERS = {
+    "deepseek": {
+        "display_name": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-pro",
+        "validation_path": "/user/balance",
+    },
+    "kimi": {
+        "display_name": "Kimi / Moonshot",
+        "base_url": "https://api.moonshot.ai/v1",
+        "model": "kimi-latest",
+        "validation_path": "/models",
+    },
+    "glm": {
+        "display_name": "GLM / Z.AI",
+        "base_url": "https://api.z.ai/api/paas/v4",
+        "model": "glm-5.1",
+        "validation_path": "/models",
+    },
+    "qwen": {
+        "display_name": "Qwen / DashScope",
+        "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "validation_path": "/models",
+    },
+}
+
+
+def _canonical_model_api_provider(provider: str | None) -> str:
+    selected = str(provider or "deepseek").strip().lower().replace(" ", "_")
+    return MODEL_API_PROVIDER_ALIASES.get(selected, selected)
+
+
+def _model_api_provider_config(provider: str | None) -> dict[str, str]:
+    canonical = _canonical_model_api_provider(provider)
+    if canonical == "custom":
+        return {
+            "display_name": "Other OpenAI-compatible server",
+            "base_url": "",
+            "model": "",
+            "validation_path": "/models",
+        }
+    if canonical not in MODEL_API_PROVIDERS:
+        raise ValueError(f"unsupported_model_api_provider:{canonical}")
+    return dict(MODEL_API_PROVIDERS[canonical])
+
+
+def _supported_model_api_providers() -> list[str]:
+    return ["deepseek", "kimi", "glm", "qwen", "custom"]
+
+
 def _xdg_config_home() -> Path:
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")).expanduser()
 
@@ -80,6 +149,8 @@ def _write_env_exports(path: Path, values: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered_keys = [
         "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_PROXY_MODEL_PROVIDER",
         "DEEPSEEK_PROXY_PORT",
         "DEEPSEEK_PROXY_THINKING_PORT",
         "DEEPSEEK_PROXY_MODEL",
@@ -180,6 +251,10 @@ def _write_default_config(path: Path, *, force: bool = False) -> bool:
         "force_model = true\n"
         'base_url = "https://api.deepseek.com"\n'
         'api_key_env = "DEEPSEEK_API_KEY"\n\n'
+        "[model_api]\n"
+        'provider = "deepseek"\n'
+        'base_url = "https://api.deepseek.com"\n'
+        'model = "deepseek-v4-pro"\n\n'
         "[paths]\n"
         f'state_dir = "{state_dir}"\n\n'
         "[tool_bridge]\n"
@@ -945,6 +1020,97 @@ def _load_deepseek_api_key(*, env_file: Path | None = None) -> tuple[str, str | 
     return "", str(path)
 
 
+
+def _model_api_validation_url(base_url: str, path: str) -> str:
+    return base_url.rstrip("/") + "/" + path.lstrip("/")
+
+
+def _validate_model_api_key(
+    provider: str,
+    api_key: str,
+    *,
+    base_url: str | None = None,
+    timeout: float,
+) -> dict[str, Any]:
+    canonical = _canonical_model_api_provider(provider)
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": canonical,
+            "error": "missing_model_api_key",
+            "message": "Model API key is required.",
+        }
+    try:
+        config = _model_api_provider_config(canonical)
+    except ValueError:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": canonical,
+            "error": "unsupported_model_api_provider",
+            "supported_providers": _supported_model_api_providers(),
+        }
+    resolved_base_url = (base_url or config.get("base_url") or "").strip().rstrip("/")
+    if not resolved_base_url:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": canonical,
+            "error": "missing_model_base_url",
+            "message": "Custom model API providers require --base-url.",
+        }
+    validation_url = _model_api_validation_url(resolved_base_url, config.get("validation_path", "/models"))
+    request = urllib.request.Request(
+        validation_url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            ok = 200 <= int(response.status) < 300
+            return {
+                "ok": ok,
+                "status": "ok" if ok else "error",
+                "kind": "model_api",
+                "provider": canonical,
+                "base_url": resolved_base_url,
+                "url": validation_url,
+                "http_status": int(response.status),
+                "body_preview": raw[:500] if raw else "",
+            }
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": canonical,
+            "base_url": resolved_base_url,
+            "url": validation_url,
+            "error": "http_error",
+            "http_status": exc.code,
+            "body_preview": raw[:1000],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "model_api",
+            "provider": canonical,
+            "base_url": resolved_base_url,
+            "url": validation_url,
+            "error": type(exc).__name__,
+            "message": str(exc),
+        }
+
 def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[str, Any]:
     if not api_key:
         return {
@@ -1446,17 +1612,17 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "all_configured": not any(missing.values()),
         "commands": {
             "guided": "dsproxy config wizard",
-            "model_api": "dsproxy config set-api-key",
+            "model_api": "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom",
             "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl",
             "image_generation_api": "dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal",
         },
         "supported": {
-            "model_api": ["deepseek"],
+            "model_api": ["deepseek", "kimi", "glm", "qwen", "custom"],
             "web_search_api": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
             "image_generation_api": ["glm", "zai", "qwen_image", "dashscope", "stability", "fal"],
         },
         "unsupported_catalog": {
-            "model_api": ["kimi", "mimo", "glm", "qwen", "baichuan"],
+            "model_api": ["mimo", "baichuan"],
             "web_search_api": ["bing", "google_pse"],
             "image_generation_api": ["kolors", "hunyuan", "volcengine_ark"],
         },
@@ -1738,64 +1904,129 @@ def _config(args: argparse.Namespace) -> int:
         return 0
 
     if args.config_command == "set-api-key":
+        provider = _canonical_model_api_provider(getattr(args, "provider", "deepseek"))
+        try:
+            provider_config = _model_api_provider_config(provider)
+        except ValueError:
+            print(json.dumps({
+                "status": "error",
+                "error": "unsupported_model_api_provider",
+                "provider": provider,
+                "supported_providers": _supported_model_api_providers(),
+            }, ensure_ascii=False, indent=2))
+            return 1
         api_key = str(getattr(args, "value", "") or "")
         if not api_key:
             import getpass
 
-            api_key = getpass.getpass("DeepSeek API key: ").strip()
+            api_key = getpass.getpass(f"{provider_config['display_name']} API key: ").strip()
         if not api_key:
             print(json.dumps({
                 "status": "error",
-                "error": "missing_deepseek_api_key",
+                "error": "missing_model_api_key",
+                "provider": provider,
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
-
-        if getattr(args, "skip_validation", False):
-            validation = _skipped_validation("model_api", "deepseek")
-        else:
-            validation = _check_deepseek_api_key(
-                api_key,
-                url=args.validation_url,
-                timeout=float(args.validation_timeout),
-            )
-            validation["kind"] = "model_api"
-            validation["provider"] = "deepseek"
-            if not validation.get("ok"):
-                validation.update({
+        base_url = str(getattr(args, "base_url", "") or provider_config.get("base_url") or "").strip().rstrip("/")
+        model = str(getattr(args, "model", "") or provider_config.get("model") or "").strip()
+        if provider == "custom" and (not base_url or not model):
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_custom_model_api_details",
+                "message": "Custom model API providers require --base-url and --model.",
+                "env_file": str(env_file),
+            }, ensure_ascii=False, indent=2))
+            return 1
+        if not getattr(args, "skip_validation", False):
+            if provider == "deepseek":
+                result = _check_deepseek_api_key(
+                    api_key,
+                    url=getattr(args, "validation_url", "https://api.deepseek.com/user/balance"),
+                    timeout=float(getattr(args, "validation_timeout", 10.0)),
+                )
+            else:
+                result = _validate_model_api_key(
+                    provider,
+                    api_key,
+                    base_url=base_url,
+                    timeout=float(getattr(args, "validation_timeout", 10.0)),
+                )
+            if not result.get("ok"):
+                result.update({
                     "env_file": str(env_file),
-                    "deepseek_api_key_configured": False,
-                    "deepseek_api_key_preview": _mask_api_key(api_key),
-                    "error": validation.get("error") or "validation_failed",
+                    "model_api_key_configured": False,
+                    "model_provider": provider,
+                    "base_url": base_url,
+                    "model": model,
                 })
-                print(json.dumps(validation, ensure_ascii=False, indent=2))
+                if provider == "deepseek":
+                    result["deepseek_api_key_configured"] = False
+                    result["deepseek_api_key_preview"] = _mask_api_key(api_key)
+                print(json.dumps(result, ensure_ascii=False, indent=2))
                 return 1
-
         values = _read_env_exports(env_file)
         values["DEEPSEEK_API_KEY"] = api_key
+        values["DEEPSEEK_BASE_URL"] = base_url
+        values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider
+        values["DEEPSEEK_PROXY_MODEL"] = model
+        values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
         _write_env_exports(env_file, values)
-        print(json.dumps({
+        output = {
             "status": "ok",
             "env_file": str(env_file),
-            "deepseek_api_key_configured": True,
-            "deepseek_api_key_preview": _mask_api_key(api_key),
-            "validation": validation,
-        }, ensure_ascii=False, indent=2))
+            "model_api_key_configured": True,
+            "model_provider": provider,
+            "model_api_key_preview": _mask_api_key(api_key),
+            "base_url": base_url,
+            "model": model,
+        }
+        if provider == "deepseek":
+            output["deepseek_api_key_configured"] = True
+            output["deepseek_api_key_preview"] = _mask_api_key(api_key)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
     if args.config_command == "test-api-key":
+        provider = _canonical_model_api_provider(getattr(args, "provider", "deepseek"))
         api_key, source = _load_deepseek_api_key(env_file=env_file)
-        result = _check_deepseek_api_key(
-            api_key,
-            url=args.url,
-            timeout=float(args.timeout),
-        )
+        base_url = str(getattr(args, "base_url", "") or "").strip().rstrip("/")
+        if provider == "deepseek":
+            result = _check_deepseek_api_key(
+                api_key,
+                url=args.url,
+                timeout=float(args.timeout),
+            )
+            if not base_url:
+                base_url = "https://api.deepseek.com"
+            model = "deepseek-v4-pro"
+        else:
+            try:
+                provider_config = _model_api_provider_config(provider)
+            except ValueError:
+                print(json.dumps({
+                    "status": "error",
+                    "error": "unsupported_model_api_provider",
+                    "provider": provider,
+                    "supported_providers": _supported_model_api_providers(),
+                }, ensure_ascii=False, indent=2))
+                return 1
+            base_url = base_url or provider_config.get("base_url", "")
+            model = provider_config.get("model", "")
+            result = _validate_model_api_key(provider, api_key, base_url=base_url, timeout=float(args.timeout))
         result["env_file"] = str(env_file)
         result["api_key_source"] = source
-        result["deepseek_api_key_configured"] = bool(api_key)
-        result["deepseek_api_key_preview"] = _mask_api_key(api_key)
+        result["model_api_key_configured"] = bool(api_key)
+        result["model_api_key_preview"] = _mask_api_key(api_key)
+        result["model_provider"] = provider
+        result["base_url"] = base_url
+        result["model"] = model
+        if provider == "deepseek":
+            result["deepseek_api_key_configured"] = bool(api_key)
+            result["deepseek_api_key_preview"] = _mask_api_key(api_key)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result.get("ok") else 1
+
 
 
     if args.config_command == "set-web-search-api-key":
@@ -2801,16 +3032,21 @@ def build_parser() -> argparse.ArgumentParser:
     config_wizard.add_argument("--non-interactive", action="store_true", help="report missing API configuration without prompting")
     config_wizard.set_defaults(func=_config)
 
-    config_set_api_key = config_sub.add_parser("set-api-key", help="store DeepSeek API key in the local env file")
+    config_set_api_key = config_sub.add_parser("set-api-key", help="store model API key in the local env file")
     config_set_api_key.add_argument("--env-file")
+    config_set_api_key.add_argument("--provider", default="deepseek", choices=_supported_model_api_providers())
+    config_set_api_key.add_argument("--base-url", help="OpenAI-compatible base URL; required for --provider custom")
+    config_set_api_key.add_argument("--model", help="upstream model name; required for --provider custom")
     config_set_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
     config_set_api_key.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
     config_set_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_api_key.set_defaults(func=_config)
 
-    config_test_api_key = config_sub.add_parser("test-api-key", help="validate DeepSeek API key with DeepSeek balance endpoint")
+    config_test_api_key = config_sub.add_parser("test-api-key", help="validate model API key")
     config_test_api_key.add_argument("--env-file")
+    config_test_api_key.add_argument("--provider", default="deepseek", choices=_supported_model_api_providers())
+    config_test_api_key.add_argument("--base-url", help="OpenAI-compatible base URL for --provider custom or provider override")
     config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)
     config_test_api_key.set_defaults(func=_config)

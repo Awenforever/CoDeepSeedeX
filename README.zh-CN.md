@@ -118,7 +118,7 @@ curl -sS http://127.0.0.1:8001/healthz
 ```bash
 dsproxy config show
 dsproxy config wizard
-dsproxy config set-api-key
+dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom
 dsproxy config set-api-key --skip-validation
 dsproxy config test-api-key
 dsproxy config set-web-search-api-key --provider serpapi
