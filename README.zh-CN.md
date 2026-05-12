@@ -158,9 +158,27 @@ dsproxy config set-image-api-key --provider fal
 只有在你明确想跳过在线provider验证时才添加`--skip-validation`，例如当前离线、provider验证接口临时不可用，或正在配置无法自动验证的custom provider：
 
 ```bash
-dsproxy config set-api-key --provider custom --skip-validation
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider glm --skip-validation
+```
+
+下面是使用fake API的输入示例：
+
+```bash
+# 推荐的交互式写法。运行命令后，把真实API key粘贴到隐藏输入提示处。
+dsproxy config set-api-key --provider deepseek
+# 命令会显示类似下面的提示：
+# DeepSeek API key: <在这里粘贴真实key；输入内容不会显示>
+
+# 非交互式写法。API key必须放在--value后面，不是放在命令末尾当位置参数。
+# 文档中只使用fake值；真实密钥不建议写进shell历史。
+dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key
+dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key
+dsproxy config set-image-api-key --provider glm --value fake-glm-api-key
+
+# 自定义model provider示例。
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation
 ```
 
 安装脚本也会把该env文件和`dsproxy`包装命令目录接入shell profile。新终端可以直接找到`dsproxy`，Codex也可以读取已配置的model API key。如果当前终端仍提示找不到`dsproxy`，打开新终端，或执行安装脚本最后打印的`source`命令。

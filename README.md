@@ -154,9 +154,27 @@ dsproxy config set-image-api-key --provider fal
 Add `--skip-validation` only when you intentionally want to save the key without a live provider check, for example when you are offline, the provider validation endpoint is temporarily unavailable, or you are configuring a custom provider that cannot be validated automatically:
 
 ```bash
-dsproxy config set-api-key --provider custom --skip-validation
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider glm --skip-validation
+```
+
+API key input examples with fake values:
+
+```bash
+# Recommended interactive form. Paste the real key into the hidden prompt after running the command.
+dsproxy config set-api-key --provider deepseek
+# Prompt shown by the command:
+# DeepSeek API key: <paste-your-real-key-here; input is hidden>
+
+# Non-interactive examples. The key must be passed with --value, not as a positional argument.
+# Prefer fake values in documentation and avoid putting real keys in shell history.
+dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key
+dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key
+dsproxy config set-image-api-key --provider glm --value fake-glm-api-key
+
+# Custom model provider example.
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation
 ```
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see the configured model API key. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
