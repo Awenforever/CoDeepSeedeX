@@ -1090,7 +1090,7 @@ def test_cli_config_set_api_key_writes_env_and_masks(tmp_path, capsys):
     from deepseek_responses_proxy.cli import main
 
     env_file = tmp_path / "env"
-    assert main(["config", "set-api-key", "--env-file", str(env_file), "--value", "sk-test-123456"]) == 0
+    assert main(["config", "set-api-key", "--skip-validation", "--env-file", str(env_file), "--value", "sk-test-123456"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
     assert result["env_file"] == str(env_file)
@@ -1173,6 +1173,7 @@ def test_cli_config_set_web_search_api_key(monkeypatch, tmp_path, capsys):
     rc = main([
         "config",
         "set-web-search-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1194,6 +1195,7 @@ def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
     rc = main([
         "config",
         "set-image-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1395,6 +1397,7 @@ def test_cli_config_set_tavily_web_search_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-web-search-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1418,6 +1421,7 @@ def test_cli_config_set_brave_web_search_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-web-search-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1440,6 +1444,7 @@ def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-image-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1462,6 +1467,7 @@ def test_cli_config_set_exa_web_search_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-web-search-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1484,6 +1490,7 @@ def test_cli_config_set_firecrawl_web_search_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-web-search-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1506,6 +1513,7 @@ def test_cli_config_set_stability_image_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-image-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1529,6 +1537,7 @@ def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
     assert main([
         "config",
         "set-image-api-key",
+        "--skip-validation",
         "--env-file",
         str(env_file),
         "--provider",
@@ -1543,3 +1552,111 @@ def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=fal" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=fal-ai/flux/schnell" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=fal-test-key" in text
+
+
+def test_cli_config_set_api_key_validates_before_write(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+
+    def fake_check(api_key, *, url, timeout):
+        return {
+            "ok": False,
+            "status": "error",
+            "error": "http_error",
+            "http_status": 401,
+            "url": url,
+        }
+
+    monkeypatch.setattr(cli, "_check_deepseek_api_key", fake_check)
+
+    assert cli.main(["config", "set-api-key", "--env-file", str(env_file), "--value", "bad-key"]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["deepseek_api_key_configured"] is False
+    assert not env_file.exists()
+
+
+def test_cli_config_set_web_search_api_key_validates_before_write(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+
+    def fake_validate(provider, api_key, *, timeout):
+        return {
+            "ok": True,
+            "status": "ok",
+            "kind": "web_search",
+            "provider": provider,
+            "validation_method": "fake",
+        }
+
+    monkeypatch.setattr(cli, "_validate_web_search_api_key", fake_validate)
+
+    assert cli.main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "tavily",
+        "--value",
+        "tvly-valid",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["validation"]["ok"] is True
+    assert result["web_search_provider"] == "tavily"
+    assert "TAVILY_API_KEY=tvly-valid" in env_file.read_text(encoding="utf-8")
+
+
+def test_cli_config_set_image_api_key_validation_failure_does_not_write(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+
+    def fake_validate(provider, api_key, *, timeout):
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": provider,
+            "error": "http_error",
+            "http_status": 401,
+        }
+
+    monkeypatch.setattr(cli, "_validate_image_api_key", fake_validate)
+
+    assert cli.main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "fal",
+        "--value",
+        "fal-invalid",
+    ]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["image_api_key_configured"] is False
+    assert not env_file.exists()
+
+
+def test_cli_config_show_masks_all_api_keys(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_API_KEY=sk-test\n"
+        "export TAVILY_API_KEY=tvly-test\n"
+        "export FAL_KEY=fal-test\n"
+        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=tavily\n",
+        encoding="utf-8",
+    )
+
+    assert main(["config", "show", "--env-file", str(env_file)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["values"]["DEEPSEEK_API_KEY"] == "***"
+    assert result["values"]["TAVILY_API_KEY"] == "***"
+    assert result["values"]["FAL_KEY"] == "***"
+    assert result["values"]["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] == "tavily"

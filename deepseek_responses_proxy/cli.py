@@ -996,6 +996,313 @@ def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[s
         }
 
 
+def _provider_auth_error_detected(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    values: list[str] = []
+    for key in ("error", "error_message", "message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+        elif isinstance(value, dict):
+            for nested in ("message", "detail"):
+                nested_value = value.get(nested)
+                if isinstance(nested_value, str) and nested_value.strip():
+                    values.append(nested_value)
+    for value in values:
+        lowered = value.lower()
+        if any(token in lowered for token in ("unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+            return value[:300]
+    return None
+
+
+def _provider_error_body_detected(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    for key in ("error", "error_message", "message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value[:300]
+    status = str(data.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure"}:
+        return status
+    return None
+
+
+def _validation_http_json(
+    *,
+    provider: str,
+    kind: str,
+    method: str,
+    url: str,
+    endpoint: str,
+    headers: dict[str, str] | None = None,
+    payload: dict[str, Any] | None = None,
+    timeout: float = 10.0,
+    ok_statuses: tuple[int, ...] = (200,),
+    allow_provider_error_body: bool = False,
+    validation_method: str = "http_probe",
+    may_consume_quota: bool = False,
+) -> dict[str, Any]:
+    encoded_payload: bytes | None = None
+    request_headers = dict(headers or {})
+    if payload is not None:
+        encoded_payload = json.dumps(payload).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+    request_headers.setdefault("Accept", "application/json")
+
+    def make_result(http_status: int, raw: bytes) -> dict[str, Any]:
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            data = {"raw_preview": raw[:500].decode("utf-8", errors="replace")}
+        auth_error = _provider_auth_error_detected(data)
+        provider_error = _provider_error_body_detected(data)
+        ok = int(http_status) in ok_statuses
+        if auth_error:
+            ok = False
+        elif ok and provider_error and not allow_provider_error_body:
+            ok = False
+        result = {
+            "ok": ok,
+            "status": "ok" if ok else "error",
+            "kind": kind,
+            "provider": provider,
+            "validation_method": validation_method,
+            "http_status": int(http_status),
+            "endpoint": endpoint,
+            "may_consume_quota": bool(may_consume_quota),
+        }
+        if auth_error:
+            result["error"] = "auth_error_response"
+            result["message"] = auth_error
+        elif provider_error and not allow_provider_error_body:
+            result["error"] = "provider_error_response"
+            result["message"] = provider_error
+        else:
+            result["response_keys"] = sorted(data.keys())[:12] if isinstance(data, dict) else []
+        return result
+
+    request = urllib.request.Request(url, data=encoded_payload, headers=request_headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return make_result(int(response.status), response.read())
+    except urllib.error.HTTPError as exc:
+        body = exc.read()
+        result = make_result(int(exc.code), body)
+        if not result.get("ok"):
+            result.setdefault("error", "http_error")
+            result.setdefault("body_preview", body[:500].decode("utf-8", errors="replace"))
+        return result
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": kind,
+            "provider": provider,
+            "validation_method": validation_method,
+            "endpoint": endpoint,
+            "error": type(exc).__name__,
+            "message": str(exc)[:500],
+            "may_consume_quota": bool(may_consume_quota),
+        }
+
+
+def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float = 10.0) -> dict[str, Any]:
+    selected = provider.strip().lower()
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "web_search",
+            "provider": selected,
+            "error": "missing_api_key",
+        }
+
+    query = "test"
+    if selected == "serpapi":
+        params = urllib.parse.urlencode({"engine": "google", "q": query, "api_key": api_key, "num": "1"})
+        return _validation_http_json(
+            provider="serpapi",
+            kind="web_search",
+            method="GET",
+            url=f"https://serpapi.com/search.json?{params}",
+            endpoint="https://serpapi.com/search.json",
+            timeout=timeout,
+            validation_method="fixed_query_search",
+            may_consume_quota=True,
+        )
+    if selected == "tavily":
+        return _validation_http_json(
+            provider="tavily",
+            kind="web_search",
+            method="POST",
+            url="https://api.tavily.com/search",
+            endpoint="https://api.tavily.com/search",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={"query": query, "max_results": 1, "search_depth": "basic", "include_answer": False},
+            timeout=timeout,
+            validation_method="fixed_query_search",
+            may_consume_quota=True,
+        )
+    if selected == "brave":
+        params = urllib.parse.urlencode({"q": query, "count": "1"})
+        return _validation_http_json(
+            provider="brave",
+            kind="web_search",
+            method="GET",
+            url=f"https://api.search.brave.com/res/v1/web/search?{params}",
+            endpoint="https://api.search.brave.com/res/v1/web/search",
+            headers={"X-Subscription-Token": api_key},
+            timeout=timeout,
+            validation_method="fixed_query_search",
+            may_consume_quota=True,
+        )
+    if selected == "exa":
+        return _validation_http_json(
+            provider="exa",
+            kind="web_search",
+            method="POST",
+            url="https://api.exa.ai/search",
+            endpoint="https://api.exa.ai/search",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={"query": query, "numResults": 1},
+            timeout=timeout,
+            validation_method="fixed_query_search",
+            may_consume_quota=True,
+        )
+    if selected == "firecrawl":
+        return _validation_http_json(
+            provider="firecrawl",
+            kind="web_search",
+            method="POST",
+            url="https://api.firecrawl.dev/v2/search",
+            endpoint="https://api.firecrawl.dev/v2/search",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={"query": query, "limit": 1},
+            timeout=timeout,
+            validation_method="fixed_query_search",
+            may_consume_quota=True,
+        )
+    return {
+        "ok": False,
+        "status": "error",
+        "kind": "web_search",
+        "provider": selected,
+        "error": "unsupported_web_search_provider",
+        "supported_providers": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
+    }
+
+
+def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.0) -> dict[str, Any]:
+    selected = provider.strip().lower()
+    if not api_key:
+        return {
+            "ok": False,
+            "status": "error",
+            "kind": "image_generation",
+            "provider": selected,
+            "error": "missing_api_key",
+        }
+
+    if selected in {"glm", "zai"}:
+        return _validation_http_json(
+            provider=selected,
+            kind="image_generation",
+            method="POST",
+            url="https://api.z.ai/api/paas/v4/images/generations",
+            endpoint="https://api.z.ai/api/paas/v4/images/generations",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={},
+            timeout=timeout,
+            ok_statuses=(400, 422),
+            allow_provider_error_body=True,
+            validation_method="non_generation_auth_probe",
+            may_consume_quota=False,
+        )
+    if selected in {"zhipu", "zhipuai", "bigmodel"}:
+        return _validation_http_json(
+            provider=selected,
+            kind="image_generation",
+            method="POST",
+            url="https://open.bigmodel.cn/api/paas/v4/images/generations",
+            endpoint="https://open.bigmodel.cn/api/paas/v4/images/generations",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={},
+            timeout=timeout,
+            ok_statuses=(400, 422),
+            allow_provider_error_body=True,
+            validation_method="non_generation_auth_probe",
+            may_consume_quota=False,
+        )
+    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+        return _validation_http_json(
+            provider="qwen_image",
+            kind="image_generation",
+            method="POST",
+            url="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            endpoint="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload={},
+            timeout=timeout,
+            ok_statuses=(400, 422),
+            allow_provider_error_body=True,
+            validation_method="non_generation_auth_probe",
+            may_consume_quota=False,
+        )
+    if selected in {"stability", "stability_ai", "stable_image"}:
+        return _validation_http_json(
+            provider="stability",
+            kind="image_generation",
+            method="GET",
+            url="https://api.stability.ai/v1/user/balance",
+            endpoint="https://api.stability.ai/v1/user/balance",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+            validation_method="account_balance_probe",
+            may_consume_quota=False,
+        )
+    if selected in {"fal", "fal_ai", "fal.ai"}:
+        params = urllib.parse.urlencode({"endpoint_id": "fal-ai/flux/schnell", "limit": "1"})
+        return _validation_http_json(
+            provider="fal",
+            kind="image_generation",
+            method="GET",
+            url=f"https://api.fal.ai/v1/models?{params}",
+            endpoint="https://api.fal.ai/v1/models",
+            headers={"Authorization": f"Key {api_key}"},
+            timeout=timeout,
+            validation_method="model_metadata_probe",
+            may_consume_quota=False,
+        )
+    return {
+        "ok": False,
+        "status": "error",
+        "kind": "image_generation",
+        "provider": selected,
+        "error": "unsupported_image_provider",
+        "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope", "stability", "fal"],
+    }
+
+
+def _skipped_validation(kind: str, provider: str) -> dict[str, Any]:
+    return {
+        "ok": None,
+        "status": "skipped",
+        "kind": kind,
+        "provider": provider,
+        "skipped": True,
+        "message": "Validation was skipped by user request.",
+    }
+
+
+def _mask_env_secret(key: str, value: str) -> str:
+    upper = key.upper()
+    if any(token in upper for token in ("API_KEY", "TOKEN", "SECRET", "PASSWORD")) or upper in {"FAL_KEY"}:
+        return "***" if value else value
+    return value
+
+
 def _release_tag_matches_runtime(tag: str, runtime_version: str = PROXY_VERSION) -> bool:
     normalized_tag = str(tag or "").strip()
     normalized_runtime = str(runtime_version or "").strip()
@@ -1132,12 +1439,14 @@ def _print_wizard_catalog(title: str, options: list[tuple[str, str, bool]], *, s
     print("  0. Skip", file=stream)
 
 
+
 def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_json: bool = True) -> dict[str, Any]:
     values = _read_env_exports(env_file)
     before = _api_configuration_status(env_file)
     configured: list[str] = []
     skipped: list[str] = []
     unsupported: list[str] = []
+    validation_results: list[dict[str, Any]] = []
 
     if non_interactive or not sys.stdin.isatty():
         result = {
@@ -1149,6 +1458,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "configured": configured,
             "skipped": ["interactive_prompt_unavailable"],
             "unsupported": unsupported,
+            "validation_results": validation_results,
         }
         if emit_json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -1173,8 +1483,17 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         if choice in {"1", "deepseek"}:
             key = _wizard_read_secret("DeepSeek API key", values.get("DEEPSEEK_API_KEY", ""), non_interactive=non_interactive)
             if key:
-                values["DEEPSEEK_API_KEY"] = key
-                configured.append("model_api:deepseek")
+                validation = _check_deepseek_api_key(key, url="https://api.deepseek.com/user/balance", timeout=10.0)
+                validation["kind"] = "model_api"
+                validation["provider"] = "deepseek"
+                validation_results.append(validation)
+                if validation.get("ok"):
+                    values["DEEPSEEK_API_KEY"] = key
+                    configured.append("model_api:deepseek")
+                    print("DeepSeek API key validated.", file=sys.stderr)
+                else:
+                    skipped.append("model_api:deepseek_validation_failed")
+                    print("DeepSeek API key validation failed. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("model_api")
         elif choice in {"0", "skip"}:
@@ -1217,12 +1536,19 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             provider, prompt, env_key = web_provider_map[choice]
             key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
             if key:
-                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
-                values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
-                values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
-                values[env_key] = key
-                configured.append(f"web_search_api:{provider}")
+                validation = _validate_web_search_api_key(provider, key, timeout=10.0)
+                validation_results.append(validation)
+                if validation.get("ok"):
+                    values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                    values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
+                    values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
+                    values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+                    values[env_key] = key
+                    configured.append(f"web_search_api:{provider}")
+                    print(f"Web search API key validated for provider: {provider}.", file=sys.stderr)
+                else:
+                    skipped.append(f"web_search_api:{provider}_validation_failed")
+                    print(f"Web search API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("web_search_api")
         elif choice in {"8", "other", "custom"}:
@@ -1251,61 +1577,52 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             ],
         )
         choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
-        if choice in {"1", "glm", "cogview", "zai", "zhipu", "zhipuai"}:
-            key = _wizard_read_secret("GLM image API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""), non_interactive=non_interactive)
+        image_provider_map = {
+            "1": ("glm", "cogView-4-250304", "GLM image API key"),
+            "glm": ("glm", "cogView-4-250304", "GLM image API key"),
+            "cogview": ("glm", "cogView-4-250304", "GLM image API key"),
+            "zai": ("zai", "cogView-4-250304", "Z.ai image API key"),
+            "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI image API key"),
+            "zhipuai": ("zhipuai", "cogView-4-250304", "ZhipuAI image API key"),
+            "2": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen_image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "3": ("stability", "stable-image-core", "Stability AI API key"),
+            "stability": ("stability", "stable-image-core", "Stability AI API key"),
+            "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
+            "stable_image": ("stability", "stable-image-core", "Stability AI API key"),
+            "4": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "fal": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "fal_ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "fal.ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+        }
+        if choice in image_provider_map:
+            provider, default_model, prompt = image_provider_map[choice]
+            key = _wizard_read_secret(prompt, values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""), non_interactive=non_interactive)
             if key:
-                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "glm"
-                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "cogView-4-250304")
-                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                configured.append("image_generation_api:glm")
-            else:
-                skipped.append("image_generation_api")
-        elif choice in {"2", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun"}:
-            key = _wizard_read_secret("DashScope API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("DASHSCOPE_API_KEY", "")), non_interactive=non_interactive)
-            if key:
-                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "qwen_image"
-                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "qwen-image-2.0-pro")
-                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                configured.append("image_generation_api:qwen_image")
+                validation = _validate_image_api_key(provider, key, timeout=10.0)
+                validation_results.append(validation)
+                if validation.get("ok"):
+                    values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                    values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = provider
+                    values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", default_model)
+                    values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+                    values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+                    values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                    values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                    configured.append(f"image_generation_api:{provider}")
+                    print(f"Image generation API key validated for provider: {provider}.", file=sys.stderr)
+                else:
+                    skipped.append(f"image_generation_api:{provider}_validation_failed")
+                    print(f"Image generation API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("image_generation_api")
         elif choice in {"8", "other", "custom"}:
             skipped.append("image_generation_api:other_custom_server")
             print("Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
-        elif choice in {"3", "stability", "stability_ai", "stable_image"}:
-            key = _wizard_read_secret("Stability AI API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("STABILITY_API_KEY", "")), non_interactive=non_interactive)
-            if key:
-                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "stability"
-                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "stable-image-core")
-                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                configured.append("image_generation_api:stability")
-            else:
-                skipped.append("image_generation_api")
-        elif choice in {"4", "fal", "fal_ai", "fal.ai"}:
-            key = _wizard_read_secret("fal.ai API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("FAL_KEY", "")), non_interactive=non_interactive)
-            if key:
-                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "fal"
-                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "fal-ai/flux/schnell")
-                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                configured.append("image_generation_api:fal")
-            else:
-                skipped.append("image_generation_api")
         elif choice in {"0", "skip"}:
             skipped.append("image_generation_api")
         else:
@@ -1326,12 +1643,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         "configured": configured,
         "skipped": skipped,
         "unsupported": unsupported,
+        "validation_results": validation_results,
         "configuration_status": after,
     }
     if emit_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
-
 
 def _config_wizard(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
@@ -1356,9 +1673,10 @@ def _config(args: argparse.Namespace) -> int:
 
     if args.config_command == "show":
         values = _read_env_exports(env_file)
-        safe_values = dict(values)
-        if safe_values.get("DEEPSEEK_API_KEY"):
-            safe_values["DEEPSEEK_API_KEY"] = "***"
+        safe_values = {
+            key: _mask_env_secret(key, value)
+            for key, value in values.items()
+        }
         print(json.dumps({"env_file": str(env_file), "values": safe_values}, ensure_ascii=False, indent=2))
         return 0
 
@@ -1375,6 +1693,27 @@ def _config(args: argparse.Namespace) -> int:
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
+
+        if getattr(args, "skip_validation", False):
+            validation = _skipped_validation("model_api", "deepseek")
+        else:
+            validation = _check_deepseek_api_key(
+                api_key,
+                url=args.validation_url,
+                timeout=float(args.validation_timeout),
+            )
+            validation["kind"] = "model_api"
+            validation["provider"] = "deepseek"
+            if not validation.get("ok"):
+                validation.update({
+                    "env_file": str(env_file),
+                    "deepseek_api_key_configured": False,
+                    "deepseek_api_key_preview": _mask_api_key(api_key),
+                    "error": validation.get("error") or "validation_failed",
+                })
+                print(json.dumps(validation, ensure_ascii=False, indent=2))
+                return 1
+
         values = _read_env_exports(env_file)
         values["DEEPSEEK_API_KEY"] = api_key
         _write_env_exports(env_file, values)
@@ -1383,6 +1722,7 @@ def _config(args: argparse.Namespace) -> int:
             "env_file": str(env_file),
             "deepseek_api_key_configured": True,
             "deepseek_api_key_preview": _mask_api_key(api_key),
+            "validation": validation,
         }, ensure_ascii=False, indent=2))
         return 0
 
@@ -1431,6 +1771,22 @@ def _config(args: argparse.Namespace) -> int:
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
+
+        if getattr(args, "skip_validation", False):
+            validation = _skipped_validation("web_search", canonical_provider)
+        else:
+            validation = _validate_web_search_api_key(canonical_provider, api_key, timeout=float(args.validation_timeout))
+            if not validation.get("ok"):
+                validation.update({
+                    "env_file": str(env_file),
+                    "web_search_provider": canonical_provider,
+                    "web_search_api_key_configured": False,
+                    "web_search_api_key_preview": _mask_api_key(api_key),
+                    "error": validation.get("error") or "validation_failed",
+                })
+                print(json.dumps(validation, ensure_ascii=False, indent=2))
+                return 1
+
         values = _read_env_exports(env_file)
         values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
         values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = canonical_provider
@@ -1444,6 +1800,7 @@ def _config(args: argparse.Namespace) -> int:
             "web_search_provider": canonical_provider,
             "web_search_api_key_configured": True,
             "web_search_api_key_preview": _mask_api_key(api_key),
+            "validation": validation,
         }
         if canonical_provider == "serpapi":
             output["serpapi_api_key_configured"] = True
@@ -1491,6 +1848,22 @@ def _config(args: argparse.Namespace) -> int:
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
+
+        if getattr(args, "skip_validation", False):
+            validation = _skipped_validation("image_generation", canonical_provider)
+        else:
+            validation = _validate_image_api_key(canonical_provider, api_key, timeout=float(args.validation_timeout))
+            if not validation.get("ok"):
+                validation.update({
+                    "env_file": str(env_file),
+                    "image_provider": canonical_provider,
+                    "image_api_key_configured": False,
+                    "image_api_key_preview": _mask_api_key(api_key),
+                    "error": validation.get("error") or "validation_failed",
+                })
+                print(json.dumps(validation, ensure_ascii=False, indent=2))
+                return 1
+
         values = _read_env_exports(env_file)
         values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
         values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical_provider
@@ -1507,12 +1880,12 @@ def _config(args: argparse.Namespace) -> int:
             "image_model": values["DEEPSEEK_PROXY_IMAGE_MODEL"],
             "image_api_key_configured": True,
             "image_api_key_preview": _mask_api_key(api_key),
+            "validation": validation,
         }
         if canonical_provider == "glm":
             output["glm_image_api_key_configured"] = True
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
-
 
     if args.config_command == "set-model":
         allowed = {"deepseek-v4-pro", "deepseek-v4-flash"}
@@ -2374,6 +2747,9 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_api_key = config_sub.add_parser("set-api-key", help="store DeepSeek API key in the local env file")
     config_set_api_key.add_argument("--env-file")
     config_set_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
+    config_set_api_key.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
+    config_set_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_api_key.set_defaults(func=_config)
 
     config_test_api_key = config_sub.add_parser("test-api-key", help="validate DeepSeek API key with DeepSeek balance endpoint")
@@ -2387,12 +2763,16 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_web_search_api_key.add_argument("--env-file")
     config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "brave", "brave_search", "exa", "firecrawl"])
     config_set_web_search_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_web_search_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
+    config_set_web_search_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_web_search_api_key.set_defaults(func=_config)
 
     config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
     config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
+    config_set_image_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
+    config_set_image_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_image_api_key.set_defaults(func=_config)
 
     config_set_model = config_sub.add_parser("set-model", help="set DeepSeek upstream model")
