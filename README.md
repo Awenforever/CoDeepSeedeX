@@ -26,11 +26,6 @@ Then run the CoDeepSeedeX installer.
 
     curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 
-# Fallback mirrors use the GitHub Latest Release tag:
-tag="$(curl -fsSL https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)"
-
-The recommended one-line installer is served from the latest GitHub Release asset. The fallback downloader below keeps raw GitHub and CDN mirrors as secondary entry points.
-
 ### Fallback install command
 
 If the GitHub Release asset, `raw.githubusercontent.com`, or a CDN mirror is unstable or blocked, use the fallback downloader:
@@ -47,8 +42,6 @@ bs="$tmp/bootstrap.sh"
 ) && bash "$bs"
 ```
 
-After installation, start a new shell or run `source ~/.bashrc` so that `~/.local/bin` takes priority. Verify with `command -v codex` and `command -v dsproxy`.
-
 The installer will:
 
 - install CoDeepSeedeX into `~/.local/share/deepseek-responses-proxy`
@@ -59,8 +52,6 @@ The installer will:
 - save the API key in a local `chmod 600` env file
 
 - modify user-level Codex/profile files only in your current user account
-
-Maintainer safety note: installer, upgrade, uninstall, and upgrade-matrix tests can modify real user-level paths such as `~/.local`, `~/.config`, `~/.codex`, `~/.bashrc`, or `~/.profile`. Run those tests in a disposable VM or an explicitly isolated test HOME unless you deliberately want to modify your development account.
 
 The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
 
@@ -126,8 +117,6 @@ dsproxy config set-image-api-key --provider glm
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
 
-Codex profiles installed by the script include the project model catalog metadata so `deepseek-v4-pro` and `deepseek-v4-flash` do not fall back to unknown-model metadata.
-
 ## 🚀 Quick start
 
 After installation:
@@ -164,7 +153,7 @@ Behavior summary:
 - `deepseek` stable mode remains unchanged.
 - Oversized `shell_command` and `interactive_shell` outputs are trimmed with head/tail retention.
 - Large structured tool outputs are serialized compactly before trimming when possible.
-- `image_payload` outputs have an additional 12000-character item cap.
+- Large `image_payload` outputs are preserved as local JSON artifacts and replaced in the model context with lightweight `image_payload_artifact_ref` metadata, including path/URI/hash recovery fields.
 - Trimming runs before previous-response function-call filtering, so outputs can still be classified while duplicate assistant tool-call replay remains avoided.
 
 Latest real validation snapshot:
@@ -196,7 +185,7 @@ Tool outputs are classified before trimming. Only oversized outputs are rewritte
 | --- | --- | --- |
 | `shell_command` | Non-interactive shell commands, tests, logs | Trim oversized outputs with head/tail retention. The middle may be omitted. |
 | `interactive_shell` | Long-running or PTY-style command sessions | Trim oversized outputs with head/tail retention, preserving recent interaction context where possible. |
-| `image_payload` | Image-view or image-returning tools with large structured payloads | Serialize structured output compactly where possible, then apply an image-specific 12000-character item cap. |
+| `image_payload` | Image-view or image-returning tools with large structured payloads | Preserve the full oversized payload in a local JSON artifact and pass only a lightweight `image_payload_artifact_ref` through model context, so Codex can recover the complete image payload without destructive truncation. |
 | `search` | Web/search style tool outputs | Classified separately so future policies do not treat search results as raw shell logs. Oversized output follows conservative trimming. |
 | `file_read` | File inspection or file-read tools | Classified separately to preserve file-reading semantics. Oversized output follows conservative trimming. |
 | `user_interaction` | Prompts, approvals or user-facing interaction tool outputs | Classified separately and handled conservatively because it may contain interaction state. |

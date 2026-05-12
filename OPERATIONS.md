@@ -827,8 +827,6 @@ bs="$tmp/bootstrap.sh"
 ) && bash "$bs"
 ```
 
-After installation, start a new shell or run `source ~/.bashrc` so that `~/.local/bin` takes priority. Verify with `command -v codex` and `command -v dsproxy`.
-
 ## Release installer assets
 
 The recommended one-line installer downloads `bootstrap.sh` from the latest GitHub Release asset:
@@ -837,7 +835,7 @@ The recommended one-line installer downloads `bootstrap.sh` from the latest GitH
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-The tag publishing workflow uploads two fixed-name assets for every `v*` tag:
+Release assets are uploaded manually when the maintainer creates or updates a controlled GitHub Release:
 
 - `bootstrap.sh`, used by the public one-line installer
 - `install.sh`, used by `bootstrap.sh` before falling back to raw URLs and shallow git clone
