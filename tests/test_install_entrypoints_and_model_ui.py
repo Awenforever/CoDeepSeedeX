@@ -102,3 +102,14 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
     assert "fal.ai" in text
     assert "serpapi|tavily|brave|exa|firecrawl" in text
     assert "glm|qwen_image|stability|fal" in text
+
+
+def test_installer_validates_web_and_image_provider_keys_before_saving() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "test_web_search_api_key()" in text
+    assert "test_image_generation_api_key()" in text
+    assert "Web search API key validated for provider" in text
+    assert "Image generation API key validated for provider" in text
+    assert "Web search API key was not saved because validation failed" in text
+    assert "Image generation API key was not saved because validation failed" in text
+    assert "DeepSeek API key was not saved because validation failed" in text

@@ -284,6 +284,163 @@ PY
   [ "$result" = "ok" ]
 }
 
+
+test_web_search_api_key() {
+  local provider="$1"
+  local api_key="$2"
+  if [ -z "$provider" ] || [ -z "$api_key" ]; then
+    return 1
+  fi
+  local result
+  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_WEB_VALIDATION_P28A1'
+import json
+import sys
+import urllib.parse
+import urllib.request
+
+provider = sys.argv[1].strip().lower()
+api_key = sys.argv[2]
+query = "test"
+
+def has_auth_error(raw):
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    values = []
+    for key in ("error", "error_message", "message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+        elif isinstance(value, dict):
+            for nested in ("message", "detail"):
+                nested_value = value.get(nested)
+                if isinstance(nested_value, str) and nested_value.strip():
+                    values.append(nested_value)
+    for value in values:
+        lowered = value.lower()
+        if any(token in lowered for token in ("invalid", "unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+            return True
+    if str(data.get("status") or "").strip().lower() in {"error", "failed", "failure"}:
+        return True
+    return False
+
+def request(method, url, headers=None, payload=None):
+    data = None
+    request_headers = dict(headers or {})
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+    request_headers.setdefault("Accept", "application/json")
+    req = urllib.request.Request(url, data=data, headers=request_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read()
+            return 200 <= int(resp.status) < 300 and not has_auth_error(raw)
+    except Exception:
+        return False
+
+if provider == "serpapi":
+    params = urllib.parse.urlencode({"engine": "google", "q": query, "api_key": api_key, "num": "1"})
+    ok = request("GET", "https://serpapi.com/search.json?" + params)
+elif provider == "tavily":
+    ok = request("POST", "https://api.tavily.com/search", {"Authorization": "Bearer " + api_key}, {"query": query, "max_results": 1, "search_depth": "basic", "include_answer": False})
+elif provider == "brave":
+    params = urllib.parse.urlencode({"q": query, "count": "1"})
+    ok = request("GET", "https://api.search.brave.com/res/v1/web/search?" + params, {"X-Subscription-Token": api_key})
+elif provider == "exa":
+    ok = request("POST", "https://api.exa.ai/search", {"Authorization": "Bearer " + api_key}, {"query": query, "numResults": 1})
+elif provider == "firecrawl":
+    ok = request("POST", "https://api.firecrawl.dev/v2/search", {"Authorization": "Bearer " + api_key}, {"query": query, "limit": 1})
+else:
+    ok = False
+print("ok" if ok else "bad")
+PYCODEEPSEEDEX_INSTALL_WEB_VALIDATION_P28A1
+)"
+  [ "$result" = "ok" ]
+}
+
+
+test_image_generation_api_key() {
+  local provider="$1"
+  local api_key="$2"
+  if [ -z "$provider" ] || [ -z "$api_key" ]; then
+    return 1
+  fi
+  local result
+  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A1'
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+provider = sys.argv[1].strip().lower()
+api_key = sys.argv[2]
+
+def has_auth_error(raw):
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    values = []
+    for key in ("error", "error_message", "message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+        elif isinstance(value, dict):
+            for nested in ("message", "detail"):
+                nested_value = value.get(nested)
+                if isinstance(nested_value, str) and nested_value.strip():
+                    values.append(nested_value)
+    for value in values:
+        lowered = value.lower()
+        if any(token in lowered for token in ("unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+            return True
+    return False
+
+def request(method, url, headers=None, payload=None, ok_statuses=(200,)):
+    data = None
+    request_headers = dict(headers or {})
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+    request_headers.setdefault("Accept", "application/json")
+    req = urllib.request.Request(url, data=data, headers=request_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read()
+            return int(resp.status) in ok_statuses and not has_auth_error(raw)
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        return int(exc.code) in ok_statuses and not has_auth_error(raw)
+    except Exception:
+        return False
+
+if provider in {"glm", "zai"}:
+    ok = request("POST", "https://api.z.ai/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+elif provider in {"zhipu", "zhipuai", "bigmodel"}:
+    ok = request("POST", "https://open.bigmodel.cn/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+elif provider in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+    ok = request("POST", "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+elif provider in {"stability", "stability_ai", "stable_image"}:
+    ok = request("GET", "https://api.stability.ai/v1/user/balance", {"Authorization": "Bearer " + api_key}, None, (200,))
+elif provider in {"fal", "fal_ai", "fal.ai"}:
+    params = urllib.parse.urlencode({"endpoint_id": "fal-ai/flux/schnell", "limit": "1"})
+    ok = request("GET", "https://api.fal.ai/v1/models?" + params, {"Authorization": "Key " + api_key}, None, (200,))
+else:
+    ok = False
+print("ok" if ok else "bad")
+PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A1
+)"
+  [ "$result" = "ok" ]
+}
+
+
 provider_option_line() {
   local number="$1"
   local name="$2"
@@ -296,6 +453,7 @@ provider_option_line() {
 ' "$number." "$name"
   fi
 }
+
 
 prompt_deepseek_api_key() {
   PROMPTED_API_KEY=""
@@ -321,8 +479,7 @@ prompt_deepseek_api_key() {
   provider_option_line "4" "GLM" "unsupported"
   provider_option_line "5" "Qwen" "unsupported"
   provider_option_line "6" "Baichuan" "unsupported"
-  printf '%s
-' "  0. Skip"
+  printf '%s\n' "  0. Skip"
 
   local provider=""
   provider="$(read_from_tty "Select model provider" "1")"
@@ -347,7 +504,6 @@ prompt_deepseek_api_key() {
     if [ -z "$candidate" ]; then
       PROMPTED_API_KEY=""
       warn "DeepSeek API key skipped. Configure later with: dsproxy config set-api-key"
-      warn "Validate later with: dsproxy config test-api-key"
       return 0
     fi
 
@@ -361,9 +517,10 @@ prompt_deepseek_api_key() {
     attempts=$((attempts + 1))
   done
 
-  PROMPTED_API_KEY="$candidate"
-  warn "DeepSeek API key was saved but did not validate. You can update it with: dsproxy config set-api-key"
+  PROMPTED_API_KEY=""
+  warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-api-key"
 }
+
 
 prompt_serpapi_api_key() {
   PROMPTED_SERPAPI_API_KEY=""
@@ -378,10 +535,9 @@ prompt_serpapi_api_key() {
   local configure=""
   configure="$(read_yes_no "Configure web search API now? [y/N]" "N")"
   case "$configure" in
-    y|Y|yes|YES|Yes)
-      ;;
+    y|Y|yes|YES|Yes) ;;
     *)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
       return 0
       ;;
   esac
@@ -395,39 +551,23 @@ prompt_serpapi_api_key() {
   provider_option_line "6" "Bing Web Search" "unsupported"
   provider_option_line "7" "Google Programmable Search" "unsupported"
   provider_option_line "8" "Other custom server" "unsupported"
-  printf '%s
-' "  0. Skip"
+  printf '%s\n' "  0. Skip"
 
   local provider=""
   local prompt=""
   provider="$(read_from_tty "Select web search provider" "1")"
   case "$provider" in
-    1|serpapi|SerpAPI|SERPAPI)
-      PROMPTED_WEB_SEARCH_PROVIDER="serpapi"
-      prompt="SerpAPI API key"
-      ;;
-    2|tavily|Tavily|TAVILY)
-      PROMPTED_WEB_SEARCH_PROVIDER="tavily"
-      prompt="Tavily API key"
-      ;;
-    3|brave|Brave|BRAVE|brave_search)
-      PROMPTED_WEB_SEARCH_PROVIDER="brave"
-      prompt="Brave Search API key"
-      ;;
-    4|exa|Exa|EXA)
-      PROMPTED_WEB_SEARCH_PROVIDER="exa"
-      prompt="Exa API key"
-      ;;
-    5|firecrawl|Firecrawl|FIRECRAWL)
-      PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"
-      prompt="Firecrawl API key"
-      ;;
+    1|serpapi|SerpAPI|SERPAPI) PROMPTED_WEB_SEARCH_PROVIDER="serpapi"; prompt="SerpAPI API key" ;;
+    2|tavily|Tavily|TAVILY) PROMPTED_WEB_SEARCH_PROVIDER="tavily"; prompt="Tavily API key" ;;
+    3|brave|Brave|BRAVE|brave_search) PROMPTED_WEB_SEARCH_PROVIDER="brave"; prompt="Brave Search API key" ;;
+    4|exa|Exa|EXA) PROMPTED_WEB_SEARCH_PROVIDER="exa"; prompt="Exa API key" ;;
+    5|firecrawl|Firecrawl|FIRECRAWL) PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"; prompt="Firecrawl API key" ;;
     8|other|Other|OTHER|custom|Custom)
       warn "Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
       return 0
       ;;
     *)
@@ -436,13 +576,30 @@ prompt_serpapi_api_key() {
       ;;
   esac
 
-  PROMPTED_SERPAPI_API_KEY="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "")"
-  if [ -z "$PROMPTED_SERPAPI_API_KEY" ]; then
-    warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
-  else
-    ok "Web search provider configured: $PROMPTED_WEB_SEARCH_PROVIDER"
-  fi
+  local attempts=0
+  local candidate=""
+  while [ "$attempts" -lt 3 ]; do
+    candidate="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "")"
+    if [ -z "$candidate" ]; then
+      PROMPTED_SERPAPI_API_KEY=""
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
+      return 0
+    fi
+
+    if test_web_search_api_key "$PROMPTED_WEB_SEARCH_PROVIDER" "$candidate"; then
+      PROMPTED_SERPAPI_API_KEY="$candidate"
+      ok "Web search API key validated for provider: $PROMPTED_WEB_SEARCH_PROVIDER"
+      return 0
+    fi
+
+    warn "Web search API key validation failed. Please paste it again, or press Enter to skip."
+    attempts=$((attempts + 1))
+  done
+
+  PROMPTED_SERPAPI_API_KEY=""
+  warn "Web search API key was not saved because validation failed. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
 }
+
 
 prompt_image_generation_api_key() {
   PROMPTED_IMAGE_API_KEY=""
@@ -457,10 +614,9 @@ prompt_image_generation_api_key() {
   local configure=""
   configure="$(read_yes_no "Configure image generation API now? [y/N]" "N")"
   case "$configure" in
-    y|Y|yes|YES|Yes)
-      ;;
+    y|Y|yes|YES|Yes) ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
       return 0
       ;;
   esac
@@ -474,35 +630,22 @@ prompt_image_generation_api_key() {
   provider_option_line "6" "Hunyuan Image" "unsupported"
   provider_option_line "7" "Volcengine Ark" "unsupported"
   provider_option_line "8" "Other custom server" "unsupported"
-  printf '%s
-' "  0. Skip"
+  printf '%s\n' "  0. Skip"
 
   local provider=""
   local prompt=""
   provider="$(read_from_tty "Select image generation provider" "1")"
   case "$provider" in
-    1|glm|GLM|cogview|CogView|zai|ZAI)
-      PROMPTED_IMAGE_PROVIDER="glm"
-      prompt="GLM image API key"
-      ;;
-    2|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun)
-      PROMPTED_IMAGE_PROVIDER="qwen_image"
-      prompt="DashScope API key"
-      ;;
-    3|stability|Stability|stability_ai|stable_image)
-      PROMPTED_IMAGE_PROVIDER="stability"
-      prompt="Stability AI API key"
-      ;;
-    4|fal|Fal|FAL|fal_ai|fal.ai)
-      PROMPTED_IMAGE_PROVIDER="fal"
-      prompt="fal.ai API key"
-      ;;
+    1|glm|GLM|cogview|CogView|zai|ZAI) PROMPTED_IMAGE_PROVIDER="glm"; prompt="GLM image API key" ;;
+    2|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun) PROMPTED_IMAGE_PROVIDER="qwen_image"; prompt="DashScope API key" ;;
+    3|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
+    4|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
     8|other|Other|OTHER|custom|Custom)
       warn "Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
       return 0
       ;;
     *)
@@ -511,14 +654,29 @@ prompt_image_generation_api_key() {
       ;;
   esac
 
-  PROMPTED_IMAGE_API_KEY="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
-  if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
-    warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
-  else
-    ok "Image generation provider configured: $PROMPTED_IMAGE_PROVIDER"
-  fi
-}
+  local attempts=0
+  local candidate=""
+  while [ "$attempts" -lt 3 ]; do
+    candidate="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
+    if [ -z "$candidate" ]; then
+      PROMPTED_IMAGE_API_KEY=""
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+      return 0
+    fi
 
+    if test_image_generation_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then
+      PROMPTED_IMAGE_API_KEY="$candidate"
+      ok "Image generation API key validated for provider: $PROMPTED_IMAGE_PROVIDER"
+      return 0
+    fi
+
+    warn "Image generation API key validation failed. Please paste it again, or press Enter to skip."
+    attempts=$((attempts + 1))
+  done
+
+  PROMPTED_IMAGE_API_KEY=""
+  warn "Image generation API key was not saved because validation failed. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+}
 
 env_file_value() {
   local key="$1"
