@@ -61,20 +61,79 @@ def _git_internal_tag_for_head(*, fallback: str) -> str:
     return tags[-1] if tags else fallback
 
 
+def _git_commit_for_ref(ref: str) -> str:
+    """Return a short commit for a local git ref, such as a public release tag."""
+    if not ref:
+        return ""
+    try:
+        import subprocess
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", f"{ref}^{{commit}}"],
+            cwd=str(root),
+            text=True,
+            capture_output=True,
+            timeout=2,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _runtime_git_head() -> str:
+    """Return the current checkout HEAD when running from a git tree."""
+    try:
+        import subprocess
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(root),
+            text=True,
+            capture_output=True,
+            timeout=2,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    except Exception:
+        return ""
+    return ""
+
+
 def _version_metadata() -> dict[str, str]:
-    public_commit = _git_version_value(
-        ["rev-parse", "--short", PROXY_PUBLIC_VERSION + "^{}"],
-        fallback=PROXY_PUBLIC_COMMIT,
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+
+    public_version = str(
+        getattr(proxy_app, "PROXY_PUBLIC_VERSION", getattr(proxy_app, "PROXY_VERSION", "unknown"))
+    ).strip()
+    runtime_head = _runtime_git_head()
+
+    public_commit = (
+        _git_commit_for_ref(public_version)
+        or str(getattr(proxy_app, "PROXY_PUBLIC_COMMIT", "")).strip()
+        or runtime_head
+        or "unknown"
     )
-    internal_commit = _git_version_value(
-        ["rev-parse", "--short", "HEAD"],
-        fallback=PROXY_INTERNAL_COMMIT,
+
+    declared_internal_version = str(getattr(proxy_app, "PROXY_INTERNAL_VERSION", "unknown")).strip()
+    internal_version = _git_internal_tag_for_head(fallback=declared_internal_version)
+    internal_commit = (
+        runtime_head
+        or str(getattr(proxy_app, "PROXY_INTERNAL_COMMIT", "")).strip()
+        or "unknown"
     )
-    internal_version = _git_internal_tag_for_head(fallback=PROXY_INTERNAL_VERSION)
+
     return {
-        "public_version": PROXY_PUBLIC_VERSION,
+        "public_version": public_version or "unknown",
         "public_commit": public_commit,
-        "internal_version": internal_version,
+        "internal_version": internal_version or "unknown",
         "internal_commit": internal_commit,
     }
 
@@ -87,7 +146,6 @@ def _format_version_metadata(metadata: dict[str, str] | None = None) -> str:
             f"internal version: {data['internal_version']} | {data['internal_commit']}",
         ]
     )
-
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_STABLE_PORT = 8000

@@ -9,7 +9,7 @@ from deepseek_responses_proxy.cli import default_config_path, main
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "public version: v0.3.5-alpha |" in out
+    assert "public version: v0.3.6-alpha |" in out
     assert "internal version: p" in out
 
 
