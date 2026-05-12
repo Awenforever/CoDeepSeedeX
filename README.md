@@ -132,7 +132,7 @@ CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and r
 | Image generation | GLM / CogView | `dsproxy config set-image-api-key --provider glm` | https://www.bigmodel.cn/ |
 | Image generation | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
 
-For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. The handoff file will be completed before the public release.
+For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. See `docs/custom_api_handoff.md` for the handoff checklist.
 
 
 ## 🚀 Quick start

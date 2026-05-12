@@ -84,3 +84,12 @@ def test_installer_guided_api_provider_catalogs_include_new_providers_and_other(
     assert "docs/custom_api_handoff.md" in text
     assert "serpapi|tavily|brave" in text
     assert "glm|qwen_image" in text
+
+def test_custom_api_handoff_doc_exists() -> None:
+    handoff = INSTALL_SH.parent.parent / "docs" / "custom_api_handoff.md"
+    text = handoff.read_text(encoding="utf-8")
+    assert "Custom API handoff" in text
+    assert "Web search tool bridge" in text
+    assert "Image generation tool bridge" in text
+    assert "deepseek_responses_proxy/app.py" in text
+    assert "Do not create public Release tags unless the user explicitly asks." in text
