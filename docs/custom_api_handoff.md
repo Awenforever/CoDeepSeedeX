@@ -83,6 +83,19 @@ For an image generation provider:
 5. Add status reporting in `_tool_bridge_status`.
 6. Add CLI and installer configuration only if the provider is intended to be first-class.
 
+## Repository governance rules
+
+Use these rules when maintaining this repository:
+
+- Public Release tags use `v*`, for example `v0.3.4-alpha` or a future stable `v0.3.5`.
+- Internal prelease tags use `p*`. Do not create new internal `v*` tags.
+- Do not move, retag, or delete a published Release tag unless the maintainer explicitly names the exact Release and tag to rebuild.
+- Prefer a new public Release tag over moving an existing public Release tag.
+- Use `work/<topic>` branches for development. After a work branch is fast-forward merged into `master` and pushed, delete the merged remote `work/*` branch.
+- Keep `master`, `origin/master`, public Release tags, and internal prelease tags conceptually separate.
+- Before deleting any branch or tag, audit local and remote refs and confirm the target is merged or has an equivalent replacement.
+- Normal development should commit to a work branch, run focused tests, run full tests before release, then fast-forward merge into `master`.
+
 ## Safety and workflow rules for agents
 
 Follow the project development rules:
