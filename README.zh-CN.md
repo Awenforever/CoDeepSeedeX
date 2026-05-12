@@ -247,7 +247,7 @@ dsproxy debug behavioral --thinking --limit 200 --timeout 5
 
 ## 🤖 已支持的DeepSeek模型
 
-CoDeepSeedeX当前主要面向DeepSeek官方V4 API模型名。
+CoDeepSeedeX默认仍面向DeepSeek官方V4 API模型名，同时安装器和`dsproxy config`已支持若干OpenAI兼容的model API provider，包括DeepSeek、Kimi/Moonshot、GLM/Z.AI、Qwen/DashScope以及自定义endpoint。
 
 同一个DeepSeek V4模型可以用两种模式调用：
 

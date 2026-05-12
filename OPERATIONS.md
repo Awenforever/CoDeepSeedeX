@@ -438,20 +438,20 @@ DEEPSEEK_REASONING_EFFORT=high dsproxy start thinking
 
 ## Model and reasoning-effort switching
 
-Use `dsproxy-config` to switch the runtime model and DeepSeek reasoning effort.
+Use `dsproxy config` to switch the runtime model and DeepSeek reasoning effort.
 
 Examples:
 
 ```bash
-dsproxy-config show
-dsproxy-config set-model deepseek-v4-pro
-dsproxy-config set-model deepseek-v4-flash
-dsproxy-config set-effort max
-dsproxy-config set-effort high
-dsproxy-config set model deepseek-v4-pro effort high
+dsproxy config show
+dsproxy config set-model deepseek-v4-pro
+dsproxy config set-model deepseek-v4-flash
+dsproxy config set-effort max
+dsproxy config set-effort high
+dsproxy config set model deepseek-v4-pro effort high
 ```
 
-`dsproxy-config` updates:
+`dsproxy config` updates:
 
 ```text
 ~/.config/deepseek-responses-proxy/env
@@ -485,18 +485,18 @@ Use `max` for the strongest DeepSeek reasoning mode and `high` for the lower thi
 
 ### Applying model and effort changes immediately
 
-Configuration-changing `dsproxy-config` commands automatically restart the thinking proxy.
+Configuration-changing `dsproxy config` commands automatically restart the thinking proxy.
 
 This command:
 
 ```bash
-dsproxy-config set model deepseek-v4-pro effort max
+dsproxy config set model deepseek-v4-pro effort max
 ```
 
 is equivalent to:
 
 ```bash
-dsproxy-config set model deepseek-v4-pro effort max
+dsproxy config set model deepseek-v4-pro effort max
 dsproxy stop thinking
 dsproxy start thinking
 ```
@@ -506,7 +506,7 @@ Use this only when you want the new model or reasoning effort to affect the curr
 To update config files without restarting the thinking proxy:
 
 ```bash
-DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 dsproxy-config set model deepseek-v4-pro effort max
+DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 dsproxy config set model deepseek-v4-pro effort max
 ```
 
 ## Experimental model catalog
