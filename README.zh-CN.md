@@ -125,6 +125,22 @@ dsproxy config set-image-api-key --provider glm
 
 安装脚本写入Codex profile时会携带项目内置model catalog metadata，避免`deepseek-v4-pro`和`deepseek-v4-flash`回退到未知模型元数据。
 
+
+### Provider申请入口速查
+
+CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。
+
+| 工具 | 已支持provider | 配置命令 | 申请/额度页面 |
+| --- | --- | --- | --- |
+| Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
+| Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
+| Web search | Brave Search | `dsproxy config set-web-search-api-key --provider brave` | https://brave.com/search/api/ |
+| 文生图 | GLM / CogView | `dsproxy config set-image-api-key --provider glm` | https://www.bigmodel.cn/ |
+| 文生图 | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
+
+自定义tool server可在引导菜单中选择`Other`，然后让agent阅读`docs/custom_api_handoff.md`协助配置。该handoff文件会在公开发布前补齐。
+
+
 ## 🚀 快速开始
 
 安装完成后：

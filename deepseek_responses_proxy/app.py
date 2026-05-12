@@ -6828,7 +6828,31 @@ def _image_api_key() -> str:
     )
 
 
+def _dashscope_api_key() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_DASHSCOPE_API_KEY")
+        or os.environ.get("DASHSCOPE_API_KEY")
+        or os.environ.get("ALIBABA_DASHSCOPE_API_KEY")
+        or ""
+    )
+
+
+def _image_api_key_for_provider(provider: str | None = None) -> str:
+    selected = (provider or _image_provider()).strip().lower()
+    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+        return _dashscope_api_key()
+    return _image_api_key()
+
+
 def _image_model() -> str:
+    provider = _image_provider()
+    if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+        return (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            or os.environ.get("DASHSCOPE_IMAGE_MODEL")
+            or "qwen-image-2.0-pro"
+        )
     return (
         os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
         or os.environ.get("ZAI_IMAGE_MODEL")
@@ -7094,6 +7118,112 @@ async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    provider = _image_provider()
+    api_key = _image_api_key_for_provider(provider)
+    prompt = str(arguments.get("prompt") or "").strip()
+    size = _image_size(arguments.get("size"))
+    n = _image_n(arguments.get("n"))
+
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "missing_api_key",
+            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, DEEPSEEK_PROXY_DASHSCOPE_API_KEY, DASHSCOPE_API_KEY, or ALIBABA_DASHSCOPE_API_KEY.",
+            "images": [],
+        }
+
+    body: dict[str, Any] = {
+        "model": _image_model(),
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ]
+        },
+        "parameters": {
+            "size": size.replace("x", "*"),
+            "n": n,
+        },
+    }
+
+    endpoint = os.environ.get(
+        "DEEPSEEK_PROXY_IMAGE_BASE_URL",
+        os.environ.get(
+            "DASHSCOPE_IMAGE_ENDPOINT",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        ),
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "image_generation_failed",
+            "message": str(exc),
+            "images": [],
+        }
+
+    raw_images: list[dict[str, Any]] = []
+    output = data.get("output") if isinstance(data, dict) else {}
+    if isinstance(output, dict):
+        choices = output.get("choices") or []
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            message = choice.get("message") or {}
+            content = message.get("content") or []
+            for item in content:
+                if isinstance(item, dict) and (item.get("image") or item.get("url")):
+                    raw_images.append({"url": item.get("image") or item.get("url"), "raw": item})
+        for item in output.get("results") or []:
+            if isinstance(item, dict):
+                raw_images.append(item)
+
+    images: list[dict[str, Any]] = []
+    for item in raw_images:
+        url = item.get("url") or item.get("image") or ""
+        file_path = None
+        if url and url.startswith("http") and _image_download_enabled():
+            file_path = await _download_image_url(url, provider=provider)
+        images.append(
+            {
+                "url": url if url.startswith("http") else None,
+                **_image_artifact_fields(file_path),
+                "mime_type": "image/png",
+                "raw": item.get("raw", item),
+            }
+        )
+
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": _image_model(),
+        "prompt": prompt,
+        "size": size,
+        "images": images,
+    }
+
+
 async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     prompt = str(arguments.get("prompt") or "").strip()
     if not prompt:
@@ -7126,13 +7256,16 @@ async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if provider in {"glm", "zai", "zhipu", "zhipuai", "bigmodel"}:
         return await _zai_image_generate(arguments)
 
+    if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+        return await _dashscope_qwen_image_generate(arguments)
+
     return {
         "ok": False,
         "provider": provider,
         "model": _image_model(),
         "prompt": prompt,
         "error": "unsupported_image_provider",
-        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, disabled.",
+        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, dashscope, disabled.",
         "images": [],
     }
 
@@ -7212,6 +7345,34 @@ async def _mock_web_search(query: str, max_results: int) -> dict[str, Any]:
     }
 
 
+def _tavily_api_key() -> str:
+    return (
+        os.environ.get("TAVILY_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_TAVILY_API_KEY")
+        or ""
+    )
+
+
+def _brave_search_api_key() -> str:
+    return (
+        os.environ.get("BRAVE_SEARCH_API_KEY")
+        or os.environ.get("BRAVE_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY")
+        or ""
+    )
+
+
+def _web_search_api_key_for_provider(provider: str | None = None) -> str:
+    selected = (provider or _web_search_provider()).strip().lower()
+    if selected == "serpapi":
+        return _serpapi_api_key()
+    if selected == "tavily":
+        return _tavily_api_key()
+    if selected == "brave":
+        return _brave_search_api_key()
+    return ""
+
+
 async def _serpapi_web_search(query: str, max_results: int) -> dict[str, Any]:
     api_key = _serpapi_api_key()
     if not api_key:
@@ -7270,6 +7431,133 @@ async def _serpapi_web_search(query: str, max_results: int) -> dict[str, Any]:
     }
 
 
+async def _tavily_web_search(query: str, max_results: int) -> dict[str, Any]:
+    api_key = _tavily_api_key()
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": "tavily",
+            "query": query,
+            "error": "missing_api_key",
+            "message": "TAVILY_API_KEY or DEEPSEEK_PROXY_TAVILY_API_KEY is required.",
+            "results": [],
+        }
+
+    body: dict[str, Any] = {
+        "query": query,
+        "max_results": max_results,
+    }
+    search_depth = os.environ.get("DEEPSEEK_PROXY_TAVILY_SEARCH_DEPTH")
+    if search_depth:
+        body["search_depth"] = search_depth
+
+    try:
+        async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
+            response = await client.post(
+                os.environ.get("DEEPSEEK_PROXY_TAVILY_SEARCH_URL", "https://api.tavily.com/search"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": "tavily",
+            "query": query,
+            "error": "web_search_failed",
+            "message": str(exc),
+            "results": [],
+        }
+
+    raw_results = data.get("results") or []
+    results = [
+        {
+            "title": item.get("title") or "",
+            "url": item.get("url") or "",
+            "snippet": item.get("content") or item.get("snippet") or "",
+            "published_at": item.get("published_date") or item.get("published_at"),
+        }
+        for item in raw_results[:max_results]
+        if isinstance(item, dict)
+    ]
+
+    return {
+        "ok": True,
+        "provider": "tavily",
+        "query": query,
+        "results": results,
+    }
+
+
+async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
+    api_key = _brave_search_api_key()
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": "brave",
+            "query": query,
+            "error": "missing_api_key",
+            "message": "BRAVE_SEARCH_API_KEY, BRAVE_API_KEY, or DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY is required.",
+            "results": [],
+        }
+
+    params: dict[str, Any] = {
+        "q": query,
+        "count": max_results,
+    }
+    country = os.environ.get("DEEPSEEK_PROXY_BRAVE_COUNTRY")
+    search_lang = os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_LANG")
+    if country:
+        params["country"] = country
+    if search_lang:
+        params["search_lang"] = search_lang
+
+    try:
+        async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
+            response = await client.get(
+                os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_URL", "https://api.search.brave.com/res/v1/web/search"),
+                headers={
+                    "Accept": "application/json",
+                    "X-Subscription-Token": api_key,
+                },
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": "brave",
+            "query": query,
+            "error": "web_search_failed",
+            "message": str(exc),
+            "results": [],
+        }
+
+    raw_results = ((data.get("web") or {}).get("results") or [])
+    results = [
+        {
+            "title": item.get("title") or "",
+            "url": item.get("url") or "",
+            "snippet": item.get("description") or item.get("snippet") or "",
+            "published_at": item.get("age"),
+        }
+        for item in raw_results[:max_results]
+        if isinstance(item, dict)
+    ]
+
+    return {
+        "ok": True,
+        "provider": "brave",
+        "query": query,
+        "results": results,
+    }
+
+
 async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
     max_results = _web_search_max_results(arguments.get("max_results"))
@@ -7302,12 +7590,18 @@ async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
     if provider == "serpapi":
         return await _serpapi_web_search(query, max_results)
 
+    if provider == "tavily":
+        return await _tavily_web_search(query, max_results)
+
+    if provider == "brave":
+        return await _brave_web_search(query, max_results)
+
     return {
         "ok": False,
         "provider": provider,
         "query": query,
         "error": "unsupported_web_search_provider",
-        "message": "Supported providers: mock, serpapi, disabled.",
+        "message": "Supported providers: mock, serpapi, tavily, brave, disabled.",
         "results": [],
     }
 
@@ -10326,7 +10620,7 @@ def _tool_bridge_status() -> dict[str, Any]:
             "is_mock": web_provider == "mock",
             "max_results": _web_search_max_results(),
             "timeout_seconds": _web_search_timeout_seconds(),
-            "api_key_configured": bool(_serpapi_api_key()) if web_provider == "serpapi" else None,
+            "api_key_configured": bool(_web_search_api_key_for_provider(web_provider)) if web_provider not in {"mock", "disabled", "off", "none"} else None,
         },
         "image_generation": {
             "provider": image_provider,
@@ -10337,7 +10631,7 @@ def _tool_bridge_status() -> dict[str, Any]:
             "download_enabled": _image_download_enabled(),
             "max_artifacts": _image_max_artifacts(),
             "output_dir": str(_image_output_dir()),
-            "api_key_configured": bool(_image_api_key()) if image_provider != "mock" else None,
+            "api_key_configured": bool(_image_api_key_for_provider(image_provider)) if image_provider not in {"mock", "disabled", "off", "none"} else None,
         },
         "mcp_executor": _mcp_executor_status(),
     }

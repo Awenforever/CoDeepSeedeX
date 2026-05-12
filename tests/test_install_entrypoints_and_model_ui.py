@@ -74,3 +74,13 @@ def test_installer_guided_api_provider_catalogs_are_visible() -> None:
     assert "Qwen Image" in text
     assert "Unsupported" in text
     assert "dsproxy config wizard" in text
+
+def test_installer_guided_api_provider_catalogs_include_new_providers_and_other() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Tavily" in text
+    assert "Brave Search" in text
+    assert "Qwen Image / DashScope" in text
+    assert "Other custom server" in text
+    assert "docs/custom_api_handoff.md" in text
+    assert "serpapi|tavily|brave" in text
+    assert "glm|qwen_image" in text

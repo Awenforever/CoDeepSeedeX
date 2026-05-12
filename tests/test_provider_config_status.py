@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from deepseek_responses_proxy.app import PROXY_VERSION, create_app
@@ -165,3 +166,157 @@ def test_proxy_debug_long_session_route_without_trace(monkeypatch, tmp_path):
     assert data["trace_event_count"] == 0
     assert data["context_budget"]["event_count"] == 0
     assert data["recommendation"] == "collect_more_trace_data"
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_tavily_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "title": "Tavily result",
+                        "url": "https://example.test/tavily",
+                        "content": "Tavily snippet",
+                        "published_date": "2026-05-12",
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://api.tavily.com/search"
+            assert headers["Authorization"] == "Bearer tvly-test-key"
+            assert json["query"] == "provider test"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_web_search({"query": "provider test", "max_results": 1})
+    assert result["ok"] is True
+    assert result["provider"] == "tavily"
+    assert result["results"][0]["snippet"] == "Tavily snippet"
+
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_brave_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "brave")
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "brave-test-key")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "web": {
+                    "results": [
+                        {
+                            "title": "Brave result",
+                            "url": "https://example.test/brave",
+                            "description": "Brave snippet",
+                            "age": "May 12, 2026",
+                        }
+                    ]
+                }
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            assert url == "https://api.search.brave.com/res/v1/web/search"
+            assert headers["X-Subscription-Token"] == "brave-test-key"
+            assert params["q"] == "provider test"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_web_search({"query": "provider test", "max_results": 1})
+    assert result["ok"] is True
+    assert result["provider"] == "brave"
+    assert result["results"][0]["snippet"] == "Brave snippet"
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "qwen_image")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "dashscope-test-key")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {"image": "https://example.test/qwen-image.png"}
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            assert headers["Authorization"] == "Bearer dashscope-test-key"
+            assert json["model"] == "qwen-image-2.0-pro"
+            assert json["input"]["messages"][0]["content"][0]["text"] == "draw a test image"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_image_generate({"prompt": "draw a test image"})
+    assert result["ok"] is True
+    assert result["provider"] == "qwen_image"
+    assert result["model"] == "qwen-image-2.0-pro"
+    assert result["images"][0]["url"] == "https://example.test/qwen-image.png"

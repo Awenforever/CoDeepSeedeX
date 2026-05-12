@@ -119,6 +119,22 @@ dsproxy config set-image-api-key --provider glm
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
 
+
+### Provider access quick reference
+
+CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it.
+
+| Tool | Supported provider | Configure | Apply / quota page |
+| --- | --- | --- | --- |
+| Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
+| Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
+| Web search | Brave Search | `dsproxy config set-web-search-api-key --provider brave` | https://brave.com/search/api/ |
+| Image generation | GLM / CogView | `dsproxy config set-image-api-key --provider glm` | https://www.bigmodel.cn/ |
+| Image generation | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
+
+For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. The handoff file will be completed before the public release.
+
+
 ## 🚀 Quick start
 
 After installation:

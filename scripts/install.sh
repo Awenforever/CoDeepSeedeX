@@ -367,9 +367,11 @@ prompt_deepseek_api_key() {
 
 prompt_serpapi_api_key() {
   PROMPTED_SERPAPI_API_KEY=""
+  PROMPTED_WEB_SEARCH_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-}"
+    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${BRAVE_SEARCH_API_KEY:-}}}"
+    PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
     return 0
   fi
 
@@ -379,45 +381,66 @@ prompt_serpapi_api_key() {
     y|Y|yes|YES|Yes)
       ;;
     *)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|tavily|brave"
       return 0
       ;;
   esac
 
   sub_title "Web search providers"
   provider_option_line "1" "SerpAPI" "supported"
-  provider_option_line "2" "Tavily" "unsupported"
-  provider_option_line "3" "Bing Web Search" "unsupported"
-  provider_option_line "4" "Google Programmable Search" "unsupported"
-  provider_option_line "5" "Brave Search" "unsupported"
+  provider_option_line "2" "Tavily" "supported"
+  provider_option_line "3" "Brave Search" "supported"
+  provider_option_line "4" "Bing Web Search" "unsupported"
+  provider_option_line "5" "Google Programmable Search" "unsupported"
+  provider_option_line "6" "Other custom server" "unsupported"
   printf '%s
 ' "  0. Skip"
 
   local provider=""
+  local prompt=""
   provider="$(read_from_tty "Select web search provider" "1")"
   case "$provider" in
     1|serpapi|SerpAPI|SERPAPI)
-      PROMPTED_SERPAPI_API_KEY="$(read_secret_from_tty "SerpAPI API key (optional; press Enter to skip)" "${SERPAPI_API_KEY:-}")"
-      if [ -z "$PROMPTED_SERPAPI_API_KEY" ]; then
-        warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
-      else
-        ok "Web search provider configured: serpapi"
-      fi
+      PROMPTED_WEB_SEARCH_PROVIDER="serpapi"
+      prompt="SerpAPI API key"
+      ;;
+    2|tavily|Tavily|TAVILY)
+      PROMPTED_WEB_SEARCH_PROVIDER="tavily"
+      prompt="Tavily API key"
+      ;;
+    3|brave|Brave|BRAVE|brave_search)
+      PROMPTED_WEB_SEARCH_PROVIDER="brave"
+      prompt="Brave Search API key"
+      ;;
+    6|other|Other|OTHER|custom|Custom)
+      warn "Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
+      return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|tavily|brave"
+      return 0
       ;;
     *)
-      warn "Selected web search provider is currently unsupported. Only SerpAPI can be configured now."
+      warn "Selected web search provider is currently unsupported."
+      return 0
       ;;
   esac
+
+  PROMPTED_SERPAPI_API_KEY="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "")"
+  if [ -z "$PROMPTED_SERPAPI_API_KEY" ]; then
+    warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
+  else
+    ok "Web search provider configured: $PROMPTED_WEB_SEARCH_PROVIDER"
+  fi
 }
 
 prompt_image_generation_api_key() {
   PROMPTED_IMAGE_API_KEY=""
+  PROMPTED_IMAGE_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-}"
+    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-}}"
+    PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"
     return 0
   fi
 
@@ -427,38 +450,53 @@ prompt_image_generation_api_key() {
     y|Y|yes|YES|Yes)
       ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|qwen_image"
       return 0
       ;;
   esac
 
   sub_title "Image generation providers"
   provider_option_line "1" "GLM / CogView" "supported"
-  provider_option_line "2" "Qwen Image" "unsupported"
+  provider_option_line "2" "Qwen Image / DashScope" "supported"
   provider_option_line "3" "Kolors" "unsupported"
   provider_option_line "4" "Hunyuan Image" "unsupported"
   provider_option_line "5" "Volcengine Ark" "unsupported"
+  provider_option_line "6" "Other custom server" "unsupported"
   printf '%s
 ' "  0. Skip"
 
   local provider=""
+  local prompt=""
   provider="$(read_from_tty "Select image generation provider" "1")"
   case "$provider" in
-    1|glm|GLM|cogview|CogView)
-      PROMPTED_IMAGE_API_KEY="$(read_secret_from_tty "GLM image API key (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
-      if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
-        warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
-      else
-        ok "Image generation provider configured: glm"
-      fi
+    1|glm|GLM|cogview|CogView|zai|ZAI)
+      PROMPTED_IMAGE_PROVIDER="glm"
+      prompt="GLM image API key"
+      ;;
+    2|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun)
+      PROMPTED_IMAGE_PROVIDER="qwen_image"
+      prompt="DashScope API key"
+      ;;
+    6|other|Other|OTHER|custom|Custom)
+      warn "Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
+      return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|qwen_image"
+      return 0
       ;;
     *)
-      warn "Selected image generation provider is currently unsupported. Only GLM / CogView can be configured now."
+      warn "Selected image generation provider is currently unsupported."
+      return 0
       ;;
   esac
+
+  PROMPTED_IMAGE_API_KEY="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
+  if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
+    warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+  else
+    ok "Image generation provider configured: $PROMPTED_IMAGE_PROVIDER"
+  fi
 }
 
 
@@ -569,18 +607,36 @@ write_env_file() {
   local stable_port="$1"
   local thinking_port="$2"
   local api_key="$3"
-  local serpapi_key="$4"
+  local web_search_key="$4"
   local image_api_key="$5"
 
   local final_api_key="$api_key"
-  local final_serpapi_key="$serpapi_key"
+  local final_web_search_key="$web_search_key"
   local final_image_api_key="$image_api_key"
+  local final_web_search_provider="${PROMPTED_WEB_SEARCH_PROVIDER:-}"
+  local final_image_provider="${PROMPTED_IMAGE_PROVIDER:-}"
 
   if [ -z "$final_api_key" ]; then
     final_api_key="$(env_file_value DEEPSEEK_API_KEY)"
   fi
-  if [ -z "$final_serpapi_key" ]; then
-    final_serpapi_key="$(env_file_value SERPAPI_API_KEY)"
+  if [ -z "$final_web_search_provider" ]; then
+    final_web_search_provider="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
+  fi
+  if [ -z "$final_web_search_provider" ]; then
+    final_web_search_provider="serpapi"
+  fi
+  if [ -z "$final_web_search_key" ]; then
+    case "$final_web_search_provider" in
+      tavily) final_web_search_key="$(env_file_value TAVILY_API_KEY)" ;;
+      brave) final_web_search_key="$(env_file_value BRAVE_SEARCH_API_KEY)" ;;
+      *) final_web_search_key="$(env_file_value SERPAPI_API_KEY)" ;;
+    esac
+  fi
+  if [ -z "$final_image_provider" ]; then
+    final_image_provider="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"
+  fi
+  if [ -z "$final_image_provider" ]; then
+    final_image_provider="glm"
   fi
   if [ -z "$final_image_api_key" ]; then
     final_image_api_key="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"
@@ -626,25 +682,42 @@ write_env_file() {
 ' "v4-flash-no-thinking"
     printf 'export DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION=%q
 ' "1"
-    if [ -n "$final_serpapi_key" ]; then
+    if [ -n "$final_web_search_key" ]; then
       printf 'export DEEPSEEK_PROXY_TOOL_BRIDGE=%q
 ' "1"
       printf 'export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=%q
-' "serpapi"
+' "$final_web_search_provider"
       printf 'export DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS=%q
 ' "6"
       printf 'export DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS=%q
 ' "12.5"
-      printf 'export SERPAPI_API_KEY=%q
-' "$final_serpapi_key"
+      case "$final_web_search_provider" in
+        tavily)
+          printf 'export TAVILY_API_KEY=%q
+' "$final_web_search_key"
+          ;;
+        brave)
+          printf 'export BRAVE_SEARCH_API_KEY=%q
+' "$final_web_search_key"
+          ;;
+        *)
+          printf 'export SERPAPI_API_KEY=%q
+' "$final_web_search_key"
+          ;;
+      esac
     fi
     if [ -n "$final_image_api_key" ]; then
       printf 'export DEEPSEEK_PROXY_TOOL_BRIDGE=%q
 ' "1"
       printf 'export DEEPSEEK_PROXY_IMAGE_PROVIDER=%q
-' "glm"
-      printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+' "$final_image_provider"
+      if [ "$final_image_provider" = "qwen_image" ]; then
+        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+' "qwen-image-2.0-pro"
+      else
+        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
 ' "cogView-4-250304"
+      fi
       printf 'export DEEPSEEK_PROXY_IMAGE_SIZE=%q
 ' "1024x1024"
       printf 'export DEEPSEEK_PROXY_IMAGE_N=%q
@@ -1065,8 +1138,8 @@ printf '%s\n' "  dsproxy config show"
 printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config test-api-key"
-printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi"
-printf '%s\n' "  dsproxy config set-image-api-key --provider glm"
+printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|brave"
+printf '%s\n' "  dsproxy config set-image-api-key --provider glm|qwen_image"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"
 

@@ -1043,10 +1043,29 @@ def _maybe_print_startup_release_update_notice() -> None:
 def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
     path = env_file or default_env_file_path()
     values = _read_env_exports(path)
+    web_search_keys = [
+        "SERPAPI_API_KEY",
+        "DEEPSEEK_PROXY_SERPAPI_API_KEY",
+        "TAVILY_API_KEY",
+        "DEEPSEEK_PROXY_TAVILY_API_KEY",
+        "BRAVE_SEARCH_API_KEY",
+        "BRAVE_API_KEY",
+        "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY",
+    ]
+    image_keys = [
+        "DEEPSEEK_PROXY_IMAGE_API_KEY",
+        "ZAI_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZHIPU_API_KEY",
+        "GLM_API_KEY",
+        "DEEPSEEK_PROXY_DASHSCOPE_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "ALIBABA_DASHSCOPE_API_KEY",
+    ]
     missing = {
         "model_api": not bool(values.get("DEEPSEEK_API_KEY")),
-        "web_search_api": not bool(values.get("SERPAPI_API_KEY")),
-        "image_generation_api": not bool(values.get("DEEPSEEK_PROXY_IMAGE_API_KEY")),
+        "web_search_api": not any(bool(values.get(key)) for key in web_search_keys),
+        "image_generation_api": not any(bool(values.get(key)) for key in image_keys),
     }
     return {
         "env_file": str(path),
@@ -1055,18 +1074,18 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "commands": {
             "guided": "dsproxy config wizard",
             "model_api": "dsproxy config set-api-key",
-            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi",
-            "image_generation_api": "dsproxy config set-image-api-key --provider glm",
+            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave",
+            "image_generation_api": "dsproxy config set-image-api-key --provider glm|qwen_image",
         },
         "supported": {
             "model_api": ["deepseek"],
-            "web_search_api": ["serpapi"],
-            "image_generation_api": ["glm"],
+            "web_search_api": ["serpapi", "tavily", "brave"],
+            "image_generation_api": ["glm", "zai", "qwen_image", "dashscope"],
         },
         "unsupported_catalog": {
             "model_api": ["kimi", "mimo", "glm", "qwen", "baichuan"],
-            "web_search_api": ["tavily", "bing", "google_pse", "brave"],
-            "image_generation_api": ["qwen_image", "kolors", "hunyuan", "volcengine_ark"],
+            "web_search_api": ["bing", "google_pse"],
+            "image_generation_api": ["kolors", "hunyuan", "volcengine_ark"],
         },
     }
 
@@ -1162,24 +1181,38 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "Web search providers",
             [
                 ("1", "SerpAPI", True),
-                ("2", "Tavily", False),
-                ("3", "Bing Web Search", False),
-                ("4", "Google Programmable Search", False),
-                ("5", "Brave Search", False),
+                ("2", "Tavily", True),
+                ("3", "Brave Search", True),
+                ("4", "Bing Web Search", False),
+                ("5", "Google Programmable Search", False),
+                ("6", "Other custom server", False),
             ],
         )
         choice = _wizard_read_line("Select web search provider", "1", non_interactive=non_interactive).strip().lower()
-        if choice in {"1", "serpapi"}:
-            key = _wizard_read_secret("SerpAPI API key", values.get("SERPAPI_API_KEY", ""), non_interactive=non_interactive)
+        web_provider_map = {
+            "1": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
+            "serpapi": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
+            "2": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
+            "tavily": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
+            "3": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
+            "brave": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
+            "brave_search": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
+        }
+        if choice in web_provider_map:
+            provider, prompt, env_key = web_provider_map[choice]
+            key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
             if key:
                 values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = "serpapi"
+                values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
                 values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
                 values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
-                values["SERPAPI_API_KEY"] = key
-                configured.append("web_search_api:serpapi")
+                values[env_key] = key
+                configured.append(f"web_search_api:{provider}")
             else:
                 skipped.append("web_search_api")
+        elif choice in {"6", "other", "custom"}:
+            skipped.append("web_search_api:other_custom_server")
+            print("Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
         elif choice in {"0", "skip"}:
             skipped.append("web_search_api")
         else:
@@ -1193,14 +1226,15 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "Image generation providers",
             [
                 ("1", "GLM / CogView", True),
-                ("2", "Qwen Image", False),
+                ("2", "Qwen Image / DashScope", True),
                 ("3", "Kolors", False),
                 ("4", "Hunyuan Image", False),
                 ("5", "Volcengine Ark", False),
+                ("6", "Other custom server", False),
             ],
         )
         choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
-        if choice in {"1", "glm", "cogview"}:
+        if choice in {"1", "glm", "cogview", "zai", "zhipu", "zhipuai"}:
             key = _wizard_read_secret("GLM image API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""), non_interactive=non_interactive)
             if key:
                 values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
@@ -1213,6 +1247,22 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 configured.append("image_generation_api:glm")
             else:
                 skipped.append("image_generation_api")
+        elif choice in {"2", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun"}:
+            key = _wizard_read_secret("DashScope API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("DASHSCOPE_API_KEY", "")), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "qwen_image"
+                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "qwen-image-2.0-pro")
+                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                configured.append("image_generation_api:qwen_image")
+            else:
+                skipped.append("image_generation_api")
+        elif choice in {"6", "other", "custom"}:
+            skipped.append("image_generation_api:other_custom_server")
+            print("Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
         elif choice in {"0", "skip"}:
             skipped.append("image_generation_api")
         else:
@@ -1310,80 +1360,108 @@ def _config(args: argparse.Namespace) -> int:
 
     if args.config_command == "set-web-search-api-key":
         provider = str(getattr(args, "provider", "serpapi") or "serpapi").strip().lower()
-        if provider != "serpapi":
+        provider_aliases = {
+            "serpapi": ("serpapi", "SERPAPI_API_KEY", "SerpAPI API key"),
+            "tavily": ("tavily", "TAVILY_API_KEY", "Tavily API key"),
+            "brave": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
+            "brave_search": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
+        }
+        if provider not in provider_aliases:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_web_search_provider",
-                "supported_providers": ["serpapi"],
+                "supported_providers": ["serpapi", "tavily", "brave"],
             }, ensure_ascii=False, indent=2))
             return 1
+        canonical_provider, env_key, prompt = provider_aliases[provider]
         api_key = str(getattr(args, "value", "") or "")
         if not api_key:
             import getpass
 
-            api_key = getpass.getpass("SerpAPI API key: ").strip()
+            api_key = getpass.getpass(f"{prompt}: ").strip()
         if not api_key:
             print(json.dumps({
                 "status": "error",
-                "error": "missing_serpapi_api_key",
+                "error": f"missing_{canonical_provider}_api_key",
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
         values = _read_env_exports(env_file)
         values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-        values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = "serpapi"
+        values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = canonical_provider
         values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
         values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
-        values["SERPAPI_API_KEY"] = api_key
+        values[env_key] = api_key
         _write_env_exports(env_file, values)
-        print(json.dumps({
+        output = {
             "status": "ok",
             "env_file": str(env_file),
-            "web_search_provider": "serpapi",
-            "serpapi_api_key_configured": True,
-            "serpapi_api_key_preview": _mask_api_key(api_key),
-        }, ensure_ascii=False, indent=2))
+            "web_search_provider": canonical_provider,
+            "web_search_api_key_configured": True,
+            "web_search_api_key_preview": _mask_api_key(api_key),
+        }
+        if canonical_provider == "serpapi":
+            output["serpapi_api_key_configured"] = True
+            output["serpapi_api_key_preview"] = _mask_api_key(api_key)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
     if args.config_command == "set-image-api-key":
         provider = str(getattr(args, "provider", "glm") or "glm").strip().lower()
-        if provider != "glm":
+        provider_aliases = {
+            "glm": ("glm", "cogView-4-250304", "GLM image API key"),
+            "zai": ("zai", "cogView-4-250304", "Z.ai image API key"),
+            "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI image API key"),
+            "zhipuai": ("zhipuai", "cogView-4-250304", "ZhipuAI image API key"),
+            "bigmodel": ("bigmodel", "cogView-4-250304", "BigModel image API key"),
+            "qwen": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen_image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+        }
+        if provider not in provider_aliases:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_image_provider",
-                "supported_providers": ["glm"],
+                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope"],
             }, ensure_ascii=False, indent=2))
             return 1
+        canonical_provider, default_model, prompt = provider_aliases[provider]
         api_key = str(getattr(args, "value", "") or "")
         if not api_key:
             import getpass
 
-            api_key = getpass.getpass("GLM image API key: ").strip()
+            api_key = getpass.getpass(f"{prompt}: ").strip()
         if not api_key:
             print(json.dumps({
                 "status": "error",
-                "error": "missing_glm_image_api_key",
+                "error": f"missing_{canonical_provider}_image_api_key",
                 "env_file": str(env_file),
             }, ensure_ascii=False, indent=2))
             return 1
         values = _read_env_exports(env_file)
         values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-        values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "glm"
-        values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "cogView-4-250304")
+        values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical_provider
+        values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", default_model)
         values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
         values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
         values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
         values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = api_key
         _write_env_exports(env_file, values)
-        print(json.dumps({
+        output = {
             "status": "ok",
             "env_file": str(env_file),
-            "image_provider": "glm",
+            "image_provider": canonical_provider,
             "image_model": values["DEEPSEEK_PROXY_IMAGE_MODEL"],
             "image_api_key_configured": True,
             "image_api_key_preview": _mask_api_key(api_key),
-        }, ensure_ascii=False, indent=2))
+        }
+        if canonical_provider == "glm":
+            output["glm_image_api_key_configured"] = True
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
+
 
     if args.config_command == "set-model":
         allowed = {"deepseek-v4-pro", "deepseek-v4-flash"}
@@ -2254,15 +2332,15 @@ def build_parser() -> argparse.ArgumentParser:
     config_test_api_key.set_defaults(func=_config)
 
 
-    config_set_web_search_api_key = config_sub.add_parser("set-web-search-api-key", help="store web search API key; currently supports provider=serpapi")
+    config_set_web_search_api_key = config_sub.add_parser("set-web-search-api-key", help="store web search API key")
     config_set_web_search_api_key.add_argument("--env-file")
-    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi"])
+    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "brave", "brave_search"])
     config_set_web_search_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_web_search_api_key.set_defaults(func=_config)
 
-    config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key; currently supports provider=glm")
+    config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
-    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm"])
+    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun"])
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_image_api_key.set_defaults(func=_config)
 

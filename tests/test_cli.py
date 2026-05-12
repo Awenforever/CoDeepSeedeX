@@ -1387,3 +1387,70 @@ def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys):
     assert data["configuration_status"]["missing"]["web_search_api"] is True
     assert data["configuration_status"]["missing"]["image_generation_api"] is True
     assert data["configuration_status"]["commands"]["guided"] == "dsproxy config wizard"
+
+def test_cli_config_set_tavily_web_search_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "tavily",
+        "--value",
+        "tvly-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["web_search_provider"] == "tavily"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=tavily" in text
+    assert "TAVILY_API_KEY=tvly-test-key" in text
+    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+
+
+def test_cli_config_set_brave_web_search_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "brave",
+        "--value",
+        "brave-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["web_search_provider"] == "brave"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=brave" in text
+    assert "BRAVE_SEARCH_API_KEY=brave-test-key" in text
+
+
+def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "qwen_image",
+        "--value",
+        "dashscope-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["image_provider"] == "qwen_image"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image" in text
+    assert "DEEPSEEK_PROXY_IMAGE_MODEL=qwen-image-2.0-pro" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=dashscope-test-key" in text
