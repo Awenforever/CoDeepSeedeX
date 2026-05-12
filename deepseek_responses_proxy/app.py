@@ -6838,10 +6838,33 @@ def _dashscope_api_key() -> str:
     )
 
 
+def _stability_api_key() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("STABILITY_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_STABILITY_API_KEY")
+        or ""
+    )
+
+
+def _fal_api_key() -> str:
+    return (
+        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("FAL_KEY")
+        or os.environ.get("FAL_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_FAL_API_KEY")
+        or ""
+    )
+
+
 def _image_api_key_for_provider(provider: str | None = None) -> str:
     selected = (provider or _image_provider()).strip().lower()
     if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
         return _dashscope_api_key()
+    if selected in {"stability", "stability_ai", "stable_image"}:
+        return _stability_api_key()
+    if selected in {"fal", "fal_ai", "fal.ai"}:
+        return _fal_api_key()
     return _image_api_key()
 
 
@@ -6852,6 +6875,18 @@ def _image_model() -> str:
             os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
             or os.environ.get("DASHSCOPE_IMAGE_MODEL")
             or "qwen-image-2.0-pro"
+        )
+    if provider in {"stability", "stability_ai", "stable_image"}:
+        return (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            or os.environ.get("STABILITY_IMAGE_MODEL")
+            or "stable-image-core"
+        )
+    if provider in {"fal", "fal_ai", "fal.ai"}:
+        return (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            or os.environ.get("FAL_IMAGE_MODEL")
+            or "fal-ai/flux/schnell"
         )
     return (
         os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
@@ -7224,6 +7259,179 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
     }
 
 
+def _image_data_url_from_base64(value: str, *, mime_type: str = "image/png") -> str:
+    return f"data:{mime_type};base64,{value}"
+
+
+async def _stability_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    provider = _image_provider()
+    api_key = _image_api_key_for_provider(provider)
+    prompt = str(arguments.get("prompt") or "").strip()
+    size = _image_size(arguments.get("size"))
+    n = _image_n(arguments.get("n"))
+
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "missing_api_key",
+            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, STABILITY_API_KEY, or DEEPSEEK_PROXY_STABILITY_API_KEY.",
+            "images": [],
+        }
+
+    files = {
+        "prompt": (None, prompt),
+        "output_format": (None, os.environ.get("DEEPSEEK_PROXY_STABILITY_OUTPUT_FORMAT", "png")),
+    }
+    aspect_ratio = os.environ.get("DEEPSEEK_PROXY_STABILITY_ASPECT_RATIO")
+    if aspect_ratio:
+        files["aspect_ratio"] = (None, aspect_ratio)
+
+    endpoint = os.environ.get(
+        "DEEPSEEK_PROXY_STABILITY_IMAGE_URL",
+        "https://api.stability.ai/v2beta/stable-image/generate/core",
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Accept": "application/json",
+                },
+                files=files,
+            )
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if "application/json" in content_type.lower():
+                data = response.json()
+            else:
+                data = {"binary": response.content}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "image_generation_failed",
+            "message": str(exc),
+            "images": [],
+        }
+
+    raw_images: list[dict[str, Any]] = []
+    if isinstance(data, dict):
+        if data.get("image"):
+            raw_images.append({"base64": data.get("image"), "mime_type": "image/png"})
+        for item in data.get("artifacts") or data.get("images") or []:
+            if isinstance(item, dict):
+                raw_images.append(item)
+
+    images: list[dict[str, Any]] = []
+    for item in raw_images[:n]:
+        mime_type = item.get("mime_type") or item.get("content_type") or "image/png"
+        url = item.get("url") or item.get("image_url")
+        base64_value = item.get("base64") or item.get("b64_json") or item.get("base64_json")
+        image: dict[str, Any] = {
+            "url": url if isinstance(url, str) and url.startswith("http") else None,
+            "mime_type": mime_type,
+            "raw": item,
+        }
+        if base64_value:
+            image["url"] = _image_data_url_from_base64(str(base64_value), mime_type=mime_type)
+        images.append(image)
+
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": _image_model(),
+        "prompt": prompt,
+        "size": size,
+        "images": images,
+    }
+
+
+async def _fal_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
+    provider = _image_provider()
+    api_key = _image_api_key_for_provider(provider)
+    prompt = str(arguments.get("prompt") or "").strip()
+    size = _image_size(arguments.get("size"))
+    n = _image_n(arguments.get("n"))
+    model = _image_model()
+
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": model,
+            "prompt": prompt,
+            "error": "missing_api_key",
+            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, FAL_KEY, FAL_API_KEY, or DEEPSEEK_PROXY_FAL_API_KEY.",
+            "images": [],
+        }
+
+    body: dict[str, Any] = {
+        "prompt": prompt,
+        "num_images": n,
+    }
+    if size:
+        body["image_size"] = size
+
+    endpoint = os.environ.get("DEEPSEEK_PROXY_FAL_IMAGE_URL") or f"https://fal.run/{model}"
+
+    try:
+        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Key {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": model,
+            "prompt": prompt,
+            "error": "image_generation_failed",
+            "message": str(exc),
+            "images": [],
+        }
+
+    raw_images = data.get("images") or data.get("data", {}).get("images") or []
+    images: list[dict[str, Any]] = []
+    for item in raw_images[:n]:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("image_url")
+        file_path = None
+        if url and isinstance(url, str) and url.startswith("http") and _image_download_enabled():
+            file_path = await _download_image_url(url, provider=provider)
+        images.append(
+            {
+                "url": url if isinstance(url, str) and url.startswith("http") else None,
+                **_image_artifact_fields(file_path),
+                "mime_type": item.get("content_type") or item.get("mime_type") or "image/png",
+                "raw": item,
+            }
+        )
+
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": model,
+        "prompt": prompt,
+        "size": size,
+        "images": images,
+    }
+
+
 async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     prompt = str(arguments.get("prompt") or "").strip()
     if not prompt:
@@ -7259,13 +7467,19 @@ async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
         return await _dashscope_qwen_image_generate(arguments)
 
+    if provider in {"stability", "stability_ai", "stable_image"}:
+        return await _stability_image_generate(arguments)
+
+    if provider in {"fal", "fal_ai", "fal.ai"}:
+        return await _fal_image_generate(arguments)
+
     return {
         "ok": False,
         "provider": provider,
         "model": _image_model(),
         "prompt": prompt,
         "error": "unsupported_image_provider",
-        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, dashscope, disabled.",
+        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, dashscope, stability, fal, disabled.",
         "images": [],
     }
 
@@ -7362,6 +7576,22 @@ def _brave_search_api_key() -> str:
     )
 
 
+def _exa_api_key() -> str:
+    return (
+        os.environ.get("EXA_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_EXA_API_KEY")
+        or ""
+    )
+
+
+def _firecrawl_api_key() -> str:
+    return (
+        os.environ.get("FIRECRAWL_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_FIRECRAWL_API_KEY")
+        or ""
+    )
+
+
 def _web_search_api_key_for_provider(provider: str | None = None) -> str:
     selected = (provider or _web_search_provider()).strip().lower()
     if selected == "serpapi":
@@ -7370,6 +7600,10 @@ def _web_search_api_key_for_provider(provider: str | None = None) -> str:
         return _tavily_api_key()
     if selected == "brave":
         return _brave_search_api_key()
+    if selected == "exa":
+        return _exa_api_key()
+    if selected == "firecrawl":
+        return _firecrawl_api_key()
     return ""
 
 
@@ -7558,6 +7792,136 @@ async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
     }
 
 
+async def _exa_web_search(query: str, max_results: int) -> dict[str, Any]:
+    api_key = _exa_api_key()
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": "exa",
+            "query": query,
+            "error": "missing_api_key",
+            "message": "EXA_API_KEY or DEEPSEEK_PROXY_EXA_API_KEY is required.",
+            "results": [],
+        }
+
+    body: dict[str, Any] = {
+        "query": query,
+        "numResults": max_results,
+    }
+    search_type = os.environ.get("DEEPSEEK_PROXY_EXA_SEARCH_TYPE")
+    if search_type:
+        body["type"] = search_type
+
+    try:
+        async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
+            response = await client.post(
+                os.environ.get("DEEPSEEK_PROXY_EXA_SEARCH_URL", "https://api.exa.ai/search"),
+                headers={
+                    "x-api-key": api_key,
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": "exa",
+            "query": query,
+            "error": "web_search_failed",
+            "message": str(exc),
+            "results": [],
+        }
+
+    raw_results = data.get("results") or []
+    results = []
+    for item in raw_results[:max_results]:
+        if not isinstance(item, dict):
+            continue
+        highlights = item.get("highlights") or []
+        snippet = item.get("text") or item.get("summary") or item.get("snippet") or ""
+        if not snippet and highlights and isinstance(highlights, list):
+            snippet = str(highlights[0])
+        results.append(
+            {
+                "title": item.get("title") or "",
+                "url": item.get("url") or "",
+                "snippet": snippet,
+                "published_at": item.get("publishedDate") or item.get("published_at"),
+            }
+        )
+
+    return {
+        "ok": True,
+        "provider": "exa",
+        "query": query,
+        "results": results,
+    }
+
+
+async def _firecrawl_web_search(query: str, max_results: int) -> dict[str, Any]:
+    api_key = _firecrawl_api_key()
+    if not api_key:
+        return {
+            "ok": False,
+            "provider": "firecrawl",
+            "query": query,
+            "error": "missing_api_key",
+            "message": "FIRECRAWL_API_KEY or DEEPSEEK_PROXY_FIRECRAWL_API_KEY is required.",
+            "results": [],
+        }
+
+    body: dict[str, Any] = {
+        "query": query,
+        "limit": max_results,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
+            response = await client.post(
+                os.environ.get("DEEPSEEK_PROXY_FIRECRAWL_SEARCH_URL", "https://api.firecrawl.dev/v2/search"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": "firecrawl",
+            "query": query,
+            "error": "web_search_failed",
+            "message": str(exc),
+            "results": [],
+        }
+
+    raw_results = data.get("data") or data.get("results") or []
+    results = []
+    for item in raw_results[:max_results]:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        results.append(
+            {
+                "title": item.get("title") or metadata.get("title") or "",
+                "url": item.get("url") or metadata.get("sourceURL") or metadata.get("url") or "",
+                "snippet": item.get("description") or item.get("markdown") or item.get("content") or metadata.get("description") or "",
+                "published_at": item.get("published_at") or metadata.get("publishedTime"),
+            }
+        )
+
+    return {
+        "ok": True,
+        "provider": "firecrawl",
+        "query": query,
+        "results": results,
+    }
+
+
 async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
     max_results = _web_search_max_results(arguments.get("max_results"))
@@ -7596,12 +7960,18 @@ async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
     if provider == "brave":
         return await _brave_web_search(query, max_results)
 
+    if provider == "exa":
+        return await _exa_web_search(query, max_results)
+
+    if provider == "firecrawl":
+        return await _firecrawl_web_search(query, max_results)
+
     return {
         "ok": False,
         "provider": provider,
         "query": query,
         "error": "unsupported_web_search_provider",
-        "message": "Supported providers: mock, serpapi, tavily, brave, disabled.",
+        "message": "Supported providers: mock, serpapi, tavily, brave, exa, firecrawl, disabled.",
         "results": [],
     }
 

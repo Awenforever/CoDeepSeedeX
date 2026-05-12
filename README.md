@@ -129,8 +129,12 @@ CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and r
 | Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
 | Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
 | Web search | Brave Search | `dsproxy config set-web-search-api-key --provider brave` | https://brave.com/search/api/ |
+| Web search | Exa | `dsproxy config set-web-search-api-key --provider exa` | https://exa.ai/ |
+| Web search | Firecrawl | `dsproxy config set-web-search-api-key --provider firecrawl` | https://www.firecrawl.dev/ |
 | Image generation | GLM / CogView | `dsproxy config set-image-api-key --provider glm` | https://www.bigmodel.cn/ |
 | Image generation | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
+| Image generation | Stability AI | `dsproxy config set-image-api-key --provider stability` | https://platform.stability.ai/ |
+| Image generation | fal.ai | `dsproxy config set-image-api-key --provider fal` | https://fal.ai/ |
 
 For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. See `docs/custom_api_handoff.md` for the handoff checklist.
 

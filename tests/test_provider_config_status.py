@@ -320,3 +320,193 @@ async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
     assert result["provider"] == "qwen_image"
     assert result["model"] == "qwen-image-2.0-pro"
     assert result["images"][0]["url"] == "https://example.test/qwen-image.png"
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_exa_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "exa")
+    monkeypatch.setenv("EXA_API_KEY", "exa-test-key")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "title": "Exa result",
+                        "url": "https://example.test/exa",
+                        "text": "Exa snippet",
+                        "publishedDate": "2026-05-12",
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://api.exa.ai/search"
+            assert headers["x-api-key"] == "exa-test-key"
+            assert json["query"] == "provider test"
+            assert json["numResults"] == 1
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_web_search({"query": "provider test", "max_results": 1})
+    assert result["ok"] is True
+    assert result["provider"] == "exa"
+    assert result["results"][0]["snippet"] == "Exa snippet"
+
+
+@pytest.mark.asyncio
+async def test_proxy_web_search_firecrawl_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "firecrawl")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-test-key")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": [
+                    {
+                        "title": "Firecrawl result",
+                        "url": "https://example.test/firecrawl",
+                        "description": "Firecrawl snippet",
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://api.firecrawl.dev/v2/search"
+            assert headers["Authorization"] == "Bearer firecrawl-test-key"
+            assert json["query"] == "provider test"
+            assert json["limit"] == 1
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_web_search({"query": "provider test", "max_results": 1})
+    assert result["ok"] is True
+    assert result["provider"] == "firecrawl"
+    assert result["results"][0]["snippet"] == "Firecrawl snippet"
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generation_stability_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "stability")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "stability-test-key")
+
+    class FakeResponse:
+        headers = {"content-type": "application/json"}
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"image": "ZmFrZS1pbWFnZQ=="}
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, files=None):
+            assert url == "https://api.stability.ai/v2beta/stable-image/generate/core"
+            assert headers["Authorization"] == "Bearer stability-test-key"
+            assert files["prompt"][1] == "draw a stability image"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_image_generate({"prompt": "draw a stability image"})
+    assert result["ok"] is True
+    assert result["provider"] == "stability"
+    assert result["model"] == "stable-image-core"
+    assert result["images"][0]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generation_fal_provider(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "fal")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "fal-test-key")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "images": [
+                    {
+                        "url": "https://example.test/fal-image.png",
+                        "content_type": "image/png",
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://fal.run/fal-ai/flux/schnell"
+            assert headers["Authorization"] == "Key fal-test-key"
+            assert json["prompt"] == "draw a fal image"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_image_generate({"prompt": "draw a fal image"})
+    assert result["ok"] is True
+    assert result["provider"] == "fal"
+    assert result["model"] == "fal-ai/flux/schnell"
+    assert result["images"][0]["url"] == "https://example.test/fal-image.png"

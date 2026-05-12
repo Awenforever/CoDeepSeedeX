@@ -93,3 +93,12 @@ def test_custom_api_handoff_doc_exists() -> None:
     assert "Image generation tool bridge" in text
     assert "deepseek_responses_proxy/app.py" in text
     assert "Do not create public Release tags unless the user explicitly asks." in text
+
+def test_installer_guided_api_provider_catalogs_include_second_wave_providers() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Exa" in text
+    assert "Firecrawl" in text
+    assert "Stability AI" in text
+    assert "fal.ai" in text
+    assert "serpapi|tavily|brave|exa|firecrawl" in text
+    assert "glm|qwen_image|stability|fal" in text

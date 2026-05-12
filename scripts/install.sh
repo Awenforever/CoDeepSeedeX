@@ -370,7 +370,7 @@ prompt_serpapi_api_key() {
   PROMPTED_WEB_SEARCH_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${BRAVE_SEARCH_API_KEY:-}}}"
+    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${BRAVE_SEARCH_API_KEY:-${EXA_API_KEY:-${FIRECRAWL_API_KEY:-}}}}}"
     PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
     return 0
   fi
@@ -381,7 +381,7 @@ prompt_serpapi_api_key() {
     y|Y|yes|YES|Yes)
       ;;
     *)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|tavily|brave"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl|exa|firecrawl"
       return 0
       ;;
   esac
@@ -390,9 +390,11 @@ prompt_serpapi_api_key() {
   provider_option_line "1" "SerpAPI" "supported"
   provider_option_line "2" "Tavily" "supported"
   provider_option_line "3" "Brave Search" "supported"
-  provider_option_line "4" "Bing Web Search" "unsupported"
-  provider_option_line "5" "Google Programmable Search" "unsupported"
-  provider_option_line "6" "Other custom server" "unsupported"
+  provider_option_line "4" "Exa" "supported"
+  provider_option_line "5" "Firecrawl" "supported"
+  provider_option_line "6" "Bing Web Search" "unsupported"
+  provider_option_line "7" "Google Programmable Search" "unsupported"
+  provider_option_line "8" "Other custom server" "unsupported"
   printf '%s
 ' "  0. Skip"
 
@@ -412,12 +414,20 @@ prompt_serpapi_api_key() {
       PROMPTED_WEB_SEARCH_PROVIDER="brave"
       prompt="Brave Search API key"
       ;;
-    6|other|Other|OTHER|custom|Custom)
+    4|exa|Exa|EXA)
+      PROMPTED_WEB_SEARCH_PROVIDER="exa"
+      prompt="Exa API key"
+      ;;
+    5|firecrawl|Firecrawl|FIRECRAWL)
+      PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"
+      prompt="Firecrawl API key"
+      ;;
+    8|other|Other|OTHER|custom|Custom)
       warn "Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|tavily|brave"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl|exa|firecrawl"
       return 0
       ;;
     *)
@@ -439,7 +449,7 @@ prompt_image_generation_api_key() {
   PROMPTED_IMAGE_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-}}"
+    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
     PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"
     return 0
   fi
@@ -450,7 +460,7 @@ prompt_image_generation_api_key() {
     y|Y|yes|YES|Yes)
       ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|qwen_image"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal|stability|fal"
       return 0
       ;;
   esac
@@ -458,10 +468,12 @@ prompt_image_generation_api_key() {
   sub_title "Image generation providers"
   provider_option_line "1" "GLM / CogView" "supported"
   provider_option_line "2" "Qwen Image / DashScope" "supported"
-  provider_option_line "3" "Kolors" "unsupported"
-  provider_option_line "4" "Hunyuan Image" "unsupported"
-  provider_option_line "5" "Volcengine Ark" "unsupported"
-  provider_option_line "6" "Other custom server" "unsupported"
+  provider_option_line "3" "Stability AI" "supported"
+  provider_option_line "4" "fal.ai" "supported"
+  provider_option_line "5" "Kolors" "unsupported"
+  provider_option_line "6" "Hunyuan Image" "unsupported"
+  provider_option_line "7" "Volcengine Ark" "unsupported"
+  provider_option_line "8" "Other custom server" "unsupported"
   printf '%s
 ' "  0. Skip"
 
@@ -477,12 +489,20 @@ prompt_image_generation_api_key() {
       PROMPTED_IMAGE_PROVIDER="qwen_image"
       prompt="DashScope API key"
       ;;
-    6|other|Other|OTHER|custom|Custom)
+    3|stability|Stability|stability_ai|stable_image)
+      PROMPTED_IMAGE_PROVIDER="stability"
+      prompt="Stability AI API key"
+      ;;
+    4|fal|Fal|FAL|fal_ai|fal.ai)
+      PROMPTED_IMAGE_PROVIDER="fal"
+      prompt="fal.ai API key"
+      ;;
+    8|other|Other|OTHER|custom|Custom)
       warn "Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|qwen_image"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal|stability|fal"
       return 0
       ;;
     *)
@@ -700,6 +720,14 @@ write_env_file() {
           printf 'export BRAVE_SEARCH_API_KEY=%q
 ' "$final_web_search_key"
           ;;
+        exa)
+          printf 'export EXA_API_KEY=%q
+' "$final_web_search_key"
+          ;;
+        firecrawl)
+          printf 'export FIRECRAWL_API_KEY=%q
+' "$final_web_search_key"
+          ;;
         *)
           printf 'export SERPAPI_API_KEY=%q
 ' "$final_web_search_key"
@@ -714,6 +742,12 @@ write_env_file() {
       if [ "$final_image_provider" = "qwen_image" ]; then
         printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
 ' "qwen-image-2.0-pro"
+      elif [ "$final_image_provider" = "stability" ]; then
+        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+' "stable-image-core"
+      elif [ "$final_image_provider" = "fal" ]; then
+        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+' "fal-ai/flux/schnell"
       else
         printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
 ' "cogView-4-250304"
@@ -1138,8 +1172,8 @@ printf '%s\n' "  dsproxy config show"
 printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config test-api-key"
-printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|brave"
-printf '%s\n' "  dsproxy config set-image-api-key --provider glm|qwen_image"
+printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
+printf '%s\n' "  dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"
 

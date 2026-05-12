@@ -1454,3 +1454,92 @@ def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=qwen-image-2.0-pro" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=dashscope-test-key" in text
+
+def test_cli_config_set_exa_web_search_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "exa",
+        "--value",
+        "exa-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["web_search_provider"] == "exa"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=exa" in text
+    assert "EXA_API_KEY=exa-test-key" in text
+
+
+def test_cli_config_set_firecrawl_web_search_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-web-search-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "firecrawl",
+        "--value",
+        "firecrawl-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["web_search_provider"] == "firecrawl"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=firecrawl" in text
+    assert "FIRECRAWL_API_KEY=firecrawl-test-key" in text
+
+
+def test_cli_config_set_stability_image_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "stability",
+        "--value",
+        "stability-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["image_provider"] == "stability"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=stability" in text
+    assert "DEEPSEEK_PROXY_IMAGE_MODEL=stable-image-core" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=stability-test-key" in text
+
+
+def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "fal",
+        "--value",
+        "fal-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["image_provider"] == "fal"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=fal" in text
+    assert "DEEPSEEK_PROXY_IMAGE_MODEL=fal-ai/flux/schnell" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=fal-test-key" in text

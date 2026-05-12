@@ -1051,6 +1051,10 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "BRAVE_SEARCH_API_KEY",
         "BRAVE_API_KEY",
         "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY",
+        "EXA_API_KEY",
+        "DEEPSEEK_PROXY_EXA_API_KEY",
+        "FIRECRAWL_API_KEY",
+        "DEEPSEEK_PROXY_FIRECRAWL_API_KEY",
     ]
     image_keys = [
         "DEEPSEEK_PROXY_IMAGE_API_KEY",
@@ -1061,6 +1065,11 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "DEEPSEEK_PROXY_DASHSCOPE_API_KEY",
         "DASHSCOPE_API_KEY",
         "ALIBABA_DASHSCOPE_API_KEY",
+        "STABILITY_API_KEY",
+        "DEEPSEEK_PROXY_STABILITY_API_KEY",
+        "FAL_KEY",
+        "FAL_API_KEY",
+        "DEEPSEEK_PROXY_FAL_API_KEY",
     ]
     missing = {
         "model_api": not bool(values.get("DEEPSEEK_API_KEY")),
@@ -1074,13 +1083,13 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "commands": {
             "guided": "dsproxy config wizard",
             "model_api": "dsproxy config set-api-key",
-            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave",
-            "image_generation_api": "dsproxy config set-image-api-key --provider glm|qwen_image",
+            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl",
+            "image_generation_api": "dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal",
         },
         "supported": {
             "model_api": ["deepseek"],
-            "web_search_api": ["serpapi", "tavily", "brave"],
-            "image_generation_api": ["glm", "zai", "qwen_image", "dashscope"],
+            "web_search_api": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
+            "image_generation_api": ["glm", "zai", "qwen_image", "dashscope", "stability", "fal"],
         },
         "unsupported_catalog": {
             "model_api": ["kimi", "mimo", "glm", "qwen", "baichuan"],
@@ -1183,9 +1192,11 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 ("1", "SerpAPI", True),
                 ("2", "Tavily", True),
                 ("3", "Brave Search", True),
-                ("4", "Bing Web Search", False),
-                ("5", "Google Programmable Search", False),
-                ("6", "Other custom server", False),
+                ("4", "Exa", True),
+                ("5", "Firecrawl", True),
+                ("6", "Bing Web Search", False),
+                ("7", "Google Programmable Search", False),
+                ("8", "Other custom server", False),
             ],
         )
         choice = _wizard_read_line("Select web search provider", "1", non_interactive=non_interactive).strip().lower()
@@ -1197,6 +1208,10 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "3": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
             "brave": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
             "brave_search": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
+            "4": ("exa", "Exa API key", "EXA_API_KEY"),
+            "exa": ("exa", "Exa API key", "EXA_API_KEY"),
+            "5": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
+            "firecrawl": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
         }
         if choice in web_provider_map:
             provider, prompt, env_key = web_provider_map[choice]
@@ -1210,7 +1225,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 configured.append(f"web_search_api:{provider}")
             else:
                 skipped.append("web_search_api")
-        elif choice in {"6", "other", "custom"}:
+        elif choice in {"8", "other", "custom"}:
             skipped.append("web_search_api:other_custom_server")
             print("Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
         elif choice in {"0", "skip"}:
@@ -1227,10 +1242,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             [
                 ("1", "GLM / CogView", True),
                 ("2", "Qwen Image / DashScope", True),
-                ("3", "Kolors", False),
-                ("4", "Hunyuan Image", False),
-                ("5", "Volcengine Ark", False),
-                ("6", "Other custom server", False),
+                ("3", "Stability AI", True),
+                ("4", "fal.ai", True),
+                ("5", "Kolors", False),
+                ("6", "Hunyuan Image", False),
+                ("7", "Volcengine Ark", False),
+                ("8", "Other custom server", False),
             ],
         )
         choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
@@ -1260,9 +1277,35 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 configured.append("image_generation_api:qwen_image")
             else:
                 skipped.append("image_generation_api")
-        elif choice in {"6", "other", "custom"}:
+        elif choice in {"8", "other", "custom"}:
             skipped.append("image_generation_api:other_custom_server")
             print("Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
+        elif choice in {"3", "stability", "stability_ai", "stable_image"}:
+            key = _wizard_read_secret("Stability AI API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("STABILITY_API_KEY", "")), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "stability"
+                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "stable-image-core")
+                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                configured.append("image_generation_api:stability")
+            else:
+                skipped.append("image_generation_api")
+        elif choice in {"4", "fal", "fal_ai", "fal.ai"}:
+            key = _wizard_read_secret("fal.ai API key", values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", values.get("FAL_KEY", "")), non_interactive=non_interactive)
+            if key:
+                values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = "fal"
+                values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", "fal-ai/flux/schnell")
+                values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
+                values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+                values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                configured.append("image_generation_api:fal")
+            else:
+                skipped.append("image_generation_api")
         elif choice in {"0", "skip"}:
             skipped.append("image_generation_api")
         else:
@@ -1365,12 +1408,14 @@ def _config(args: argparse.Namespace) -> int:
             "tavily": ("tavily", "TAVILY_API_KEY", "Tavily API key"),
             "brave": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
             "brave_search": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
+            "exa": ("exa", "EXA_API_KEY", "Exa API key"),
+            "firecrawl": ("firecrawl", "FIRECRAWL_API_KEY", "Firecrawl API key"),
         }
         if provider not in provider_aliases:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_web_search_provider",
-                "supported_providers": ["serpapi", "tavily", "brave"],
+                "supported_providers": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
             }, ensure_ascii=False, indent=2))
             return 1
         canonical_provider, env_key, prompt = provider_aliases[provider]
@@ -1419,12 +1464,18 @@ def _config(args: argparse.Namespace) -> int:
             "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "stability": ("stability", "stable-image-core", "Stability AI API key"),
+            "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
+            "stable_image": ("stability", "stable-image-core", "Stability AI API key"),
+            "fal": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "fal_ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "fal.ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
         }
         if provider not in provider_aliases:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_image_provider",
-                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope"],
+                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope", "stability", "fal"],
             }, ensure_ascii=False, indent=2))
             return 1
         canonical_provider, default_model, prompt = provider_aliases[provider]
@@ -2334,13 +2385,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_web_search_api_key = config_sub.add_parser("set-web-search-api-key", help="store web search API key")
     config_set_web_search_api_key.add_argument("--env-file")
-    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "brave", "brave_search"])
+    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "brave", "brave_search", "exa", "firecrawl"])
     config_set_web_search_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_web_search_api_key.set_defaults(func=_config)
 
     config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
-    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun"])
+    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_image_api_key.set_defaults(func=_config)
 
