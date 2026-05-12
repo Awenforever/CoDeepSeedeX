@@ -100,3 +100,83 @@ Next development guidance:
 - Push a work branch and its matching internal tag together only when remote publication is intended.
 - Keep public Release tag work separate from normal internal development.
 <!-- CODEEPSEEDEX_CURRENT_HANDOFF_END -->
+
+<!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_START -->
+
+## p2.9a4 developer handoff sync
+
+This section supersedes older p2.8-era handoff state when describing the current local developer checkout.
+
+Current repository state:
+
+- Project path: `~/projects/deepseek-responses-proxy`
+- Main branch: `master`
+- Remote main branch: `origin/master`
+- Current `master` and `origin/master`: `b3700a3`
+- Current internal development tag: `p2.9a3-version-metadata-dev-handbook`
+- Current internal development tag target: `b3700a3`
+- Current public Release tag: `v0.3.5-alpha`
+- Current public Release tag target: `53897ad`
+- Plain public tag `v0.3.5` must not exist and must not be created.
+- `dsproxy --version` must print both public and internal version lines.
+- Current public version line: `public version: v0.3.5-alpha | 53897ad`
+- Current internal version line: `internal version: p2.9a3-version-metadata-dev-handbook | b3700a3`
+
+### Local developer runtime rule
+
+The developer machine must run `dsproxy` from the current checkout on `master`, not from an older installed GitHub Latest Release runtime.
+
+The expected developer entrypoint is:
+
+```bash
+~/.local/bin/dsproxy
+```
+
+It should enter:
+
+```bash
+~/projects/deepseek-responses-proxy
+```
+
+and execute:
+
+```bash
+.venv/bin/python -m deepseek_responses_proxy.cli
+```
+
+After switching, pulling, or fast-forwarding `master`, restart both proxy services if they are running:
+
+```bash
+dsproxy stop thinking
+dsproxy stop
+dsproxy start
+dsproxy start thinking
+```
+
+Validation commands:
+
+```bash
+dsproxy --version
+curl -sS http://127.0.0.1:8000/healthz
+curl -sS http://127.0.0.1:8001/healthz
+```
+
+The `/healthz` version must match the current public version. If `dsproxy --version` reports the current p2.9a3 metadata but `/healthz` still reports an old version such as `v0.3.2`, the running uvicorn proxy is stale and must be restarted.
+
+### Debug trace recording note
+
+When recording Codex-visible behavior, summarize the debug directory inherited by the running proxy process. A new empty debug directory can produce a misleading `debug_file_count=0` if the existing proxy process is still writing to an older `DEEPSEEK_PROXY_DEBUG_DIR`.
+
+Always confirm:
+
+- the uvicorn proxy process environment
+- `DEEPSEEK_PROXY_DEBUG_TRACE`
+- `DEEPSEEK_PROXY_DEBUG_DIR`
+- `trace-*.jsonl` files
+- `latest.json`
+
+### Release and tag boundary
+
+Internal `p*` tags may be created for development milestones, but they must not create GitHub Releases. Public Release tags continue to use the `v0.3.x-alpha` form and may only be created, deleted, rebuilt, or moved when the user explicitly requests a public Release operation.
+
+<!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_END -->

@@ -199,3 +199,77 @@ dsproxy --version
 - 禁止内部p~tag创建GitHubRelease。
 - 禁止将公开Release tag与内部开发tag混用。
 - 禁止未确认就移动、删除或重建公开Release tag。
+
+<!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_START -->
+
+## p2.9a4开发交接状态同步
+
+本节以p2.9a4为准，覆盖较早p2.8交接信息中关于当前开发状态的描述。
+
+- 当前项目路径：`~/projects/deepseek-responses-proxy`
+- 当前主分支：`master`
+- 当前远端主分支：`origin/master`
+- 当前master和origin/master：`b3700a3`
+- 当前内部开发tag：`p2.9a3-version-metadata-dev-handbook`
+- 当前内部开发tag目标：`b3700a3`
+- 当前公开Release tag：`v0.3.5-alpha`
+- 当前公开Release tag目标：`53897ad`
+- 不存在也不得创建普通公开tag：`v0.3.5`
+- `dsproxy --version`必须同时输出public version和internal version。
+- 当前public version为：`v0.3.5-alpha | 53897ad`
+- 当前internal version为：`p2.9a3-version-metadata-dev-handbook | b3700a3`
+
+### 开发机运行时要求
+
+开发机必须始终使用当前checkout master作为`dsproxy`入口，而不是GitHub Latest Release安装目录中的旧运行时。推荐入口为：
+
+```bash
+~/.local/bin/dsproxy
+```
+
+该入口应进入：
+
+```bash
+~/projects/deepseek-responses-proxy
+```
+
+并执行：
+
+```bash
+.venv/bin/python -m deepseek_responses_proxy.cli
+```
+
+每次切换、拉取或合并master后，若正在运行proxy服务，必须重启stable和thinking实例：
+
+```bash
+dsproxy stop thinking
+dsproxy stop
+dsproxy start
+dsproxy start thinking
+```
+
+验证标准：
+
+```bash
+dsproxy --version
+curl -sS http://127.0.0.1:8000/healthz
+curl -sS http://127.0.0.1:8001/healthz
+```
+
+`/healthz`中的`version`必须与当前public version一致。若`dsproxy --version`显示p2.9a3，而`/healthz`仍显示旧版本，例如`v0.3.2`，说明运行中的uvicorn proxy仍是旧进程，必须重启。
+
+### debug trace录制注意事项
+
+Codex录制时，summary必须读取正在运行的proxy实际继承的`DEEPSEEK_PROXY_DEBUG_DIR`。如果summary读取的是新建空目录，而proxy进程仍写入旧目录，会出现`debug_file_count=0`的假象。判断trace是否落盘时，应同时检查：
+
+- `ps`中uvicorn proxy进程的环境变量
+- `DEEPSEEK_PROXY_DEBUG_TRACE`
+- `DEEPSEEK_PROXY_DEBUG_DIR`
+- 目标目录下的`trace-*.jsonl`
+- `latest.json`
+
+### Release和tag边界
+
+内部p tag可以随开发节点创建和推送，但不得创建GitHub Release。公开Release tag仍使用`v0.3.x-alpha`格式，并且只能在用户明确指定发布时创建、删除、重建或移动。
+
+<!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_END -->
