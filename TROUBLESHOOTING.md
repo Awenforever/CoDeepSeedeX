@@ -200,6 +200,10 @@ dsproxy doctor providers --kind image --provider zhipu --live --allow-spend
 
 `dsproxy doctor providers` without `--live` only checks whether keys are configured. `--live --allow-spend` sends real provider requests. Web search probes may consume search quota, and image probes create a real test image and may consume credits.
 
+Codex wrapper starts but app-server or TUI exits immediately:
+
+If `codex --profile deepseek-thinking app-server --help` returns `1` with no output while the real Codex binary works, check whether the installed Codex wrapper is calling an old internal `.venv/bin/dsproxy`. Current wrappers should prefer the public sibling `dsproxy` entrypoint and should tolerate `dsproxy start` returning non-zero when a matching proxy is already running. Re-run the installer or upgrade to refresh the wrapper.
+
 ## Usage summary is empty
 
 Usage records are written only after successful proxy requests with usage fields returned by DeepSeek.

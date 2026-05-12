@@ -1150,7 +1150,10 @@ write_codex_wrapper() {
 set -euo pipefail
 
 REAL_CODEX="$real_codex"
-DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"
+DSPROXY="\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"
+if [ ! -x "\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then
+  DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"
+fi
 ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
 
 if [ -f "\$ENV_FILE" ]; then
@@ -1171,12 +1174,25 @@ for arg in "\$@"; do
   prev="\$arg"
 done
 
+start_dsproxy_profile() {
+  local profile_name="\$1"
+  if [ ! -x "\$DSPROXY" ]; then
+    return 0
+  fi
+
+  case "\$profile_name" in
+    deepseek)
+      "\$DSPROXY" start >/dev/null 2>&1 || "\$DSPROXY" status >/dev/null 2>&1 || true
+      ;;
+    deepseek-thinking)
+      "\$DSPROXY" start thinking >/dev/null 2>&1 || "\$DSPROXY" status thinking >/dev/null 2>&1 || true
+      ;;
+  esac
+}
+
 case "\$profile" in
-  deepseek)
-    "\$DSPROXY" start >/dev/null
-    ;;
-  deepseek-thinking)
-    "\$DSPROXY" start thinking >/dev/null
+  deepseek|deepseek-thinking)
+    start_dsproxy_profile "\$profile"
     ;;
 esac
 

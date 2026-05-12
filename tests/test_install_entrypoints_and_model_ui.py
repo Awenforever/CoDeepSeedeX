@@ -131,6 +131,18 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
     assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"' not in text
 
 
+
+def test_codex_wrapper_prefers_public_dsproxy_and_tolerates_start_drift() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'DSPROXY="\\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"' in text
+    assert 'if [ ! -x "\\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then' in text
+    assert 'DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"' in text
+    assert 'start_dsproxy_profile()' in text
+    assert '"\\$DSPROXY" start >/dev/null 2>&1 || "\\$DSPROXY" status >/dev/null 2>&1 || true' in text
+    assert '"\\$DSPROXY" start thinking >/dev/null 2>&1 || "\\$DSPROXY" status thinking >/dev/null 2>&1 || true' in text
+    assert 'exec "\\$REAL_CODEX" "\\$@"' in text
+
+
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'provider_option_line "1" "DeepSeek" "supported"' in text
