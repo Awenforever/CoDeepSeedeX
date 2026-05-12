@@ -1660,3 +1660,102 @@ def test_cli_config_show_masks_all_api_keys(tmp_path, capsys):
     assert result["values"]["TAVILY_API_KEY"] == "***"
     assert result["values"]["FAL_KEY"] == "***"
     assert result["values"]["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] == "tavily"
+
+
+def test_cli_provider_auth_error_detects_provider_specific_fields():
+    import deepseek_responses_proxy.cli as cli
+
+    assert cli._provider_auth_error_detected({
+        "error": {
+            "code": "1002",
+            "msg": "Invalid Authentication Token, please confirm the correct transmission of the Authentication Token",
+        }
+    })
+
+    assert cli._provider_auth_error_detected({
+        "status_code": 401,
+        "msg": "Unauthorized",
+    })
+
+    assert cli._provider_auth_error_detected({
+        "code": "1210",
+        "message": "Invalid API parameter, please check the documentation.",
+    }) is None
+
+
+def test_cli_validation_matrix_all_supported_providers(monkeypatch):
+    import contextlib
+    import io
+    import json
+    import urllib.error
+
+    import deepseek_responses_proxy.cli as cli
+
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status, body):
+            self.status = status
+            self._body = body
+
+        def read(self):
+            return self._body
+
+    def fake_urlopen(request, timeout=0):
+        calls.append({
+            "url": request.full_url,
+            "method": request.get_method(),
+            "headers": dict(request.headers),
+            "data": request.data,
+            "timeout": timeout,
+        })
+        url = request.full_url
+        if "images/generations" in url or "multimodal-generation/generation" in url:
+            body = json.dumps({"error": {"code": "1210", "message": "Input cannot be empty"}}).encode("utf-8")
+            raise urllib.error.HTTPError(url, 400, "Bad Request", {}, io.BytesIO(body))
+        if "user/balance" in url:
+            return contextlib.nullcontext(FakeResponse(200, b'{"credits": 1}'))
+        if "models" in url:
+            return contextlib.nullcontext(FakeResponse(200, b'{"models": []}'))
+        return contextlib.nullcontext(FakeResponse(200, b'{"results": []}'))
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    for provider in ("serpapi", "tavily", "brave", "exa", "firecrawl"):
+        result = cli._validate_web_search_api_key(provider, "provider-test-key", timeout=2.0)
+        assert result["ok"] is True
+        assert result["may_consume_quota"] is True
+        assert result["validation_method"] == "fixed_query_search"
+
+    for provider in ("glm", "zhipu", "qwen_image", "stability", "fal"):
+        result = cli._validate_image_api_key(provider, "provider-test-key", timeout=2.0)
+        assert result["ok"] is True
+        assert result["may_consume_quota"] is False
+
+    assert any("serpapi.com/search.json" in call["url"] for call in calls)
+    assert any("api.tavily.com/search" in call["url"] for call in calls)
+    assert any("api.search.brave.com/res/v1/web/search" in call["url"] for call in calls)
+    assert any("api.exa.ai/search" in call["url"] for call in calls)
+    assert any("api.firecrawl.dev/v2/search" in call["url"] for call in calls)
+    assert any("api.z.ai/api/paas/v4/images/generations" in call["url"] for call in calls)
+    assert any("open.bigmodel.cn/api/paas/v4/images/generations" in call["url"] for call in calls)
+    assert any("dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation" in call["url"] for call in calls)
+    assert any("api.stability.ai/v1/user/balance" in call["url"] for call in calls)
+    assert any("api.fal.ai/v1/models" in call["url"] for call in calls)
+
+
+def test_cli_non_generation_probe_rejects_empty_400_422_body(monkeypatch):
+    import io
+    import urllib.error
+
+    import deepseek_responses_proxy.cli as cli
+
+    def fake_urlopen(request, timeout=0):
+        raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {}, io.BytesIO(b"{}"))
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    result = cli._validate_image_api_key("glm", "provider-test-key", timeout=2.0)
+    assert result["ok"] is False
+    assert result["error"] == "missing_provider_error_body"
+    assert result["require_provider_error_body"] is True

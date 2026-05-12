@@ -310,7 +310,7 @@ def has_auth_error(raw):
     if not isinstance(data, dict):
         return False
     values = []
-    for key in ("error", "error_message", "message", "detail"):
+    for key in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
             values.append(value)
@@ -321,7 +321,7 @@ def has_auth_error(raw):
                     values.append(nested_value)
     for value in values:
         lowered = value.lower()
-        if any(token in lowered for token in ("invalid", "unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+        if any(token in lowered for token in ("unauthorized", "forbidden", "api key", "api-key", "apikey", "access key", "access token", "token", "authentication", "authorization", "auth", "invalid api key", "invalid apikey", "invalid token", "invalid authentication", "invalid authorization")) or lowered in {"1002", "401", "403"}:
             return True
     if str(data.get("status") or "").strip().lower() in {"error", "failed", "failure"}:
         return True
@@ -370,7 +370,7 @@ test_image_generation_api_key() {
     return 1
   fi
   local result
-  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A1'
+  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3'
 import json
 import sys
 import urllib.error
@@ -380,30 +380,50 @@ import urllib.request
 provider = sys.argv[1].strip().lower()
 api_key = sys.argv[2]
 
-def has_auth_error(raw):
+def collect_values(data):
+    values = []
+
+    def collect(value):
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip())
+        elif isinstance(value, (int, float)):
+            values.append(str(value))
+        elif isinstance(value, dict):
+            for nested in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
+                collect(value.get(nested))
+        elif isinstance(value, list):
+            for item in value[:5]:
+                collect(item)
+
+    if isinstance(data, dict):
+        for key in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
+            collect(data.get(key))
+    return values
+
+def decode(raw):
     try:
         data = json.loads(raw.decode("utf-8"))
     except Exception:
-        return False
-    if not isinstance(data, dict):
-        return False
-    values = []
-    for key in ("error", "error_message", "message", "detail"):
-        value = data.get(key)
-        if isinstance(value, str) and value.strip():
-            values.append(value)
-        elif isinstance(value, dict):
-            for nested in ("message", "detail"):
-                nested_value = value.get(nested)
-                if isinstance(nested_value, str) and nested_value.strip():
-                    values.append(nested_value)
-    for value in values:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+def has_auth_error(raw):
+    data = decode(raw)
+    for value in collect_values(data):
         lowered = value.lower()
-        if any(token in lowered for token in ("unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+        if lowered in {"1002", "401", "403"} or any(token in lowered for token in ("unauthorized", "forbidden", "api key", "api-key", "apikey", "access key", "access token", "token", "authentication", "authorization", "auth", "invalid api key", "invalid apikey", "invalid token", "invalid authentication", "invalid authorization")):
             return True
     return False
 
-def request(method, url, headers=None, payload=None, ok_statuses=(200,)):
+def has_provider_error_body(raw):
+    data = decode(raw)
+    if not data:
+        return False
+    if collect_values(data):
+        return True
+    return str(data.get("status") or "").strip().lower() in {"error", "failed", "failure"}
+
+def request(method, url, headers=None, payload=None, ok_statuses=(200,), require_error_body=False):
     data = None
     request_headers = dict(headers or {})
     if payload is not None:
@@ -414,19 +434,25 @@ def request(method, url, headers=None, payload=None, ok_statuses=(200,)):
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read()
-            return int(resp.status) in ok_statuses and not has_auth_error(raw)
+            ok = int(resp.status) in ok_statuses and not has_auth_error(raw)
+            if ok and require_error_body and not has_provider_error_body(raw):
+                ok = False
+            return ok
     except urllib.error.HTTPError as exc:
         raw = exc.read()
-        return int(exc.code) in ok_statuses and not has_auth_error(raw)
+        ok = int(exc.code) in ok_statuses and not has_auth_error(raw)
+        if ok and require_error_body and not has_provider_error_body(raw):
+            ok = False
+        return ok
     except Exception:
         return False
 
 if provider in {"glm", "zai"}:
-    ok = request("POST", "https://api.z.ai/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+    ok = request("POST", "https://api.z.ai/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
 elif provider in {"zhipu", "zhipuai", "bigmodel"}:
-    ok = request("POST", "https://open.bigmodel.cn/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+    ok = request("POST", "https://open.bigmodel.cn/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
 elif provider in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
-    ok = request("POST", "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422))
+    ok = request("POST", "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
 elif provider in {"stability", "stability_ai", "stable_image"}:
     ok = request("GET", "https://api.stability.ai/v1/user/balance", {"Authorization": "Bearer " + api_key}, None, (200,))
 elif provider in {"fal", "fal_ai", "fal.ai"}:
@@ -435,7 +461,7 @@ elif provider in {"fal", "fal_ai", "fal.ai"}:
 else:
     ok = False
 print("ok" if ok else "bad")
-PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A1
+PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
 )"
   [ "$result" = "ok" ]
 }
@@ -446,11 +472,9 @@ provider_option_line() {
   local name="$2"
   local status="$3"
   if [ "$status" = "supported" ]; then
-    printf '  [1;32m%s[0m %s  [1;32mSupported[0m
-' "$number." "$name"
+    printf '  \033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$number." "$name"
   else
-    printf '  [2m%s %s  Unsupported[0m
-' "$number." "$name"
+    printf '  \033[2m%s %s  Unsupported\033[0m\n' "$number." "$name"
   fi
 }
 

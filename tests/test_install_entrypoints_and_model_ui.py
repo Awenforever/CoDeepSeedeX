@@ -113,3 +113,12 @@ def test_installer_validates_web_and_image_provider_keys_before_saving() -> None
     assert "Web search API key was not saved because validation failed" in text
     assert "Image generation API key was not saved because validation failed" in text
     assert "DeepSeek API key was not saved because validation failed" in text
+
+
+def test_installer_image_validation_requires_error_body_for_non_generation_probes() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3" in text
+    assert "has_provider_error_body" in text
+    assert "(400, 422), True" in text
+    assert "api.stability.ai/v1/user/balance" in text
+    assert "api.fal.ai/v1/models" in text

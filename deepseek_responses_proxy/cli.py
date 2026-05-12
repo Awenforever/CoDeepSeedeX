@@ -999,19 +999,47 @@ def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[s
 def _provider_auth_error_detected(data: Any) -> str | None:
     if not isinstance(data, dict):
         return None
+
     values: list[str] = []
-    for key in ("error", "error_message", "message", "detail"):
-        value = data.get(key)
+
+    def collect(value: Any) -> None:
         if isinstance(value, str) and value.strip():
-            values.append(value)
+            values.append(value.strip())
+        elif isinstance(value, (int, float)):
+            values.append(str(value))
         elif isinstance(value, dict):
-            for nested in ("message", "detail"):
-                nested_value = value.get(nested)
-                if isinstance(nested_value, str) and nested_value.strip():
-                    values.append(nested_value)
+            for nested in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
+                collect(value.get(nested))
+        elif isinstance(value, list):
+            for item in value[:5]:
+                collect(item)
+
+    for key in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
+        collect(data.get(key))
+
+    auth_tokens = (
+        "unauthorized",
+        "forbidden",
+        "api key",
+        "api-key",
+        "apikey",
+        "access key",
+        "access token",
+        "token",
+        "authentication",
+        "authorization",
+        "auth",
+        "invalid api key",
+        "invalid apikey",
+        "invalid token",
+        "invalid authentication",
+        "invalid authorization",
+    )
+    auth_codes = {"1002", "401", "403"}
+
     for value in values:
         lowered = value.lower()
-        if any(token in lowered for token in ("unauthorized", "forbidden", "api key", "apikey", "token", "authentication", "authorization", "auth")):
+        if lowered in auth_codes or any(token in lowered for token in auth_tokens):
             return value[:300]
     return None
 
@@ -1019,10 +1047,29 @@ def _provider_auth_error_detected(data: Any) -> str | None:
 def _provider_error_body_detected(data: Any) -> str | None:
     if not isinstance(data, dict):
         return None
-    for key in ("error", "error_message", "message", "detail"):
-        value = data.get(key)
+
+    def first_value(value: Any) -> str | None:
         if isinstance(value, str) and value.strip():
-            return value[:300]
+            return value.strip()[:300]
+        if isinstance(value, (int, float)):
+            return str(value)[:300]
+        if isinstance(value, dict):
+            for nested in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
+                nested_value = first_value(value.get(nested))
+                if nested_value:
+                    return nested_value
+        if isinstance(value, list):
+            for item in value[:5]:
+                item_value = first_value(item)
+                if item_value:
+                    return item_value
+        return None
+
+    for key in ("error", "error_message", "message", "msg", "detail"):
+        value = first_value(data.get(key))
+        if value:
+            return value
+
     status = str(data.get("status") or "").strip().lower()
     if status in {"error", "failed", "failure"}:
         return status
@@ -1043,6 +1090,7 @@ def _validation_http_json(
     allow_provider_error_body: bool = False,
     validation_method: str = "http_probe",
     may_consume_quota: bool = False,
+    require_provider_error_body: bool = False,
 ) -> dict[str, Any]:
     encoded_payload: bytes | None = None
     request_headers = dict(headers or {})
@@ -1061,6 +1109,8 @@ def _validation_http_json(
         ok = int(http_status) in ok_statuses
         if auth_error:
             ok = False
+        elif ok and require_provider_error_body and not provider_error:
+            ok = False
         elif ok and provider_error and not allow_provider_error_body:
             ok = False
         result = {
@@ -1072,10 +1122,14 @@ def _validation_http_json(
             "http_status": int(http_status),
             "endpoint": endpoint,
             "may_consume_quota": bool(may_consume_quota),
+            "require_provider_error_body": bool(require_provider_error_body),
         }
         if auth_error:
             result["error"] = "auth_error_response"
             result["message"] = auth_error
+        elif require_provider_error_body and int(http_status) in ok_statuses and not provider_error:
+            result["error"] = "missing_provider_error_body"
+            result["message"] = "Expected a provider validation error body for non-generation probe."
         elif provider_error and not allow_provider_error_body:
             result["error"] = "provider_error_response"
             result["message"] = provider_error
@@ -1217,6 +1271,7 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             timeout=timeout,
             ok_statuses=(400, 422),
             allow_provider_error_body=True,
+            require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
         )
@@ -1232,6 +1287,7 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             timeout=timeout,
             ok_statuses=(400, 422),
             allow_provider_error_body=True,
+            require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
         )
@@ -1247,6 +1303,7 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             timeout=timeout,
             ok_statuses=(400, 422),
             allow_provider_error_body=True,
+            require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
         )
