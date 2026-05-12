@@ -321,6 +321,93 @@ async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
     assert result["model"] == "qwen-image-2.0-pro"
     assert result["images"][0]["url"] == "https://example.test/qwen-image.png"
 
+
+@pytest.mark.asyncio
+async def test_proxy_image_generation_zhipu_provider_uses_domestic_endpoint(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "zhipu")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "zhipu-test-key")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", raising=False)
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": [{"url": "https://example.test/zhipu-image.png"}]}
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://open.bigmodel.cn/api/paas/v4/images/generations"
+            assert headers["Authorization"] == "Bearer zhipu-test-key"
+            assert json["model"] == "cogView-4-250304"
+            assert json["prompt"] == "draw a zhipu image"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_image_generate({"prompt": "draw a zhipu image"})
+    assert result["ok"] is True
+    assert result["provider"] == "zhipu"
+    assert result["images"][0]["url"] == "https://example.test/zhipu-image.png"
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_generation_zai_provider_uses_international_endpoint(monkeypatch):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "zai")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "zai-test-key")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", raising=False)
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": [{"url": "https://example.test/zai-image.png"}]}
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            assert url == "https://api.z.ai/api/paas/v4/images/generations"
+            assert headers["Authorization"] == "Bearer zai-test-key"
+            assert json["model"] == "cogView-4-250304"
+            assert json["prompt"] == "draw a zai image"
+            return FakeResponse()
+
+    monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
+
+    result = await app_module._proxy_image_generate({"prompt": "draw a zai image"})
+    assert result["ok"] is True
+    assert result["provider"] == "zai"
+    assert result["images"][0]["url"] == "https://example.test/zai-image.png"
+
+
 @pytest.mark.asyncio
 async def test_proxy_web_search_exa_provider(monkeypatch):
     import importlib

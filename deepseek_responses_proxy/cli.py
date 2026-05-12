@@ -1645,6 +1645,17 @@ def _skipped_validation(kind: str, provider: str) -> dict[str, Any]:
     }
 
 
+def _image_generation_base_url_for_provider(provider: str | None) -> str:
+    selected = str(provider or "").strip().lower()
+    if selected in {"zhipu", "zhipuai", "bigmodel"}:
+        return "https://open.bigmodel.cn/api/paas/v4/images/generations"
+    if selected in {"glm", "zai", "z.ai"}:
+        return "https://api.z.ai/api/paas/v4/images/generations"
+    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+        return "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    return ""
+
+
 def _mask_env_secret(key: str, value: str) -> str:
     upper = key.upper()
     if any(token in upper for token in ("API_KEY", "TOKEN", "SECRET", "PASSWORD")) or upper in {"FAL_KEY"}:
@@ -1740,12 +1751,12 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
             "guided": "dsproxy config wizard",
             "model_api": "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom",
             "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl",
-            "image_generation_api": "dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal",
+            "image_generation_api": "dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal",
         },
         "supported": {
             "model_api": ["deepseek", "kimi", "glm", "qwen", "custom"],
             "web_search_api": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
-            "image_generation_api": ["glm", "zai", "qwen_image", "dashscope", "stability", "fal"],
+            "image_generation_api": ["zhipu", "bigmodel", "zai", "glm", "qwen_image", "dashscope", "stability", "fal"],
         },
         "unsupported_catalog": {
             "model_api": ["mimo", "baichuan"],
@@ -1900,7 +1911,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     print(f"Web search API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("web_search_api")
-        elif choice in {"8", "other", "custom"}:
+        elif choice in {"9", "other", "custom"}:
             skipped.append("web_search_api:other_custom_server")
             print("Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
         elif choice in {"0", "skip"}:
@@ -1915,35 +1926,39 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         _print_wizard_catalog(
             "Image generation providers",
             [
-                ("1", "GLM / CogView", True),
-                ("2", "Qwen Image / DashScope", True),
-                ("3", "Stability AI", True),
-                ("4", "fal.ai", True),
-                ("5", "Kolors", False),
-                ("6", "Hunyuan Image", False),
-                ("7", "Volcengine Ark", False),
-                ("8", "Other custom server", False),
+                ("1", "ZhipuAI / BigModel (domestic CogView)", True),
+                ("2", "Z.AI / CogView (international)", True),
+                ("3", "Qwen Image / DashScope", True),
+                ("4", "Stability AI", True),
+                ("5", "fal.ai", True),
+                ("6", "Kolors", False),
+                ("7", "Hunyuan Image", False),
+                ("8", "Volcengine Ark", False),
+                ("9", "Other custom server", False),
             ],
         )
         choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
         image_provider_map = {
-            "1": ("glm", "cogView-4-250304", "GLM image API key"),
-            "glm": ("glm", "cogView-4-250304", "GLM image API key"),
-            "cogview": ("glm", "cogView-4-250304", "GLM image API key"),
-            "zai": ("zai", "cogView-4-250304", "Z.ai image API key"),
-            "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI image API key"),
-            "zhipuai": ("zhipuai", "cogView-4-250304", "ZhipuAI image API key"),
-            "2": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "1": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
+            "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
+            "zhipuai": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
+            "bigmodel": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
+            "2": ("zai", "cogView-4-250304", "Z.AI image API key"),
+            "zai": ("zai", "cogView-4-250304", "Z.AI image API key"),
+            "z.ai": ("zai", "cogView-4-250304", "Z.AI image API key"),
+            "glm": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
+            "cogview": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
+            "3": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "qwen": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "qwen_image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "3": ("stability", "stable-image-core", "Stability AI API key"),
+            "4": ("stability", "stable-image-core", "Stability AI API key"),
             "stability": ("stability", "stable-image-core", "Stability AI API key"),
             "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
             "stable_image": ("stability", "stable-image-core", "Stability AI API key"),
-            "4": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "5": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
             "fal": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
             "fal_ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
             "fal.ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
@@ -1961,6 +1976,11 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
                     values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
                     values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+                    base_url = _image_generation_base_url_for_provider(provider)
+                    if base_url:
+                        values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
+                    else:
+                        values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
                     values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
                     configured.append(f"image_generation_api:{provider}")
                     print(f"Image generation API key validated for provider: {provider}.", file=sys.stderr)
@@ -2223,10 +2243,11 @@ def _config(args: argparse.Namespace) -> int:
         return 0
 
     if args.config_command == "set-image-api-key":
-        provider = str(getattr(args, "provider", "glm") or "glm").strip().lower()
+        provider = str(getattr(args, "provider", "zhipu") or "zhipu").strip().lower()
         provider_aliases = {
             "glm": ("glm", "cogView-4-250304", "GLM image API key"),
-            "zai": ("zai", "cogView-4-250304", "Z.ai image API key"),
+            "zai": ("zai", "cogView-4-250304", "Z.AI image API key"),
+            "z.ai": ("zai", "cogView-4-250304", "Z.AI image API key"),
             "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI image API key"),
             "zhipuai": ("zhipuai", "cogView-4-250304", "ZhipuAI image API key"),
             "bigmodel": ("bigmodel", "cogView-4-250304", "BigModel image API key"),
@@ -2285,6 +2306,11 @@ def _config(args: argparse.Namespace) -> int:
         values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
         values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
         values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+        base_url = _image_generation_base_url_for_provider(canonical_provider)
+        if base_url:
+            values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
+        else:
+            values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
         values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = api_key
         _write_env_exports(env_file, values)
         output = {
@@ -3188,7 +3214,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
-    config_set_image_api_key.add_argument("--provider", default="glm", choices=["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
+    config_set_image_api_key.add_argument("--provider", default="zhipu", choices=["zhipu", "zhipuai", "bigmodel", "zai", "z.ai", "glm", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_image_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
     config_set_image_api_key.add_argument("--validation-timeout", type=float, default=10.0)

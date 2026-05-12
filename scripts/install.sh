@@ -740,13 +740,13 @@ prompt_image_generation_api_key() {
   case "$configure" in
     y|Y|yes|YES|Yes) ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
       return 0
       ;;
   esac
 
   sub_title "Image generation providers"
-  provider_option_line "1" "GLM / CogView" "supported"
+  provider_option_line "1" "ZhipuAI / BigModel" "supported"
   provider_option_line "2" "Qwen Image / DashScope" "supported"
   provider_option_line "3" "Stability AI" "supported"
   provider_option_line "4" "fal.ai" "supported"
@@ -760,7 +760,7 @@ prompt_image_generation_api_key() {
   local prompt=""
   provider="$(read_from_tty "Select image generation provider" "1")"
   case "$provider" in
-    1|glm|GLM|cogview|CogView|zai|ZAI) PROMPTED_IMAGE_PROVIDER="glm"; prompt="GLM image API key" ;;
+    1|glm|GLM|cogview|CogView|zai|ZAI) PROMPTED_IMAGE_PROVIDER="glm"; prompt="ZhipuAI / BigModel image API key" ;;
     2|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun) PROMPTED_IMAGE_PROVIDER="qwen_image"; prompt="DashScope API key" ;;
     3|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
     4|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
@@ -769,7 +769,7 @@ prompt_image_generation_api_key() {
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
       return 0
       ;;
     *)
@@ -965,7 +965,7 @@ write_env_file() {
     final_image_provider="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"
   fi
   if [ -z "$final_image_provider" ]; then
-    final_image_provider="glm"
+    final_image_provider="zhipu"
   fi
   if [ -z "$final_image_api_key" ]; then
     final_image_api_key="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"
@@ -1486,7 +1486,7 @@ printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
-printf '%s\n' "  dsproxy config set-image-api-key --provider glm|qwen_image|stability|fal"
+printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"
 

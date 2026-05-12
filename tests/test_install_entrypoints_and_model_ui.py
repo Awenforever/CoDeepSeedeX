@@ -70,7 +70,7 @@ def test_installer_guided_api_provider_catalogs_are_visible() -> None:
     assert "Qwen" in text
     assert "SerpAPI" in text
     assert "Tavily" in text
-    assert "GLM / CogView" in text
+    assert "ZhipuAI / BigModel" in text
     assert "Qwen Image" in text
     assert "Unsupported" in text
     assert "dsproxy config wizard" in text
@@ -83,7 +83,7 @@ def test_installer_guided_api_provider_catalogs_include_new_providers_and_other(
     assert "Other custom server" in text
     assert "docs/custom_api_handoff.md" in text
     assert "serpapi|tavily|brave" in text
-    assert "glm|qwen_image" in text
+    assert "zhipu|zai|qwen_image" in text
 
 def test_custom_api_handoff_doc_exists() -> None:
     handoff = INSTALL_SH.parent.parent / "docs" / "custom_api_handoff.md"
@@ -101,7 +101,7 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
     assert "Stability AI" in text
     assert "fal.ai" in text
     assert "serpapi|tavily|brave|exa|firecrawl" in text
-    assert "glm|qwen_image|stability|fal" in text
+    assert "zhipu|zai|qwen_image|stability|fal" in text
 
 
 def test_installer_validates_web_and_image_provider_keys_before_saving() -> None:

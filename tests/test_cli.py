@@ -1211,7 +1211,57 @@ def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=glm" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=glm-test-key" in text
+    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
     assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+
+
+def test_cli_config_set_zhipu_image_api_key_sets_domestic_endpoint(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-image-api-key",
+        "--skip-validation",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "zhipu",
+        "--value",
+        "zhipu-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["image_provider"] == "zhipu"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu" in text
+    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://open.bigmodel.cn/api/paas/v4/images/generations" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key" in text
+
+
+def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    assert main([
+        "config",
+        "set-image-api-key",
+        "--skip-validation",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "zai",
+        "--value",
+        "zai-test-key",
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["image_provider"] == "zai"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zai" in text
+    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
+    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zai-test-key" in text
+
 
 def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
     import deepseek_responses_proxy.cli as cli
@@ -1728,7 +1778,7 @@ def test_cli_validation_matrix_all_supported_providers(monkeypatch):
         assert result["may_consume_quota"] is True
         assert result["validation_method"] == "fixed_query_search"
 
-    for provider in ("glm", "zhipu", "qwen_image", "stability", "fal"):
+    for provider in ("glm", "zai", "zhipu", "bigmodel", "qwen_image", "stability", "fal"):
         result = cli._validate_image_api_key(provider, "provider-test-key", timeout=2.0)
         assert result["ok"] is True
         assert result["may_consume_quota"] is False

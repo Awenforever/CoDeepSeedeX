@@ -6872,6 +6872,13 @@ def _image_api_key_for_provider(provider: str | None = None) -> str:
     return _image_api_key()
 
 
+def _zai_compatible_image_endpoint(provider: str | None = None) -> str:
+    selected = (provider or _image_provider()).strip().lower()
+    if selected in {"zhipu", "zhipuai", "bigmodel"}:
+        return "https://open.bigmodel.cn/api/paas/v4/images/generations"
+    return "https://api.z.ai/api/paas/v4/images/generations"
+
+
 def _image_model() -> str:
     provider = _image_provider()
     if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
@@ -7101,10 +7108,7 @@ async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if n != 1:
         body["n"] = n
 
-    endpoint = os.environ.get(
-        "DEEPSEEK_PROXY_IMAGE_BASE_URL",
-        "https://api.z.ai/api/paas/v4/images/generations",
-    )
+    endpoint = os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL") or _zai_compatible_image_endpoint(provider)
 
     try:
         async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
