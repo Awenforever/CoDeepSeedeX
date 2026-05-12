@@ -731,7 +731,7 @@ prompt_image_generation_api_key() {
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
     PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
-    PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"
+    PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"
     return 0
   fi
 
@@ -790,7 +790,8 @@ prompt_image_generation_api_key() {
 
     if test_image_generation_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then
       PROMPTED_IMAGE_API_KEY="$candidate"
-      ok "Image generation API key validated for provider: $PROMPTED_IMAGE_PROVIDER"
+      ok "Image generation API key accepted by non-generating validation for provider: $PROMPTED_IMAGE_PROVIDER"
+      warn "This does not prove real image generation works. Run a live provider probe before relying on it."
       return 0
     fi
 

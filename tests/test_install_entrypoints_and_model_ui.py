@@ -109,7 +109,8 @@ def test_installer_validates_web_and_image_provider_keys_before_saving() -> None
     assert "test_web_search_api_key()" in text
     assert "test_image_generation_api_key()" in text
     assert "Web search API key validated for provider" in text
-    assert "Image generation API key validated for provider" in text
+    assert "Image generation API key accepted by non-generating validation for provider" in text
+    assert "This does not prove real image generation works" in text
     assert "Web search API key was not saved because validation failed" in text
     assert "Image generation API key was not saved because validation failed" in text
     assert "DeepSeek API key was not saved because validation failed" in text
@@ -120,8 +121,15 @@ def test_installer_image_validation_requires_error_body_for_non_generation_probe
     assert "PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3" in text
     assert "has_provider_error_body" in text
     assert "(400, 422), True" in text
+    assert "non-generating validation" in text
     assert "api.stability.ai/v1/user/balance" in text
     assert "api.fal.ai/v1/models" in text
+
+def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"' in text
+    assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"' not in text
+
 
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")

@@ -1383,6 +1383,9 @@ def _validation_http_json(
     validation_method: str = "http_probe",
     may_consume_quota: bool = False,
     require_provider_error_body: bool = False,
+    validation_strength: str = "http_status",
+    functional_probe: bool = False,
+    warning: str | None = None,
 ) -> dict[str, Any]:
     encoded_payload: bytes | None = None
     request_headers = dict(headers or {})
@@ -1415,7 +1418,12 @@ def _validation_http_json(
             "endpoint": endpoint,
             "may_consume_quota": bool(may_consume_quota),
             "require_provider_error_body": bool(require_provider_error_body),
+            "validation_strength": validation_strength,
+            "functional_probe": bool(functional_probe),
+            "functional_validation": "performed" if functional_probe else "not_performed",
         }
+        if warning:
+            result["warning"] = warning
         if auth_error:
             result["error"] = "auth_error_response"
             result["message"] = auth_error
@@ -1451,6 +1459,10 @@ def _validation_http_json(
             "error": type(exc).__name__,
             "message": str(exc)[:500],
             "may_consume_quota": bool(may_consume_quota),
+            "validation_strength": validation_strength,
+            "functional_probe": bool(functional_probe),
+            "functional_validation": "performed" if functional_probe else "not_performed",
+            **({"warning": warning} if warning else {}),
         }
 
 
@@ -1466,6 +1478,7 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
         }
 
     query = "test"
+    web_search_validation_warning = "This performs a live low-result search request and may consume provider search quota."
     if selected == "serpapi":
         params = urllib.parse.urlencode({"engine": "google", "q": query, "api_key": api_key, "num": "1"})
         return _validation_http_json(
@@ -1477,6 +1490,9 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             timeout=timeout,
             validation_method="fixed_query_search",
             may_consume_quota=True,
+            validation_strength="live_query_probe",
+            functional_probe=True,
+            warning=web_search_validation_warning,
         )
     if selected == "tavily":
         return _validation_http_json(
@@ -1490,6 +1506,9 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             timeout=timeout,
             validation_method="fixed_query_search",
             may_consume_quota=True,
+            validation_strength="live_query_probe",
+            functional_probe=True,
+            warning=web_search_validation_warning,
         )
     if selected == "brave":
         params = urllib.parse.urlencode({"q": query, "count": "1"})
@@ -1503,6 +1522,9 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             timeout=timeout,
             validation_method="fixed_query_search",
             may_consume_quota=True,
+            validation_strength="live_query_probe",
+            functional_probe=True,
+            warning=web_search_validation_warning,
         )
     if selected == "exa":
         return _validation_http_json(
@@ -1516,6 +1538,9 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             timeout=timeout,
             validation_method="fixed_query_search",
             may_consume_quota=True,
+            validation_strength="live_query_probe",
+            functional_probe=True,
+            warning=web_search_validation_warning,
         )
     if selected == "firecrawl":
         return _validation_http_json(
@@ -1529,6 +1554,9 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             timeout=timeout,
             validation_method="fixed_query_search",
             may_consume_quota=True,
+            validation_strength="live_query_probe",
+            functional_probe=True,
+            warning=web_search_validation_warning,
         )
     return {
         "ok": False,
@@ -1538,6 +1566,16 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
         "error": "unsupported_web_search_provider",
         "supported_providers": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
     }
+
+
+_NON_GENERATION_IMAGE_PROBE_WARNING = (
+    "This non-generating authentication probe checks whether the provider accepts the key and endpoint, "
+    "but it does not prove that real image generation can produce an image."
+)
+_IMAGE_METADATA_PROBE_WARNING = (
+    "This non-generating provider metadata or account probe checks the key without creating an image, "
+    "but it does not prove that real image generation can produce an image."
+)
 
 
 def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.0) -> dict[str, Any]:
@@ -1566,6 +1604,9 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
+            validation_strength="auth_probe",
+            functional_probe=False,
+            warning=_NON_GENERATION_IMAGE_PROBE_WARNING,
         )
     if selected in {"zhipu", "zhipuai", "bigmodel"}:
         return _validation_http_json(
@@ -1582,6 +1623,9 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
+            validation_strength="auth_probe",
+            functional_probe=False,
+            warning=_NON_GENERATION_IMAGE_PROBE_WARNING,
         )
     if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
         return _validation_http_json(
@@ -1598,6 +1642,9 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             require_provider_error_body=True,
             validation_method="non_generation_auth_probe",
             may_consume_quota=False,
+            validation_strength="auth_probe",
+            functional_probe=False,
+            warning=_NON_GENERATION_IMAGE_PROBE_WARNING,
         )
     if selected in {"stability", "stability_ai", "stable_image"}:
         return _validation_http_json(
@@ -1610,6 +1657,9 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             timeout=timeout,
             validation_method="account_balance_probe",
             may_consume_quota=False,
+            validation_strength="account_probe",
+            functional_probe=False,
+            warning=_IMAGE_METADATA_PROBE_WARNING,
         )
     if selected in {"fal", "fal_ai", "fal.ai"}:
         params = urllib.parse.urlencode({"endpoint_id": "fal-ai/flux/schnell", "limit": "1"})
@@ -1623,6 +1673,9 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             timeout=timeout,
             validation_method="model_metadata_probe",
             may_consume_quota=False,
+            validation_strength="metadata_probe",
+            functional_probe=False,
+            warning=_IMAGE_METADATA_PROBE_WARNING,
         )
     return {
         "ok": False,
@@ -1642,6 +1695,9 @@ def _skipped_validation(kind: str, provider: str) -> dict[str, Any]:
         "provider": provider,
         "skipped": True,
         "message": "Validation was skipped by user request.",
+        "validation_strength": "skipped",
+        "functional_probe": False,
+        "functional_validation": "not_performed",
     }
 
 
@@ -1989,7 +2045,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     print(f"Image generation API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("image_generation_api")
-        elif choice in {"8", "other", "custom"}:
+        elif choice in {"9", "other", "custom"}:
             skipped.append("image_generation_api:other_custom_server")
             print("Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
         elif choice in {"0", "skip"}:

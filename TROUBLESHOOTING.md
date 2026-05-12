@@ -186,8 +186,8 @@ dsproxy config set-image-api-key --provider fal
 
 Notes:
 
-* Web search validation uses a fixed low-result query and may consume a minimal search quota.
-* Image validation avoids image generation where possible. Stability uses account balance, fal.ai uses model metadata, and GLM/Z.ai plus Qwen/DashScope use non-generation authentication probes.
+* Web search validation uses a fixed low-result live query and may consume a minimal search quota.
+* Image generation setup uses non-generating probes by default. Zhipu/Z.AI and Qwen/DashScope use authentication probes, Stability uses account balance, and fal.ai uses model metadata. These checks verify key and endpoint acceptance but do not prove that real image generation can produce an image.
 * For custom servers, use the `Other custom server` path and the checklist in `docs/custom_api_handoff.md`.
 
 ## Usage summary is empty

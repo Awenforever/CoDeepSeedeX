@@ -1777,11 +1777,25 @@ def test_cli_validation_matrix_all_supported_providers(monkeypatch):
         assert result["ok"] is True
         assert result["may_consume_quota"] is True
         assert result["validation_method"] == "fixed_query_search"
+        assert result["validation_strength"] == "live_query_probe"
+        assert result["functional_probe"] is True
+        assert result["functional_validation"] == "performed"
+        assert result["may_consume_quota"] is True
+        assert "may consume provider search quota" in result["warning"]
 
     for provider in ("glm", "zai", "zhipu", "bigmodel", "qwen_image", "stability", "fal"):
         result = cli._validate_image_api_key(provider, "provider-test-key", timeout=2.0)
         assert result["ok"] is True
         assert result["may_consume_quota"] is False
+        assert result["functional_probe"] is False
+        assert result["functional_validation"] == "not_performed"
+        assert "does not prove that real image generation" in result["warning"]
+        if provider in {"glm", "zai", "zhipu", "bigmodel", "qwen_image"}:
+            assert result["validation_strength"] == "auth_probe"
+        elif provider == "stability":
+            assert result["validation_strength"] == "account_probe"
+        elif provider == "fal":
+            assert result["validation_strength"] == "metadata_probe"
 
     assert any("serpapi.com/search.json" in call["url"] for call in calls)
     assert any("api.tavily.com/search" in call["url"] for call in calls)
@@ -1810,6 +1824,56 @@ def test_cli_non_generation_probe_rejects_empty_400_422_body(monkeypatch):
     assert result["ok"] is False
     assert result["error"] == "missing_provider_error_body"
     assert result["require_provider_error_body"] is True
+    assert result["validation_strength"] == "auth_probe"
+    assert result["functional_probe"] is False
+    assert result["functional_validation"] == "not_performed"
+    assert "does not prove that real image generation" in result["warning"]
+
+
+def test_cli_skipped_validation_reports_non_functional_semantics():
+    import deepseek_responses_proxy.cli as cli
+
+    result = cli._skipped_validation("image_generation", "zhipu")
+    assert result["status"] == "skipped"
+    assert result["validation_strength"] == "skipped"
+    assert result["functional_probe"] is False
+    assert result["functional_validation"] == "not_performed"
+
+
+def test_cli_config_set_image_api_key_output_reports_non_functional_probe(monkeypatch, tmp_path, capsys):
+    import contextlib
+    import io
+    import json
+    import urllib.error
+
+    import deepseek_responses_proxy.cli as cli
+
+    env_file = tmp_path / "env"
+
+    def fake_urlopen(request, timeout=0):
+        body = json.dumps({"error": {"code": "1210", "message": "Input cannot be empty"}}).encode("utf-8")
+        raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {}, io.BytesIO(body))
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert cli.main([
+        "config",
+        "set-image-api-key",
+        "--env-file",
+        str(env_file),
+        "--provider",
+        "zhipu",
+        "--value",
+        "zhipu-test-key",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    validation = result["validation"]
+    assert validation["validation_method"] == "non_generation_auth_probe"
+    assert validation["validation_strength"] == "auth_probe"
+    assert validation["functional_probe"] is False
+    assert validation["functional_validation"] == "not_performed"
+    assert "does not prove that real image generation" in validation["warning"]
+
 
 def test_cli_config_set_qwen_model_api_key(tmp_path, capsys):
     from deepseek_responses_proxy.cli import main
