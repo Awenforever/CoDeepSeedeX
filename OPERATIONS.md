@@ -864,3 +864,31 @@ Release assets are uploaded manually when the maintainer creates or updates a co
 - `install.sh`, used by `bootstrap.sh` before falling back to raw URLs and shallow git clone
 
 If the latest Release asset is missing, confirm that the `Release installer assets` workflow ran for the tag and that the Release contains both fixed-name assets.
+
+<!-- CODEEPSEEDEX_RELEASE_HANDOFF_STATUS_BEGIN -->
+## Current release hand-off status
+
+- Public release: `v0.3.5-alpha`
+- Public release title: `CoDeepSeedeX v0.3.5-alpha`
+- Release commit: `53897ad`
+- `master` equals `origin/master`: yes
+- Release assets verified: `bootstrap.sh`, `install.sh`
+- Release state: created and verified
+- Current internal development line: `p2.8`
+- Completed internal stages:
+  - `p2.8a1-api-validation`
+  - `p2.8a2-doc-api-validation-sync`
+  - `p2.8a3-api-validation-quality-hardening`
+  - `p2.8a4-model-api-provider-catalog`
+  - `p2.8a5-doc-release-readiness-sync`
+- Current local documentation sync: `p2.8a6-post-release-doc-handoff-sync`
+
+Operational constraints:
+
+- Default installer and upgrade path follows GitHub Latest Release.
+- `master` is a development branch and must not be treated as the default user upgrade target.
+- Public release tags use the `v0.3.x-alpha` form during the alpha stage.
+- Internal pre-release tags use the `p*` form and must not create GitHub Releases.
+- Do not create a plain `v0.3.5` tag for this alpha release.
+- Automatic Release creation from push or tag workflows must remain disabled.
+<!-- CODEEPSEEDEX_RELEASE_HANDOFF_STATUS_END -->

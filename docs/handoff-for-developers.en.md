@@ -51,3 +51,52 @@ It is not intended to be a generic model gateway. The priority is improving the 
 - `scripts/real-long-session-behavioral-smoke.sh --dry-run` validates the guarded smoke runner without invoking Codex.
 - `scripts/real-long-session-behavioral-smoke.sh --allow-bypass` runs the controlled real smoke. It intentionally uses `codex exec --dangerously-bypass-approvals-and-sandbox` because Codex `workspace-write` sandbox cannot reliably reach the host WSL listener at `127.0.0.1:8001`.
 - Do not interpret a sandbox-local `blocked` behavioral result as a proxy failure until localhost reachability from that execution environment is confirmed.
+
+<!-- CODEEPSEEDEX_CURRENT_HANDOFF_BEGIN -->
+## Current release handoff: v0.3.5-alpha
+
+Current public release state:
+
+- Public release tag: `v0.3.5-alpha`
+- Release title: `CoDeepSeedeX v0.3.5-alpha`
+- Release commit: `53897ad`
+- Release assets: `bootstrap.sh`, `install.sh`
+- Default install and upgrade target: GitHub Latest Release, not `master`
+- `master` and `origin/master` are both at `53897ad`
+
+Current internal development state:
+
+- Current completed line: `p2.8`
+- Completed internal stages:
+  - `p2.8a1-api-validation`
+  - `p2.8a2-doc-api-validation-sync`
+  - `p2.8a3-api-validation-quality-hardening`
+  - `p2.8a4-model-api-provider-catalog`
+  - `p2.8a5-doc-release-readiness-sync`
+- Current documentation sync: `p2.8a6-post-release-doc-handoff-sync`
+
+Release and tag policy:
+
+- Public Release tags use the `v0.3.x-alpha` shape during the alpha stage.
+- Do not create a plain `v0.3.5` tag for this alpha release.
+- Internal development tags use the `p*` shape.
+- Internal `p*` tags must not create GitHub Releases.
+- Do not move, delete, or recreate public Release tags unless the maintainer explicitly names the exact Release and tag operation.
+
+v0.3.5-alpha summary:
+
+- API key validation is integrated into manual configuration commands and the installer or bootstrap guided setup.
+- No extra `dsproxy config test-provider --kind web-search|image --provider <name>` command was added.
+- Web search and image provider support was expanded and hardened.
+- Model provider catalog support was added.
+- README and operational documentation now describe provider setup, free quota guidance, and the `Other` custom server handoff path.
+- `docs/custom_api_handoff.md` is the handoff document for custom tool server configuration.
+
+Next development guidance:
+
+- Start any new line by auditing the current repository state, release state, tags, and dirty files.
+- Use a `work/<topic>` branch.
+- Commit completed changes.
+- Push a work branch and its matching internal tag together only when remote publication is intended.
+- Keep public Release tag work separate from normal internal development.
+<!-- CODEEPSEEDEX_CURRENT_HANDOFF_END -->
