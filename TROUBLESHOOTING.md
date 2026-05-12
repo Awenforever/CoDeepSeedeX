@@ -411,3 +411,8 @@ grep -nA40 'profiles.deepseek-thinking' ~/.codex/config.toml
 ```
 
 Confirm that the profile points at the DeepSeek proxy provider and includes `model_catalog_json`. If `/model` still shows GPT-family models, first repair the profile or wrapper/PATH ordering. A missing DeepSeek API key can break requests, but it should not be the first explanation for a GPT-only `/model` list.
+
+
+Installer rerun refreshes local wrappers and profiles:
+
+Rerunning the installer or upgrade path should refresh the managed `dsproxy` command, `codex` wrapper, Codex profiles, and model catalog links even when the installed binary version is already current. Before overwriting local files such as `~/.local/bin/codex`, `~/.local/bin/dsproxy`, `~/.config/deepseek-responses-proxy/env`, or `~/.codex/config.toml`, the installer writes a timestamped backup under `/tmp/codeepseedex-install-backups-*` unless `DEEPSEEK_PROXY_BACKUP_DIR` is set.

@@ -10,6 +10,7 @@ CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
 MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
 INSTALL_LOG="${DEEPSEEK_PROXY_INSTALL_LOG:-/tmp/codeepseedex-install-$(date +%Y%m%d_%H%M%S).log}"
+LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"
 PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"
 
 DRY_RUN=0
@@ -803,6 +804,31 @@ prompt_image_generation_api_key() {
   warn "Image generation API key was not saved because validation failed. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
 }
 
+backup_local_file_before_overwrite() {
+  local path="$1"
+  local label="$2"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    if [ -e "$path" ]; then
+      printf '+ backup existing %q before overwriting %s\n' "$path" "$label" >> "$INSTALL_LOG"
+    fi
+    return 0
+  fi
+
+  if [ ! -e "$path" ]; then
+    return 0
+  fi
+
+  mkdir -p "$LOCAL_BACKUP_DIR"
+  local safe_name
+  safe_name="$(printf '%s' "$path" | sed 's#[/:]#_#g')"
+  local backup_path="$LOCAL_BACKUP_DIR/${safe_name}.$(date +%Y%m%d_%H%M%S)"
+  cp -p "$path" "$backup_path"
+  printf '+ backup existing %q to %q before overwriting %s\n' "$path" "$backup_path" "$label" >> "$INSTALL_LOG"
+  warn "Backed up existing $label to: $backup_path"
+}
+
+
 env_file_value() {
   local key="$1"
 
@@ -982,6 +1008,7 @@ write_env_file() {
   fi
 
   mkdir -p "$(dirname "$ENV_FILE")"
+  backup_local_file_before_overwrite "$ENV_FILE" "local env file"
 
   {
     printf '# deepseek-responses-proxy local environment
@@ -1090,6 +1117,7 @@ write_dsproxy_wrapper() {
   fi
 
   mkdir -p "$BIN_DIR"
+  backup_local_file_before_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper"
 
   cat > "$BIN_DIR/dsproxy" <<EOF
 #!/usr/bin/env bash
@@ -1143,6 +1171,7 @@ write_codex_wrapper() {
   fi
 
   mkdir -p "$BIN_DIR"
+  backup_local_file_before_overwrite "$wrapper_path" "codex command wrapper"
 
   cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash
@@ -1417,6 +1446,7 @@ step "Done"
 
 # codeepseedex_repair_codex_model_catalog_json_v2746a1
 if [ "$DRY_RUN" != "1" ]; then
+  backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"
   "$PYTHON_BIN" - "$HOME/.codex/config.toml" "$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json" <<'PYCODEXCAT'
 from __future__ import annotations
 

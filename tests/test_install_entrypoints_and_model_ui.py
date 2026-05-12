@@ -132,6 +132,19 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
 
 
 
+
+def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"' in text
+    assert "backup_local_file_before_overwrite()" in text
+    assert 'backup_local_file_before_overwrite "$ENV_FILE" "local env file"' in text
+    assert 'backup_local_file_before_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper"' in text
+    assert 'backup_local_file_before_overwrite "$wrapper_path" "codex command wrapper"' in text
+    assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"' in text
+    assert 'write_dsproxy_wrapper' in text
+    assert 'write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"' in text
+
+
 def test_codex_wrapper_prefers_public_dsproxy_and_tolerates_start_drift() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'DSPROXY="\\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"' in text
