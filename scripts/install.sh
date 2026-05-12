@@ -1401,7 +1401,7 @@ sync_install_checkout_to_ref() {
     return 0
   fi
 
-  log "Synchronizing installed checkout to ref: $requested_ref"
+  printf '+ Synchronizing installed checkout to ref: %s\n' "$requested_ref" >> "$INSTALL_LOG"
 
   (
     cd "$INSTALL_DIR"

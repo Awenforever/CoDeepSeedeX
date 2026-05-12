@@ -134,6 +134,12 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
 
 
 
+def test_installer_sync_checkout_logging_uses_defined_shell_command() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'log "Synchronizing installed checkout to ref: $requested_ref"' not in text
+    assert "printf '+ Synchronizing installed checkout to ref: %s\\n'" in text
+
+
 def test_installer_syncs_installed_checkout_before_editable_install() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "sync_install_checkout_to_ref()" in text
