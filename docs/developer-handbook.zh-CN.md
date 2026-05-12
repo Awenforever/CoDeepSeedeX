@@ -273,3 +273,17 @@ Codex录制时，summary必须读取正在运行的proxy实际继承的`DEEPSEEK
 内部p tag可以随开发节点创建和推送，但不得创建GitHub Release。公开Release tag仍使用`v0.3.x-alpha`格式，并且只能在用户明确指定发布时创建、删除、重建或移动。
 
 <!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_END -->
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_START -->
+
+### Release notes标题行规范
+
+GitHub Release页面本身已经有Release标题，因此Release notes正文不得再重复写标题行。例如不得在正文第一行再写：
+
+```text
+CoDeepSeedeX v0.3.5-alpha
+```
+
+Release notes正文应直接从Highlights、Changes、Fixes、Install或Validation等内容开始。发布前检查Release notes时，必须确认正文没有重复的产品名加版本号标题行，避免GitHub页面出现双标题。
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_END -->

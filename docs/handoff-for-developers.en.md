@@ -180,3 +180,17 @@ Always confirm:
 Internal `p*` tags may be created for development milestones, but they must not create GitHub Releases. Public Release tags continue to use the `v0.3.x-alpha` form and may only be created, deleted, rebuilt, or moved when the user explicitly requests a public Release operation.
 
 <!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_END -->
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_START -->
+
+### Release notes title-line rule
+
+The GitHub Release page already has its own Release title, so the Release notes body must not repeat a title line such as:
+
+```text
+CoDeepSeedeX v0.3.5-alpha
+```
+
+Release notes should start directly with content such as Highlights, Changes, Fixes, Install, or Validation. Before publishing a Release, verify that the notes body does not contain a duplicated product-name plus version heading, otherwise the GitHub Release page will show two titles.
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_END -->

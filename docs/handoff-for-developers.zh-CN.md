@@ -103,48 +103,48 @@ v0.3.5-alpha概要：
 
 <!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_START -->
 
-## p2.9a4 developer handoff sync
+## p2.9a4开发交接状态同步
 
-This section supersedes older p2.8-era handoff state when describing the current local developer checkout.
+本节以p2.9a4为准，覆盖较早p2.8交接信息中关于当前开发状态的描述。
 
-Current repository state:
+当前仓库状态：
 
-- Project path: `~/projects/deepseek-responses-proxy`
-- Main branch: `master`
-- Remote main branch: `origin/master`
-- Current `master` and `origin/master`: `b3700a3`
-- Current internal development tag: `p2.9a3-version-metadata-dev-handbook`
-- Current internal development tag target: `b3700a3`
-- Current public Release tag: `v0.3.5-alpha`
-- Current public Release tag target: `53897ad`
-- Plain public tag `v0.3.5` must not exist and must not be created.
-- `dsproxy --version` must print both public and internal version lines.
-- Current public version line: `public version: v0.3.5-alpha | 53897ad`
-- Current internal version line: `internal version: p2.9a3-version-metadata-dev-handbook | b3700a3`
+- 项目路径：`~/projects/deepseek-responses-proxy`
+- 主分支：`master`
+- 远端主分支：`origin/master`
+- 当前`master`和`origin/master`：`b3700a3`
+- 当前内部开发tag：`p2.9a3-version-metadata-dev-handbook`
+- 当前内部开发tag目标：`b3700a3`
+- 当前公开Release tag：`v0.3.5-alpha`
+- 当前公开Release tag目标：`53897ad`
+- 普通公开tag`v0.3.5`不得存在，也不得创建。
+- `dsproxy --version`必须同时输出public version和internal version。
+- 当前public version行：`public version: v0.3.5-alpha | 53897ad`
+- 当前internal version行：`internal version: p2.9a3-version-metadata-dev-handbook | b3700a3`
 
-### Local developer runtime rule
+### 开发机运行时规则
 
-The developer machine must run `dsproxy` from the current checkout on `master`, not from an older installed GitHub Latest Release runtime.
+开发机必须从当前checkout的`master`运行`dsproxy`，而不是从较旧的GitHub Latest Release安装运行时启动。
 
-The expected developer entrypoint is:
+预期开发入口为：
 
 ```bash
 ~/.local/bin/dsproxy
 ```
 
-It should enter:
+该入口应进入：
 
 ```bash
 ~/projects/deepseek-responses-proxy
 ```
 
-and execute:
+并执行：
 
 ```bash
 .venv/bin/python -m deepseek_responses_proxy.cli
 ```
 
-After switching, pulling, or fast-forwarding `master`, restart both proxy services if they are running:
+切换、拉取或fast-forward合并`master`后，如果proxy服务正在运行，必须重启stable和thinking实例：
 
 ```bash
 dsproxy stop thinking
@@ -153,7 +153,7 @@ dsproxy start
 dsproxy start thinking
 ```
 
-Validation commands:
+验证命令：
 
 ```bash
 dsproxy --version
@@ -161,22 +161,36 @@ curl -sS http://127.0.0.1:8000/healthz
 curl -sS http://127.0.0.1:8001/healthz
 ```
 
-The `/healthz` version must match the current public version. If `dsproxy --version` reports the current p2.9a3 metadata but `/healthz` still reports an old version such as `v0.3.2`, the running uvicorn proxy is stale and must be restarted.
+`/healthz`中的版本必须匹配当前public version。若`dsproxy --version`已经显示当前p2.9a3元数据，但`/healthz`仍显示旧版本，例如`v0.3.2`，说明正在运行的uvicorn proxy是旧进程，必须重启。
 
-### Debug trace recording note
+### debug trace录制注意事项
 
-When recording Codex-visible behavior, summarize the debug directory inherited by the running proxy process. A new empty debug directory can produce a misleading `debug_file_count=0` if the existing proxy process is still writing to an older `DEEPSEEK_PROXY_DEBUG_DIR`.
+录制Codex可见行为时，summary必须读取正在运行的proxy进程继承的debug目录。如果新建空debug目录但现有proxy进程仍写入旧的`DEEPSEEK_PROXY_DEBUG_DIR`，就会出现误导性的`debug_file_count=0`。
 
-Always confirm:
+每次都应确认：
 
-- the uvicorn proxy process environment
+- uvicorn proxy进程环境变量
 - `DEEPSEEK_PROXY_DEBUG_TRACE`
 - `DEEPSEEK_PROXY_DEBUG_DIR`
-- `trace-*.jsonl` files
+- `trace-*.jsonl`文件
 - `latest.json`
 
-### Release and tag boundary
+### Release和tag边界
 
-Internal `p*` tags may be created for development milestones, but they must not create GitHub Releases. Public Release tags continue to use the `v0.3.x-alpha` form and may only be created, deleted, rebuilt, or moved when the user explicitly requests a public Release operation.
+内部`p*`tag可以用于开发里程碑，但不得创建GitHub Release。公开Release tag继续使用`v0.3.x-alpha`格式，并且只有在用户明确要求公开Release操作时，才允许创建、删除、重建或移动。
 
 <!-- CODEEPSEEDEX_HANDOFF_P2_9A4_SYNC_END -->
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_START -->
+
+### Release notes标题行规范
+
+GitHub Release页面本身已经有Release标题，因此Release notes正文不得再重复写标题行。例如不得在正文第一行再写：
+
+```text
+CoDeepSeedeX v0.3.5-alpha
+```
+
+Release notes正文应直接从Highlights、Changes、Fixes、Install或Validation等内容开始。发布前检查Release notes时，必须确认正文没有重复的产品名加版本号标题行，避免GitHub页面出现双标题。
+
+<!-- CODEEPSEEDEX_RELEASE_NOTES_NO_DUP_TITLE_RULE_END -->
