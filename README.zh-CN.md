@@ -51,14 +51,15 @@ bs="$tmp/bootstrap.sh"
 - 创建两个Codex配置：`deepseek`和`deepseek-thinking`
 - 询问是否安装安全的`codex`包装器，只接管这两个profile
 - 询问stable/thinking端口
-- 进入API配置引导菜单，目前DeepSeek、SerpAPI和GLM/CogView可配置，其他列出的国产模型、搜索服务和文生图服务显示为Unsupported
-- 把已配置的API key写入权限为`chmod 600`的本地env文件
+- 进入API配置引导菜单，用于配置DeepSeek、已支持的web search provider和已支持的文生图provider
+- 保存前自动验证已配置的API key，除非用户跳过验证或跳过该provider
+- 把验证通过的API key写入权限为`chmod 600`的本地env文件
 
 - 只在当前用户账号下修改Codex/profile相关用户级文件
 
 维护者安全提示：安装、升级、卸载和升级矩阵测试可能修改真实用户级路径，例如`~/.local`、`~/.config`、`~/.codex`、`~/.bashrc`或`~/.profile`。除非明确要修改开发账号，否则应在一次性虚拟机或显式隔离的测试HOME中运行。
 
-API key输入时不会回显，也不会打印到终端。这是基于本地文件权限的保存方式，不是严格意义上的加密存储。
+API key输入时不会回显，也不会打印到终端。这是基于本地文件权限的保存方式，不是严格意义上的加密存储。验证失败时不会保存密钥，配置引导也允许跳过，后续可再配置。
 
 bootstrap脚本会在apt系系统上自动安装缺失的基础依赖，包括`git`、`curl`、`ca-certificates`和供安装器使用的Python 3.11+解释器。
 
@@ -112,15 +113,18 @@ curl -sS http://127.0.0.1:8001/healthz
 
 ### API密钥和模型元数据
 
-安装脚本会把DeepSeek API密钥保存到本地env文件，默认路径为`~/.config/deepseek-responses-proxy/env`，并设置受限文件权限。可使用：
+安装脚本和`dsproxy config wizard`会在保存前验证API密钥。本地env文件默认路径为`~/.config/deepseek-responses-proxy/env`，并设置受限文件权限。可使用：
 
 ```bash
 dsproxy config show
 dsproxy config wizard
 dsproxy config set-api-key
+dsproxy config set-api-key --skip-validation
 dsproxy config test-api-key
 dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider glm --skip-validation
 ```
 
 安装脚本也会把该env文件和`dsproxy`包装命令目录接入shell profile。新终端可以直接找到`dsproxy`，Codex也可以读取`DEEPSEEK_API_KEY`。如果当前终端仍提示找不到`dsproxy`，打开新终端，或执行安装脚本最后打印的`source`命令。
@@ -130,7 +134,7 @@ dsproxy config set-image-api-key --provider glm
 
 ### Provider申请入口速查
 
-CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。
+CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。Web search密钥验证会使用固定低结果数查询，可能消耗极少量search额度。文生图密钥验证尽量不生成图片：Stability使用账户余额探测，fal.ai使用模型元数据探测，GLM/Z.ai和Qwen/DashScope使用非生成式认证探测。验证失败时不会保存密钥，除非显式传入`--skip-validation`。
 
 | 工具 | 已支持provider | 配置命令 | 申请/额度页面 |
 | --- | --- | --- | --- |

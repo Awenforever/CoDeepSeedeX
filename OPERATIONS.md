@@ -316,7 +316,7 @@ Public Release tags and internal development markers have different meanings.
 - Do not use plain `v0.3.x` tags as public alpha Release tags.
 - Plain stable tags such as `v0.3.3` are reserved for a future stable public Release after the maintainer explicitly decides the release is no longer alpha.
 - Internal development tags must not create GitHub Releases and must not be used as installer or upgrade targets.
-- New internal tags should use `internal/<topic>` or `dev/<topic>` if a tag is really needed.
+- New internal prelease tags should use the `p*` shape, for example `p2.8a2-doc-api-validation-sync`.
 - Prefer `work/<version-description>` branches and commits for normal development.
 - Legacy internal `v*` tags are historical markers. Do not add new internal `v*` tags, because they can collide with future stable Release tags such as `v0.3.3`.
 - Do not delete or move remote tags without an explicit maintainer confirmation naming the exact tag set.
@@ -818,14 +818,21 @@ Operational boundary:
 
 ### Tool provider API keys
 
-The installer can optionally configure tool-provider API keys. Press Enter to skip any provider during installation, then configure later:
+The installer, `dsproxy config wizard`, and provider-specific config commands validate API keys before saving them. Press Enter to skip any provider during installation, then configure later:
 
 ```bash
 dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-web-search-api-key --provider tavily
+dsproxy config set-web-search-api-key --provider brave
+dsproxy config set-web-search-api-key --provider exa
+dsproxy config set-web-search-api-key --provider firecrawl
 dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider qwen_image
+dsproxy config set-image-api-key --provider stability
+dsproxy config set-image-api-key --provider fal
 ```
 
-Current installer support is intentionally narrow: web search uses `serpapi`, and image generation uses `glm`. Other providers should be configured manually through the env file until first-class support is added.
+Validation failure does not save the key. Use `--skip-validation` only when a provider is temporarily unreachable or when the maintainer intentionally wants to store the key without a network probe. Web search validation may consume a minimal search quota because it performs a fixed low-result query. Image validation should avoid image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and GLM/Z.ai plus Qwen/DashScope use a non-generation authentication probe.
 
 ### Fallback install command
 

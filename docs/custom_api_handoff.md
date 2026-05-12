@@ -2,7 +2,7 @@
 
 This document is for an agent helping a user connect a custom tool server to CoDeepSeedeX.
 
-The built-in provider menu currently supports selected web search and image generation providers. The `Other custom server` option is intentionally a handoff path, not a generic auto-adapter. Use it when the user has an API server that is compatible with an existing provider shape or can be adapted by adding a small provider implementation.
+The built-in provider menu currently supports selected web search and image generation providers. Built-in provider keys are handled by `dsproxy config set-web-search-api-key`, `dsproxy config set-image-api-key`, the installer wizard, and `dsproxy config wizard`; those paths validate keys before saving unless validation is explicitly skipped. The `Other custom server` option is intentionally a handoff path, not a generic auto-adapter. Use it when the user has an API server that is compatible with an existing provider shape or can be adapted by adding a small provider implementation.
 
 ## Scope
 
@@ -31,7 +31,7 @@ Ask for only the missing technical details:
 7. Does the server require extra headers, region parameters, model names, or API version parameters?
 8. Is the server OpenAI-compatible, SerpAPI-like, Tavily-like, Brave-like, Z.ai-like, or DashScope-like?
 
-Do not ask for secrets in plain text logs. Tell the user to configure secrets through env files or `dsproxy config` commands.
+Do not ask for secrets in plain text logs. Tell the user to configure secrets through env files or `dsproxy config` commands. If the provider is promoted to first-class CLI or installer support, add a real validation path before saving. Do not add fake validation. Search validation may use a fixed low-result query and can consume a minimal quota. Image validation should avoid image generation where possible and should clearly document the probe type.
 
 ## Existing provider anchors
 
@@ -124,4 +124,6 @@ Before proposing a merge:
 - Unsupported provider messages list accurate supported providers.
 - `dsproxy config show` masks secrets.
 - Installer and CLI provider names are consistent.
+- Built-in provider config validates before saving, or documents why validation must be skipped.
+- No new `dsproxy config test-provider` command is introduced unless the maintainer explicitly asks for it.
 - README remains lightweight and does not become a provider comparison page.

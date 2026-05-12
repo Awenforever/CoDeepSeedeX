@@ -49,12 +49,13 @@ The installer will:
 - create two Codex profiles: `deepseek` and `deepseek-thinking`
 - optionally install a safe `codex` wrapper for these two profiles only
 - ask for stable/thinking ports
-- open a guided API configuration menu, where DeepSeek, SerpAPI, and GLM/CogView are currently supported and other listed providers are shown as unsupported
-- save configured API keys in a local `chmod 600` env file
+- open a guided API configuration menu for DeepSeek, supported web search providers, and supported image generation providers
+- validate configured API keys before saving them, unless the user skips validation or skips that provider
+- save validated API keys in a local `chmod 600` env file
 
 - modify user-level Codex/profile files only in your current user account
 
-The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption.
+The API key uses hidden input. It is not printed to the terminal. This is local permission-based storage, not cryptographic encryption. Failed validation does not save the key, and the guided menu can be skipped so keys can be configured later.
 
 The bootstrap script installs missing apt-based prerequisites when needed, including `git`, `curl`, `ca-certificates`, and a Python 3.11+ interpreter for the installer.
 
@@ -108,15 +109,18 @@ curl -sS http://127.0.0.1:8001/healthz
 
 ### API key and model metadata
 
-The installer stores the DeepSeek API key in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. Use:
+The installer and `dsproxy config wizard` validate API keys before saving them in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. Use:
 
 ```bash
 dsproxy config show
 dsproxy config wizard
 dsproxy config set-api-key
+dsproxy config set-api-key --skip-validation
 dsproxy config test-api-key
 dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider glm --skip-validation
 ```
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see `DEEPSEEK_API_KEY`. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
@@ -124,7 +128,7 @@ The installer also connects that env file and the `dsproxy` wrapper directory to
 
 ### Provider access quick reference
 
-CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it.
+CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and GLM/Z.ai plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
 
 | Tool | Supported provider | Configure | Apply / quota page |
 | --- | --- | --- | --- |

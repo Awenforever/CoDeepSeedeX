@@ -154,6 +154,42 @@ Possible causes:
 * network error
 * upstream endpoint changed
 
+## API key validation fails during config or install
+
+Symptoms:
+
+```text
+validation_failed
+Web search API key validation failed
+Image generation API key validation failed
+```
+
+Expected behavior:
+
+* Failed validation does not save the key.
+* `dsproxy config wizard` and the installer allow skipping a provider and configuring it later.
+* `--skip-validation` stores the key without a network probe and should be used only when the provider is temporarily unreachable or when you intentionally accept the risk.
+
+Check provider names and retry with the explicit provider:
+
+```bash
+dsproxy config set-web-search-api-key --provider serpapi
+dsproxy config set-web-search-api-key --provider tavily
+dsproxy config set-web-search-api-key --provider brave
+dsproxy config set-web-search-api-key --provider exa
+dsproxy config set-web-search-api-key --provider firecrawl
+dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider qwen_image
+dsproxy config set-image-api-key --provider stability
+dsproxy config set-image-api-key --provider fal
+```
+
+Notes:
+
+* Web search validation uses a fixed low-result query and may consume a minimal search quota.
+* Image validation avoids image generation where possible. Stability uses account balance, fal.ai uses model metadata, and GLM/Z.ai plus Qwen/DashScope use non-generation authentication probes.
+* For custom servers, use the `Other custom server` path and the checklist in `docs/custom_api_handoff.md`.
+
 ## Usage summary is empty
 
 Usage records are written only after successful proxy requests with usage fields returned by DeepSeek.
