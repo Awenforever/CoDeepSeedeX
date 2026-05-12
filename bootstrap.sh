@@ -161,7 +161,11 @@ download_installer() {
   mkdir -p "$BOOTSTRAP_WORKDIR"
 
   local fallback_ref=""
-  fallback_ref="$(resolve_install_ref || true)"
+  if [ "$DRY_RUN" = "1" ]; then
+    fallback_ref="$INSTALL_REF"
+  else
+    fallback_ref="$(resolve_install_ref || true)"
+  fi
   if [ -n "$fallback_ref" ]; then
     RESOLVED_INSTALL_REF="$fallback_ref"
   fi

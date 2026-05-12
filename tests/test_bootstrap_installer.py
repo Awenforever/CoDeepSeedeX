@@ -25,10 +25,16 @@ def test_bootstrap_dry_run_does_not_require_apt_changes() -> None:
         capture_output=True,
         check=False,
         timeout=20,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/tmp/codeepseedex-bootstrap-dry-run-test-home",
+            "DEEPSEEK_PROXY_LATEST_RELEASE_API_URL": "https://127.0.0.1:9/should-not-be-called",
+        },
     )
     assert result.returncode == 0
     assert "dry-run" in result.stdout
     assert "DEEPSEEK_PROXY_PYTHON_BIN" in result.stdout
+    assert "should-not-be-called" not in result.stderr
 
 
 def test_install_script_accepts_python_bin_option() -> None:
