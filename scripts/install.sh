@@ -1390,6 +1390,77 @@ if [ -z "$API_KEY" ]; then
   warn "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-api-key"
 fi
 
+sync_install_checkout_to_ref() {
+  local requested_ref="${1:-}"
+  requested_ref="${requested_ref:-${DEEPSEEK_PROXY_INSTALL_REF:-}}"
+
+  if [ -z "$requested_ref" ]; then
+    return 0
+  fi
+  if [ ! -d "$INSTALL_DIR/.git" ]; then
+    return 0
+  fi
+
+  log "Synchronizing installed checkout to ref: $requested_ref"
+
+  (
+    cd "$INSTALL_DIR"
+
+    git fetch --tags origin >> "$INSTALL_LOG" 2>&1 || return 1
+
+    local untracked_count
+    untracked_count="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
+
+    if ! git diff --quiet || ! git diff --cached --quiet || [ "$untracked_count" != "0" ]; then
+      mkdir -p "$LOCAL_BACKUP_DIR"
+      local dirty_patch="$LOCAL_BACKUP_DIR/installed-checkout-dirty-$(date +%Y%m%d_%H%M%S).patch"
+      git diff > "$dirty_patch" || true
+      git diff --cached >> "$dirty_patch" || true
+      warn "Backed up local installed checkout modifications to: $dirty_patch"
+
+      if [ "$untracked_count" != "0" ]; then
+        local untracked_list="$LOCAL_BACKUP_DIR/installed-checkout-untracked-$(date +%Y%m%d_%H%M%S).txt"
+        local untracked_tar="$LOCAL_BACKUP_DIR/installed-checkout-untracked-$(date +%Y%m%d_%H%M%S).tar.gz"
+        git ls-files --others --exclude-standard > "$untracked_list" || true
+        tar -czf "$untracked_tar" -T "$untracked_list" >> "$INSTALL_LOG" 2>&1 || true
+        warn "Backed up local installed checkout untracked files to: $untracked_tar"
+      fi
+
+      if [ "${NON_INTERACTIVE:-0}" != "1" ] && [ -t 0 ]; then
+        printf 'Installed checkout has local modifications. Overwrite after backup? [y/N] ' >&2
+        local answer
+        read -r answer
+        case "$answer" in
+          y|Y|yes|YES)
+            ;;
+          *)
+            warn "Keeping local installed checkout modifications. Installation cannot refresh package code."
+            return 1
+            ;;
+        esac
+      fi
+
+      git reset --hard >> "$INSTALL_LOG" 2>&1 || return 1
+      git clean -fd >> "$INSTALL_LOG" 2>&1 || return 1
+    fi
+
+    if git show-ref --verify --quiet "refs/remotes/origin/$requested_ref"; then
+      git checkout -B "$requested_ref" "origin/$requested_ref" >> "$INSTALL_LOG" 2>&1 || return 1
+      return 0
+    fi
+
+    if git show-ref --verify --quiet "refs/tags/$requested_ref"; then
+      git checkout -f "$requested_ref" >> "$INSTALL_LOG" 2>&1 || return 1
+      return 0
+    fi
+
+    git checkout -f "$requested_ref" >> "$INSTALL_LOG" 2>&1 || return 1
+  )
+
+  ok "Repository target checked out"
+}
+
+
 step "Installing"
 
 INSTALL_TARGET_REF="$(resolve_install_ref)"
@@ -1403,7 +1474,7 @@ else
   run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin
 fi
 
-run_git_quiet "Repository target checked out" "git checkout $INSTALL_TARGET_REF" git -C "$INSTALL_DIR" checkout "$INSTALL_TARGET_REF"
+sync_install_checkout_to_ref "$INSTALL_TARGET_REF"
 
 run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 run_quiet "pip upgraded" "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip

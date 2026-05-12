@@ -60,5 +60,7 @@ def test_install_script_defaults_to_latest_release_ref() -> None:
     assert "LATEST_RELEASE_API_URL=" in text
     assert "resolve_install_ref()" in text
     assert 'INSTALL_TARGET_REF="$(resolve_install_ref)"' in text
-    assert 'git -C "$INSTALL_DIR" checkout "$INSTALL_TARGET_REF"' in text
+    assert 'sync_install_checkout_to_ref "$INSTALL_TARGET_REF"' in text
+    assert 'git checkout -B "$requested_ref" "origin/$requested_ref"' in text
+    assert 'git checkout -f "$requested_ref"' in text
     assert 'git -C "$INSTALL_DIR" pull --ff-only' not in text

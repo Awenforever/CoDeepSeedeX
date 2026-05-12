@@ -133,6 +133,21 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
 
 
 
+
+def test_installer_syncs_installed_checkout_before_editable_install() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "sync_install_checkout_to_ref()" in text
+    assert 'git fetch --tags origin' in text
+    assert 'installed-checkout-dirty-$(date +%Y%m%d_%H%M%S).patch' in text
+    assert 'installed-checkout-untracked-$(date +%Y%m%d_%H%M%S).tar.gz' in text
+    assert 'git checkout -B "$requested_ref" "origin/$requested_ref"' in text
+    assert 'git checkout -f "$requested_ref"' in text
+    assert 'sync_install_checkout_to_ref "$INSTALL_TARGET_REF"' in text
+    assert text.index('sync_install_checkout_to_ref "$INSTALL_TARGET_REF"') > text.index('INSTALL_TARGET_REF="$(resolve_install_ref)"')
+    assert text.index('sync_install_checkout_to_ref "$INSTALL_TARGET_REF"') < text.index('run_quiet "Virtual environment ready"')
+    assert "Installation cannot refresh package code." in text
+
+
 def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"' in text

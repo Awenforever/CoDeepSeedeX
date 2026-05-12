@@ -416,3 +416,8 @@ Confirm that the profile points at the DeepSeek proxy provider and includes `mod
 Installer rerun refreshes local wrappers and profiles:
 
 Rerunning the installer or upgrade path should refresh the managed `dsproxy` command, `codex` wrapper, Codex profiles, and model catalog links even when the installed binary version is already current. Before overwriting local files such as `~/.local/bin/codex`, `~/.local/bin/dsproxy`, `~/.config/deepseek-responses-proxy/env`, or `~/.codex/config.toml`, the installer writes a timestamped backup under `/tmp/codeepseedex-install-backups-*` unless `DEEPSEEK_PROXY_BACKUP_DIR` is set.
+
+
+Installed `dsproxy` still reports an old version after rerun install:
+
+If the installer fetches the latest repository state but `dsproxy --version` still reports an old version, check whether the installed checkout under `~/.local/share/deepseek-responses-proxy` was actually synchronized to the requested ref before `pip install -e .`. Current installers run an explicit installed-checkout sync before editable installation. If local modifications are present, the installer backs them up under `/tmp/codeepseedex-install-backups-*` before overwriting in non-interactive mode, or asks before overwriting in interactive mode.
