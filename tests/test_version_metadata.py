@@ -18,13 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
     assert PROXY_PUBLIC_VERSION == "v0.3.7-alpha"
-    assert PROXY_PUBLIC_COMMIT == "unknown"
+    assert PROXY_PUBLIC_COMMIT == "466706f"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.9a18-release-v0.3.7-alpha"
+    assert PROXY_INTERNAL_VERSION == "p2.9a22-version-metadata-policy-audit"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
@@ -63,6 +63,6 @@ def test_version_metadata_formatter_shape() -> None:
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
     assert data["public_version"] == "v0.3.7-alpha"
-    assert len(data["public_commit"]) >= 7 or data["public_commit"] == "unknown"
+    assert data["public_commit"] == "466706f"
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7

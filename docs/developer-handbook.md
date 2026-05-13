@@ -58,6 +58,8 @@ public version: v0.3.x-alpha | <public_release_commit>
 internal version: p2.9aN-topic | <internal_commit>
 ```
 
+For user installations from a public Release tag, the internal version line reports the `p~` tag that was current at the moment that Release tag was created. For a developer checkout running from `master`, the public version line remains the latest published public Release until the next Release, while the internal version line must track the latest internal `p~` tag on `master`.
+
 Public release tags use the `v0.3.x-alpha` form during alpha. Do not create plain `v0.3.x` public tags. Internal development tags use the `p` prefix, such as `p2.9a21-handbook-bilingual-restoration`, and must not create GitHub Releases.
 
 Package versions in `pyproject.toml` use PEP440, for example `0.3.7a0`.
@@ -104,7 +106,7 @@ These are high-priority lessons that must remain in the handbook, not only in th
 
 1. Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`, not root-level `app.py`.
 2. Do not assume only one Python file contains version metadata. Runtime code and tests can both contain version strings.
-3. Version files have separate roles: runtime public/internal version, package PEP440 version, version consistency tests, and CLI output tests.
+3. Version files have separate roles: runtime public/internal version, package PEP440 version, version consistency tests, and CLI output tests. Runtime version metadata is dual-track: public Release runtime is fixed at the public `v~` tag and the internal `p~` tag that existed when that Release was cut; developer checkout runtime on `master` keeps the same current public `v~` until the next Release, but its internal `p~` version must advance with the latest `master` internal tag. Therefore, after post-Release documentation or maintenance commits, the developer machine may correctly show a newer internal `p~` than users running the latest public Release.
 4. Updating `pyproject.toml` requires updating package-version assertions in tests.
 5. Focused test lists must filter nonexistent test files before invoking pytest.
 6. Release scripts must be idempotent and resume-aware.
@@ -240,3 +242,9 @@ The Image generation tool bridge can perform non-generating validation by defaul
 ```bash
 dsproxy doctor providers --live --allow-spend
 ```
+
+## p2.9a22 runtime version metadata policy
+
+`gh release view --json` does not support the `isLatest` field. This is a command schema limitation, not an installed GitHub CLI version issue. Release checks must use compatible fields such as `tagName`, `name`, `url`, `publishedAt`, `isDraft`, `isPrerelease`, `targetCommitish`, and `assets`. If Latest status must be checked, use a separate compatible method instead of `gh release view --json isLatest`.
+
+Runtime version metadata follows a dual-track policy. User installations from a public Release tag report the public `v~` tag and the internal `p~` tag that existed when that Release tag was created. Developer checkout runtime on `master` keeps the latest published public `v~` until the next public Release, but its internal `p~` version must advance with the latest internal tag on `master`. Therefore, after a public Release, documentation or maintenance commits can correctly make the developer machine show a newer internal `p~` than the latest public Release used by users.

@@ -67,3 +67,11 @@
 - Reason: p2.9a20 consolidated documentation correctly but compressed the developer handbook too aggressively and left only the Chinese handbook.
 - Test contract: active documents now include both English and Chinese developer handbooks.
 - Expected result: `master`, `origin/master`, and `p2.9a21-handbook-bilingual-restoration` point to the same new commit.
+
+## p2.9a22-version-metadata-policy-audit
+
+- Clarified runtime version metadata as a dual-track policy.
+- User installations from a public Release tag report the public `v~` tag and the internal `p~` tag that existed when the Release tag was cut.
+- Developer checkout runtime on `master` keeps the current public `v~` until the next Release, but its internal `p~` must advance with the latest `master` internal tag.
+- Corrected the GitHub CLI rule: `gh release view --json` does not support `isLatest`; this is a command schema limitation, not an installed-version issue.
+- Updated current developer runtime metadata to `p2.9a22-version-metadata-policy-audit` while keeping public Release `v0.3.7-alpha` and public commit `466706f`.
