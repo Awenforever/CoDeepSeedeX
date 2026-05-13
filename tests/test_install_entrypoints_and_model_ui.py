@@ -81,18 +81,20 @@ def test_installer_guided_api_provider_catalogs_include_new_providers_and_other(
     assert "Brave Search" in text
     assert "Qwen Image / DashScope" in text
     assert "Other custom server" in text
-    assert "docs/custom_api_handoff.md" in text
+    assert "set-image-api-key" in text
+    assert "zhipu" in text
+    assert "zai" in text
     assert "serpapi|tavily|brave" in text
     assert "zhipu|zai|qwen_image" in text
 
-def test_custom_api_handoff_doc_exists() -> None:
-    handoff = INSTALL_SH.parent.parent / "docs" / "custom_api_handoff.md"
-    text = handoff.read_text(encoding="utf-8")
-    assert "Custom API handoff" in text
+def test_developer_handbook_provider_handoff_exists() -> None:
+    handbook = INSTALL_SH.parent.parent / "docs" / "developer-handbook.zh-CN.md"
+    text = handbook.read_text(encoding="utf-8")
+    assert "Provider和自定义API维护入口" in text
     assert "Web search tool bridge" in text
-    assert "Image generation tool bridge" in text
+    assert "image generation tool bridge" in text
+    assert "dsproxy doctor providers --live --allow-spend" in text
     assert "deepseek_responses_proxy/app.py" in text
-    assert "Do not create public Release tags unless the user explicitly asks." in text
 
 def test_installer_guided_api_provider_catalogs_include_second_wave_providers() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")

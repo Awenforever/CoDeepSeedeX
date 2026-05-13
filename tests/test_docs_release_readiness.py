@@ -17,6 +17,6 @@ def test_docs_do_not_describe_model_api_as_deepseek_only() -> None:
 
 
 def test_operations_uses_current_dsproxy_config_command_name() -> None:
-    ops = _read("OPERATIONS.md")
+    ops = _read("docs/developer-handbook.zh-CN.md")
     assert "dsproxy-config" not in ops
     assert "dsproxy config set-model deepseek-v4-pro" in ops

@@ -197,7 +197,7 @@ CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and r
 | Image generation | Stability AI | `dsproxy config set-image-api-key --provider stability` | https://platform.stability.ai/ |
 | Image generation | fal.ai | `dsproxy config set-image-api-key --provider fal` | https://fal.ai/ |
 
-For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/custom_api_handoff.md`. See `docs/custom_api_handoff.md` for the handoff checklist.
+For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/developer-handbook.zh-CN.md`. See `docs/developer-handbook.zh-CN.md` for the handoff checklist.
 
 Provider diagnostics:
 
@@ -289,7 +289,7 @@ Tool outputs are classified before trimming. Only oversized outputs are rewritte
 
 Structured list/dict tool outputs are serialized to compact JSON before trimming. This helps large structured payloads enter the same budget path as plain text output.
 
-For controlled maintainer validation, see `docs/real-long-session-validation.md`.
+For controlled maintainer validation, see `docs/developer-handbook.zh-CN.md`.
 
 ## 🧠 deepseek vs deepseek-thinking
 
@@ -442,8 +442,8 @@ Codex may call tools, modify files, execute commands and access MCP servers depe
 
 Read:
 
-- docs/security.en.md
-- docs/security.zh-CN.md
+- TROUBLESHOOTING.md
+- TROUBLESHOOTING.md
 
 ### C4 command-risk gate visibility
 
@@ -458,3 +458,14 @@ The proxy exposes command-risk policy status through `proxy_status` as `command_
 The gate is intentionally Codex-aligned. Normal development operations such as project-local `apply_patch`, project file writes, cache cleanup, `/tmp` cleanup, dependency installation, and project-local destructive operations remain Codex-governed. The proxy suppresses only `C4_catastrophic_or_out_of_sandbox` operations, such as root/home/drive deletion, disk formatting, block-device overwrite, production database drop, or force-push to protected branches.
 
 C4 suppression is suppress-only. It returns an assistant explanation and does not support automatic resume through “continue”.
+
+## Documentation
+
+The active documentation is intentionally small:
+
+- User guide: this `README.md`
+- Chinese user guide: `README.zh-CN.md`
+- Troubleshooting: `TROUBLESHOOTING.md`
+- Maintainer handbook: `docs/developer-handbook.zh-CN.md`
+
+Historical release notes and older handoff/operations documents were consolidated in p2.9a20. Use GitHub Releases and Git history for old per-release notes.
