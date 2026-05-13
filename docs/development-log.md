@@ -95,3 +95,12 @@
 - Kept compatibility for the currently selected `DEEPSEEK_PROXY_IMAGE_PROVIDER` while preserving provider-specific key variables for unselected providers.
 - Made `set-image-api-key` and the guided wizard write provider-specific image API key variables in addition to the legacy generic variable.
 - Updated README image provider examples from the old `glm` shortcut to explicit `zhipu` and `zai` examples.
+
+## p2.9a26-provider-live-web-search-doc-sync
+
+- Confirmed the real SerpAPI web search live probe on the developer machine.
+- Command class: `dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`.
+- Result: `doctor_status=ok`, `provider_ok=True`, HTTP status 200, `validation_method=fixed_query_search`, `validation_strength=live_query_probe`, `functional_probe=True`, and `functional_validation=performed`.
+- The probe did not print API key values.
+- Other web search providers remain untested because their API keys are not configured.
+- This validates the CoDeepSeedeX provider bridge path for SerpAPI. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.

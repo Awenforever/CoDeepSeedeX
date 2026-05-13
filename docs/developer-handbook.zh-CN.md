@@ -163,6 +163,7 @@ p2.9阶段包括：
 - local bin ownership guard。
 - VM GitHub代理经验沉淀。
 - `v0.3.7-alpha`发布闭环。
+- SerpAPI真实web search probe已通过，命令为`dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`。
 - p2.9a19写入Release错题。
 - p2.9a20文档收敛。
 - p2.9a21恢复英文主开发者手册和中文镜像。

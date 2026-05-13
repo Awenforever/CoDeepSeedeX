@@ -194,6 +194,7 @@ p2.9 covered:
 - Local bin ownership guards.
 - VM GitHub proxy documentation.
 - `v0.3.7-alpha` release.
+- SerpAPI live web search probe passed with `dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`.
 - Release lessons written into maintainer docs.
 - p2.9a20 documentation consolidation.
 - p2.9a21 restoration of English-primary developer handbook and Chinese mirror.
