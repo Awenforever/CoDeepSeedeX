@@ -304,3 +304,47 @@ Release notes正文应直接从Highlights、Changes、Fixes、Install或Validati
 - 后续Release body检查脚本必须先把`gh release view --json ...`输出保存为`/tmp/*.json`文件，再由Python读取该文件。不要在含heredoc的脚本中把Release JSON通过stdin管道传给Python。
 - debug trace汇总必须读取正在运行的proxy进程实际继承的`DEEPSEEK_PROXY_DEBUG_DIR`，不得读取新建或猜测的trace目录。
 <!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_END -->
+## VM中GitHub访问不稳定时的最短处理路径
+
+适用场景：在VM或全新测试机中执行一键安装、E2E验证或`git clone/fetch`时，`github.com`、GitHubRelease资产或`git ls-remote`间歇性失败。遇到这类问题时，先不要继续跑安装器，避免把网络问题误判为`install.sh`或wrapper逻辑问题。
+
+最短判断链：
+
+1. 先在VM里只测`curl -4 -fsSIL https://github.com`和`git -c http.version=HTTP/1.1 ls-remote https://github.com/Awenforever/CoDeepSeedeX.git HEAD`。
+2. 只要这两项不稳定，就暂停安装器验证，先固定VM到GitHub的网络链路。
+3. 在Windows宿主机确认真实可用的本地代理端口，不要仅凭配置文件或界面显示判断端口可用。
+4. 如果VM直连宿主机代理端口出现`TLS connection was non-properly terminated`、`unexpected eof while reading`、`Connection reset by peer`或`gnutls_handshake()`失败，应判断为代理对LAN客户端不稳定。
+5. 对极连云一类只对本机回环稳定的代理，可在Windows管理员PowerShell中使用`netsh interface portproxy`把VMnet8入口转发到本机回环代理端口。
+6. 例如本次有效链路为`VM -> 192.168.231.1:7896 -> Windows portproxy -> 127.0.0.1:7892 -> 极连云`。
+7. VM中固定GitHub专用Git代理：`http.https://github.com.proxy`、`http.https://raw.githubusercontent.com.proxy`和`http.https://codeload.github.com.proxy`，同时保留`http.version HTTP/1.1`。
+8. 后续E2E验证只把GitHubRelease资产下载、`git ls-remote`、`git clone/fetch/checkout`作为核心链路，不把jsDelivr短commit URL作为硬性验收项。
+
+推荐的Windows端转发策略：
+
+```powershell
+netsh interface portproxy add v4tov4 listenaddress=192.168.231.1 listenport=7896 connectaddress=127.0.0.1 connectport=7892
+New-NetFirewallRule -DisplayName "CoDeepSeedeX VMnet8 jilianyun proxy 7896" -Direction Inbound -Action Allow -Protocol TCP -LocalAddress 192.168.231.1 -LocalPort 7896 -RemoteAddress 192.168.231.0/24
+```
+
+推荐的VM端Git代理配置：
+
+```bash
+git config --global http.version HTTP/1.1
+git config --global http.https://github.com.proxy http://192.168.231.1:7896
+git config --global http.https://raw.githubusercontent.com.proxy http://192.168.231.1:7896
+git config --global http.https://codeload.github.com.proxy http://192.168.231.1:7896
+```
+
+撤销Windows端转发：
+
+```powershell
+netsh interface portproxy delete v4tov4 listenaddress=192.168.231.1 listenport=7896
+Remove-NetFirewallRule -DisplayName "CoDeepSeedeX VMnet8 jilianyun proxy 7896" -ErrorAction SilentlyContinue
+```
+
+注意事项：
+
+- 不要把端口“能TCP连接”误判为代理可用，必须验证GitHubRelease下载和`git ls-remote`。
+- 不要在网络不稳定时继续跑安装器，否则会制造半安装状态和误导性日志。
+- 不要使用已知不稳定的`192.168.231.1:7892`直连路径作为VM验证路径。
+- 对Release验证而言，GitHubRelease资产和Git仓库链路比jsDelivr短commit URL更关键。
