@@ -88,3 +88,10 @@
 - Recorded a second generated-command safety rule after a read-only mainline resume audit failed with `TypeError: run() got an unexpected keyword argument 'env'`.
 - Helper function signatures in generated Python scripts must cover all later keyword arguments such as `env`, `timeout`, `check`, and `allow_fail`.
 - Future commands should be statically checked for helper definition/call-site consistency before being given to the user.
+
+## p2.9a25-provider-key-scope-doc-sync
+
+- Scoped image provider diagnostics so a generic `DEEPSEEK_PROXY_IMAGE_API_KEY` no longer marks every image provider as configured.
+- Kept compatibility for the currently selected `DEEPSEEK_PROXY_IMAGE_PROVIDER` while preserving provider-specific key variables for unselected providers.
+- Made `set-image-api-key` and the guided wizard write provider-specific image API key variables in addition to the legacy generic variable.
+- Updated README image provider examples from the old `glm` shortcut to explicit `zhipu` and `zai` examples.

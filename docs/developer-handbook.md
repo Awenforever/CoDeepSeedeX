@@ -156,6 +156,8 @@ Do not add a separate `dsproxy config test-provider --kind web-search|image --pr
 
 Zhipu and Z.AI image endpoints must remain separated. Do not mix domestic ZhipuAI, international Z.AI, GLM, and CogView assumptions.
 
+Provider diagnostics must not treat a generic image API key as proof that every image provider is configured. `DEEPSEEK_PROXY_IMAGE_API_KEY` is a compatibility key for the currently selected `DEEPSEEK_PROXY_IMAGE_PROVIDER`; provider-specific variables such as `ZAI_API_KEY`, `DASHSCOPE_API_KEY`, `STABILITY_API_KEY`, and `FAL_KEY` remain authoritative for unselected providers.
+
 ## 9. VM GitHub proxy playbook
 
 When a VMware NAT VM cannot reliably reach GitHub, do not guess. Audit the route, DNS, curl, git, proxy listener, and Windows host listener.

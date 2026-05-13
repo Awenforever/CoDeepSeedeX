@@ -145,7 +145,8 @@ dsproxy config set-web-search-api-key --provider exa
 dsproxy config set-web-search-api-key --provider firecrawl
 
 # Configure optional image generation tool providers.
-dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider zhipu
+dsproxy config set-image-api-key --provider zai
 dsproxy config set-image-api-key --provider qwen_image
 dsproxy config set-image-api-key --provider stability
 dsproxy config set-image-api-key --provider fal
@@ -156,7 +157,7 @@ Add `--skip-validation` only when you intentionally want to save the key without
 ```bash
 dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 dsproxy config set-web-search-api-key --provider serpapi --skip-validation
-dsproxy config set-image-api-key --provider glm --skip-validation
+dsproxy config set-image-api-key --provider zhipu --skip-validation
 ```
 
 API key input examples with fake values:
@@ -182,7 +183,7 @@ The installer also connects that env file and the `dsproxy` wrapper directory to
 
 ### Provider access quick reference
 
-CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search and image generation are separate from the model API: the model API powers Codex answers, while these optional providers power tool calls when Codex needs current web results or generated images. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and GLM/Z.ai plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
+CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search and image generation are separate from the model API: the model API powers Codex answers, while these optional providers power tool calls when Codex needs current web results or generated images. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and Zhipu/Z.AI plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
 
 | Tool | Supported provider | Configure | Apply / quota page |
 | --- | --- | --- | --- |

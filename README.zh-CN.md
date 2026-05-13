@@ -149,7 +149,8 @@ dsproxy config set-web-search-api-key --provider exa
 dsproxy config set-web-search-api-key --provider firecrawl
 
 # 配置可选文生图工具provider。
-dsproxy config set-image-api-key --provider glm
+dsproxy config set-image-api-key --provider zhipu
+dsproxy config set-image-api-key --provider zai
 dsproxy config set-image-api-key --provider qwen_image
 dsproxy config set-image-api-key --provider stability
 dsproxy config set-image-api-key --provider fal
@@ -160,7 +161,7 @@ dsproxy config set-image-api-key --provider fal
 ```bash
 dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 dsproxy config set-web-search-api-key --provider serpapi --skip-validation
-dsproxy config set-image-api-key --provider glm --skip-validation
+dsproxy config set-image-api-key --provider zhipu --skip-validation
 ```
 
 下面是使用fake API的输入示例：
@@ -188,7 +189,7 @@ dsproxy config set-api-key --provider custom --base-url https://api.example.com/
 
 ### Provider申请入口速查
 
-CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。web search和文生图与model API是分开的：model API负责让Codex回答和执行任务，web search和文生图只在Codex需要当前网页结果或生成图片时作为可选工具provider使用。Web search密钥验证会使用固定低结果数查询，可能消耗极少量search额度。文生图密钥验证尽量不生成图片：Stability使用账户余额探测，fal.ai使用模型元数据探测，GLM/Z.ai和Qwen/DashScope使用非生成式认证探测。验证失败时不会保存密钥，除非显式传入`--skip-validation`。
+CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。web search和文生图与model API是分开的：model API负责让Codex回答和执行任务，web search和文生图只在Codex需要当前网页结果或生成图片时作为可选工具provider使用。Web search密钥验证会使用固定低结果数查询，可能消耗极少量search额度。文生图密钥验证尽量不生成图片：Stability使用账户余额探测，fal.ai使用模型元数据探测，Zhipu/Z.AI和Qwen/DashScope使用非生成式认证探测。验证失败时不会保存密钥，除非显式传入`--skip-validation`。
 
 | 工具 | 已支持provider | 配置命令 | 申请/额度页面 |
 | --- | --- | --- | --- |

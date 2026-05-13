@@ -56,7 +56,9 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
     assert "dsproxy config wizard" in commands
     assert "dsproxy config set-api-key --provider deepseek" in commands
     assert "dsproxy config set-web-search-api-key --provider serpapi" in commands
-    assert "dsproxy config set-image-api-key --provider glm" in commands
+    assert "dsproxy config set-image-api-key --provider zhipu" in commands
+    assert "dsproxy config set-image-api-key --provider zai" in commands
+    assert "dsproxy config set-image-api-key --provider glm" not in commands
     assert "dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key" in commands
     assert "dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation" in commands
     assert "dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation" in commands

@@ -1211,6 +1211,7 @@ def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=glm" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=glm-test-key" in text
+    assert "ZAI_API_KEY=glm-test-key" in text
     assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
     assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
 
@@ -1237,6 +1238,7 @@ def test_cli_config_set_zhipu_image_api_key_sets_domestic_endpoint(tmp_path, cap
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu" in text
     assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://open.bigmodel.cn/api/paas/v4/images/generations" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key" in text
+    assert "ZHIPUAI_API_KEY=zhipu-test-key" in text
 
 
 def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, capsys):
@@ -1261,6 +1263,8 @@ def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, 
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zai" in text
     assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zai-test-key" in text
+    assert "ZAI_API_KEY=zai-test-key" in text
+
 
 
 
@@ -1269,8 +1273,9 @@ def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
 
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export SERPAPI_API_KEY='serpapi-test-key'\n"
-        "export DEEPSEEK_PROXY_IMAGE_API_KEY='zhipu-test-key'\n",
+        "export SERPAPI_API_KEY=serpapi-test-key\n"
+        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
+        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n",
         encoding="utf-8",
     )
 
@@ -1281,9 +1286,37 @@ def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
     assert result["api_key_values_logged"] is False
     assert "serpapi-test-key" not in json.dumps(result)
     assert "zhipu-test-key" not in json.dumps(result)
+
     providers = {(item["kind"], item["provider"]): item for item in result["results"]}
     assert providers[("web_search", "serpapi")]["configured"] is True
     assert providers[("image_generation", "zhipu")]["configured"] is True
+    assert providers[("image_generation", "zai")]["configured"] is False
+    assert providers[("image_generation", "qwen_image")]["configured"] is False
+    assert providers[("image_generation", "stability")]["configured"] is False
+    assert providers[("image_generation", "fal")]["configured"] is False
+
+
+def test_cli_doctor_providers_scopes_generic_image_key_to_selected_provider(tmp_path, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image\n"
+        "export DEEPSEEK_PROXY_IMAGE_API_KEY=generic-qwen-test-key\n",
+        encoding="utf-8",
+    )
+
+    assert main(["doctor", "providers", "--env-file", str(env_file)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert "generic-qwen-test-key" not in json.dumps(result)
+
+    providers = {(item["kind"], item["provider"]): item for item in result["results"]}
+    assert providers[("image_generation", "zhipu")]["configured"] is False
+    assert providers[("image_generation", "zai")]["configured"] is False
+    assert providers[("image_generation", "qwen_image")]["configured"] is True
+    assert providers[("image_generation", "qwen_image")]["api_key_env_key"] == "DEEPSEEK_PROXY_IMAGE_API_KEY"
+    assert providers[("image_generation", "stability")]["configured"] is False
+    assert providers[("image_generation", "fal")]["configured"] is False
 
 
 def test_cli_doctor_providers_live_requires_allow_spend(tmp_path, capsys):
@@ -1655,6 +1688,7 @@ def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=qwen-image-2.0-pro" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=dashscope-test-key" in text
+    assert "DASHSCOPE_API_KEY=dashscope-test-key" in text
 
 def test_cli_config_set_exa_web_search_api_key(tmp_path, capsys):
     from deepseek_responses_proxy.cli import main
@@ -1724,6 +1758,7 @@ def test_cli_config_set_stability_image_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=stability" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=stable-image-core" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=stability-test-key" in text
+    assert "STABILITY_API_KEY=stability-test-key" in text
 
 
 def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
@@ -1748,6 +1783,7 @@ def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=fal" in text
     assert "DEEPSEEK_PROXY_IMAGE_MODEL=fal-ai/flux/schnell" in text
     assert "DEEPSEEK_PROXY_IMAGE_API_KEY=fal-test-key" in text
+    assert "FAL_KEY=fal-test-key" in text
 
 
 def test_cli_config_set_api_key_validates_before_write(monkeypatch, tmp_path, capsys):

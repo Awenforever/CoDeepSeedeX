@@ -1092,13 +1092,33 @@ _IMAGE_PROVIDER_ALIASES = {
     "fal.ai": "fal",
 }
 
-_IMAGE_PROVIDER_ENV_KEYS = {
-    "zhipu": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "ZHIPUAI_API_KEY", "ZHIPU_API_KEY"],
-    "zai": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "ZAI_API_KEY", "GLM_API_KEY"],
-    "qwen_image": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY", "DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY"],
-    "stability": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "STABILITY_API_KEY", "DEEPSEEK_PROXY_STABILITY_API_KEY"],
-    "fal": ["DEEPSEEK_PROXY_IMAGE_API_KEY", "FAL_KEY", "FAL_API_KEY", "DEEPSEEK_PROXY_FAL_API_KEY"],
+_IMAGE_PROVIDER_ENV_KEYS: dict[str, list[str]] = {
+    "zhipu": ["ZHIPUAI_API_KEY", "ZHIPU_API_KEY"],
+    "zai": ["ZAI_API_KEY", "GLM_API_KEY"],
+    "qwen_image": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
+    "stability": ["STABILITY_API_KEY", "DEEPSEEK_PROXY_STABILITY_API_KEY"],
+    "fal": ["FAL_KEY", "FAL_API_KEY", "DEEPSEEK_PROXY_FAL_API_KEY"],
 }
+
+
+def _image_provider_primary_env_key(provider: str | None) -> str:
+    canonical = _canonical_probe_image_provider(str(provider or ""))
+    mapping = {
+        "zhipu": "ZHIPUAI_API_KEY",
+        "zai": "ZAI_API_KEY",
+        "qwen_image": "DASHSCOPE_API_KEY",
+        "stability": "STABILITY_API_KEY",
+        "fal": "FAL_KEY",
+    }
+    return mapping.get(canonical, "DEEPSEEK_PROXY_IMAGE_API_KEY")
+
+
+def _image_provider_probe_keys(canonical: str, env_values: dict[str, str]) -> list[str]:
+    selected = _canonical_probe_image_provider(env_values.get("DEEPSEEK_PROXY_IMAGE_PROVIDER", "")) or "zhipu"
+    keys = list(_IMAGE_PROVIDER_ENV_KEYS.get(canonical) or [])
+    if selected == canonical and "DEEPSEEK_PROXY_IMAGE_API_KEY" not in keys:
+        keys = ["DEEPSEEK_PROXY_IMAGE_API_KEY", *keys]
+    return keys
 
 
 def _provider_probe_env_values(env_file: Path | None) -> tuple[Path, dict[str, str]]:
@@ -1367,7 +1387,7 @@ def _doctor_provider_probe_result(
 
     if kind == "image_generation":
         canonical = _canonical_probe_image_provider(provider)
-        keys = _IMAGE_PROVIDER_ENV_KEYS.get(canonical)
+        keys = _image_provider_probe_keys(canonical, env_values)
         if not keys:
             return {
                 "ok": False,
@@ -2429,7 +2449,9 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         }
         if choice in image_provider_map:
             provider, default_model, prompt = image_provider_map[choice]
-            key = _wizard_read_secret(prompt, values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""), non_interactive=non_interactive)
+            provider_env_key = _image_provider_primary_env_key(provider)
+            saved_default = values.get(provider_env_key, values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""))
+            key = _wizard_read_secret(prompt, saved_default, non_interactive=non_interactive)
             if key:
                 validation = _validate_image_api_key(provider, key, timeout=10.0)
                 validation_results.append(validation)
@@ -2445,6 +2467,8 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
                     else:
                         values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
+                    provider_env_key = _image_provider_primary_env_key(provider)
+                    values[provider_env_key] = key
                     values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
                     configured.append(f"image_generation_api:{provider}")
                     print(f"Image generation API key validated for provider: {provider}.", file=sys.stderr)
@@ -2775,6 +2799,8 @@ def _config(args: argparse.Namespace) -> int:
             values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
         else:
             values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
+        provider_env_key = _image_provider_primary_env_key(canonical_provider)
+        values[provider_env_key] = api_key
         values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = api_key
         _write_env_exports(env_file, values)
         output = {

@@ -6821,42 +6821,52 @@ def _image_provider() -> str:
     return provider.strip().lower() or "mock"
 
 
+
 def _image_api_key() -> str:
+    provider = _image_provider()
+    if provider in {"zai", "z.ai", "glm"}:
+        return (
+            os.environ.get("ZAI_API_KEY")
+            or os.environ.get("GLM_API_KEY")
+            or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+            or ""
+        )
     return (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
-        or os.environ.get("ZAI_API_KEY")
-        or os.environ.get("ZHIPUAI_API_KEY")
+        os.environ.get("ZHIPUAI_API_KEY")
         or os.environ.get("ZHIPU_API_KEY")
-        or os.environ.get("GLM_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
         or ""
     )
+
 
 
 def _dashscope_api_key() -> str:
     return (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_DASHSCOPE_API_KEY")
+        os.environ.get("DEEPSEEK_PROXY_DASHSCOPE_API_KEY")
         or os.environ.get("DASHSCOPE_API_KEY")
         or os.environ.get("ALIBABA_DASHSCOPE_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
         or ""
     )
+
 
 
 def _stability_api_key() -> str:
     return (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
-        or os.environ.get("STABILITY_API_KEY")
+        os.environ.get("STABILITY_API_KEY")
         or os.environ.get("DEEPSEEK_PROXY_STABILITY_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
         or ""
     )
 
 
+
 def _fal_api_key() -> str:
     return (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
-        or os.environ.get("FAL_KEY")
+        os.environ.get("FAL_KEY")
         or os.environ.get("FAL_API_KEY")
         or os.environ.get("DEEPSEEK_PROXY_FAL_API_KEY")
+        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
         or ""
     )
 
@@ -7083,8 +7093,8 @@ async def _mock_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
-    api_key = _image_api_key()
     provider = _image_provider()
+    api_key = _image_api_key_for_provider(provider)
     prompt = str(arguments.get("prompt") or "").strip()
     size = _image_size(arguments.get("size"))
     n = _image_n(arguments.get("n"))
