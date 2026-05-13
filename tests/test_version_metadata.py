@@ -17,19 +17,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
-    assert PROXY_PUBLIC_VERSION == "v0.3.6-alpha"
+    assert PROXY_PUBLIC_VERSION == "v0.3.7-alpha"
     assert PROXY_PUBLIC_COMMIT == "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.9a5-release-v0.3.6-alpha"
+    assert PROXY_INTERNAL_VERSION == "p2.9a18-release-v0.3.7-alpha"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["version"] == "0.3.6a0"
+    assert data["project"]["version"] == "0.3.7a0"
 
 
 def test_cli_version_output_includes_public_and_internal_versions() -> None:
@@ -41,7 +41,7 @@ def test_cli_version_output_includes_public_and_internal_versions() -> None:
         check=True,
     )
     output = result.stdout.strip()
-    assert "public version: v0.3.6-alpha |" in output
+    assert "public version: v0.3.7-alpha |" in output
     assert "internal version: p" in output
 
 
@@ -62,7 +62,7 @@ def test_version_metadata_formatter_shape() -> None:
 
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
-    assert data["public_version"] == "v0.3.6-alpha"
+    assert data["public_version"] == "v0.3.7-alpha"
     assert len(data["public_commit"]) >= 7 or data["public_commit"] == "unknown"
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7
