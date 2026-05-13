@@ -82,3 +82,9 @@
 - Shell variables are not available inside Python heredocs unless explicitly passed through environment variables.
 - Future generated commands must either pass shell values into Python through environment variables or generate those values inside Python.
 - For real-HOME modifications, scripts must validate variables and preconditions before writing target files.
+
+## p2.9a24-script-helper-signature-safety
+
+- Recorded a second generated-command safety rule after a read-only mainline resume audit failed with `TypeError: run() got an unexpected keyword argument 'env'`.
+- Helper function signatures in generated Python scripts must cover all later keyword arguments such as `env`, `timeout`, `check`, and `allow_fail`.
+- Future commands should be statically checked for helper definition/call-site consistency before being given to the user.

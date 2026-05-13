@@ -254,3 +254,9 @@ Runtime version metadata follows a dual-track policy. User installations from a 
 When generating shell commands that embed a Python heredoc, shell variables such as `ts`, `out`, or other Bash locals are not automatically available inside Python. Either pass them explicitly through environment variables, for example `UPDATE_TS="$ts" python3 - <<'PY...'`, or generate the value inside Python, for example `datetime.datetime.now().strftime(...)`. Never reference a shell-only variable directly inside the Python heredoc. This exact mistake caused `NameError: name 'ts' is not defined` in the development-entrypoint wrapper repair script before any intended wrapper rewrite happened.
 
 For scripts that modify real HOME paths, keep the fail-before-write pattern: complete all variable setup inside the executing language, validate preconditions, create backups, and only then write the target file.
+
+## p2.9a24 helper signature safety note
+
+Generated Python helper functions inside shell-driven commands must have signatures that cover every later call site. If a helper is later called as `run(..., env=sanitized)`, then the helper must be defined with `env=None` and must pass it through to `subprocess.run`. The same applies to other keyword parameters such as `timeout`, `check`, or `allow_fail`. This exact mistake caused `TypeError: run() got an unexpected keyword argument 'env'` in a read-only mainline resume audit.
+
+Before giving the user a generated command, statically scan the command for helper definitions and call sites. Check that every keyword argument used later is accepted by the helper signature. For long commands, prefer defining helpers with the superset signature used across the script.
