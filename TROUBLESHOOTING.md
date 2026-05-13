@@ -115,3 +115,7 @@ When the Latest Release asset path is unavailable, use the resolved release tag 
 tag="v0.3.7-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
+
+## Maintainer documentation
+
+Maintainer notes are kept in `docs/developer-handbook.md`. The Chinese mirror is `docs/developer-handbook.zh-CN.md`. Detailed long-term records are in `docs/development-log.md`.

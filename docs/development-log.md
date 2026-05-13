@@ -58,3 +58,12 @@
 - 当前过程：先尝试保留stub过测，后修正为测试契约跟随新文档结构。
 - 风险：测试中仍可能存在旧文档路径硬编码，需要逐项替换。
 - 后续：完成p2.9a20提交、内部tag、push和fast-forward master。
+
+## 2026-05-13 p2.9a21 Bilingual developer handbook restoration
+
+- Scope: restore the missing maintainer knowledge after p2.9a20 and introduce an English-primary developer handbook.
+- Starting point: `master = origin/master = b160525`, `p2.9a20-docs-consolidation = b160525`.
+- Change: add `docs/developer-handbook.md` as the primary AI startup context, keep `docs/developer-handbook.zh-CN.md` as the Chinese mirror, preserve detailed history in this log.
+- Reason: p2.9a20 consolidated documentation correctly but compressed the developer handbook too aggressively and left only the Chinese handbook.
+- Test contract: active documents now include both English and Chinese developer handbooks.
+- Expected result: `master`, `origin/master`, and `p2.9a21-handbook-bilingual-restoration` point to the same new commit.

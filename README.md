@@ -461,11 +461,7 @@ C4 suppression is suppress-only. It returns an assistant explanation and does no
 
 ## Documentation
 
-The active documentation is intentionally small:
-
-- User guide: this `README.md`
-- Chinese user guide: `README.zh-CN.md`
 - Troubleshooting: `TROUBLESHOOTING.md`
-- Maintainer handbook: `docs/developer-handbook.zh-CN.md`
-
-Historical release notes and older handoff/operations documents were consolidated in p2.9a20. Use GitHub Releases and Git history for old per-release notes.
+- Developer handbook, English primary: `docs/developer-handbook.md`
+- Developer handbook, Chinese mirror: `docs/developer-handbook.zh-CN.md`
+- Detailed development log: `docs/development-log.md`

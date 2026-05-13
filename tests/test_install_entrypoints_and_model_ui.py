@@ -88,11 +88,11 @@ def test_installer_guided_api_provider_catalogs_include_new_providers_and_other(
     assert "zhipu|zai|qwen_image" in text
 
 def test_developer_handbook_provider_handoff_exists() -> None:
-    handbook = INSTALL_SH.parent.parent / "docs" / "developer-handbook.zh-CN.md"
+    handbook = INSTALL_SH.parent.parent / "docs" / "developer-handbook.md"
     text = handbook.read_text(encoding="utf-8")
-    assert "Provider和自定义API维护入口" in text
+    assert "Provider and custom API handoff" in text
     assert "Web search tool bridge" in text
-    assert "image generation tool bridge" in text
+    assert "Image generation tool bridge" in text
     assert "dsproxy doctor providers --live --allow-spend" in text
     assert "deepseek_responses_proxy/app.py" in text
 
