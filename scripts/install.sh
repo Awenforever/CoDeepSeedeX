@@ -1199,7 +1199,7 @@ write_dsproxy_wrapper() {
   fi
 
   mkdir -p "$BIN_DIR"
-  require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER"
+  require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1
 
   cat > "$BIN_DIR/dsproxy" <<EOF
 #!/usr/bin/env bash
@@ -1228,16 +1228,27 @@ write_codex_wrapper() {
   fi
 
   real_codex="$(find_real_codex "$wrapper_path" || true)"
+  local existing_wrapper_is_unknown="0"
 
-  if [ -e "$wrapper_path" ] && ! grep -q "CoDeepSeedeX codex wrapper" "$wrapper_path" 2>/dev/null; then
+  if [ -e "$wrapper_path" ] && ! is_codeepseedex_managed_local_bin "$wrapper_path" "codex"; then
+    existing_wrapper_is_unknown="1"
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"
+    printf '+ write %q\n' "$wrapper_path" >> "$INSTALL_LOG"
+    ok "Codex wrapper installed"
+    return 0
+  fi
+
+  mkdir -p "$BIN_DIR"
+  require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1
+
+  if [ "$existing_wrapper_is_unknown" = "1" ]; then
     backup_path="$wrapper_path.codeepseedex.bak.$(date +%Y%m%d_%H%M%S)"
-    if [ "$DRY_RUN" = "1" ]; then
-      printf '+ backup existing %q to %q\n' "$wrapper_path" "$backup_path" >> "$INSTALL_LOG"
-    else
-      mv "$wrapper_path" "$backup_path"
-      if [ -z "$real_codex" ]; then
-        real_codex="$backup_path"
-      fi
+    mv "$wrapper_path" "$backup_path"
+    if [ -z "$real_codex" ]; then
+      real_codex="$backup_path"
     fi
   fi
 
@@ -1245,15 +1256,6 @@ write_codex_wrapper() {
     warn "real codex command not found; Codex wrapper skipped"
     return 0
   fi
-
-  if [ "$DRY_RUN" = "1" ]; then
-    printf '+ write %q\n' "$wrapper_path" >> "$INSTALL_LOG"
-    ok "Codex wrapper installed"
-    return 0
-  fi
-
-  mkdir -p "$BIN_DIR"
-  require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"
 
   cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash

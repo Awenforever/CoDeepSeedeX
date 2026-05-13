@@ -134,14 +134,42 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
 
 
 
+def _install_function_body(function_name: str, next_function_name: str) -> str:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start_marker = f"{function_name}() {{"
+    end_marker = f"{next_function_name}() {{"
+    start = text.index(start_marker)
+    end = text.index(end_marker, start + len(start_marker))
+    return text[start:end]
+
+
+def test_installer_codex_unknown_backup_happens_only_after_ownership_gate() -> None:
+    body = _install_function_body("write_codex_wrapper", "uninstall")
+    gate = body.index('require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1')
+    move = body.index('mv "$wrapper_path" "$backup_path"')
+    write = body.index('cat > "$wrapper_path" <<EOF')
+    empty_real_check = body.index('if [ -z "$real_codex" ]; then')
+    assert gate < move < empty_real_check < write
+    assert 'existing_wrapper_is_unknown="1"' in body
+    assert 'grep -q "CoDeepSeedeX codex wrapper"' not in body
+    assert 'backup existing %q to %q\\n' not in body[:gate]
+
+
+def test_installer_dsproxy_overwrite_gate_blocks_wrapper_write() -> None:
+    body = _install_function_body("write_dsproxy_wrapper", "write_codex_wrapper")
+    gate = body.index('require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1')
+    write = body.index('cat > "$BIN_DIR/dsproxy" <<EOF')
+    assert gate < write
+
+
 def test_installer_gates_unknown_local_bin_overwrites() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'FORCE_CODEX_WRAPPER="${DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER:-0}"' in text
     assert 'FORCE_DSPROXY_WRAPPER="${DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER:-0}"' in text
     assert "is_codeepseedex_managed_local_bin()" in text
     assert "require_safe_local_bin_overwrite()" in text
-    assert 'require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"' in text
-    assert 'require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER"' in text
+    assert 'require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1' in text
+    assert 'require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1' in text
     assert "Refusing to overwrite unknown existing $label in non-interactive mode" in text
     assert "DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER=1" in text
     assert "DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER=1" in text
@@ -180,8 +208,8 @@ def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() 
     assert 'LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"' in text
     assert "backup_local_file_before_overwrite()" in text
     assert 'backup_local_file_before_overwrite "$ENV_FILE" "local env file"' in text
-    assert 'require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER"' in text
-    assert 'require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"' in text
+    assert 'require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1' in text
+    assert 'require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1' in text
     assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"' in text
     assert 'write_dsproxy_wrapper' in text
     assert 'write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"' in text
