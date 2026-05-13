@@ -75,3 +75,10 @@
 - Developer checkout runtime on `master` keeps the current public `v~` until the next Release, but its internal `p~` must advance with the latest `master` internal tag.
 - Corrected the GitHub CLI rule: `gh release view --json` does not support `isLatest`; this is a command schema limitation, not an installed-version issue.
 - Updated current developer runtime metadata to `p2.9a22-version-metadata-policy-audit` while keeping public Release `v0.3.7-alpha` and public commit `466706f`.
+
+## p2.9a23-script-scope-safety-note
+
+- Recorded a script-scope safety rule after the development-entrypoint wrapper repair script failed with `NameError: name 'ts' is not defined`.
+- Shell variables are not available inside Python heredocs unless explicitly passed through environment variables.
+- Future generated commands must either pass shell values into Python through environment variables or generate those values inside Python.
+- For real-HOME modifications, scripts must validate variables and preconditions before writing target files.

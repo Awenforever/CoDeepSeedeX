@@ -248,3 +248,9 @@ dsproxy doctor providers --live --allow-spend
 `gh release view --json` does not support the `isLatest` field. This is a command schema limitation, not an installed GitHub CLI version issue. Release checks must use compatible fields such as `tagName`, `name`, `url`, `publishedAt`, `isDraft`, `isPrerelease`, `targetCommitish`, and `assets`. If Latest status must be checked, use a separate compatible method instead of `gh release view --json isLatest`.
 
 Runtime version metadata follows a dual-track policy. User installations from a public Release tag report the public `v~` tag and the internal `p~` tag that existed when that Release tag was created. Developer checkout runtime on `master` keeps the latest published public `v~` until the next public Release, but its internal `p~` version must advance with the latest internal tag on `master`. Therefore, after a public Release, documentation or maintenance commits can correctly make the developer machine show a newer internal `p~` than the latest public Release used by users.
+
+## p2.9a23 script scope safety note
+
+When generating shell commands that embed a Python heredoc, shell variables such as `ts`, `out`, or other Bash locals are not automatically available inside Python. Either pass them explicitly through environment variables, for example `UPDATE_TS="$ts" python3 - <<'PY...'`, or generate the value inside Python, for example `datetime.datetime.now().strftime(...)`. Never reference a shell-only variable directly inside the Python heredoc. This exact mistake caused `NameError: name 'ts' is not defined` in the development-entrypoint wrapper repair script before any intended wrapper rewrite happened.
+
+For scripts that modify real HOME paths, keep the fail-before-write pattern: complete all variable setup inside the executing language, validate preconditions, create backups, and only then write the target file.
