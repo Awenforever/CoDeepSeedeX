@@ -421,3 +421,8 @@ Rerunning the installer or upgrade path should refresh the managed `dsproxy` com
 Installed `dsproxy` still reports an old version after rerun install:
 
 If the installer fetches the latest repository state but `dsproxy --version` still reports an old version, check whether the installed checkout under `~/.local/share/deepseek-responses-proxy` was actually synchronized to the requested ref before `pip install -e .`. Current installers run an explicit installed-checkout sync before editable installation. If local modifications are present, the installer backs them up under `/tmp/codeepseedex-install-backups-*` before overwriting in non-interactive mode, or asks before overwriting in interactive mode.
+
+
+Safe local binary ownership:
+
+The installer writes managed shims under `~/.local/bin/dsproxy` and, when enabled, `~/.local/bin/codex`. These paths are not treated as blindly owned by CoDeepSeedeX. Existing files are overwritten automatically only when they are absent or clearly recognized as CoDeepSeedeX-managed. Unknown existing local binaries are backed up first, then interactive installs ask before overwriting. Non-interactive installs refuse to overwrite unknown `codex` or `dsproxy` shims unless `DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER=1` or `DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER=1` is set intentionally.

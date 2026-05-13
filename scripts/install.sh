@@ -15,6 +15,8 @@ PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"
 
 DRY_RUN=0
 NON_INTERACTIVE=0
+FORCE_CODEX_WRAPPER="${DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER:-0}"
+FORCE_DSPROXY_WRAPPER="${DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER:-0}"
 INSTALL_CODEX_PROFILE=1
 INSTALL_CODEX_WRAPPER=1
 INSTALL_SHELL_PROFILE=1
@@ -829,6 +831,86 @@ backup_local_file_before_overwrite() {
 }
 
 
+is_codeepseedex_managed_local_bin() {
+  local path="$1"
+  local kind="$2"
+
+  if [ ! -e "$path" ]; then
+    return 0
+  fi
+  if [ ! -f "$path" ]; then
+    return 1
+  fi
+
+  case "$kind" in
+    codex)
+      grep -qE 'CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|deepseek-responses-proxy|start_dsproxy_profile' "$path" 2>/dev/null
+      ;;
+    dsproxy)
+      grep -qE 'CoDeepSeedeX|deepseek-responses-proxy|\.venv/bin/dsproxy' "$path" 2>/dev/null
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+require_safe_local_bin_overwrite() {
+  local path="$1"
+  local label="$2"
+  local kind="$3"
+  local force_value="$4"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    if [ -e "$path" ] && ! is_codeepseedex_managed_local_bin "$path" "$kind"; then
+      printf '+ would require confirmation before overwriting unknown %q for %s\n' "$path" "$label" >> "$INSTALL_LOG"
+    fi
+    return 0
+  fi
+
+  if [ ! -e "$path" ]; then
+    return 0
+  fi
+
+  if is_codeepseedex_managed_local_bin "$path" "$kind"; then
+    backup_local_file_before_overwrite "$path" "$label"
+    return 0
+  fi
+
+  backup_local_file_before_overwrite "$path" "$label"
+
+  if [ "$force_value" = "1" ]; then
+    warn "Forcing overwrite of unknown existing $label after backup: $path"
+    return 0
+  fi
+
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    warn "Refusing to overwrite unknown existing $label in non-interactive mode: $path"
+    warn "The existing file was backed up under: $LOCAL_BACKUP_DIR"
+    warn "Re-run with the explicit force variable only if this file should be replaced."
+    case "$kind" in
+      codex) warn "To force this replacement: DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER=1" ;;
+      dsproxy) warn "To force this replacement: DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER=1" ;;
+    esac
+    return 1
+  fi
+
+  printf 'Existing %s at %s is not recognized as CoDeepSeedeX-managed. Overwrite after backup? [y/N] ' "$label" "$path" >&2
+  local answer
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES)
+      warn "Overwriting unknown existing $label after user confirmation: $path"
+      return 0
+      ;;
+    *)
+      warn "Keeping unknown existing $label unchanged: $path"
+      return 1
+      ;;
+  esac
+}
+
+
 env_file_value() {
   local key="$1"
 
@@ -1117,7 +1199,7 @@ write_dsproxy_wrapper() {
   fi
 
   mkdir -p "$BIN_DIR"
-  backup_local_file_before_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper"
+  require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER"
 
   cat > "$BIN_DIR/dsproxy" <<EOF
 #!/usr/bin/env bash
@@ -1171,7 +1253,7 @@ write_codex_wrapper() {
   fi
 
   mkdir -p "$BIN_DIR"
-  backup_local_file_before_overwrite "$wrapper_path" "codex command wrapper"
+  require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"
 
   cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash
