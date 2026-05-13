@@ -211,3 +211,32 @@ Release notes正文应直接从Highlights、Changes、Fixes、Install或Validati
 - 后续Release body检查脚本必须先把`gh release view --json ...`输出保存为`/tmp/*.json`文件，再由Python读取该文件。不要在含heredoc的脚本中把Release JSON通过stdin管道传给Python。
 - debug trace汇总必须读取正在运行的proxy进程实际继承的`DEEPSEEK_PROXY_DEBUG_DIR`，不得读取新建或猜测的trace目录。
 <!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_END -->
+
+## 当前交接：v0.3.7-alpha发布分支新增上下文
+
+当前分支用于处理`v0.3.7-alpha`发布和发布事故复盘，已从主线开发任务派生，完成后应回到主线对话继续后续开发。
+
+### 新增上下文
+
+- 当前公开Release已更新到`v0.3.7-alpha`。
+- `master = origin/master = 466706f`。
+- 公开tag`v0.3.7-alpha = 466706f`。
+- 内部tag`p2.9a18-release-v0.3.7-alpha = 466706f`。
+- 旧公开tag保持不动：`v0.3.6-alpha = 7fd8fb6`，`v0.3.5-alpha = 53897ad`。
+- 普通错误tag`v0.3.5`不存在。
+- GitHubRelease`v0.3.7-alpha`已创建，标题为`CoDeepSeedeX v0.3.7-alpha`，资产`bootstrap.sh`和`install.sh`均可访问。
+- 本机运行时已刷新到`466706f`，`dsproxy --version`输出：
+  - `public version: v0.3.7-alpha | 466706f`
+  - `internal version: p2.9a18-release-v0.3.7-alpha | 466706f`
+- `codex --profile deepseek-thinking app-server --help`返回0，说明wrapper基础可用。
+- `v0.3.7-alpha`发布前测试已通过：focused tests通过，full tests为`359 passed in 18.98s`。
+- 本次Release主要包含：安装器受影响机器修复能力，安装时备份本地修改并同步installed checkout到目标Release ref，保护`~/.local/bin/codex`和`~/.local/bin/dsproxy`避免未知用户自有文件被静默覆盖，Zhipu/Z.AI图像端点区分，provider验证语义明确化，`dsproxy doctor providers`诊断，VM GitHub代理最短路径写入开发手册。
+- 发布过程曾出现半发布状态：公开tag先推成功，但work分支、internal tag、master和Release未完成。最终已通过HTTPS补齐，并完成Release和本机运行时复核。
+- 发布经验已写入开发手册“Release错题本”章节，后续发布必须按该章节执行。
+
+### 后续主线建议
+
+1. 回到主线后先执行只读审计，确认当前`master/origin/master/v0.3.7-alpha/p2.9a18`仍指向`466706f`，工作区干净。
+2. 不要继续基于临时发布脚本开发。下一阶段优先把release状态机固化为仓库内脚本或手册规范。
+3. 若继续API provider实机测试，应从`v0.3.7-alpha`或当前master开始，不要回退到`v0.3.6-alpha`。
+4. 后续发布公开tag仍用`v0.3.x-alpha`，内部开发tag继续用`p2.9aN-topic`，不得创建不带`-alpha`的`v0.3.x`公开tag。

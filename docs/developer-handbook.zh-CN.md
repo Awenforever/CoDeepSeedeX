@@ -348,3 +348,39 @@ Remove-NetFirewallRule -DisplayName "CoDeepSeedeX VMnet8 jilianyun proxy 7896" -
 - 不要在网络不稳定时继续跑安装器，否则会制造半安装状态和误导性日志。
 - 不要使用已知不稳定的`192.168.231.1:7892`直连路径作为VM验证路径。
 - 对Release验证而言，GitHubRelease资产和Git仓库链路比jsDelivr短commit URL更关键。
+
+## Release错题本
+
+本节用于累计发布过程中暴露出的流程错误，后续发布前必须逐项对照。该节不是Release notes，不面向普通用户。
+
+### v0.3.7-alpha发布错题
+
+1. 不得硬编码版本文件路径。本次曾错误假设根目录存在`app.py`，实际运行时文件是`deepseek_responses_proxy/app.py`。发布脚本必须先执行只读审计，使用`git grep -n "v0.3.6-alpha\|p2.9a" -- "*.py" "pyproject.toml"`确认版本字符串分布。
+
+2. 不得假设版本元数据只出现在一个Python文件。本次版本字符串同时存在于运行时代码和测试断言中。后续必须按角色处理：`deepseek_responses_proxy/app.py`维护public/internal runtime version，`pyproject.toml`维护包版本，`tests/test_version_metadata.py`维护版本一致性断言，`tests/test_cli.py`只维护CLI输出相关public version断言。
+
+3. 不得强制所有测试文件都包含internal tag。本次错误要求`tests/test_cli.py`必须含`p2.9a*`，但该文件只需要public tag。后续必须为每个文件定义独立检查规则。
+
+4. 修改`pyproject.toml`时必须同步版本测试。本次将包版本改为`0.3.7a0`后，测试中仍断言`0.3.6a0`，导致版本元数据测试失败。后续必须在full tests之前运行版本一致性快速检查。
+
+5. focused tests不得引用不存在的文件。本次引用了不存在的`tests/test_provider_live_probe.py`，pytest直接返回`rc=4`。后续focused test列表必须先过滤存在文件，缺失项只记录到日志，不能传给pytest。
+
+6. release脚本必须是幂等状态机，不得依靠一串临时续跑脚本。状态机至少要识别：版本文件已同步、测试已通过、commit已存在、本地tag已存在、远端分支/tag已存在、master已合并、GitHubRelease已存在、资产已上传、本机运行时已刷新。
+
+7. push必须默认走HTTPS并设置超时。本次`git push`走SSH 22端口导致用户等待约28分钟。后续发布脚本必须使用`https://github.com/Awenforever/CoDeepSeedeX.git`，并在push前运行`gh auth status`和`gh auth setup-git`，所有网络步骤必须有timeout。
+
+8. 公开Release tag应尽量靠后推送，避免半发布状态。推荐顺序：测试通过，commit，push work branch，push internal tag，fast-forward master，push master，push public tag，创建GitHubRelease，复核资产，刷新本机运行时。如果公开tag已存在，恢复脚本只能复核，不得移动。
+
+9. Release复核不得依赖当前`gh`版本不支持的字段。本次使用`isLatest`导致Release已创建后复核中止。后续只使用稳定字段：`tagName,name,isDraft,isPrerelease,targetCommitish,publishedAt,assets`，或先动态检测字段能力。
+
+10. Release notes正文不得重复标题行。正文应从`Highlights:`、`Changes:`、`Fixes:`、`Install:`或`Validation:`开始，不能再写`CoDeepSeedeX v0.3.x-alpha`作为首行。
+
+### 后续强制发布流程
+
+1. 只读审计：确认branch、HEAD、origin/master、工作区、旧public tag、目标public tag、目标GitHubRelease、版本字符串分布、测试文件存在性。
+2. 版本同步：按文件角色同步public tag、internal tag和PEP440包版本。
+3. 测试：`git diff --check`，`bash -n bootstrap.sh`，`bash -n scripts/install.sh`，`python -m py_compile`，focused tests，full tests。
+4. 提交与推送：commit后先推work branch和internal tag，再fast-forward master并推master，最后推public tag。
+5. Release创建：创建GitHubRelease并上传`bootstrap.sh`和`install.sh`。
+6. 复核：确认master、origin/master、public tag、internal tag、Release资产、旧tag未移动、普通错误tag不存在。
+7. 本机运行时刷新：用`--install-ref master`刷新，并确认`dsproxy --version`输出public/internal两行，`codex --profile deepseek-thinking app-server --help`返回0。

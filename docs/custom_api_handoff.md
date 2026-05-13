@@ -238,3 +238,32 @@ Release notes should start directly with content such as Highlights, Changes, Fi
 - Future Release body validation scripts must first save `gh release view --json ...` output to a `/tmp/*.json` file, then let Python read that file. Do not pipe Release JSON into Python stdin in a heredoc-based script.
 - Debug trace summaries must read the running proxy process inherited `DEEPSEEK_PROXY_DEBUG_DIR`, not a newly created or guessed trace directory.
 <!-- CODEEPSEEDEX_P29A6_V036_HANDOFF_SYNC_END -->
+
+## Release branch context: v0.3.7-alpha
+
+This branch handled the `v0.3.7-alpha` release and release-process lessons. It was created from the main development thread, so the main thread should resume from the state below.
+
+### Newly added context
+
+- Public Release is now `v0.3.7-alpha`.
+- `master = origin/master = 466706f`.
+- Public tag `v0.3.7-alpha = 466706f`.
+- Internal tag `p2.9a18-release-v0.3.7-alpha = 466706f`.
+- Older public tags remain unchanged: `v0.3.6-alpha = 7fd8fb6`, `v0.3.5-alpha = 53897ad`.
+- Erroneous plain tag `v0.3.5` does not exist.
+- GitHub Release `v0.3.7-alpha` exists with title `CoDeepSeedeX v0.3.7-alpha`; assets `bootstrap.sh` and `install.sh` are available.
+- Local runtime has been refreshed to `466706f`; `dsproxy --version` reports:
+  - `public version: v0.3.7-alpha | 466706f`
+  - `internal version: p2.9a18-release-v0.3.7-alpha | 466706f`
+- `codex --profile deepseek-thinking app-server --help` returns 0, so the wrapper path is basically functional.
+- Pre-release tests passed: focused tests passed and full tests reported `359 passed in 18.98s`.
+- The release includes affected-install repair, backup of local user modifications, installed checkout sync to the selected release ref, safe ownership guards for `~/.local/bin/codex` and `~/.local/bin/dsproxy`, separated Zhipu/Z.AI image endpoints, clearer provider-validation semantics, `dsproxy doctor providers`, and VM GitHub proxy troubleshooting documentation.
+- The release process temporarily entered a half-published state where the public tag was pushed before the work branch, internal tag, master, and GitHub Release were complete. This was recovered over HTTPS and fully verified.
+- A Release lessons-learned section has been added to the developer handbook. Future releases must follow it.
+
+### Suggested next steps for the main thread
+
+1. Start with a read-only audit confirming `master/origin/master/v0.3.7-alpha/p2.9a18` still point to `466706f` and the worktree is clean.
+2. Do not keep using temporary release scripts. Turn the release state machine into maintained repository scripts or a strict handbook workflow.
+3. For provider live testing, start from `v0.3.7-alpha` or current `master`, not `v0.3.6-alpha`.
+4. Public release tags must remain `v0.3.x-alpha`; internal development tags must remain `p2.9aN-topic`. Do not create plain `v0.3.x` public tags during alpha.
