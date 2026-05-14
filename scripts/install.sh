@@ -485,8 +485,14 @@ model_api_base_url() {
   case "$provider" in
     deepseek) printf '%s\n' "https://api.deepseek.com" ;;
     kimi|moonshot) printf '%s\n' "https://api.moonshot.ai/v1" ;;
-    glm|zai|zhipu|zhipuai|bigmodel) printf '%s\n' "https://api.z.ai/api/paas/v4" ;;
-    qwen|dashscope|aliyun) printf '%s\n' "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" ;;
+    zhipu|zhipuai|bigmodel) printf '%s\n' "https://open.bigmodel.cn/api/paas/v4" ;;
+    zhipu-coding|zhipu_coding|bigmodel-coding|bigmodel_coding) printf '%s\n' "https://open.bigmodel.cn/api/coding/paas/v4" ;;
+    zai|z.ai|glm) printf '%s\n' "https://api.z.ai/api/paas/v4" ;;
+    zai-coding|zai_coding|z.ai-coding|z.ai_coding) printf '%s\n' "https://api.z.ai/api/coding/paas/v4" ;;
+    qwen-beijing|qwen_beijing|qwen|dashscope|aliyun) printf '%s\n' "https://dashscope.aliyuncs.com/compatible-mode/v1" ;;
+    qwen-singapore|qwen_singapore|dashscope-singapore|dashscope_singapore) printf '%s\n' "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" ;;
+    qwen-us|qwen_us|qwen-us-virginia|qwen_us_virginia|dashscope-us|dashscope_us) printf '%s\n' "https://dashscope-us.aliyuncs.com/compatible-mode/v1" ;;
+    custom) printf '%s\n' "" ;;
     *) printf '%s\n' "" ;;
   esac
 }
@@ -496,8 +502,11 @@ model_api_default_model() {
   case "$provider" in
     deepseek) printf '%s\n' "deepseek-v4-pro" ;;
     kimi|moonshot) printf '%s\n' "kimi-latest" ;;
-    glm|zai|zhipu|zhipuai|bigmodel) printf '%s\n' "glm-5.1" ;;
-    qwen|dashscope|aliyun) printf '%s\n' "qwen-plus" ;;
+    zhipu|zhipuai|bigmodel|zhipu-coding|zhipu_coding|bigmodel-coding|bigmodel_coding|zai|z.ai|glm) printf '%s\n' "glm-5.1" ;;
+    zai-coding|zai_coding|z.ai-coding|z.ai_coding) printf '%s\n' "glm-4.7" ;;
+    qwen-beijing|qwen_beijing|qwen|dashscope|aliyun|qwen-singapore|qwen_singapore|dashscope-singapore|dashscope_singapore) printf '%s\n' "qwen-plus" ;;
+    qwen-us|qwen_us|qwen-us-virginia|qwen_us_virginia|dashscope-us|dashscope_us) printf '%s\n' "qwen-plus-us" ;;
+    custom) printf '%s\n' "" ;;
     *) printf '%s\n' "" ;;
   esac
 }
@@ -578,13 +587,15 @@ prompt_deepseek_api_key() {
   sub_title "Model providers"
   provider_option_line "1" "DeepSeek" "supported"
   provider_option_line "2" "Kimi / Moonshot" "supported"
-  provider_option_line "3" "GLM / Z.AI" "supported"
-  provider_option_line "4" "Qwen / DashScope" "supported"
-  provider_option_line "5" "Mimo" "custom endpoint required"
-  provider_option_line "6" "Baichuan" "custom endpoint required"
-  provider_option_line "7" "Other OpenAI-compatible server" "custom"
-  printf '%s
-' "  0. Skip"
+  provider_option_line "3" "Zhipu / BigModel domestic general" "supported"
+  provider_option_line "4" "Zhipu / BigModel domestic Coding Plan" "supported"
+  provider_option_line "5" "Z.AI international general" "supported"
+  provider_option_line "6" "Z.AI international Coding Plan" "supported"
+  provider_option_line "7" "Qwen / DashScope Beijing pay-as-you-go" "supported"
+  provider_option_line "8" "Qwen / DashScope Singapore pay-as-you-go" "supported"
+  provider_option_line "9" "Qwen / DashScope US Virginia pay-as-you-go" "supported"
+  provider_option_line "10" "Other OpenAI-compatible server" "custom"
+  printf '%s\n' "  0. Skip"
 
   local provider=""
   provider="$(read_from_tty "Select model provider" "1")"
@@ -595,13 +606,28 @@ prompt_deepseek_api_key() {
     2|kimi|moonshot|Kimi|Moonshot|KIMI|MOONSHOT)
       PROMPTED_MODEL_PROVIDER="kimi"
       ;;
-    3|glm|zai|z.ai|zhipu|GLM|ZAI|Z.AI|ZHIPU)
-      PROMPTED_MODEL_PROVIDER="glm"
+    3|zhipu|zhipuai|bigmodel|ZHIPU|ZHIPUAI|BIGMODEL)
+      PROMPTED_MODEL_PROVIDER="zhipu"
       ;;
-    4|qwen|dashscope|aliyun|Qwen|QWEN|DASHSCOPE|ALIYUN)
-      PROMPTED_MODEL_PROVIDER="qwen"
+    4|zhipu-coding|zhipu_coding|bigmodel-coding|bigmodel_coding|ZHIPU-CODING|ZHIPU_CODING|BIGMODEL-CODING|BIGMODEL_CODING)
+      PROMPTED_MODEL_PROVIDER="zhipu-coding"
       ;;
-    5|mimo|Mimo|MIMO|6|baichuan|Baichuan|BAICHUAN|7|custom|other|Other|CUSTOM)
+    5|zai|z.ai|ZAI|Z.AI|glm|GLM)
+      PROMPTED_MODEL_PROVIDER="zai"
+      ;;
+    6|zai-coding|zai_coding|z.ai-coding|z.ai_coding|ZAI-CODING|ZAI_CODING|Z.AI-CODING|Z.AI_CODING)
+      PROMPTED_MODEL_PROVIDER="zai-coding"
+      ;;
+    7|qwen-beijing|qwen_beijing|dashscope-beijing|dashscope_beijing|QWEN-BEIJING|QWEN_BEIJING|DASHSCOPE-BEIJING|DASHSCOPE_BEIJING|qwen|Qwen|QWEN|dashscope|DashScope|DASHSCOPE|aliyun|ALIYUN)
+      PROMPTED_MODEL_PROVIDER="qwen-beijing"
+      ;;
+    8|qwen-singapore|qwen_singapore|dashscope-singapore|dashscope_singapore|QWEN-SINGAPORE|QWEN_SINGAPORE|DASHSCOPE-SINGAPORE|DASHSCOPE_SINGAPORE)
+      PROMPTED_MODEL_PROVIDER="qwen-singapore"
+      ;;
+    9|qwen-us|qwen_us|qwen-us-virginia|qwen_us_virginia|dashscope-us|dashscope_us|QWEN-US|QWEN_US|QWEN-US-VIRGINIA|QWEN_US_VIRGINIA|DASHSCOPE-US|DASHSCOPE_US)
+      PROMPTED_MODEL_PROVIDER="qwen-us"
+      ;;
+    10|custom|other|Other|CUSTOM)
       PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)

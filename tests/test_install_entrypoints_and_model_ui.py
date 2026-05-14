@@ -66,14 +66,22 @@ def test_installer_guided_api_provider_catalogs_are_visible() -> None:
     assert "Configure image generation API now? [y/N]" in text
     assert "DeepSeek" in text
     assert "Kimi / Moonshot" in text
-    assert "Mimo" in text
-    assert "Qwen" in text
+    assert "Zhipu / BigModel domestic general" in text
+    assert "Zhipu / BigModel domestic Coding Plan" in text
+    assert "Z.AI international general" in text
+    assert "Z.AI international Coding Plan" in text
+    assert "Qwen / DashScope Beijing pay-as-you-go" in text
+    assert "Qwen / DashScope Singapore pay-as-you-go" in text
+    assert "Qwen / DashScope US Virginia pay-as-you-go" in text
+    assert "Mimo" not in text
+    assert "Baichuan" not in text
+    assert "GLM / Z.AI" not in text
+    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' not in text
     assert "SerpAPI" in text
     assert "Tavily" in text
-    assert "ZhipuAI / BigModel" in text
-    assert "Qwen Image" in text
-    assert "Unsupported" in text
-    assert "dsproxy config wizard" in text
+    assert "Exa" in text
+    assert "Firecrawl" in text
+    assert "Brave" not in text
 
 def test_installer_guided_api_provider_catalogs_include_new_providers_and_other() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -232,14 +240,15 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'provider_option_line "1" "DeepSeek" "supported"' in text
     assert 'provider_option_line "2" "Kimi / Moonshot" "supported"' in text
-    assert 'provider_option_line "3" "GLM / Z.AI" "supported"' in text
-    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' in text
-    assert 'provider_option_line "5" "Mimo" "custom endpoint required"' in text
-    assert 'provider_option_line "6" "Baichuan" "custom endpoint required"' in text
-    assert "https://api.moonshot.ai/v1" in text
-    assert "https://api.z.ai/api/paas/v4" in text
-    assert "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
-    assert "DEEPSEEK_BASE_URL" in text
-    assert "DEEPSEEK_PROXY_MODEL_PROVIDER" in text
-    assert "PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4" in text
-    assert "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom" in text
+    assert 'provider_option_line "3" "Zhipu / BigModel domestic general" "supported"' in text
+    assert 'provider_option_line "4" "Zhipu / BigModel domestic Coding Plan" "supported"' in text
+    assert 'provider_option_line "5" "Z.AI international general" "supported"' in text
+    assert 'provider_option_line "6" "Z.AI international Coding Plan" "supported"' in text
+    assert 'provider_option_line "7" "Qwen / DashScope Beijing pay-as-you-go" "supported"' in text
+    assert 'provider_option_line "8" "Qwen / DashScope Singapore pay-as-you-go" "supported"' in text
+    assert 'provider_option_line "9" "Qwen / DashScope US Virginia pay-as-you-go" "supported"' in text
+    assert 'provider_option_line "10" "Other OpenAI-compatible server" "custom"' in text
+    assert 'provider_option_line "3" "GLM / Z.AI" "supported"' not in text
+    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' not in text
+    assert "Mimo" not in text
+    assert "Baichuan" not in text
