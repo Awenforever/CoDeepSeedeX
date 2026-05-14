@@ -18,9 +18,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.3.7-alpha"
-PROXY_PUBLIC_COMMIT = "466706f"
-PROXY_INTERNAL_VERSION = "p2.10a8-upgrade-alpha-terminal-title"
+PROXY_PUBLIC_VERSION = "v0.3.8-alpha"
+PROXY_PUBLIC_COMMIT = "4b667d6"
+PROXY_INTERNAL_VERSION = "p2.10a9-release-v0.3.8-alpha"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

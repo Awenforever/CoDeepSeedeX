@@ -4,6 +4,14 @@
 
 
 
+
+## p2.10a9-release-v0.3.8-alpha
+
+- Prepared and published `v0.3.8-alpha` as a GitHub pre-release, not Latest.
+- Updated runtime public version metadata to `v0.3.8-alpha`.
+- Updated package PEP440 version to `0.3.8a0`.
+- Release validation path is `dsproxy upgrade --alpha` on a fresh VM before promoting the same GitHub Release to Latest.
+- Release notes body must start from `Highlights:` and must not duplicate the GitHub Release title.
 ## p2.10a8-upgrade-alpha-terminal-title
 
 - Added `dsproxy upgrade --alpha`, which resolves the newest non-draft GitHub pre-release while preserving the default `dsproxy upgrade` behavior against GitHub Latest Release.
