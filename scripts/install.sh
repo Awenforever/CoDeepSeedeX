@@ -437,14 +437,20 @@ def request(method, url, headers=None, payload=None, ok_statuses=(200,), require
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read()
-            ok = int(resp.status) in ok_statuses and not has_auth_error(raw)
-            if ok and require_error_body and not has_provider_error_body(raw):
+            provider_error = has_provider_error_body(raw)
+            status_ok = int(resp.status) in ok_statuses
+            accepted_provider_error = require_error_body and provider_error and 200 <= int(resp.status) < 300
+            ok = (status_ok or accepted_provider_error) and not has_auth_error(raw)
+            if ok and require_error_body and not provider_error:
                 ok = False
             return ok
     except urllib.error.HTTPError as exc:
         raw = exc.read()
-        ok = int(exc.code) in ok_statuses and not has_auth_error(raw)
-        if ok and require_error_body and not has_provider_error_body(raw):
+        provider_error = has_provider_error_body(raw)
+        status_ok = int(exc.code) in ok_statuses
+        accepted_provider_error = require_error_body and provider_error and 200 <= int(exc.code) < 300
+        ok = (status_ok or accepted_provider_error) and not has_auth_error(raw)
+        if ok and require_error_body and not provider_error:
             ok = False
         return ok
     except Exception:
@@ -454,8 +460,12 @@ if provider in {"glm", "zai"}:
     ok = request("POST", "https://api.z.ai/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
 elif provider in {"zhipu", "zhipuai", "bigmodel"}:
     ok = request("POST", "https://open.bigmodel.cn/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
-elif provider in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+elif provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "qwen_image_beijing", "qwen-image-beijing"}:
     ok = request("POST", "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
+elif provider in {"qwen_image_singapore", "qwen-image-singapore"}:
+    ok = request("POST", "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
+elif provider in {"qwen_image_us", "qwen-image-us", "qwen_image_germany", "qwen-image-germany"}:
+    ok = False
 elif provider in {"stability", "stability_ai", "stable_image"}:
     ok = request("GET", "https://api.stability.ai/v1/user/balance", {"Authorization": "Bearer " + api_key}, None, (200,))
 elif provider in {"fal", "fal_ai", "fal.ai"}:
@@ -738,31 +748,41 @@ prompt_image_generation_api_key() {
   case "$configure" in
     y|Y|yes|YES|Yes) ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
       return 0
       ;;
   esac
 
   sub_title "Image generation providers"
   provider_option_line "1" "ZhipuAI / BigModel" "supported"
-  provider_option_line "2" "Qwen Image / DashScope" "supported"
-  provider_option_line "3" "Stability AI" "supported"
-  provider_option_line "4" "fal.ai" "supported"
-  provider_option_line "5" "Kolors" "unsupported"
-  provider_option_line "6" "Hunyuan Image" "unsupported"
-  provider_option_line "7" "Volcengine Ark" "unsupported"
-  provider_option_line "8" "Other custom server" "unsupported"
+  provider_option_line "2" "Z.AI / CogView" "supported"
+  provider_option_line "3" "Qwen Image / DashScope Beijing" "supported"
+  provider_option_line "4" "Qwen Image / DashScope Singapore" "supported"
+  provider_option_line "5" "Qwen Image / DashScope US Virginia" "model unavailable"
+  provider_option_line "6" "Qwen Image / DashScope Germany Frankfurt" "model unavailable"
+  provider_option_line "7" "Stability AI" "supported"
+  provider_option_line "8" "fal.ai" "supported"
+  provider_option_line "9" "Kolors" "unsupported"
+  provider_option_line "10" "Hunyuan Image" "unsupported"
+  provider_option_line "11" "Volcengine Ark" "unsupported"
+  provider_option_line "12" "Other custom server" "unsupported"
   printf '%s\n' "  0. Skip"
 
   local provider=""
   local prompt=""
   provider="$(read_from_tty "Select image generation provider" "1")"
   case "$provider" in
-    1|glm|GLM|cogview|CogView|zai|ZAI) PROMPTED_IMAGE_PROVIDER="glm"; prompt="ZhipuAI / BigModel image API key" ;;
-    2|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun) PROMPTED_IMAGE_PROVIDER="qwen_image"; prompt="DashScope API key" ;;
-    3|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
-    4|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
-    8|other|Other|OTHER|custom|Custom)
+    1|zhipu|ZHIPU|zhipuai|ZHIPUAI|bigmodel|BIGMODEL) PROMPTED_IMAGE_PROVIDER="zhipu"; prompt="ZhipuAI / BigModel image API key" ;;
+    2|glm|GLM|cogview|CogView|zai|ZAI|z.ai|Z.AI) PROMPTED_IMAGE_PROVIDER="zai"; prompt="Z.AI image API key" ;;
+    3|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun|qwen_image_beijing|qwen-image-beijing) PROMPTED_IMAGE_PROVIDER="qwen_image_beijing"; prompt="DashScope Beijing API key" ;;
+    4|qwen_image_singapore|qwen-image-singapore|dashscope_singapore) PROMPTED_IMAGE_PROVIDER="qwen_image_singapore"; prompt="DashScope Singapore API key" ;;
+    5|qwen_image_us|qwen-image-us|dashscope_us|6|qwen_image_germany|qwen-image-germany|dashscope_germany)
+      warn "Selected Qwen Image region is listed for clarity, but qwen-image-2.0-pro is currently unavailable there. Choose Beijing or Singapore."
+      return 0
+      ;;
+    7|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
+    8|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
+    12|other|Other|OTHER|custom|Custom)
       warn "Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
       return 0
       ;;
@@ -1152,7 +1172,7 @@ write_env_file() {
 ' "1"
       printf 'export DEEPSEEK_PROXY_IMAGE_PROVIDER=%q
 ' "$final_image_provider"
-      if [ "$final_image_provider" = "qwen_image" ]; then
+      if [ "$final_image_provider" = "qwen_image" ] || [ "$final_image_provider" = "qwen_image_beijing" ] || [ "$final_image_provider" = "qwen_image_singapore" ]; then
         printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
 ' "qwen-image-2.0-pro"
       elif [ "$final_image_provider" = "stability" ]; then

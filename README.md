@@ -244,6 +244,7 @@ Release notes must mention milestone behavior changes, but the README also keeps
 
 | Version | Area | Previous behavior | New behavior | Migration note |
 |---|---|---|---|---|
+| unreleased / p2.10a3 | Provider validation and Qwen Image regions | Non-generation image validation could classify HTTP 200 provider error bodies as generic validation failures. Qwen Image appeared as one generic DashScope option. | HTTP 200 provider error bodies are accepted as non-generation auth/account probes when no auth error is present. Qwen Image now lists Beijing and Singapore as supported choices and US Virginia/Germany Frankfurt as model-unavailable choices. | Re-run `dsproxy config set-image-api-key` with `qwen_image_beijing` or `qwen_image_singapore` when using Qwen Image. |
 | unreleased / p2.10a2 | Config apply and reasoning effort | API key/model/effort changes were saved, but users had to infer whether running proxies needed a restart. `medium` could appear in user-facing effort examples even though the DeepSeek proxy path normalizes it to `high`. | Successful config writes refresh already-running local stable/thinking proxies and report `all updates applied`. User-facing effort guidance uses `high`, while `low`/`medium` remain accepted compatibility inputs and are stored as `high`. | Rerun the installer or run `dsproxy config set-effort high` to refresh installed Codex profile wording. |
 
 ## 🚀 Quick start
@@ -497,3 +498,13 @@ C4 suppression is suppress-only. It returns an assistant explanation and does no
 - Developer handbook, English primary: `docs/developer-handbook.md`
 - Developer handbook, Chinese mirror: `docs/developer-handbook.zh-CN.md`
 - Detailed development log: `docs/development-log.md`
+
+### Qwen Image regional provider status
+
+| Provider | Region | Status | Command |
+|---|---|---|---|
+| `qwen_image` | Beijing | legacy/default alias for Beijing | `dsproxy config set-image-api-key --provider qwen_image` |
+| `qwen_image_beijing` | Beijing | supported | `dsproxy config set-image-api-key --provider qwen_image_beijing` |
+| `qwen_image_singapore` | Singapore | supported | `dsproxy config set-image-api-key --provider qwen_image_singapore` |
+| `qwen_image_us` | US Virginia | qwen-image-2.0-pro model unavailable | listed for clarity; choose Beijing or Singapore |
+| `qwen_image_germany` | Germany Frankfurt | qwen-image-2.0-pro model unavailable | listed for clarity; choose Beijing or Singapore |

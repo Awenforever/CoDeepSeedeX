@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.3.7-alpha"
 PROXY_PUBLIC_COMMIT = "466706f"
-PROXY_INTERNAL_VERSION = "p2.10a2-config-refresh-and-effort-ux"
+PROXY_INTERNAL_VERSION = "p2.10a3-provider-validation-region-status"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -6873,14 +6873,13 @@ def _fal_api_key() -> str:
 
 def _image_api_key_for_provider(provider: str | None = None) -> str:
     selected = (provider or _image_provider()).strip().lower()
-    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+    if _is_qwen_image_provider(selected):
         return _dashscope_api_key()
     if selected in {"stability", "stability_ai", "stable_image"}:
         return _stability_api_key()
     if selected in {"fal", "fal_ai", "fal.ai"}:
         return _fal_api_key()
     return _image_api_key()
-
 
 def _zai_compatible_image_endpoint(provider: str | None = None) -> str:
     selected = (provider or _image_provider()).strip().lower()
@@ -6889,9 +6888,79 @@ def _zai_compatible_image_endpoint(provider: str | None = None) -> str:
     return "https://api.z.ai/api/paas/v4/images/generations"
 
 
+
+_QWEN_IMAGE_REGION_ALIASES = {
+    "qwen": "qwen_image",
+    "qwen_image": "qwen_image",
+    "qwen-image": "qwen_image",
+    "dashscope": "qwen_image",
+    "aliyun": "qwen_image",
+    "alibaba": "qwen_image",
+    "qwen_image_beijing": "qwen_image_beijing",
+    "qwen-image-beijing": "qwen_image_beijing",
+    "dashscope_beijing": "qwen_image_beijing",
+    "qwen_image_singapore": "qwen_image_singapore",
+    "qwen-image-singapore": "qwen_image_singapore",
+    "dashscope_singapore": "qwen_image_singapore",
+    "qwen_image_us": "qwen_image_us",
+    "qwen-image-us": "qwen_image_us",
+    "qwen_us": "qwen_image_us",
+    "qwen_us_virginia": "qwen_image_us",
+    "dashscope_us": "qwen_image_us",
+    "qwen_image_germany": "qwen_image_germany",
+    "qwen-image-germany": "qwen_image_germany",
+    "qwen_germany": "qwen_image_germany",
+    "qwen_frankfurt": "qwen_image_germany",
+    "dashscope_germany": "qwen_image_germany",
+}
+
+_QWEN_IMAGE_REGION_STATUS = {
+    "qwen_image": {
+        "region": "Beijing",
+        "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+    },
+    "qwen_image_beijing": {
+        "region": "Beijing",
+        "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+    },
+    "qwen_image_singapore": {
+        "region": "Singapore",
+        "endpoint": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+    },
+    "qwen_image_us": {
+        "region": "US Virginia",
+        "endpoint": "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": False,
+    },
+    "qwen_image_germany": {
+        "region": "Germany Frankfurt",
+        "endpoint": "https://dashscope.eu-central-1.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": False,
+    },
+}
+
+
+def _canonical_qwen_image_provider(provider: str | None = None) -> str:
+    selected = (provider or _image_provider()).strip().lower().replace(" ", "_")
+    return _QWEN_IMAGE_REGION_ALIASES.get(selected, selected)
+
+
+def _is_qwen_image_provider(provider: str | None = None) -> bool:
+    return _canonical_qwen_image_provider(provider) in _QWEN_IMAGE_REGION_STATUS
+
+
+def _qwen_image_region_status(provider: str | None = None) -> dict[str, Any]:
+    canonical = _canonical_qwen_image_provider(provider)
+    return dict(_QWEN_IMAGE_REGION_STATUS.get(canonical) or _QWEN_IMAGE_REGION_STATUS["qwen_image"])
+
+
+
 def _image_model() -> str:
     provider = _image_provider()
-    if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+    if _is_qwen_image_provider(provider):
         return (
             os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
             or os.environ.get("DASHSCOPE_IMAGE_MODEL")
@@ -6914,7 +6983,6 @@ def _image_model() -> str:
         or os.environ.get("ZAI_IMAGE_MODEL")
         or "cogView-4-250304"
     )
-
 
 def _image_size(value: Any = None) -> str:
     raw = str(value or os.environ.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")).strip()
@@ -7205,11 +7273,24 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
         },
     }
 
+    region_status = _qwen_image_region_status(provider)
+    if not bool(region_status.get("model_available")):
+        return {
+            "ok": False,
+            "provider": provider,
+            "model": _image_model(),
+            "prompt": prompt,
+            "error": "qwen_image_region_model_unavailable",
+            "region": region_status.get("region"),
+            "message": f"Qwen Image is currently not available for {region_status.get('region')} in CoDeepSeedeX. Choose qwen_image_beijing or qwen_image_singapore, or set a verified custom DashScope image endpoint.",
+            "images": [],
+        }
+
     endpoint = os.environ.get(
         "DEEPSEEK_PROXY_IMAGE_BASE_URL",
         os.environ.get(
             "DASHSCOPE_IMAGE_ENDPOINT",
-            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            str(region_status.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"),
         ),
     )
 
@@ -7275,7 +7356,6 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
         "size": size,
         "images": images,
     }
-
 
 def _image_data_url_from_base64(value: str, *, mime_type: str = "image/png") -> str:
     return f"data:{mime_type};base64,{value}"
@@ -7482,7 +7562,7 @@ async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if provider in {"glm", "zai", "zhipu", "zhipuai", "bigmodel"}:
         return await _zai_image_generate(arguments)
 
-    if provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "alibaba"}:
+    if _is_qwen_image_provider(provider):
         return await _dashscope_qwen_image_generate(arguments)
 
     if provider in {"stability", "stability_ai", "stable_image"}:
@@ -7497,11 +7577,9 @@ async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
         "model": _image_model(),
         "prompt": prompt,
         "error": "unsupported_image_provider",
-        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, dashscope, stability, fal, disabled.",
+        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, qwen_image_beijing, qwen_image_singapore, qwen_image_us, qwen_image_germany, dashscope, stability, fal, disabled.",
         "images": [],
     }
-
-
 def _web_search_tool_schema() -> dict[str, Any]:
     return {
         "type": "function",
@@ -10533,7 +10611,7 @@ def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> 
         if not isinstance(result, dict):
             continue
 
-        if result.get("provider") not in {"mock", "glm", "zai", "zhipu", "zhipuai", "bigmodel"}:
+        if result.get("provider") not in {"mock", "glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore"}:
             continue
 
         images = result.get("images") or []
@@ -10589,7 +10667,6 @@ def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> 
         )
 
     return output_items
-
 
 def _response_output_text(output_items: list[dict[str, Any]]) -> str:
     chunks: list[str] = []

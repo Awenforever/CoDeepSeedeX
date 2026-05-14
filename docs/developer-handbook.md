@@ -387,3 +387,9 @@ Next development direction:
 Successful local config writes that change API keys, model selection, or reasoning effort must apply a CoDeepSeedeX-only post-config hook. The hook may refresh already-running local stable/thinking `dsproxy` processes and report `all updates applied`; it must not start proxies that were not already running. WeClaw resume automation is deliberately out of scope for CoDeepSeedeX changes and must be handled in the WeClaw development line.
 
 DeepSeek-facing effort UX should not recommend `medium`. `low` and `medium` may remain accepted compatibility inputs from Codex or old commands, but CoDeepSeedeX stores and forwards them as `high` for the DeepSeek proxy path. User-facing examples should prefer `high`, `xhigh`, or `max` according to the intended behavior.
+
+### p2.10a3 provider validation and region status rule
+
+Non-generation provider probes may intentionally send an empty or metadata-only payload. When such a probe receives an HTTP 200 response that still contains a structured provider error body, and no authentication error is detected, CoDeepSeedeX treats it as accepted probe evidence rather than a generic validation failure. This classification is only for non-generation validation and must not be described as a successful real image generation test.
+
+Qwen Image region support must be explicit. Beijing and Singapore are user-selectable Qwen Image providers. US Virginia and Germany Frankfurt remain listed so users can see the region decision, but they must report a model-unavailable status for qwen-image-2.0-pro instead of failing as if CoDeepSeedeX were broken.

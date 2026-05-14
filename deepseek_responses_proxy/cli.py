@@ -1238,6 +1238,24 @@ _IMAGE_PROVIDER_ALIASES = {
     "qwen-image": "qwen_image",
     "dashscope": "qwen_image",
     "aliyun": "qwen_image",
+    "qwen_image_beijing": "qwen_image_beijing",
+    "qwen-image-beijing": "qwen_image_beijing",
+    "qwen_beijing": "qwen_image_beijing",
+    "dashscope_beijing": "qwen_image_beijing",
+    "qwen_image_singapore": "qwen_image_singapore",
+    "qwen-image-singapore": "qwen_image_singapore",
+    "qwen_singapore": "qwen_image_singapore",
+    "dashscope_singapore": "qwen_image_singapore",
+    "qwen_image_us": "qwen_image_us",
+    "qwen-image-us": "qwen_image_us",
+    "qwen_us": "qwen_image_us",
+    "qwen_us_virginia": "qwen_image_us",
+    "dashscope_us": "qwen_image_us",
+    "qwen_image_germany": "qwen_image_germany",
+    "qwen-image-germany": "qwen_image_germany",
+    "qwen_germany": "qwen_image_germany",
+    "qwen_frankfurt": "qwen_image_germany",
+    "dashscope_germany": "qwen_image_germany",
     "stability": "stability",
     "stability_ai": "stability",
     "stable_image": "stability",
@@ -1250,6 +1268,10 @@ _IMAGE_PROVIDER_ENV_KEYS: dict[str, list[str]] = {
     "zhipu": ["ZHIPUAI_API_KEY", "ZHIPU_API_KEY"],
     "zai": ["ZAI_API_KEY", "GLM_API_KEY"],
     "qwen_image": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
+    "qwen_image_beijing": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
+    "qwen_image_singapore": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
+    "qwen_image_us": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
+    "qwen_image_germany": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
     "stability": ["STABILITY_API_KEY", "DEEPSEEK_PROXY_STABILITY_API_KEY"],
     "fal": ["FAL_KEY", "FAL_API_KEY", "DEEPSEEK_PROXY_FAL_API_KEY"],
 }
@@ -1261,6 +1283,10 @@ def _image_provider_primary_env_key(provider: str | None) -> str:
         "zhipu": "ZHIPUAI_API_KEY",
         "zai": "ZAI_API_KEY",
         "qwen_image": "DASHSCOPE_API_KEY",
+        "qwen_image_beijing": "DASHSCOPE_API_KEY",
+        "qwen_image_singapore": "DASHSCOPE_API_KEY",
+        "qwen_image_us": "DASHSCOPE_API_KEY",
+        "qwen_image_germany": "DASHSCOPE_API_KEY",
         "stability": "STABILITY_API_KEY",
         "fal": "FAL_KEY",
     }
@@ -1297,6 +1323,71 @@ def _canonical_probe_image_provider(provider: str) -> str:
     return _IMAGE_PROVIDER_ALIASES.get(selected, selected)
 
 
+
+_QWEN_IMAGE_REGION_STATUS = {
+    "qwen_image": {
+        "region": "Beijing",
+        "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+        "status": "supported",
+    },
+    "qwen_image_beijing": {
+        "region": "Beijing",
+        "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+        "status": "supported",
+    },
+    "qwen_image_singapore": {
+        "region": "Singapore",
+        "endpoint": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": True,
+        "status": "supported",
+    },
+    "qwen_image_us": {
+        "region": "US Virginia",
+        "endpoint": "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": False,
+        "status": "qwen_image_model_unavailable",
+    },
+    "qwen_image_germany": {
+        "region": "Germany Frankfurt",
+        "endpoint": "https://dashscope.eu-central-1.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "model_available": False,
+        "status": "qwen_image_model_unavailable",
+    },
+}
+
+
+def _is_qwen_image_provider(provider: str | None) -> bool:
+    return _canonical_probe_image_provider(str(provider or "")) in _QWEN_IMAGE_REGION_STATUS
+
+
+def _qwen_image_region_status(provider: str | None) -> dict[str, Any]:
+    canonical = _canonical_probe_image_provider(str(provider or ""))
+    return dict(_QWEN_IMAGE_REGION_STATUS.get(canonical) or _QWEN_IMAGE_REGION_STATUS["qwen_image"])
+
+
+def _qwen_image_region_unavailable_result(provider: str | None) -> dict[str, Any]:
+    canonical = _canonical_probe_image_provider(str(provider or ""))
+    info = _qwen_image_region_status(canonical)
+    return {
+        "ok": False,
+        "status": "region_model_unavailable",
+        "kind": "image_generation",
+        "provider": canonical,
+        "region": info.get("region"),
+        "endpoint": info.get("endpoint"),
+        "error": "qwen_image_region_model_unavailable",
+        "message": f"Qwen Image is currently not available for {info.get('region')}. Choose qwen_image_beijing or qwen_image_singapore, or set a verified custom DashScope image endpoint.",
+        "validation_method": "region_capability_check",
+        "may_consume_quota": False,
+        "validation_strength": "static_region_capability",
+        "functional_probe": False,
+        "functional_validation": "not_performed",
+    }
+
+
+
 def _provider_probe_web_targets(kind: str, provider: str) -> list[tuple[str, str]]:
     selected_kind = str(kind or "all").strip().lower()
     selected_provider = str(provider or "all").strip().lower()
@@ -1308,7 +1399,7 @@ def _provider_probe_web_targets(kind: str, provider: str) -> list[tuple[str, str
         for item in web_providers:
             targets.append(("web_search", item))
     if selected_kind in {"all", "image", "image-generation", "image_generation"}:
-        image_providers = ["zhipu", "zai", "qwen_image", "stability", "fal"]
+        image_providers = ["zhipu", "zai", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "stability", "fal"]
         if selected_provider not in {"all", "*"}:
             image_providers = [_canonical_probe_image_provider(selected_provider)]
         for item in image_providers:
@@ -1325,11 +1416,12 @@ def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, byte
         endpoint = "https://api.z.ai/api/paas/v4/images/generations"
         payload = {"model": "cogView-4-250304", "prompt": prompt, "size": "1024x1024"}
         return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
-    if provider == "qwen_image":
+    if _is_qwen_image_provider(provider):
+        info = _qwen_image_region_status(provider)
         endpoint = (
             os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
             or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
-            or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            or str(info.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
         )
         model = (
             os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
@@ -1356,7 +1448,6 @@ def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, byte
         return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
     raise ValueError(f"unsupported_image_provider:{provider}")
 
-
 def _provider_probe_image_evidence(provider: str, data: Any, raw: bytes, content_type: str) -> dict[str, Any]:
     content_type_l = str(content_type or "").lower()
     if raw and ("image/" in content_type_l or "application/octet-stream" in content_type_l):
@@ -1369,7 +1460,7 @@ def _provider_probe_image_evidence(provider: str, data: Any, raw: bytes, content
         for item in items:
             if isinstance(item, dict) and (item.get("url") or item.get("b64_json")):
                 return {"has_image": True, "evidence": "data_url_or_base64", "content_type": content_type}
-    if provider == "qwen_image":
+    if _is_qwen_image_provider(provider):
         output = data.get("output") if isinstance(data.get("output"), dict) else {}
         for item in output.get("results") or []:
             if isinstance(item, dict) and (item.get("url") or item.get("image")):
@@ -1393,7 +1484,6 @@ def _provider_probe_image_evidence(provider: str, data: Any, raw: bytes, content
 
     return {"has_image": False, "evidence": "no_image_field", "content_type": content_type}
 
-
 def _live_image_generation_probe(provider: str, api_key: str, *, timeout: float, prompt: str) -> dict[str, Any]:
     canonical = _canonical_probe_image_provider(provider)
     if canonical not in _IMAGE_PROVIDER_ENV_KEYS:
@@ -1413,6 +1503,8 @@ def _live_image_generation_probe(provider: str, api_key: str, *, timeout: float,
             "provider": canonical,
             "error": "missing_api_key",
         }
+    if _is_qwen_image_provider(canonical) and not bool(_qwen_image_region_status(canonical).get("model_available")):
+        return _qwen_image_region_unavailable_result(canonical)
 
     try:
         endpoint, body, extra_headers = _provider_probe_image_payload(canonical, prompt)
@@ -1491,7 +1583,6 @@ def _live_image_generation_probe(provider: str, api_key: str, *, timeout: float,
             "may_consume_quota": True,
             "prompt": prompt,
         }
-
 
 def _doctor_provider_probe_result(
     kind: str,
@@ -1992,7 +2083,13 @@ def _validation_http_json(
             data = {"raw_preview": raw[:500].decode("utf-8", errors="replace")}
         auth_error = _provider_auth_error_detected(data)
         provider_error = _provider_error_body_detected(data)
-        ok = int(http_status) in ok_statuses
+        provider_error_acceptance = bool(
+            provider_error
+            and allow_provider_error_body
+            and not auth_error
+            and (int(http_status) in ok_statuses or 200 <= int(http_status) < 300)
+        )
+        ok = int(http_status) in ok_statuses or provider_error_acceptance
         if auth_error:
             ok = False
         elif ok and require_provider_error_body and not provider_error:
@@ -2009,6 +2106,7 @@ def _validation_http_json(
             "endpoint": endpoint,
             "may_consume_quota": bool(may_consume_quota),
             "require_provider_error_body": bool(require_provider_error_body),
+            "provider_error_accepted": bool(provider_error_acceptance),
             "validation_strength": validation_strength,
             "functional_probe": bool(functional_probe),
             "functional_validation": "performed" if functional_probe else "not_performed",
@@ -2018,7 +2116,7 @@ def _validation_http_json(
         if auth_error:
             result["error"] = "auth_error_response"
             result["message"] = auth_error
-        elif require_provider_error_body and int(http_status) in ok_statuses and not provider_error:
+        elif require_provider_error_body and (int(http_status) in ok_statuses or 200 <= int(http_status) < 300) and not provider_error:
             result["error"] = "missing_provider_error_body"
             result["message"] = "Expected a provider validation error body for non-generation probe."
         elif provider_error and not allow_provider_error_body:
@@ -2055,8 +2153,6 @@ def _validation_http_json(
             "functional_validation": "performed" if functional_probe else "not_performed",
             **({"warning": warning} if warning else {}),
         }
-
-
 def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float = 10.0) -> dict[str, Any]:
     selected = provider.strip().lower()
     if not api_key:
@@ -2154,7 +2250,7 @@ _IMAGE_METADATA_PROBE_WARNING = (
 
 
 def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.0) -> dict[str, Any]:
-    selected = provider.strip().lower()
+    selected = _canonical_probe_image_provider(provider)
     if not api_key:
         return {
             "ok": False,
@@ -2202,14 +2298,17 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             functional_probe=False,
             warning=_NON_GENERATION_IMAGE_PROBE_WARNING,
         )
-    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+    if _is_qwen_image_provider(selected):
+        info = _qwen_image_region_status(selected)
+        if not bool(info.get("model_available")):
+            return _qwen_image_region_unavailable_result(selected)
         endpoint = (
             os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
             or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
-            or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+            or str(info.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
         )
         return _validation_http_json(
-            provider="qwen_image",
+            provider=selected,
             kind="image_generation",
             method="POST",
             url=endpoint,
@@ -2263,10 +2362,8 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
         "kind": "image_generation",
         "provider": selected,
         "error": "unsupported_image_provider",
-        "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope", "stability", "fal"],
+        "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "dashscope", "stability", "fal"],
     }
-
-
 def _skipped_validation(kind: str, provider: str) -> dict[str, Any]:
     return {
         "ok": None,
@@ -2287,10 +2384,10 @@ def _image_generation_base_url_for_provider(provider: str | None) -> str:
         return "https://open.bigmodel.cn/api/paas/v4/images/generations"
     if selected in {"glm", "zai", "z.ai"}:
         return "https://api.z.ai/api/paas/v4/images/generations"
-    if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
-        return "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    if _is_qwen_image_provider(selected):
+        info = _qwen_image_region_status(selected)
+        return str(info.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
     return ""
-
 
 def _mask_env_secret(key: str, value: str) -> str:
     upper = key.upper()
@@ -2558,7 +2655,10 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             [
                 ("1", "ZhipuAI / BigModel (domestic CogView)", True),
                 ("2", "Z.AI / CogView (international)", True),
-                ("3", "Qwen Image / DashScope", True),
+                ("3", "Qwen Image / DashScope Beijing", True),
+                ("10", "Qwen Image / DashScope Singapore", True),
+                ("11", "Qwen Image / DashScope US Virginia (model unavailable)", False),
+                ("12", "Qwen Image / DashScope Germany Frankfurt (model unavailable)", False),
                 ("4", "Stability AI", True),
                 ("5", "fal.ai", True),
                 ("6", "Kolors", False),
@@ -2578,12 +2678,23 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "z.ai": ("zai", "cogView-4-250304", "Z.AI image API key"),
             "glm": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
             "cogview": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
-            "3": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "3": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
             "qwen": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "qwen_image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen_image_beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
+            "qwen-image-beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
+            "10": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
+            "qwen_image_singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
+            "qwen-image-singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
+            "11": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
+            "qwen_image_us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
+            "qwen-image-us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
+            "12": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
+            "qwen_image_germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
+            "qwen-image-germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
             "4": ("stability", "stable-image-core", "Stability AI API key"),
             "stability": ("stability", "stable-image-core", "Stability AI API key"),
             "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
@@ -2893,6 +3004,14 @@ def _config(args: argparse.Namespace) -> int:
             "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
             "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
+            "qwen_image_beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
+            "qwen-image-beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
+            "qwen_image_singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
+            "qwen-image-singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
+            "qwen_image_us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
+            "qwen-image-us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
+            "qwen_image_germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
+            "qwen-image-germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
             "stability": ("stability", "stable-image-core", "Stability AI API key"),
             "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
             "stable_image": ("stability", "stable-image-core", "Stability AI API key"),
@@ -2904,7 +3023,7 @@ def _config(args: argparse.Namespace) -> int:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_image_provider",
-                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "dashscope", "stability", "fal"],
+                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "dashscope", "stability", "fal"],
             }, ensure_ascii=False, indent=2))
             return 1
         canonical_provider, default_model, prompt = provider_aliases[provider]
@@ -3868,7 +3987,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
-    config_set_image_api_key.add_argument("--provider", default="zhipu", choices=["zhipu", "zhipuai", "bigmodel", "zai", "z.ai", "glm", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
+    config_set_image_api_key.add_argument("--provider", default="zhipu", choices=["zhipu", "zhipuai", "bigmodel", "zai", "z.ai", "glm", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "qwen_image_beijing", "qwen-image-beijing", "qwen_image_singapore", "qwen-image-singapore", "qwen_image_us", "qwen-image-us", "qwen_image_germany", "qwen-image-germany", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_image_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
     config_set_image_api_key.add_argument("--validation-timeout", type=float, default=10.0)

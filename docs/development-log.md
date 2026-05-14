@@ -215,3 +215,10 @@
 - WeClaw stop/start/resume automation remains out of scope for this repository line.
 - User-facing effort guidance no longer recommends `medium`; compatibility inputs `low` and `medium` are stored as `high` for the DeepSeek proxy path.
 - README and README.zh-CN now include a compact behavior-change table for milestone CLI/workflow changes.
+
+## p2.10a3-provider-validation-region-status
+
+- Updated non-generation image validation so HTTP 200 provider error bodies are accepted as probe evidence when no authentication error is detected.
+- Added explicit Qwen Image region choices for Beijing, Singapore, US Virginia, and Germany Frankfurt.
+- Beijing and Singapore remain selectable for Qwen Image. US Virginia and Germany Frankfurt are listed but return a model-unavailable status for qwen-image-2.0-pro.
+- Updated README behavior-change tables and developer handbook rules for provider validation classification and Qwen Image regional status.
