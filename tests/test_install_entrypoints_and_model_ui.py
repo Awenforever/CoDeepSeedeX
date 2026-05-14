@@ -61,9 +61,9 @@ def test_installer_passes_model_catalog_to_both_codex_profiles() -> None:
 
 def test_installer_guided_api_provider_catalogs_are_visible() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "Configure model API now? [Y/n]" in text
-    assert "Configure web search API now? [y/N]" in text
-    assert "Configure image generation API now? [y/N]" in text
+    assert "Configure model API now?" in text
+    assert "Configure web search API now?" in text
+    assert "Configure image generation API now?" in text
     assert "DeepSeek" in text
     assert "Kimi / Moonshot" in text
     assert "Zhipu / BigModel domestic general" in text
@@ -111,7 +111,7 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
     assert "Stability AI" in text
     assert "fal.ai" in text
     assert "serpapi|tavily|exa|firecrawl" in text
-    assert "zhipu|zai|qwen_image|stability|fal" in text
+    assert "zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal" in text
 
 
 def test_installer_validates_web_and_image_provider_keys_before_saving() -> None:
@@ -238,21 +238,17 @@ def test_codex_wrapper_prefers_public_dsproxy_and_tolerates_start_drift() -> Non
 
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'provider_option_line "1" "DeepSeek" "supported"' in text
-    assert 'provider_option_line "2" "Kimi / Moonshot" "supported"' in text
-    assert 'provider_option_line "3" "Zhipu / BigModel domestic general" "supported"' in text
-    assert 'provider_option_line "4" "Zhipu / BigModel domestic Coding Plan" "supported"' in text
-    assert 'provider_option_line "5" "Z.AI international general" "supported"' in text
-    assert 'provider_option_line "6" "Z.AI international Coding Plan" "supported"' in text
-    assert 'provider_option_line "7" "Qwen / DashScope Beijing pay-as-you-go" "supported"' in text
-    assert 'provider_option_line "8" "Qwen / DashScope Singapore pay-as-you-go" "supported"' in text
-    assert 'provider_option_line "9" "Qwen / DashScope US Virginia pay-as-you-go" "supported"' in text
-    assert 'provider_option_line "10" "Other OpenAI-compatible server" "custom"' in text
-    assert 'provider_option_line "3" "GLM / Z.AI" "supported"' not in text
-    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' not in text
-    assert "Mimo" not in text
-    assert "Baichuan" not in text
-
+    assert 'read_menu_choice_from_tty "Select model provider" "1"' in text
+    assert '"1|DeepSeek|supported"' in text
+    assert '"2|Kimi / Moonshot|supported"' in text
+    assert '"3|Zhipu / BigModel domestic general|supported"' in text
+    assert '"4|Zhipu / BigModel domestic Coding Plan|supported"' in text
+    assert '"5|Z.AI international general|supported"' in text
+    assert '"6|Z.AI international Coding Plan|supported"' in text
+    assert '"7|Qwen / DashScope Beijing pay-as-you-go|supported"' in text
+    assert '"8|Qwen / DashScope Singapore pay-as-you-go|supported"' in text
+    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|supported"' in text
+    assert '"10|Other OpenAI-compatible server|custom"' in text
 
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
@@ -267,3 +263,16 @@ def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profile
     exec_idx = body.index(r'exec "\$REAL_CODEX" "\$@"')
     assert title_function_idx < start_function_idx
     assert title_call_idx < start_call_idx < exec_idx
+
+
+def test_installer_guided_provider_menus_use_arrow_selector() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "read_menu_choice_from_tty()" in text
+    assert "read_yes_no_menu()" in text
+    assert "Use ↑/↓ or j/k, Enter to select" in text
+    assert 'provider="$(read_menu_choice_from_tty "Select model provider" "1"' in text
+    assert 'provider="$(read_menu_choice_from_tty "Select web search provider" "1"' in text
+    assert 'provider="$(read_menu_choice_from_tty "Select image generation provider" "1"' in text
+    assert "CODEEPSEEDEX_NO_ARROW_MENUS" in text
+    assert "qwen_image_beijing|qwen-image-beijing" in text
+    assert "qwen_image_singapore|qwen-image-singapore" in text

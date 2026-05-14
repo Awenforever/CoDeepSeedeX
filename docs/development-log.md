@@ -5,6 +5,14 @@
 
 
 
+
+## p2.10a10-installer-arrow-provider-ui
+
+- Added arrow-key installer provider selection with numeric/text fallback.
+- Kept model, web search, and image generation provider menus explicit.
+- Updated image-provider user hints to prefer explicit Qwen / DashScope region provider names.
+- Documented that regional Qwen providers must not collapse into a single generic entry.
+- No public Release tag was moved.
 ## p2.10a9-release-v0.3.8-alpha
 
 - Prepared and published `v0.3.8-alpha` as a GitHub pre-release, not Latest.

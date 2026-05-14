@@ -420,3 +420,7 @@ After changing model API setup to `dsproxy config set-model`, the public configu
 `dsproxy upgrade` must continue to resolve GitHub Latest Release by default. `dsproxy upgrade --alpha` resolves the newest non-draft GitHub pre-release from the releases list API. This is the maintainer VM validation path: publish a pre-release first, test it with `dsproxy upgrade --alpha` on a VM, then promote the same GitHub Release to Latest only after validation passes.
 
 The Codex wrapper installed by `scripts/install.sh` sets a random terminal tab title for `codex --profile deepseek` and `codex --profile deepseek-thinking`. The title format is `[emoji]CoDeepSeedeX`, using the maintainer-provided emoji candidate list. Keep this in the wrapper rather than proxy startup code, because the wrapper owns the user terminal before it executes the real Codex binary.
+
+## p2.10a10 installer provider selection UI
+
+Guided installer provider menus should prefer arrow-key navigation with Enter confirmation, while retaining numeric and text input as fallback for non-TTY or incompatible terminals. Public provider names must stay explicit by provider family and region. In particular, Qwen / DashScope model and image providers must not collapse back into a single generic `qwen` entry when regional endpoints or availability differ.

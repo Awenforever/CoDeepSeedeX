@@ -382,3 +382,7 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 普通`dsproxy upgrade`必须继续解析GitHub Latest Release。`dsproxy upgrade --alpha`解析GitHub releases列表中最新的非draft pre-release。该通道用于维护者VM验证：先发布pre-release，在VM中用`dsproxy upgrade --alpha`测试，完全通过后再把同一个GitHub Release提升为Latest。
 
 `scripts/install.sh`安装的Codex wrapper会在`codex --profile deepseek`和`codex --profile deepseek-thinking`启动时随机设置终端选项卡标题。标题格式为`[emoji]CoDeepSeedeX`，emoji来自维护者给定候选列表。该逻辑应保留在wrapper中，而不是放到proxy startup中，因为wrapper在执行真实Codex二进制之前拥有用户终端。
+
+## p2.10a10安装器provider选择交互
+
+引导式安装器provider菜单应优先使用方向键导航和回车确认，同时为非TTY或不兼容终端保留数字和文本输入fallback。公开provider名称必须按provider家族和地区显式区分。尤其是Qwen / DashScope的model和image provider，在endpoint或可用性不同的情况下，不能退回单一泛化`qwen`入口。

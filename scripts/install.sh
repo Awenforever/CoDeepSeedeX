@@ -548,6 +548,120 @@ PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4
   [ "$result" = "ok" ]
 }
 
+read_menu_choice_from_tty() {
+  local prompt="$1"
+  local default="${2:-}"
+  shift 2 || true
+  local options=("$@")
+  local count="${#options[@]}"
+
+  if [ "$count" -eq 0 ]; then
+    read_from_tty "$prompt" "$default"
+    return $?
+  fi
+
+  if [ ! -t 0 ] || [ ! -t 1 ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
+    read_from_tty "$prompt" "$default"
+    return $?
+  fi
+
+  local selected=0
+  local i
+  for i in "${!options[@]}"; do
+    IFS='|' read -r value _label _status <<< "${options[$i]}"
+    if [ "$value" = "$default" ]; then
+      selected="$i"
+      break
+    fi
+  done
+
+  printf '%s\n' "$prompt"
+  printf '  Use ↑/↓ or j/k, Enter to select. Type a number/text for fallback.\n'
+  for ((i=0; i<count; i++)); do
+    printf '\n'
+  done
+
+  local key
+  while true; do
+    printf '\033[%sA' "$count"
+    for i in "${!options[@]}"; do
+      IFS='|' read -r value label status <<< "${options[$i]}"
+      printf '\033[2K'
+      if [ "$i" -eq "$selected" ]; then
+        printf '  \033[1;36m›\033[0m '
+      else
+        printf '    '
+      fi
+      if [ "$status" = "supported" ]; then
+        printf '\033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$value." "$label"
+      elif [ "$status" = "custom" ]; then
+        printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
+      elif [ "$status" = "model unavailable" ]; then
+        printf '\033[2m%s %s  Model unavailable\033[0m\n' "$value." "$label"
+      elif [ "$status" = "skip" ]; then
+        printf '  %s. %s\n' "$value" "$label"
+      else
+        printf '\033[2m%s %s  Unsupported\033[0m\n' "$value." "$label"
+      fi
+    done
+
+    IFS= read -rsn1 key < /dev/tty || {
+      read_from_tty "$prompt" "$default"
+      return $?
+    }
+
+    case "$key" in
+      "")
+        IFS='|' read -r value _label _status <<< "${options[$selected]}"
+        printf '\n'
+        printf '%s\n' "$value"
+        return 0
+        ;;
+      $'\x1b')
+        local rest=""
+        IFS= read -rsn2 -t 0.15 rest < /dev/tty || true
+        case "$rest" in
+          "[A") selected=$(( (selected + count - 1) % count )) ;;
+          "[B") selected=$(( (selected + 1) % count )) ;;
+          *) ;;
+        esac
+        ;;
+      k|K)
+        selected=$(( (selected + count - 1) % count ))
+        ;;
+      j|J)
+        selected=$(( (selected + 1) % count ))
+        ;;
+      [0-9A-Za-z_./:-])
+        local rest=""
+        IFS= read -r rest < /dev/tty || rest=""
+        local typed="${key}${rest}"
+        typed="${typed%%$'\r'}"
+        typed="${typed%%$'\n'}"
+        printf '\n'
+        printf '%s\n' "$typed"
+        return 0
+        ;;
+    esac
+  done
+}
+
+read_yes_no_menu() {
+  local prompt="$1"
+  local default="${2:-N}"
+  local yes_label="Yes"
+  local no_label="No"
+
+  case "$default" in
+    y|Y|yes|YES|Yes)
+      read_menu_choice_from_tty "$prompt" "Y" "Y|$yes_label|supported" "N|$no_label|skip"
+      ;;
+    *)
+      read_menu_choice_from_tty "$prompt" "N" "Y|$yes_label|supported" "N|$no_label|skip"
+      ;;
+  esac
+}
+
 provider_option_line() {
   local number="$1"
   local name="$2"
@@ -576,7 +690,7 @@ prompt_deepseek_api_key() {
   fi
 
   local configure=""
-  configure="$(read_yes_no "Configure model API now? [Y/n]" "Y")"
+  configure="$(read_yes_no_menu "Configure model API now?" "Y")"
   case "$configure" in
     n|N|no|NO|No)
       warn "Model API skipped. Configure later with: dsproxy config wizard"
@@ -585,20 +699,19 @@ prompt_deepseek_api_key() {
   esac
 
   sub_title "Model providers"
-  provider_option_line "1" "DeepSeek" "supported"
-  provider_option_line "2" "Kimi / Moonshot" "supported"
-  provider_option_line "3" "Zhipu / BigModel domestic general" "supported"
-  provider_option_line "4" "Zhipu / BigModel domestic Coding Plan" "supported"
-  provider_option_line "5" "Z.AI international general" "supported"
-  provider_option_line "6" "Z.AI international Coding Plan" "supported"
-  provider_option_line "7" "Qwen / DashScope Beijing pay-as-you-go" "supported"
-  provider_option_line "8" "Qwen / DashScope Singapore pay-as-you-go" "supported"
-  provider_option_line "9" "Qwen / DashScope US Virginia pay-as-you-go" "supported"
-  provider_option_line "10" "Other OpenAI-compatible server" "custom"
-  printf '%s\n' "  0. Skip"
-
   local provider=""
-  provider="$(read_from_tty "Select model provider" "1")"
+  provider="$(read_menu_choice_from_tty "Select model provider" "1" \
+    "1|DeepSeek|supported" \
+    "2|Kimi / Moonshot|supported" \
+    "3|Zhipu / BigModel domestic general|supported" \
+    "4|Zhipu / BigModel domestic Coding Plan|supported" \
+    "5|Z.AI international general|supported" \
+    "6|Z.AI international Coding Plan|supported" \
+    "7|Qwen / DashScope Beijing pay-as-you-go|supported" \
+    "8|Qwen / DashScope Singapore pay-as-you-go|supported" \
+    "9|Qwen / DashScope US Virginia pay-as-you-go|supported" \
+    "10|Other OpenAI-compatible server|custom" \
+    "0|Skip|skip")"
   case "$provider" in
     1|deepseek|DeepSeek|DEEPSEEK)
       PROMPTED_MODEL_PROVIDER="deepseek"
@@ -693,7 +806,7 @@ prompt_serpapi_api_key() {
   fi
 
   local configure=""
-  configure="$(read_yes_no "Configure web search API now? [y/N]" "N")"
+  configure="$(read_yes_no_menu "Configure web search API now?" "N")"
   case "$configure" in
     y|Y|yes|YES|Yes) ;;
     *)
@@ -703,18 +816,17 @@ prompt_serpapi_api_key() {
   esac
 
   sub_title "Web search providers"
-  provider_option_line "1" "SerpAPI" "supported"
-  provider_option_line "2" "Tavily" "supported"
-  provider_option_line "3" "Exa" "supported"
-  provider_option_line "4" "Firecrawl" "supported"
-  provider_option_line "5" "Bing Web Search" "unsupported"
-  provider_option_line "7" "Google Programmable Search" "unsupported"
-  provider_option_line "8" "Other custom server" "unsupported"
-  printf '%s\n' "  0. Skip"
-
   local provider=""
   local prompt=""
-  provider="$(read_from_tty "Select web search provider" "1")"
+  provider="$(read_menu_choice_from_tty "Select web search provider" "1" \
+    "1|SerpAPI|supported" \
+    "2|Tavily|supported" \
+    "3|Exa|supported" \
+    "4|Firecrawl|supported" \
+    "5|Bing Web Search|unsupported" \
+    "7|Google Programmable Search|unsupported" \
+    "8|Other custom server|unsupported" \
+    "0|Skip|skip")"
   case "$provider" in
     1|serpapi|SerpAPI|SERPAPI) PROMPTED_WEB_SEARCH_PROVIDER="serpapi"; prompt="SerpAPI API key" ;;
     2|tavily|Tavily|TAVILY) PROMPTED_WEB_SEARCH_PROVIDER="tavily"; prompt="Tavily API key" ;;
@@ -770,7 +882,7 @@ prompt_image_generation_api_key() {
   fi
 
   local configure=""
-  configure="$(read_yes_no "Configure image generation API now? [y/N]" "N")"
+  configure="$(read_yes_no_menu "Configure image generation API now?" "N")"
   case "$configure" in
     y|Y|yes|YES|Yes) ;;
     *)
@@ -780,23 +892,22 @@ prompt_image_generation_api_key() {
   esac
 
   sub_title "Image generation providers"
-  provider_option_line "1" "ZhipuAI / BigModel" "supported"
-  provider_option_line "2" "Z.AI / CogView" "supported"
-  provider_option_line "3" "Qwen Image / DashScope Beijing" "supported"
-  provider_option_line "4" "Qwen Image / DashScope Singapore" "supported"
-  provider_option_line "5" "Qwen Image / DashScope US Virginia" "model unavailable"
-  provider_option_line "6" "Qwen Image / DashScope Germany Frankfurt" "model unavailable"
-  provider_option_line "7" "Stability AI" "supported"
-  provider_option_line "8" "fal.ai" "supported"
-  provider_option_line "9" "Kolors" "unsupported"
-  provider_option_line "10" "Hunyuan Image" "unsupported"
-  provider_option_line "11" "Volcengine Ark" "unsupported"
-  provider_option_line "12" "Other custom server" "unsupported"
-  printf '%s\n' "  0. Skip"
-
   local provider=""
   local prompt=""
-  provider="$(read_from_tty "Select image generation provider" "1")"
+  provider="$(read_menu_choice_from_tty "Select image generation provider" "1" \
+    "1|ZhipuAI / BigModel|supported" \
+    "2|Z.AI / CogView|supported" \
+    "3|Qwen Image / DashScope Beijing|supported" \
+    "4|Qwen Image / DashScope Singapore|supported" \
+    "5|Qwen Image / DashScope US Virginia|model unavailable" \
+    "6|Qwen Image / DashScope Germany Frankfurt|model unavailable" \
+    "7|Stability AI|supported" \
+    "8|fal.ai|supported" \
+    "9|Kolors|unsupported" \
+    "10|Hunyuan Image|unsupported" \
+    "11|Volcengine Ark|unsupported" \
+    "12|Other custom server|unsupported" \
+    "0|Skip|skip")"
   case "$provider" in
     1|zhipu|ZHIPU|zhipuai|ZHIPUAI|bigmodel|BIGMODEL) PROMPTED_IMAGE_PROVIDER="zhipu"; prompt="ZhipuAI / BigModel image API key" ;;
     2|glm|GLM|cogview|CogView|zai|ZAI|z.ai|Z.AI) PROMPTED_IMAGE_PROVIDER="zai"; prompt="Z.AI image API key" ;;
@@ -813,7 +924,7 @@ prompt_image_generation_api_key() {
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
+      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
       return 0
       ;;
     *)
@@ -1516,7 +1627,7 @@ prompt_serpapi_api_key
 SERPAPI_KEY="$PROMPTED_SERPAPI_API_KEY"
 prompt_image_generation_api_key
 IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
-WRAPPER_CHOICE="$(read_yes_no "Install codex wrapper for deepseek/deepseek-thinking profiles? [Y/n] (Recommended):" "Y")"
+WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
 case "$WRAPPER_CHOICE" in
   n|N|no|NO|No) INSTALL_CODEX_WRAPPER=0 ;;
@@ -1741,7 +1852,7 @@ printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-model --provider deepseek"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
-printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
+printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"
 
