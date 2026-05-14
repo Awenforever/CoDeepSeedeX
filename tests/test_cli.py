@@ -2230,3 +2230,104 @@ def test_cli_model_api_provider_catalog_uses_explicit_sites_and_plans():
 
     assert cli._model_api_provider_config("glm")["base_url"] == "https://api.z.ai/api/paas/v4"
     assert cli._model_api_provider_config("qwen")["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+
+def test_cli_upgrade_help_exposes_alpha_channel() -> None:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    result = subprocess.run(
+        [sys.executable, "-m", "deepseek_responses_proxy.cli", "upgrade", "--help"],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "--alpha" in result.stdout
+    assert "--alpha-release-url" in result.stdout
+    assert "pre-release" in result.stdout
+
+def test_resolve_latest_prerelease_tag_selects_first_non_draft_prerelease(monkeypatch) -> None:
+    import io
+    import json
+    from deepseek_responses_proxy import cli
+
+    payload = json.dumps([
+        {"tag_name": "v0.3.9-alpha", "draft": True, "prerelease": True, "name": "draft"},
+        {"tag_name": "v0.3.8-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.8-alpha"},
+        {"tag_name": "v0.3.7-alpha", "draft": False, "prerelease": False, "name": "latest"},
+    ]).encode("utf-8")
+
+    seen = {}
+
+    def fake_urlopen(request, timeout=None):
+        seen["url"] = getattr(request, "full_url", str(request))
+        seen["timeout"] = timeout
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    tag, release = cli._resolve_latest_prerelease_tag("https://example.test/releases", timeout=2.5)
+
+    assert tag == "v0.3.8-alpha"
+    assert release["tag_name"] == "v0.3.8-alpha"
+    assert release["prerelease"] is True
+    assert release["draft"] is False
+    assert release["api_url"] == "https://example.test/releases"
+    assert seen["url"] == "https://example.test/releases"
+    assert seen["timeout"] == 2.5
+
+
+def test_cli_upgrade_alpha_dry_run_uses_latest_prerelease(monkeypatch, tmp_path, capsys) -> None:
+    import io
+    import json
+    import subprocess
+    from deepseek_responses_proxy import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, text=True, capture_output=True, timeout=30, check=True)
+
+    payload = json.dumps([
+        {"tag_name": "v0.3.8-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.8-alpha"}
+    ]).encode("utf-8")
+
+    def fake_urlopen(request, timeout=None):
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    rc = cli.main([
+        "upgrade",
+        "--alpha",
+        "--alpha-release-url",
+        "https://example.test/releases",
+        "--repo",
+        str(repo),
+        "--dry-run",
+        "--no-backup",
+        "--skip-profile",
+        "--no-restart",
+        "--skip-config-wizard",
+    ])
+
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["target_ref"] == "v0.3.8-alpha"
+    assert out["target_source"] == "latest_prerelease"
+    assert out["release_channel"] == "alpha"
+    assert out["latest_release"]["prerelease"] is True
+    assert any(step["label"] == "git_checkout_latest_prerelease" for step in out["steps"])
+
+
+def test_cli_upgrade_alpha_rejects_explicit_tag(capsys) -> None:
+    import json
+    from deepseek_responses_proxy import cli
+
+    rc = cli.main(["upgrade", "--alpha", "--tag", "v0.3.8-alpha", "--dry-run"])
+
+    assert rc == 2
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "error"
+    assert out["error"] == "conflicting_upgrade_target"

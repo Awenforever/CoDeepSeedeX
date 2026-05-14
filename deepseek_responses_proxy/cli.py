@@ -3345,6 +3345,7 @@ def _upgrade_run_step(
 
 
 LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest"
+ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases?per_page=50"
 
 
 def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
@@ -3371,42 +3372,104 @@ def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | 
         "draft": data.get("draft"),
     }
 
+def _resolve_latest_prerelease_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
+    url = api_url or os.environ.get("DEEPSEEK_PROXY_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15 if timeout is None else timeout) as response:
+        raw = response.read().decode("utf-8")
+    data = json.loads(raw)
+    if not isinstance(data, list):
+        raise RuntimeError("GitHub releases response was not a list")
+    for release in data:
+        if not isinstance(release, dict):
+            continue
+        if bool(release.get("draft")):
+            continue
+        if not bool(release.get("prerelease") or release.get("isPrerelease")):
+            continue
+        tag = release.get("tag_name") or release.get("tagName")
+        if isinstance(tag, str) and tag.strip():
+            return tag.strip(), {
+                "api_url": url,
+                "tag_name": tag.strip(),
+                "name": release.get("name"),
+                "html_url": release.get("html_url") or release.get("url"),
+                "prerelease": release.get("prerelease", release.get("isPrerelease")),
+                "draft": release.get("draft"),
+            }
+    raise RuntimeError("GitHub releases response did not contain a non-draft pre-release tag")
+
 
 def _upgrade(args: argparse.Namespace) -> int:
     repo_hint = Path(args.repo).expanduser() if args.repo else Path(__file__).resolve().parents[1]
     requested_ref = args.tag
+    alpha_channel = bool(getattr(args, "alpha", False))
     dry_run = bool(args.dry_run)
 
     latest_release: dict[str, Any] | None = None
+    if requested_ref and alpha_channel:
+        print(json.dumps({
+            "status": "error",
+            "operation": "upgrade",
+            "current_runtime_version": PROXY_VERSION,
+            "error": "conflicting_upgrade_target",
+            "message": "Use either --tag for an explicit ref or --alpha for the latest GitHub pre-release, not both.",
+            "mode": "dsproxy_upgrade",
+            "dry_run": dry_run,
+        }, ensure_ascii=False, indent=2))
+        return 2
+
     if requested_ref:
         target_ref = requested_ref
         target_source = "explicit_ref"
     else:
         try:
-            target_ref, latest_release = _resolve_latest_release_tag(args.latest_release_url)
+            if alpha_channel:
+                target_ref, latest_release = _resolve_latest_prerelease_tag(getattr(args, "alpha_release_url", None))
+                target_source = "latest_prerelease"
+            else:
+                target_ref, latest_release = _resolve_latest_release_tag(args.latest_release_url)
+                target_source = "latest_release"
         except Exception as exc:
+            if alpha_channel:
+                release_url = getattr(args, "alpha_release_url", None) or os.environ.get("DEEPSEEK_PROXY_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
+                error_code = "latest_prerelease_resolution_failed"
+                hint = "Alpha upgrades follow the newest non-draft GitHub pre-release. Pass --tag <tag-or-branch> to select an explicit ref, or publish a pre-release first."
+                url_key = "alpha_release_url"
+            else:
+                release_url = args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
+                error_code = "latest_release_resolution_failed"
+                hint = "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer."
+                url_key = "latest_release_url"
             result = {
                 "status": "error",
                 "operation": "upgrade",
                 "current_runtime_version": PROXY_VERSION,
-                "error": "latest_release_resolution_failed",
+                "error": error_code,
                 "detail": f"{type(exc).__name__}: {exc}",
-                "latest_release_url": args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL,
+                url_key: release_url,
                 "repo_hint": str(repo_hint),
                 "dry_run": dry_run,
                 "mode": "dsproxy_upgrade",
-                "hint": "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer.",
+                "hint": hint,
             }
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 1
-        target_source = "latest_release"
 
+    release_channel = "explicit" if target_source == "explicit_ref" else ("alpha" if target_source == "latest_prerelease" else "latest")
     result: dict[str, Any] = {
         "status": "ok",
         "operation": "upgrade",
         "current_runtime_version": PROXY_VERSION,
         "target_ref": target_ref,
         "target_source": target_source,
+        "release_channel": release_channel,
         "latest_release": latest_release,
         "repo_hint": str(repo_hint),
         "dry_run": dry_run,
@@ -3458,7 +3521,8 @@ def _upgrade(args: argparse.Namespace) -> int:
     if requested_ref:
         commands.append(("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_ref], False))
     else:
-        commands.append(("git_checkout_latest_release", ["git", "-C", str(repo_root), "checkout", target_ref], False))
+        checkout_label = "git_checkout_latest_prerelease" if alpha_channel else "git_checkout_latest_release"
+        commands.append((checkout_label, ["git", "-C", str(repo_root), "checkout", target_ref], False))
 
     commands.append(("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False))
 
@@ -4178,7 +4242,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     upgrade = sub.add_parser("upgrade", help="upgrade a git checkout installation")
     upgrade.add_argument("--tag", help="target git tag or ref; defaults to the GitHub Latest Release tag")
+    upgrade.add_argument("--alpha", action="store_true", help="upgrade to the newest non-draft GitHub pre-release instead of the Latest Release")
     upgrade.add_argument("--latest-release-url", help="GitHub latest Release API URL; defaults to the CoDeepSeedeX releases/latest endpoint")
+    upgrade.add_argument("--alpha-release-url", help="GitHub releases API URL used by --alpha; defaults to the CoDeepSeedeX releases list endpoint")
     upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
     upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
     upgrade.add_argument("--allow-dirty", action="store_true", help="allow upgrade with a dirty git worktree")

@@ -1323,6 +1323,22 @@ for arg in "\$@"; do
   prev="\$arg"
 done
 
+set_codeepseedex_terminal_title() {
+  if [ ! -t 1 ]; then
+    return 0
+  fi
+  case "\${TERM:-}" in
+    ""|dumb)
+      return 0
+      ;;
+  esac
+
+  local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")
+  local idx=\$((RANDOM % \${#emojis[@]}))
+  local title="\${emojis[\$idx]}CoDeepSeedeX"
+  printf '\033]0;%s\007' "\$title" 2>/dev/null || true
+}
+
 start_dsproxy_profile() {
   local profile_name="\$1"
   if [ ! -x "\$DSPROXY" ]; then
@@ -1341,6 +1357,7 @@ start_dsproxy_profile() {
 
 case "\$profile" in
   deepseek|deepseek-thinking)
+    set_codeepseedex_terminal_title
     start_dsproxy_profile "\$profile"
     ;;
 esac

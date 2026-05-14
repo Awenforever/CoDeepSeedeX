@@ -252,3 +252,18 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
     assert 'provider_option_line "4" "Qwen / DashScope" "supported"' not in text
     assert "Mimo" not in text
     assert "Baichuan" not in text
+
+
+def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
+    body = _install_function_body("write_codex_wrapper", "uninstall")
+    assert "set_codeepseedex_terminal_title()" in body
+    assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
+    assert r'local title="\${emojis[\$idx]}CoDeepSeedeX"' in body
+    assert "printf '\\033]0;%s\\007' \"\\$title\" 2>/dev/null || true" in body
+    title_function_idx = body.index("set_codeepseedex_terminal_title()")
+    start_function_idx = body.index("start_dsproxy_profile()")
+    title_call_idx = body.index("set_codeepseedex_terminal_title", start_function_idx)
+    start_call_idx = body.index(r'start_dsproxy_profile "\$profile"', title_call_idx)
+    exec_idx = body.index(r'exec "\$REAL_CODEX" "\$@"')
+    assert title_function_idx < start_function_idx
+    assert title_call_idx < start_call_idx < exec_idx

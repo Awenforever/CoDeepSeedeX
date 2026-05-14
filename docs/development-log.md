@@ -3,6 +3,13 @@
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
 
+
+## p2.10a8-upgrade-alpha-terminal-title
+
+- Added `dsproxy upgrade --alpha`, which resolves the newest non-draft GitHub pre-release while preserving the default `dsproxy upgrade` behavior against GitHub Latest Release.
+- Added Codex wrapper terminal tab title randomization for `deepseek` and `deepseek-thinking` profiles. The format is `[emoji]CoDeepSeedeX` using the maintainer-supplied emoji candidate list.
+- Documented the pre-release VM validation principle: publish a pre-release, test with `dsproxy upgrade --alpha`, then promote the same GitHub Release to Latest after validation passes.
+- No public Release tag was moved or recreated.
 ## p2.10a7-doc-sync
 
 - Synchronized README, README.zh-CN, developer handbook, Chinese handbook, and this development log after the p2.10a6 installer model provider surface repair.
