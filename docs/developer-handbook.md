@@ -348,3 +348,36 @@ p2.9a40-config-guide-provider-surface-repair updates the public configuration su
 - Qwen / DashScope pay-as-you-go regions must be shown separately as Beijing, Singapore, and US Virginia.
 - Qwen Coding Plan and Token Plan remain separate guided paths. They should not be treated as ordinary script-probed pay-as-you-go endpoints.
 - The old `glm` and `qwen` aliases remain internal canonicalization/backward-config helpers, but public CLI choices and recommended documentation commands must use explicit site and plan provider names.
+
+### p2.9a41 post-p2.9a40 handoff sync
+
+p2.9a41-post-p2.9a40-handoff-sync records the state after the provider-surface repair line.
+
+Current repository state after p2.9a40:
+
+- `master`, `origin/master`, `work/p2.9a40-config-guide-provider-surface-repair`, and internal tag `p2.9a40-config-guide-provider-surface-repair` point to `cd8e4d9`.
+- Public release tag `v0.3.7-alpha` remains at `466706f` and must not be moved unless the maintainer explicitly starts a new public release.
+- Erroneous plain public tag `v0.3.5` remains absent.
+- p2.9a40 passed `git diff --check`, `bash -n bootstrap.sh`, `bash -n scripts/install.sh`, focused provider/config tests, broader provider/config tests, and full tests with `363 passed`.
+
+Provider-surface state after p2.9a40:
+
+- Brave Search has been removed from README, README.zh-CN, installer guided configuration, and installer validation choices.
+- Public model API setup uses explicit site and plan provider names:
+  - `zhipu`
+  - `zhipu-coding`
+  - `zai`
+  - `zai-coding`
+  - `qwen-beijing`
+  - `qwen-singapore`
+  - `qwen-us`
+- The ambiguous `glm` and `qwen` shortcuts are not recommended public commands. They may remain only as internal canonicalization or backward-config helpers.
+- README and tests should continue distinguishing provider states such as verified, endpoint reachable but auth failed, implemented but not yet verified, not script-tested, and abandoned.
+
+Next development direction:
+
+- Start the next major design line as `work/p2.10-anycodex-provider-architecture-audit`.
+- The audit must not guess from memory. It should start with a read-only audit of `app.py`, `cli.py`, runtime config loading, stream conversion, model catalog, provider config, tool bridge, tests, and docs.
+- The goal is to assess whether CoDeepSeedeX should be generalized into an AnyCodex-style provider architecture.
+- Key DeepSeek-specific areas to inspect include `reasoning_content`, reasoning or thinking event handling, thinking profile behavior, Responses-to-chat conversion, stream event normalization, tool-call repair, model catalog assumptions, `/model` UI expectations, and Codex profile wrapper behavior.
+- Tool replacement should be treated as a broader layer: web search, image generation, and future third-party tools should be able to transparently replace native Codex tools that are unreachable or unavailable, rather than being a SerpAPI-only bridge.

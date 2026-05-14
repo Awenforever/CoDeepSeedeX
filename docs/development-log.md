@@ -188,3 +188,21 @@
   - `qwen-beijing`, `qwen-singapore`, `qwen-us`.
 - Kept legacy `glm` and `qwen` only as internal canonicalization/backward-config helpers, while tests prevent these shortcuts from being used as public CLI choices or recommended README commands.
 - Added test coverage so README examples parse through the CLI and continue to distinguish provider states rather than reverting to a binary supported/unsupported label.
+
+## p2.9a41-post-p2.9a40-handoff-sync
+
+- Synced developer handbooks and the development log after the p2.9a40 provider-surface repair.
+- Current post-p2.9a40 state:
+  - `master=origin/master=cd8e4d9`.
+  - Internal tag `p2.9a40-config-guide-provider-surface-repair=cd8e4d9`.
+  - Public release tag `v0.3.7-alpha=466706f`, unchanged.
+  - Plain public tag `v0.3.5` remains absent.
+  - p2.9a40 passed full tests with `363 passed`.
+- Provider-surface result:
+  - Brave Search removed from public and guided web search configuration.
+  - Model API public guidance now uses explicit Zhipu/Z.AI/Qwen site and plan providers rather than ambiguous `glm` and `qwen` shortcuts.
+- Next planned line:
+  - `work/p2.10-anycodex-provider-architecture-audit`.
+  - Start with read-only architecture evidence collection.
+  - Assess DeepSeek-specific logic and the feasibility of an AnyCodex-style provider abstraction.
+  - Keep the broader third-party tool replacement objective separate from a single SerpAPI-style bridge.

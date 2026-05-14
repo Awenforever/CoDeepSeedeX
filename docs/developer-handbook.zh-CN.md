@@ -310,3 +310,36 @@ p2.9a40-config-guide-provider-surface-repair根据web search、图像provider和
 - Qwen / DashScope按量计费地域必须分开展示为北京、新加坡和美国弗吉尼亚。
 - Qwen Coding Plan和Token Plan仍是单独配置引导路径，不能按普通脚本probe的按量计费endpoint处理。
 - 旧`glm`和`qwen`别名仅保留为内部归一化和旧配置兼容辅助能力；公开CLI choices和推荐文档命令必须使用明确站点和plan的provider名称。
+
+### p2.9a41 p2.9a40后移交同步
+
+p2.9a41-post-p2.9a40-handoff-sync记录provider配置面修复线收口后的状态。
+
+p2.9a40后的当前仓库状态：
+
+- `master`、`origin/master`、`work/p2.9a40-config-guide-provider-surface-repair`和内部tag`p2.9a40-config-guide-provider-surface-repair`均指向`cd8e4d9`。
+- 公开Release tag`v0.3.7-alpha`仍指向`466706f`，除非维护者明确开始新的公开Release，否则不得移动。
+- 错误普通公开tag`v0.3.5`仍不存在。
+- p2.9a40已通过`git diff --check`、`bash -n bootstrap.sh`、`bash -n scripts/install.sh`、focused provider/config tests、broader provider/config tests和full tests，full tests结果为`363 passed`。
+
+p2.9a40后的provider配置面状态：
+
+- Brave Search已从README、README.zh-CN、安装器引导配置和安装器验证choices中移除。
+- 公开model API配置使用明确站点和plan的provider名称：
+  - `zhipu`
+  - `zhipu-coding`
+  - `zai`
+  - `zai-coding`
+  - `qwen-beijing`
+  - `qwen-singapore`
+  - `qwen-us`
+- 含混的`glm`和`qwen`快捷入口不再作为公开推荐命令。它们最多只能作为内部归一化或旧配置兼容辅助能力存在。
+- README和测试应继续区分verified、endpoint reachable but auth failed、implemented but not yet verified、not script-tested和abandoned等状态，不要退回supported/unsupported二分法。
+
+下一阶段开发方向：
+
+- 下一条主设计线建议从`work/p2.10-anycodex-provider-architecture-audit`开始。
+- 审计必须先只读抓证据，不得凭记忆猜源码。第一步应审计`app.py`、`cli.py`、运行时配置加载、stream转换、model catalog、provider config、tool bridge、测试和文档。
+- 目标是评估CoDeepSeedeX是否应重构为AnyCodex式通用provider架构。
+- 重点检查DeepSeek强绑定区域，包括`reasoning_content`、reasoning/thinking事件处理、thinking profile行为、Responses到chat转换、stream事件归一化、tool-call repair、model catalog假设、`/model` UI预期和Codex profile wrapper行为。
+- 工具替换应作为更广义的一层处理：web search、image generation和未来第三方工具应能透明替换Codex原生不可达或不可用工具，而不是只做SerpAPI特例桥。
