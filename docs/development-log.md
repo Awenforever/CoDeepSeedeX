@@ -137,3 +137,13 @@
 - Updated README and README.zh-CN command examples to list SerpAPI, Tavily, Exa, and Firecrawl only.
 - Removed Brave from CLI configuration choices, provider configuration status, and the `doctor providers` default web-search matrix.
 - Kept low-level runtime compatibility separate from the public provider catalog to avoid unnecessarily breaking existing manual Brave configurations.
+
+## p2.9a37-web-search-live-matrix-doc-sync
+
+- Recorded current web search provider live-probe status after the Brave provider surface removal.
+- Tavily live probe passed: endpoint `https://api.tavily.com/search`, HTTP 200, `validation_strength=live_query_probe`, `functional_validation=performed`.
+- Exa live probe passed: endpoint `https://api.exa.ai/search`, HTTP 200, `validation_strength=live_query_probe`, `functional_validation=performed`.
+- Firecrawl live probe passed: endpoint `https://api.firecrawl.dev/v2/search`, HTTP 200, `validation_strength=live_query_probe`, `functional_validation=performed`.
+- SerpAPI remains the configured existing primary web search path.
+- Brave Search remains removed from public/guided configuration because API key creation requires a paid subscription before testing.
+- Current public/guided web search provider list: SerpAPI, Tavily, Exa, Firecrawl.

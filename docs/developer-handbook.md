@@ -281,3 +281,15 @@ Do not interpret the US/Germany result as a generic DashScope failure. It means 
 ### p2.9a34 Brave provider surface removal
 
 Brave Search is no longer advertised or guided as a web search provider because API key creation requires a paid subscription and there is no free live-probe path. Remove it from README examples, guided/public configuration surfaces, `doctor providers` default matrix, and new-user configuration docs. Keep low-level runtime compatibility separate from the public provider catalog unless the maintainer explicitly asks to delete it.
+
+### p2.9a37 web search live matrix
+
+p2.9a37-web-search-live-matrix-doc-sync records the current web search provider live-probe status:
+
+- SerpAPI: configured as the existing primary web search path.
+- Tavily: live probe passed, endpoint `https://api.tavily.com/search`, HTTP 200, `functional_validation=performed`.
+- Exa: live probe passed, endpoint `https://api.exa.ai/search`, HTTP 200, `functional_validation=performed`.
+- Firecrawl: live probe passed, endpoint `https://api.firecrawl.dev/v2/search`, HTTP 200, `functional_validation=performed`.
+- Brave Search: abandoned for the public configuration surface because API key creation requires a paid subscription and there is no free live-probe path.
+
+Current public/guided web search providers are SerpAPI, Tavily, Exa, and Firecrawl. Do not reintroduce Brave into README, config wizard choices, or `doctor providers` default matrices unless the maintainer explicitly reverses this decision.
