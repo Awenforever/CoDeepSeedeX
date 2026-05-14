@@ -353,9 +353,6 @@ if provider == "serpapi":
     ok = request("GET", "https://serpapi.com/search.json?" + params)
 elif provider == "tavily":
     ok = request("POST", "https://api.tavily.com/search", {"Authorization": "Bearer " + api_key}, {"query": query, "max_results": 1, "search_depth": "basic", "include_answer": False})
-elif provider == "brave":
-    params = urllib.parse.urlencode({"q": query, "count": "1"})
-    ok = request("GET", "https://api.search.brave.com/res/v1/web/search?" + params, {"X-Subscription-Token": api_key})
 elif provider == "exa":
     ok = request("POST", "https://api.exa.ai/search", {"Authorization": "Bearer " + api_key}, {"query": query, "numResults": 1})
 elif provider == "firecrawl":
@@ -664,7 +661,7 @@ prompt_serpapi_api_key() {
   case "$configure" in
     y|Y|yes|YES|Yes) ;;
     *)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
       return 0
       ;;
   esac
@@ -672,10 +669,9 @@ prompt_serpapi_api_key() {
   sub_title "Web search providers"
   provider_option_line "1" "SerpAPI" "supported"
   provider_option_line "2" "Tavily" "supported"
-  provider_option_line "3" "Brave Search" "supported"
-  provider_option_line "4" "Exa" "supported"
-  provider_option_line "5" "Firecrawl" "supported"
-  provider_option_line "6" "Bing Web Search" "unsupported"
+  provider_option_line "3" "Exa" "supported"
+  provider_option_line "4" "Firecrawl" "supported"
+  provider_option_line "5" "Bing Web Search" "unsupported"
   provider_option_line "7" "Google Programmable Search" "unsupported"
   provider_option_line "8" "Other custom server" "unsupported"
   printf '%s\n' "  0. Skip"
@@ -686,7 +682,6 @@ prompt_serpapi_api_key() {
   case "$provider" in
     1|serpapi|SerpAPI|SERPAPI) PROMPTED_WEB_SEARCH_PROVIDER="serpapi"; prompt="SerpAPI API key" ;;
     2|tavily|Tavily|TAVILY) PROMPTED_WEB_SEARCH_PROVIDER="tavily"; prompt="Tavily API key" ;;
-    3|brave|Brave|BRAVE|brave_search) PROMPTED_WEB_SEARCH_PROVIDER="brave"; prompt="Brave Search API key" ;;
     4|exa|Exa|EXA) PROMPTED_WEB_SEARCH_PROVIDER="exa"; prompt="Exa API key" ;;
     5|firecrawl|Firecrawl|FIRECRAWL) PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"; prompt="Firecrawl API key" ;;
     8|other|Other|OTHER|custom|Custom)
@@ -694,7 +689,7 @@ prompt_serpapi_api_key() {
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
       return 0
       ;;
     *)
@@ -1066,7 +1061,6 @@ write_env_file() {
   if [ -z "$final_web_search_key" ]; then
     case "$final_web_search_provider" in
       tavily) final_web_search_key="$(env_file_value TAVILY_API_KEY)" ;;
-      brave) final_web_search_key="$(env_file_value BRAVE_SEARCH_API_KEY)" ;;
       *) final_web_search_key="$(env_file_value SERPAPI_API_KEY)" ;;
     esac
   fi
@@ -1137,10 +1131,6 @@ write_env_file() {
       case "$final_web_search_provider" in
         tavily)
           printf 'export TAVILY_API_KEY=%q
-' "$final_web_search_key"
-          ;;
-        brave)
-          printf 'export BRAVE_SEARCH_API_KEY=%q
 ' "$final_web_search_key"
           ;;
         exa)
@@ -1687,7 +1677,7 @@ printf '%s\n' "  dsproxy config show"
 printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-api-key"
 printf '%s\n' "  dsproxy config test-api-key"
-printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl"
+printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
 printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"
 printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
 printf '%s\n' "  dsproxy config set-effort high"

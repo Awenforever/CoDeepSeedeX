@@ -55,7 +55,17 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
 
     assert "dsproxy config wizard" in commands
     assert "dsproxy config set-api-key --provider deepseek" in commands
+    assert "dsproxy config set-api-key --provider zhipu" in commands
+    assert "dsproxy config set-api-key --provider zhipu-coding" in commands
+    assert "dsproxy config set-api-key --provider zai" in commands
+    assert "dsproxy config set-api-key --provider zai-coding" in commands
+    assert "dsproxy config set-api-key --provider qwen-beijing" in commands
+    assert "dsproxy config set-api-key --provider qwen-singapore" in commands
+    assert "dsproxy config set-api-key --provider qwen-us" in commands
+    assert "dsproxy config set-api-key --provider glm" not in commands
+    assert "dsproxy config set-api-key --provider qwen" not in commands
     assert "dsproxy config set-web-search-api-key --provider serpapi" in commands
+    assert "dsproxy config set-web-search-api-key --provider brave" not in commands
     assert "dsproxy config set-image-api-key --provider zhipu" in commands
     assert "dsproxy config set-image-api-key --provider zai" in commands
     assert "dsproxy config set-image-api-key --provider glm" not in commands
@@ -70,3 +80,14 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
         args = parts[1:]
         namespace = parser.parse_args(args)
         assert getattr(namespace, "func", None) is cli._config
+
+def test_readme_model_provider_surface_uses_explicit_sites_and_plans() -> None:
+    text = _readme_text()
+    assert "dsproxy config set-api-key --provider glm\n" not in text
+    assert "dsproxy config set-api-key --provider qwen\n" not in text
+    assert "dsproxy config set-api-key --provider zhipu-coding" in text
+    assert "dsproxy config set-api-key --provider zai-coding" in text
+    assert "dsproxy config set-api-key --provider qwen-beijing" in text
+    assert "dsproxy config set-api-key --provider qwen-singapore" in text
+    assert "dsproxy config set-api-key --provider qwen-us" in text
+    assert "dsproxy config set-web-search-api-key --provider brave" not in text

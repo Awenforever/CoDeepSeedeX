@@ -134,9 +134,14 @@ dsproxy config wizard
 # 配置Codex本身使用的model API provider。
 dsproxy config set-api-key --provider deepseek
 dsproxy config set-api-key --provider kimi
-dsproxy config set-api-key --provider glm
-dsproxy config set-api-key --provider qwen
-dsproxy config set-api-key --provider custom
+dsproxy config set-api-key --provider zhipu
+dsproxy config set-api-key --provider zhipu-coding
+dsproxy config set-api-key --provider zai
+dsproxy config set-api-key --provider zai-coding
+dsproxy config set-api-key --provider qwen-beijing
+dsproxy config set-api-key --provider qwen-singapore
+dsproxy config set-api-key --provider qwen-us
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 
 # 测试当前已配置的model API key。
 dsproxy config test-api-key
@@ -192,11 +197,27 @@ dsproxy config set-api-key --provider custom --base-url https://api.example.com/
 
 CoDeepSeedeX只保留轻量配置说明。免费额度、试用额度和限速规则经常变化，使用前请以各provider官方pricing或credits页面为准。web search和文生图与model API是分开的：model API负责让Codex回答和执行任务，web search和文生图只在Codex需要当前网页结果或生成图片时作为可选工具provider使用。Web search密钥验证会使用固定低结果数查询，可能消耗极少量search额度。文生图密钥验证尽量不生成图片：Stability使用账户余额探测，fal.ai使用模型元数据探测，Zhipu/Z.AI和Qwen/DashScope使用非生成式认证探测。验证失败时不会保存密钥，除非显式传入`--skip-validation`。
 
+#### Model API provider速查
+
+Model API配置必须明确区分站点、地区和plan。文档中不要继续使用旧的`glm`或`qwen`快捷入口，因为它会隐藏endpoint选择。
+
+| Model API路径 | 当前状态 | 配置命令 |
+| --- | --- | --- |
+| DeepSeek | 现有主路径 | `dsproxy config set-api-key --provider deepseek` |
+| Kimi / Moonshot | endpoint可达，但已测试key返回HTTP 401 | `dsproxy config set-api-key --provider kimi` |
+| Zhipu / BigModel国内通用 | `/models`验证通过 | `dsproxy config set-api-key --provider zhipu` |
+| Zhipu / BigModel国内Coding Plan | `/models`验证通过，必须与通用endpoint区分 | `dsproxy config set-api-key --provider zhipu-coding` |
+| Z.AI国际通用 | `/models`验证通过 | `dsproxy config set-api-key --provider zai` |
+| Z.AI国际Coding Plan | `/models`验证通过，必须与通用endpoint区分 | `dsproxy config set-api-key --provider zai-coding` |
+| Qwen / DashScope北京按量计费 | `/models`验证通过 | `dsproxy config set-api-key --provider qwen-beijing` |
+| Qwen / DashScope新加坡按量计费 | `/models`验证通过 | `dsproxy config set-api-key --provider qwen-singapore` |
+| Qwen / DashScope美国弗吉尼亚按量计费 | `/models`验证通过 | `dsproxy config set-api-key --provider qwen-us` |
+| Qwen Coding Plan / Token Plan | 未做普通脚本live probe，需要走对应工具路径验证 | 只在验证对应工具路径时按`custom`配置，例如`dsproxy config set-api-key --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --model qwen3-coder-plus --skip-validation` |
+
 | 工具 | 已支持provider | 配置命令 | 申请/额度页面 |
 | --- | --- | --- | --- |
 | Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
 | Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
-| Web search | Brave Search | `dsproxy config set-web-search-api-key --provider brave` | https://brave.com/search/api/ |
 | Web search | Exa | `dsproxy config set-web-search-api-key --provider exa` | https://exa.ai/ |
 | Web search | Firecrawl | `dsproxy config set-web-search-api-key --provider firecrawl` | https://www.firecrawl.dev/ |
 | 文生图 | 智谱AI / BigModel国内站CogView | `dsproxy config set-image-api-key --provider zhipu` | https://www.bigmodel.cn/ |

@@ -2041,19 +2041,19 @@ def test_cli_config_set_qwen_model_api_key(tmp_path, capsys):
         "--env-file",
         str(env_file),
         "--provider",
-        "qwen",
+        "qwen-singapore",
         "--value",
         "qwen-test-key",
     ]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
-    assert result["model_provider"] == "qwen"
+    assert result["model_provider"] == "qwen_singapore"
     assert result["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     assert result["model"] == "qwen-plus"
     text = env_file.read_text(encoding="utf-8")
     assert "DEEPSEEK_API_KEY=qwen-test-key" in text
     assert "DEEPSEEK_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
-    assert "DEEPSEEK_PROXY_MODEL_PROVIDER=qwen" in text
+    assert "DEEPSEEK_PROXY_MODEL_PROVIDER=qwen_singapore" in text
     assert "DEEPSEEK_PROXY_MODEL=qwen-plus" in text
 
 
@@ -2172,3 +2172,28 @@ def test_cli_qwen_image_validation_respects_region_endpoint_env(monkeypatch):
     assert calls["endpoint"] == endpoint
     assert calls["provider"] == "qwen_image"
     assert calls["payload"] == {}
+
+def test_cli_model_api_provider_catalog_uses_explicit_sites_and_plans():
+    import deepseek_responses_proxy.cli as cli
+
+    providers = cli._supported_model_api_providers()
+    assert "glm" not in providers
+    assert "qwen" not in providers
+    assert "zhipu" in providers
+    assert "zhipu-coding" in providers
+    assert "zai" in providers
+    assert "zai-coding" in providers
+    assert "qwen-beijing" in providers
+    assert "qwen-singapore" in providers
+    assert "qwen-us" in providers
+
+    assert cli._model_api_provider_config("zhipu")["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
+    assert cli._model_api_provider_config("zhipu-coding")["base_url"] == "https://open.bigmodel.cn/api/coding/paas/v4"
+    assert cli._model_api_provider_config("zai")["base_url"] == "https://api.z.ai/api/paas/v4"
+    assert cli._model_api_provider_config("zai-coding")["base_url"] == "https://api.z.ai/api/coding/paas/v4"
+    assert cli._model_api_provider_config("qwen-beijing")["base_url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert cli._model_api_provider_config("qwen-singapore")["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    assert cli._model_api_provider_config("qwen-us")["base_url"] == "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+
+    assert cli._model_api_provider_config("glm")["base_url"] == "https://api.z.ai/api/paas/v4"
+    assert cli._model_api_provider_config("qwen")["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"

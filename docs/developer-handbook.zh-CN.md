@@ -299,3 +299,14 @@ p2.9a39-model-api-live-matrix-doc-sync记录当前model API验证矩阵。
 - `abandoned`：明确从公开和引导配置面放弃。
 
 不要把未测试或认证失败的model provider写成unsupported。model API矩阵完成后，应进入专项架构分支，评估CoDeepSeedeX哪些层可复用，哪些层与DeepSeek强绑定。建议分支为`work/p2.10-anycodex-provider-architecture-audit`。该评估至少覆盖provider adapter、`reasoning_content`等reasoning/thinking字段、stream事件归一化、model catalog元数据、Codex `/model`展示，以及将CoDeepSeedeX升级为更通用AnyCodex式provider架构的整体方案。
+
+### p2.9a40配置引导provider表面修复
+
+p2.9a40-config-guide-provider-surface-repair根据web search、图像provider和model API矩阵结果更新公开配置面：
+
+- README和README.zh-CN不能再把Brave Search列为公开和引导配置的web search provider。
+- 安装器和配置引导必须按明确站点和plan展示model provider，不能继续用含混的`glm`或`qwen`快捷入口作为推荐命令。
+- Zhipu / BigModel国内通用、Zhipu / BigModel国内Coding Plan、Z.AI国际通用、Z.AI国际Coding Plan必须分开展示。
+- Qwen / DashScope按量计费地域必须分开展示为北京、新加坡和美国弗吉尼亚。
+- Qwen Coding Plan和Token Plan仍是单独配置引导路径，不能按普通脚本probe的按量计费endpoint处理。
+- 旧`glm`和`qwen`别名仅保留为内部归一化和旧配置兼容辅助能力；公开CLI choices和推荐文档命令必须使用明确站点和plan的provider名称。

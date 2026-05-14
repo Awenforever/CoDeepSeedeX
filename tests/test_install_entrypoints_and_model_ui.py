@@ -78,13 +78,13 @@ def test_installer_guided_api_provider_catalogs_are_visible() -> None:
 def test_installer_guided_api_provider_catalogs_include_new_providers_and_other() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "Tavily" in text
-    assert "Brave Search" in text
+    assert "Brave Search" not in text
     assert "Qwen Image / DashScope" in text
     assert "Other custom server" in text
     assert "set-image-api-key" in text
     assert "zhipu" in text
     assert "zai" in text
-    assert "serpapi|tavily|brave" in text
+    assert "serpapi|tavily|exa|firecrawl" in text
     assert "zhipu|zai|qwen_image" in text
 
 def test_developer_handbook_provider_handoff_exists() -> None:
@@ -102,7 +102,7 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
     assert "Firecrawl" in text
     assert "Stability AI" in text
     assert "fal.ai" in text
-    assert "serpapi|tavily|brave|exa|firecrawl" in text
+    assert "serpapi|tavily|exa|firecrawl" in text
     assert "zhipu|zai|qwen_image|stability|fal" in text
 
 

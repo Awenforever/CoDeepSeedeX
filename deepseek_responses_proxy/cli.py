@@ -156,16 +156,40 @@ MODEL_API_PROVIDER_ALIASES = {
     "deepseek": "deepseek",
     "kimi": "kimi",
     "moonshot": "kimi",
-    "glm": "glm",
-    "zai": "glm",
-    "z.ai": "glm",
-    "zhipu": "glm",
-    "zhipuai": "glm",
-    "bigmodel": "glm",
-    "qwen": "qwen",
-    "dashscope": "qwen",
-    "aliyun": "qwen",
+
+    # Backward-compatible aliases. The public guide should prefer explicit
+    # site and plan names below instead of the ambiguous glm/qwen shortcuts.
+    "glm": "zai",
+    "qwen": "qwen_singapore",
+    "dashscope": "qwen_singapore",
+
+    "zai": "zai",
+    "z_ai": "zai",
+    "z.ai": "zai",
+    "zai_general": "zai",
+    "zai_coding": "zai_coding",
+    "z.ai_coding": "zai_coding",
+
+    "zhipu": "zhipu",
+    "zhipuai": "zhipu",
+    "bigmodel": "zhipu",
+    "zhipu_domestic": "zhipu",
+    "bigmodel_domestic": "zhipu",
+    "zhipu_coding": "zhipu_coding",
+    "bigmodel_coding": "zhipu_coding",
+
+    "qwen_beijing": "qwen_beijing",
+    "qwen_cn": "qwen_beijing",
+    "dashscope_beijing": "qwen_beijing",
+    "qwen_singapore": "qwen_singapore",
+    "qwen_intl": "qwen_singapore",
+    "dashscope_singapore": "qwen_singapore",
+    "qwen_us": "qwen_us",
+    "qwen_us_virginia": "qwen_us",
+    "dashscope_us": "qwen_us",
+
     "custom": "custom",
+    "other": "custom",
     "openai_compatible": "custom",
     "openai-compatible": "custom",
 }
@@ -183,23 +207,53 @@ MODEL_API_PROVIDERS = {
         "model": "kimi-latest",
         "validation_path": "/models",
     },
-    "glm": {
-        "display_name": "GLM / Z.AI",
+    "zhipu": {
+        "display_name": "Zhipu / BigModel domestic general",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-5.1",
+        "validation_path": "/models",
+    },
+    "zhipu_coding": {
+        "display_name": "Zhipu / BigModel domestic Coding Plan",
+        "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+        "model": "glm-5.1",
+        "validation_path": "/models",
+    },
+    "zai": {
+        "display_name": "Z.AI international general",
         "base_url": "https://api.z.ai/api/paas/v4",
         "model": "glm-5.1",
         "validation_path": "/models",
     },
-    "qwen": {
-        "display_name": "Qwen / DashScope",
+    "zai_coding": {
+        "display_name": "Z.AI international Coding Plan",
+        "base_url": "https://api.z.ai/api/coding/paas/v4",
+        "model": "glm-4.7",
+        "validation_path": "/models",
+    },
+    "qwen_beijing": {
+        "display_name": "Qwen / DashScope Beijing pay-as-you-go",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "validation_path": "/models",
+    },
+    "qwen_singapore": {
+        "display_name": "Qwen / DashScope Singapore pay-as-you-go",
         "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
+        "validation_path": "/models",
+    },
+    "qwen_us": {
+        "display_name": "Qwen / DashScope US Virginia pay-as-you-go",
+        "base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus-us",
         "validation_path": "/models",
     },
 }
 
 
 def _canonical_model_api_provider(provider: str | None) -> str:
-    selected = str(provider or "deepseek").strip().lower().replace(" ", "_")
+    selected = str(provider or "deepseek").strip().lower().replace(" ", "_").replace("-", "_")
     return MODEL_API_PROVIDER_ALIASES.get(selected, selected)
 
 
@@ -218,7 +272,7 @@ def _model_api_provider_config(provider: str | None) -> dict[str, str]:
 
 
 def _supported_model_api_providers() -> list[str]:
-    return ["deepseek", "kimi", "glm", "qwen", "custom"]
+    return ["deepseek", "kimi", "zhipu", "zhipu-coding", "zai", "zai-coding", "qwen-beijing", "qwen-singapore", "qwen-us", "custom"]
 
 
 def _xdg_config_home() -> Path:

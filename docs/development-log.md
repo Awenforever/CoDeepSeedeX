@@ -178,3 +178,13 @@
 - Custom provider is validated as a mechanism because the GLM/Zhipu/Z.AI and Qwen matrices used `--provider custom` with explicit base URLs and models.
 - Future README, wizard, and config guidance must distinguish verified, endpoint reachable but auth failed, implemented but not yet verified, not script-tested, and abandoned states. Do not mark untested providers as unsupported.
 - After matrix testing, prepare a separate architecture audit branch for a potential AnyCodex-style refactor. The audit should identify DeepSeek-specific logic such as `reasoning_content`, reasoning/thinking event handling, model catalog assumptions, and which proxy layers can be generalized across providers.
+
+## p2.9a40-config-guide-provider-surface-repair
+
+- Repaired the public configuration surface after p2.9a40 audit.
+- Removed the remaining Brave Search README quick-reference row and removed Brave from the installer validation surface.
+- Replaced ambiguous model API guide commands with explicit site and plan provider names:
+  - `zhipu`, `zhipu-coding`, `zai`, `zai-coding`.
+  - `qwen-beijing`, `qwen-singapore`, `qwen-us`.
+- Kept legacy `glm` and `qwen` only as internal canonicalization/backward-config helpers, while tests prevent these shortcuts from being used as public CLI choices or recommended README commands.
+- Added test coverage so README examples parse through the CLI and continue to distinguish provider states rather than reverting to a binary supported/unsupported label.

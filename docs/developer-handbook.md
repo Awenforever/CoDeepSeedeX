@@ -337,3 +337,14 @@ Provider documentation and setup wording must use these states instead of a bina
 - `abandoned`: intentionally removed from public/guided surfaces.
 
 Do not label untested or auth-failed model providers as unsupported. After the model API matrix is complete, open a dedicated architecture branch to assess which CoDeepSeedeX layers are reusable and which are DeepSeek-specific. The likely branch is `work/p2.10-anycodex-provider-architecture-audit`. That assessment must cover provider adapters, reasoning/thinking fields such as `reasoning_content`, stream event normalization, model catalog metadata, Codex `/model` display, and the broader goal of evolving CoDeepSeedeX into a more general AnyCodex-style provider architecture.
+
+### p2.9a40 config guide provider surface repair
+
+p2.9a40-config-guide-provider-surface-repair updates the public configuration surface after the web search, image provider, and model API matrices:
+
+- README and README.zh-CN must not list Brave Search as a configurable public/guided web search provider.
+- Installer and configuration guidance must present model providers by explicit site and plan, not by ambiguous `glm` or `qwen` shortcuts.
+- Zhipu / BigModel domestic general, Zhipu / BigModel domestic Coding Plan, Z.AI international general, and Z.AI international Coding Plan must be shown separately.
+- Qwen / DashScope pay-as-you-go regions must be shown separately as Beijing, Singapore, and US Virginia.
+- Qwen Coding Plan and Token Plan remain separate guided paths. They should not be treated as ordinary script-probed pay-as-you-go endpoints.
+- The old `glm` and `qwen` aliases remain internal canonicalization/backward-config helpers, but public CLI choices and recommended documentation commands must use explicit site and plan provider names.

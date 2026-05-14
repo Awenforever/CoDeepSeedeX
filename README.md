@@ -130,9 +130,14 @@ dsproxy config wizard
 # Configure the model API provider used by Codex itself.
 dsproxy config set-api-key --provider deepseek
 dsproxy config set-api-key --provider kimi
-dsproxy config set-api-key --provider glm
-dsproxy config set-api-key --provider qwen
-dsproxy config set-api-key --provider custom
+dsproxy config set-api-key --provider zhipu
+dsproxy config set-api-key --provider zhipu-coding
+dsproxy config set-api-key --provider zai
+dsproxy config set-api-key --provider zai-coding
+dsproxy config set-api-key --provider qwen-beijing
+dsproxy config set-api-key --provider qwen-singapore
+dsproxy config set-api-key --provider qwen-us
+dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
 
 # Test the currently configured model API key.
 dsproxy config test-api-key
@@ -186,11 +191,27 @@ The installer also connects that env file and the `dsproxy` wrapper directory to
 
 CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search and image generation are separate from the model API: the model API powers Codex answers, while these optional providers power tool calls when Codex needs current web results or generated images. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and Zhipu/Z.AI plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
 
+#### Model API provider quick reference
+
+Use explicit site and plan names for model API setup. Do not use the old `glm` or `qwen` shortcut in documentation because it hides the endpoint choice.
+
+| Model API path | Current status | Configure |
+| --- | --- | --- |
+| DeepSeek | Existing primary path | `dsproxy config set-api-key --provider deepseek` |
+| Kimi / Moonshot | Endpoint reachable, supplied key returned HTTP 401 during live validation | `dsproxy config set-api-key --provider kimi` |
+| Zhipu / BigModel domestic general | `/models` verified | `dsproxy config set-api-key --provider zhipu` |
+| Zhipu / BigModel domestic Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-api-key --provider zhipu-coding` |
+| Z.AI international general | `/models` verified | `dsproxy config set-api-key --provider zai` |
+| Z.AI international Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-api-key --provider zai-coding` |
+| Qwen / DashScope Beijing pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-beijing` |
+| Qwen / DashScope Singapore pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-singapore` |
+| Qwen / DashScope US Virginia pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-us` |
+| Qwen Coding Plan / Token Plan | Not script-tested because these are plan-specific tool paths | Configure as `custom` only when validating the corresponding tool path, for example `dsproxy config set-api-key --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --model qwen3-coder-plus --skip-validation` |
+
 | Tool | Supported provider | Configure | Apply / quota page |
 | --- | --- | --- | --- |
 | Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
 | Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
-| Web search | Brave Search | `dsproxy config set-web-search-api-key --provider brave` | https://brave.com/search/api/ |
 | Web search | Exa | `dsproxy config set-web-search-api-key --provider exa` | https://exa.ai/ |
 | Web search | Firecrawl | `dsproxy config set-web-search-api-key --provider firecrawl` | https://www.firecrawl.dev/ |
 | Image generation | ZhipuAI / BigModel (domestic CogView) | `dsproxy config set-image-api-key --provider zhipu` | https://www.bigmodel.cn/ |
