@@ -1641,31 +1641,6 @@ def test_cli_config_set_tavily_web_search_api_key(tmp_path, capsys):
     assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=tavily" in text
     assert "TAVILY_API_KEY=tvly-test-key" in text
     assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
-
-
-def test_cli_config_set_brave_web_search_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
-
-    env_file = tmp_path / "env"
-    assert main([
-        "config",
-        "set-web-search-api-key",
-        "--skip-validation",
-        "--env-file",
-        str(env_file),
-        "--provider",
-        "brave",
-        "--value",
-        "brave-test-key",
-    ]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "ok"
-    assert out["web_search_provider"] == "brave"
-    text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=brave" in text
-    assert "BRAVE_SEARCH_API_KEY=brave-test-key" in text
-
-
 def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
     from deepseek_responses_proxy.cli import main
 
@@ -1953,7 +1928,7 @@ def test_cli_validation_matrix_all_supported_providers(monkeypatch):
 
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
-    for provider in ("serpapi", "tavily", "brave", "exa", "firecrawl"):
+    for provider in ("serpapi", "tavily", "exa", "firecrawl"):
         result = cli._validate_web_search_api_key(provider, "provider-test-key", timeout=2.0)
         assert result["ok"] is True
         assert result["may_consume_quota"] is True
@@ -1980,7 +1955,6 @@ def test_cli_validation_matrix_all_supported_providers(monkeypatch):
 
     assert any("serpapi.com/search.json" in call["url"] for call in calls)
     assert any("api.tavily.com/search" in call["url"] for call in calls)
-    assert any("api.search.brave.com/res/v1/web/search" in call["url"] for call in calls)
     assert any("api.exa.ai/search" in call["url"] for call in calls)
     assert any("api.firecrawl.dev/v2/search" in call["url"] for call in calls)
     assert any("api.z.ai/api/paas/v4/images/generations" in call["url"] for call in calls)

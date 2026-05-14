@@ -1067,7 +1067,6 @@ _PROVIDER_PROBE_PROMPT = "A small red cube on a white background, minimal style.
 _WEB_SEARCH_PROVIDER_ENV_KEYS = {
     "serpapi": ["SERPAPI_API_KEY", "DEEPSEEK_PROXY_SERPAPI_API_KEY"],
     "tavily": ["TAVILY_API_KEY", "DEEPSEEK_PROXY_TAVILY_API_KEY"],
-    "brave": ["BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY", "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY"],
     "exa": ["EXA_API_KEY", "DEEPSEEK_PROXY_EXA_API_KEY"],
     "firecrawl": ["FIRECRAWL_API_KEY", "DEEPSEEK_PROXY_FIRECRAWL_API_KEY"],
 }
@@ -1947,22 +1946,6 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
             functional_probe=True,
             warning=web_search_validation_warning,
         )
-    if selected == "brave":
-        params = urllib.parse.urlencode({"q": query, "count": "1"})
-        return _validation_http_json(
-            provider="brave",
-            kind="web_search",
-            method="GET",
-            url=f"https://api.search.brave.com/res/v1/web/search?{params}",
-            endpoint="https://api.search.brave.com/res/v1/web/search",
-            headers={"X-Subscription-Token": api_key},
-            timeout=timeout,
-            validation_method="fixed_query_search",
-            may_consume_quota=True,
-            validation_strength="live_query_probe",
-            functional_probe=True,
-            warning=web_search_validation_warning,
-        )
     if selected == "exa":
         return _validation_http_json(
             provider="exa",
@@ -2001,7 +1984,7 @@ def _validate_web_search_api_key(provider: str, api_key: str, *, timeout: float 
         "kind": "web_search",
         "provider": selected,
         "error": "unsupported_web_search_provider",
-        "supported_providers": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
+        "supported_providers": ["serpapi", "tavily", "exa", "firecrawl"],
     }
 
 
@@ -2213,8 +2196,6 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "DEEPSEEK_PROXY_SERPAPI_API_KEY",
         "TAVILY_API_KEY",
         "DEEPSEEK_PROXY_TAVILY_API_KEY",
-        "BRAVE_SEARCH_API_KEY",
-        "BRAVE_API_KEY",
         "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY",
         "EXA_API_KEY",
         "DEEPSEEK_PROXY_EXA_API_KEY",
@@ -2248,12 +2229,12 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "commands": {
             "guided": "dsproxy config wizard",
             "model_api": "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom",
-            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|brave|exa|firecrawl",
+            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
             "image_generation_api": "dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal",
         },
         "supported": {
             "model_api": ["deepseek", "kimi", "glm", "qwen", "custom"],
-            "web_search_api": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
+            "web_search_api": ["serpapi", "tavily", "exa", "firecrawl"],
             "image_generation_api": ["zhipu", "bigmodel", "zai", "glm", "qwen_image", "dashscope", "stability", "fal"],
         },
         "unsupported_catalog": {
@@ -2368,7 +2349,6 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             [
                 ("1", "SerpAPI", True),
                 ("2", "Tavily", True),
-                ("3", "Brave Search", True),
                 ("4", "Exa", True),
                 ("5", "Firecrawl", True),
                 ("6", "Bing Web Search", False),
@@ -2382,9 +2362,6 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "serpapi": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
             "2": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
             "tavily": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
-            "3": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
-            "brave": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
-            "brave_search": ("brave", "Brave Search API key", "BRAVE_SEARCH_API_KEY"),
             "4": ("exa", "Exa API key", "EXA_API_KEY"),
             "exa": ("exa", "Exa API key", "EXA_API_KEY"),
             "5": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
@@ -2682,8 +2659,6 @@ def _config(args: argparse.Namespace) -> int:
         provider_aliases = {
             "serpapi": ("serpapi", "SERPAPI_API_KEY", "SerpAPI API key"),
             "tavily": ("tavily", "TAVILY_API_KEY", "Tavily API key"),
-            "brave": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
-            "brave_search": ("brave", "BRAVE_SEARCH_API_KEY", "Brave Search API key"),
             "exa": ("exa", "EXA_API_KEY", "Exa API key"),
             "firecrawl": ("firecrawl", "FIRECRAWL_API_KEY", "Firecrawl API key"),
         }
@@ -2691,7 +2666,7 @@ def _config(args: argparse.Namespace) -> int:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_web_search_provider",
-                "supported_providers": ["serpapi", "tavily", "brave", "exa", "firecrawl"],
+                "supported_providers": ["serpapi", "tavily", "exa", "firecrawl"],
             }, ensure_ascii=False, indent=2))
             return 1
         canonical_provider, env_key, prompt = provider_aliases[provider]
@@ -3719,7 +3694,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_web_search_api_key = config_sub.add_parser("set-web-search-api-key", help="store web search API key")
     config_set_web_search_api_key.add_argument("--env-file")
-    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "brave", "brave_search", "exa", "firecrawl"])
+    config_set_web_search_api_key.add_argument("--provider", default="serpapi", choices=["serpapi", "tavily", "exa", "firecrawl"])
     config_set_web_search_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_web_search_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
     config_set_web_search_api_key.add_argument("--validation-timeout", type=float, default=10.0)

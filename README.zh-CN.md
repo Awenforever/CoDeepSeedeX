@@ -144,9 +144,10 @@ dsproxy config test-api-key
 # 配置可选web search工具provider。
 dsproxy config set-web-search-api-key --provider serpapi
 dsproxy config set-web-search-api-key --provider tavily
-dsproxy config set-web-search-api-key --provider brave
 dsproxy config set-web-search-api-key --provider exa
 dsproxy config set-web-search-api-key --provider firecrawl
+
+Brave Search不再显示在配置引导中，因为其API key创建需要付费订阅，无法提供免费live probe路径。
 
 # 配置可选文生图工具provider。
 dsproxy config set-image-api-key --provider zhipu

@@ -140,9 +140,10 @@ dsproxy config test-api-key
 # Configure optional web search tool providers.
 dsproxy config set-web-search-api-key --provider serpapi
 dsproxy config set-web-search-api-key --provider tavily
-dsproxy config set-web-search-api-key --provider brave
 dsproxy config set-web-search-api-key --provider exa
 dsproxy config set-web-search-api-key --provider firecrawl
+
+Brave Search is no longer shown in the guided configuration flow because API key creation requires a paid subscription and there is no free live-probe path.
 
 # Configure optional image generation tool providers.
 dsproxy config set-image-api-key --provider zhipu

@@ -130,3 +130,10 @@
 - Germany Frankfurt workspace endpoint override worked: endpoint `{workspace}.eu-central-1.maas.aliyuncs.com`, but `qwen-image-2.0-pro` returned `Model not exist`.
 - Conclusion: keep `qwen_image` validated for Beijing and Singapore. Treat US Virginia and Germany as model-availability failures for the tested Qwen Image models, not as endpoint override failures.
 - Future work: if US/Germany Alibaba image generation is required, introduce or test a separate Wan image/text-to-image provider mode.
+
+## p2.9a34-brave-provider-surface-removal
+
+- Removed Brave Search from public/guided web search provider surfaces because Brave does not provide a free API key path before subscription.
+- Updated README and README.zh-CN command examples to list SerpAPI, Tavily, Exa, and Firecrawl only.
+- Removed Brave from CLI configuration choices, provider configuration status, and the `doctor providers` default web-search matrix.
+- Kept low-level runtime compatibility separate from the public provider catalog to avoid unnecessarily breaking existing manual Brave configurations.

@@ -277,3 +277,7 @@ p2.9a30-qwen-region-live-matrix-doc-sync records the current Qwen Image regional
 - Germany Frankfurt: regional workspace endpoint override works, but `qwen-image-2.0-pro` returns `Model not exist`.
 
 Do not interpret the US/Germany result as a generic DashScope failure. It means the tested Qwen Image model is not available on those endpoints. If US/Germany image generation is required, test Wan image/text-to-image as a separate provider mode instead of mixing it into `qwen_image`.
+
+### p2.9a34 Brave provider surface removal
+
+Brave Search is no longer advertised or guided as a web search provider because API key creation requires a paid subscription and there is no free live-probe path. Remove it from README examples, guided/public configuration surfaces, `doctor providers` default matrix, and new-user configuration docs. Keep low-level runtime compatibility separate from the public provider catalog unless the maintainer explicitly asks to delete it.
