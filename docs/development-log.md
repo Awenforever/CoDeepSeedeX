@@ -158,3 +158,23 @@
 - Stability AI reached the official endpoint but was blocked at the Cloudflare layer with Error 1010 `browser_signature_banned`; do not bypass or retry aggressively.
 - fal.ai reached the provider/account layer but live generation failed because the account balance was exhausted.
 - Current interpretation: Qwen Image is validated for Beijing and Singapore; US/Germany are model-availability failures for the tested Qwen Image models; Stability is a sanctioned-access/WAF issue; fal.ai needs balance top-up before retesting.
+
+## p2.9a39-model-api-live-matrix-doc-sync
+
+- Recorded current model API live verification matrix.
+- DeepSeek remains the existing primary path and release baseline.
+- Kimi / Moonshot endpoint was reachable at `https://api.moonshot.ai/v1/models`, but the provided key returned HTTP 401 `Invalid Authentication`; mark as endpoint reachable but not verified, not as unsupported.
+- GLM / Zhipu / Z.AI `/models` validation passed across the tested key-source by endpoint matrix:
+  - Domestic BigModel general: `https://open.bigmodel.cn/api/paas/v4`.
+  - Domestic BigModel Coding Plan: `https://open.bigmodel.cn/api/coding/paas/v4`.
+  - Z.AI general: `https://api.z.ai/api/paas/v4`.
+  - Z.AI Coding Plan: `https://api.z.ai/api/coding/paas/v4`.
+  - Both the domestic BigModel key and the Z.AI key passed against all four endpoints.
+- Qwen / DashScope pay-as-you-go `/models` validation passed:
+  - Beijing: `https://dashscope.aliyuncs.com/compatible-mode/v1`, `qwen-plus`.
+  - Singapore: `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, `qwen-plus`.
+  - US Virginia: `https://dashscope-us.aliyuncs.com/compatible-mode/v1`, `qwen-plus-us`.
+- Qwen Coding Plan and Token Plan were not script-tested because official usage constraints distinguish them from ordinary automation-style probes; they require guided config and tool-path validation.
+- Custom provider is validated as a mechanism because the GLM/Zhipu/Z.AI and Qwen matrices used `--provider custom` with explicit base URLs and models.
+- Future README, wizard, and config guidance must distinguish verified, endpoint reachable but auth failed, implemented but not yet verified, not script-tested, and abandoned states. Do not mark untested providers as unsupported.
+- After matrix testing, prepare a separate architecture audit branch for a potential AnyCodex-style refactor. The audit should identify DeepSeek-specific logic such as `reasoning_content`, reasoning/thinking event handling, model catalog assumptions, and which proxy layers can be generalized across providers.

@@ -306,3 +306,34 @@ p2.9a38-image-provider-live-matrix-doc-sync records the current image provider l
 - fal.ai: provider endpoint and account were reached, but live generation failed because the account balance was exhausted. Retest after top-up.
 
 Interpretation: Qwen Image is validated for Beijing and Singapore. US Virginia and Germany are model-availability failures for the tested Qwen Image models, not endpoint override failures. Stability is an access-layer/WAF block, not a confirmed API/auth failure. fal.ai is an account-balance failure, not a code or auth-path failure.
+
+### p2.9a39 model API live matrix
+
+p2.9a39-model-api-live-matrix-doc-sync records the current model API verification matrix.
+
+Current model API status:
+
+- DeepSeek: existing primary path and release baseline.
+- Kimi / Moonshot: endpoint reachable at `https://api.moonshot.ai/v1/models`, but the provided key returned HTTP 401 `Invalid Authentication`. This is not a confirmed code-path failure. Mark it as endpoint reachable but not verified until a valid Moonshot key is available.
+- GLM / Zhipu / Z.AI: verified at `/models` level.
+  - Domestic BigModel general endpoint passed: `https://open.bigmodel.cn/api/paas/v4`.
+  - Domestic BigModel Coding Plan endpoint passed: `https://open.bigmodel.cn/api/coding/paas/v4`.
+  - Z.AI general endpoint passed: `https://api.z.ai/api/paas/v4`.
+  - Z.AI Coding Plan endpoint passed: `https://api.z.ai/api/coding/paas/v4`.
+  - Both the domestic BigModel key and the Z.AI key passed against all four endpoints in the current matrix.
+- Qwen / DashScope pay-as-you-go: verified at `/models` level.
+  - Beijing passed: `https://dashscope.aliyuncs.com/compatible-mode/v1`, model `qwen-plus`.
+  - Singapore passed: `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, model `qwen-plus`.
+  - US Virginia passed: `https://dashscope-us.aliyuncs.com/compatible-mode/v1`, model `qwen-plus-us`.
+- Qwen Coding Plan and Token Plan: not script-tested because the official usage constraints distinguish these from ordinary automation-style API probes. Treat them as separate guided configuration paths that require tool-path validation rather than generic script live-probe validation.
+- Custom provider: verified as a mechanism through the GLM/Zhipu/Z.AI matrix and the Qwen pay-as-you-go matrix.
+
+Provider documentation and setup wording must use these states instead of a binary supported/unsupported label:
+
+- `verified`: live `/models` validation passed.
+- `endpoint reachable but auth failed`: endpoint and code path reached, but supplied credentials failed.
+- `implemented but not yet verified`: implementation exists but no successful live validation yet.
+- `not script-tested`: official usage constraints or workflow constraints prevent ordinary script probes.
+- `abandoned`: intentionally removed from public/guided surfaces.
+
+Do not label untested or auth-failed model providers as unsupported. After the model API matrix is complete, open a dedicated architecture branch to assess which CoDeepSeedeX layers are reusable and which are DeepSeek-specific. The likely branch is `work/p2.10-anycodex-provider-architecture-audit`. That assessment must cover provider adapters, reasoning/thinking fields such as `reasoning_content`, stream event normalization, model catalog metadata, Codex `/model` display, and the broader goal of evolving CoDeepSeedeX into a more general AnyCodex-style provider architecture.

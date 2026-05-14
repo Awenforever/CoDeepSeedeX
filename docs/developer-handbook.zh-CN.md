@@ -268,3 +268,34 @@ p2.9a38-image-provider-live-matrix-doc-sync记录当前图像provider live probe
 - fal.ai：provider endpoint和账户均已被识别，但live generation因账户余额耗尽失败。充值后可重测。
 
 解释：Qwen Image已在北京和新加坡验证通过。美国弗吉尼亚和德国属于被测Qwen Image模型不可用，不是endpoint覆盖失败。Stability属于访问层/WAF拦截，不是已确认的API或认证失败。fal.ai属于账户余额失败，不是代码或认证路径失败。
+
+### p2.9a39 model API live矩阵
+
+p2.9a39-model-api-live-matrix-doc-sync记录当前model API验证矩阵。
+
+当前model API状态：
+
+- DeepSeek：现有主路径和Release基线。
+- Kimi / Moonshot：endpoint已打到`https://api.moonshot.ai/v1/models`，但提供的key返回HTTP 401 `Invalid Authentication`。这不是已确认的代码路径失败。应标记为endpoint reachable but not verified，等待有效Moonshot key后重测。
+- GLM / Zhipu / Z.AI：`/models`级验证通过。
+  - 国内BigModel通用endpoint通过：`https://open.bigmodel.cn/api/paas/v4`。
+  - 国内BigModel Coding Plan endpoint通过：`https://open.bigmodel.cn/api/coding/paas/v4`。
+  - Z.AI通用endpoint通过：`https://api.z.ai/api/paas/v4`。
+  - Z.AI Coding Plan endpoint通过：`https://api.z.ai/api/coding/paas/v4`。
+  - 当前矩阵中，国内BigModel key和Z.AI key均对四类endpoint验证通过。
+- Qwen / DashScope按量计费API：`/models`级验证通过。
+  - 北京通过：`https://dashscope.aliyuncs.com/compatible-mode/v1`，模型`qwen-plus`。
+  - 新加坡通过：`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`，模型`qwen-plus`。
+  - 美国弗吉尼亚通过：`https://dashscope-us.aliyuncs.com/compatible-mode/v1`，模型`qwen-plus-us`。
+- Qwen Coding Plan和Token Plan：未做脚本live probe，因为官方用途约束将其与普通自动化API probe区分开。应作为单独配置引导路径处理，并通过对应工具路径验证，而不是用通用脚本probe替代。
+- Custom provider：已通过GLM/Zhipu/Z.AI矩阵和Qwen按量计费矩阵验证其机制可用。
+
+后续provider文档和配置引导必须使用这些状态，而不是简单写supported或unsupported：
+
+- `verified`：live `/models`验证通过。
+- `endpoint reachable but auth failed`：endpoint和代码路径已到达，但凭据认证失败。
+- `implemented but not yet verified`：实现存在，但尚未成功live验证。
+- `not script-tested`：由于官方用途约束或工作流约束，不适合普通脚本probe。
+- `abandoned`：明确从公开和引导配置面放弃。
+
+不要把未测试或认证失败的model provider写成unsupported。model API矩阵完成后，应进入专项架构分支，评估CoDeepSeedeX哪些层可复用，哪些层与DeepSeek强绑定。建议分支为`work/p2.10-anycodex-provider-architecture-audit`。该评估至少覆盖provider adapter、`reasoning_content`等reasoning/thinking字段、stream事件归一化、model catalog元数据、Codex `/model`展示，以及将CoDeepSeedeX升级为更通用AnyCodex式provider架构的整体方案。
