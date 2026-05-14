@@ -104,3 +104,12 @@
 - The probe did not print API key values.
 - Other web search providers remain untested because their API keys are not configured.
 - This validates the CoDeepSeedeX provider bridge path for SerpAPI. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
+
+## p2.9a27-zhipu-live-image-doc-sync
+
+- Confirmed the real Zhipu image generation live probe on the developer machine.
+- Command class: `dsproxy doctor providers --kind image --provider zhipu --live --allow-spend`.
+- Result: `doctor_status=ok`, `provider_ok=True`, HTTP status 200, `validation_method=live_image_generation`, `validation_strength=live_generation_probe`, `functional_probe=True`, and `functional_validation=performed`.
+- The probe returned image evidence: `has_image=True` and `evidence=data_url_or_base64`.
+- The probe did not print API key values.
+- This validates the CoDeepSeedeX provider bridge path for Zhipu image generation. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
