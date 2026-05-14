@@ -2151,3 +2151,50 @@ def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
     assert status["commands"]["model_api"] == "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom"
     assert status["supported"]["model_api"] == ["deepseek", "kimi", "glm", "qwen", "custom"]
     assert status["unsupported_catalog"]["model_api"] == ["mimo", "baichuan"]
+
+
+def test_cli_qwen_image_probe_payload_respects_region_endpoint_env(monkeypatch):
+    import json
+
+    import deepseek_responses_proxy.cli as cli
+
+    endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", endpoint)
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_MODEL", "qwen-image-region-test")
+
+    url, payload_bytes, headers = cli._provider_probe_image_payload("qwen_image", "draw a region test image")
+    payload = json.loads(payload_bytes.decode("utf-8"))
+
+    assert url == endpoint
+    assert headers["Content-Type"] == "application/json"
+    assert payload["model"] == "qwen-image-region-test"
+    assert payload["input"]["messages"][0]["content"][0]["text"] == "draw a region test image"
+
+
+def test_cli_qwen_image_validation_respects_region_endpoint_env(monkeypatch):
+    import deepseek_responses_proxy.cli as cli
+
+    endpoint = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    calls = {}
+
+    def fake_validation_http_json(**kwargs):
+        calls.update(kwargs)
+        return {
+            "ok": True,
+            "status": "ok",
+            "kind": kwargs["kind"],
+            "provider": kwargs["provider"],
+            "endpoint": kwargs["endpoint"],
+            "functional_validation": "not_performed",
+        }
+
+    monkeypatch.setattr(cli, "_validation_http_json", fake_validation_http_json)
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", endpoint)
+
+    result = cli._validate_image_api_key("qwen_image", "dashscope-region-key", timeout=2.0)
+
+    assert result["ok"] is True
+    assert calls["url"] == endpoint
+    assert calls["endpoint"] == endpoint
+    assert calls["provider"] == "qwen_image"
+    assert calls["payload"] == {}

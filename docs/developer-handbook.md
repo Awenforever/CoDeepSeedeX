@@ -158,6 +158,8 @@ Zhipu and Z.AI image endpoints must remain separated. Do not mix domestic ZhipuA
 
 Provider diagnostics must not treat a generic image API key as proof that every image provider is configured. `DEEPSEEK_PROXY_IMAGE_API_KEY` is a compatibility key for the currently selected `DEEPSEEK_PROXY_IMAGE_PROVIDER`; provider-specific variables such as `ZAI_API_KEY`, `DASHSCOPE_API_KEY`, `STABILITY_API_KEY`, and `FAL_KEY` remain authoritative for unselected providers.
 
+Qwen/DashScope provider diagnostics must respect regional image endpoints. `DEEPSEEK_PROXY_IMAGE_BASE_URL` and `DASHSCOPE_IMAGE_ENDPOINT` must override the Beijing default during both non-generation validation and live image probe payload construction.
+
 ## 9. VM GitHub proxy playbook
 
 When a VMware NAT VM cannot reliably reach GitHub, do not guess. Audit the route, DNS, curl, git, proxy listener, and Windows host listener.

@@ -113,3 +113,10 @@
 - The probe returned image evidence: `has_image=True` and `evidence=data_url_or_base64`.
 - The probe did not print API key values.
 - This validates the CoDeepSeedeX provider bridge path for Zhipu image generation. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
+
+## p2.9a29-qwen-region-endpoint-probe
+
+- Fixed Qwen/DashScope provider diagnostics so `dsproxy doctor providers --kind image --provider qwen_image --live --allow-spend` respects `DEEPSEEK_PROXY_IMAGE_BASE_URL` and `DASHSCOPE_IMAGE_ENDPOINT`.
+- Fixed the Qwen non-generation image API validation path to use the same regional endpoint override.
+- Root cause: runtime image generation already respected `DEEPSEEK_PROXY_IMAGE_BASE_URL`, but the CLI provider diagnostic path had a separate hardcoded Beijing endpoint.
+- This prevents Singapore, US Virginia, and Germany Frankfurt DashScope keys from being incorrectly tested against the Beijing endpoint.

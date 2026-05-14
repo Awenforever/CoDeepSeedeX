@@ -195,6 +195,8 @@ CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and r
 | Image generation | ZhipuAI / BigModel (domestic CogView) | `dsproxy config set-image-api-key --provider zhipu` | https://www.bigmodel.cn/ |
 | Image generation | Z.AI / CogView (international) | `dsproxy config set-image-api-key --provider zai` | https://docs.z.ai/ |
 | Image generation | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
+
+For regional DashScope endpoints, set `DEEPSEEK_PROXY_IMAGE_BASE_URL` to the target region's multimodal generation endpoint before running `dsproxy doctor providers --kind image --provider qwen_image --live --allow-spend`. This is required because DashScope API keys and service domains are region-scoped.
 | Image generation | Stability AI | `dsproxy config set-image-api-key --provider stability` | https://platform.stability.ai/ |
 | Image generation | fal.ai | `dsproxy config set-image-api-key --provider fal` | https://fal.ai/ |
 

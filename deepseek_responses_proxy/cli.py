@@ -1172,9 +1172,18 @@ def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, byte
         payload = {"model": "cogView-4-250304", "prompt": prompt, "size": "1024x1024"}
         return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
     if provider == "qwen_image":
-        endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        endpoint = (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
+            or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
+            or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        )
+        model = (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            or os.environ.get("DASHSCOPE_IMAGE_MODEL")
+            or "qwen-image-2.0-pro"
+        )
         payload = {
-            "model": "qwen-image-2.0-pro",
+            "model": model,
             "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]},
             "parameters": {"size": "1024*1024", "n": 1},
         }
@@ -2056,12 +2065,17 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
             warning=_NON_GENERATION_IMAGE_PROBE_WARNING,
         )
     if selected in {"qwen_image", "qwen-image", "dashscope", "aliyun"}:
+        endpoint = (
+            os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
+            or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
+            or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        )
         return _validation_http_json(
             provider="qwen_image",
             kind="image_generation",
             method="POST",
-            url="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-            endpoint="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            url=endpoint,
+            endpoint=endpoint,
             headers={"Authorization": f"Bearer {api_key}"},
             payload={},
             timeout=timeout,
