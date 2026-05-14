@@ -293,3 +293,16 @@ p2.9a37-web-search-live-matrix-doc-sync records the current web search provider 
 - Brave Search: abandoned for the public configuration surface because API key creation requires a paid subscription and there is no free live-probe path.
 
 Current public/guided web search providers are SerpAPI, Tavily, Exa, and Firecrawl. Do not reintroduce Brave into README, config wizard choices, or `doctor providers` default matrices unless the maintainer explicitly reverses this decision.
+
+### p2.9a38 image provider live matrix
+
+p2.9a38-image-provider-live-matrix-doc-sync records the current image provider live-probe status:
+
+- Qwen Image / Beijing: live probe passed with `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- Qwen Image / Singapore: live probe passed with `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- Qwen Image / US Virginia: regional endpoint override works, but `qwen-image-2.0-pro` and `qwen-image-2.0-pro-2026-03-03` returned `Model not exist`.
+- Qwen Image / Germany Frankfurt: regional workspace endpoint override works, but `qwen-image-2.0-pro` returned `Model not exist`.
+- Stability AI: official API use is allowed in principle, but the current WSL/CLI live probe is blocked at the Cloudflare layer with Error 1010 `browser_signature_banned`. Do not bypass or retry aggressively. Use official support, allowlist, or another sanctioned integration path.
+- fal.ai: provider endpoint and account were reached, but live generation failed because the account balance was exhausted. Retest after top-up.
+
+Interpretation: Qwen Image is validated for Beijing and Singapore. US Virginia and Germany are model-availability failures for the tested Qwen Image models, not endpoint override failures. Stability is an access-layer/WAF block, not a confirmed API/auth failure. fal.ai is an account-balance failure, not a code or auth-path failure.

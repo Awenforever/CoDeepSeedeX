@@ -147,3 +147,14 @@
 - SerpAPI remains the configured existing primary web search path.
 - Brave Search remains removed from public/guided configuration because API key creation requires a paid subscription before testing.
 - Current public/guided web search provider list: SerpAPI, Tavily, Exa, Firecrawl.
+
+## p2.9a38-image-provider-live-matrix-doc-sync
+
+- Recorded current image provider live-probe status after the Qwen regional matrix, Stability AI probe, and fal.ai probe.
+- Qwen Image Beijing passed: `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- Qwen Image Singapore passed: `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- Qwen Image US Virginia endpoint override worked, but `qwen-image-2.0-pro` and `qwen-image-2.0-pro-2026-03-03` returned `Model not exist`.
+- Qwen Image Germany Frankfurt workspace endpoint override worked, but `qwen-image-2.0-pro` returned `Model not exist`.
+- Stability AI reached the official endpoint but was blocked at the Cloudflare layer with Error 1010 `browser_signature_banned`; do not bypass or retry aggressively.
+- fal.ai reached the provider/account layer but live generation failed because the account balance was exhausted.
+- Current interpretation: Qwen Image is validated for Beijing and Singapore; US/Germany are model-availability failures for the tested Qwen Image models; Stability is a sanctioned-access/WAF issue; fal.ai needs balance top-up before retesting.
