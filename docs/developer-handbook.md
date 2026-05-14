@@ -393,3 +393,13 @@ DeepSeek-facing effort UX should not recommend `medium`. `low` and `medium` may 
 Non-generation provider probes may intentionally send an empty or metadata-only payload. When such a probe receives an HTTP 200 response that still contains a structured provider error body, and no authentication error is detected, CoDeepSeedeX treats it as accepted probe evidence rather than a generic validation failure. This classification is only for non-generation validation and must not be described as a successful real image generation test.
 
 Qwen Image region support must be explicit. Beijing and Singapore are user-selectable Qwen Image providers. US Virginia and Germany Frankfurt remain listed so users can see the region decision, but they must report a model-unavailable status for qwen-image-2.0-pro instead of failing as if CoDeepSeedeX were broken.
+
+### p2.10a4 config menu model-provider UX
+
+`dsproxy config set-model` is now the primary model API configuration entrypoint. It can set the model provider, upstream model, and optional API key in one command. `dsproxy config set-api-key` remains as a compatibility alias for existing scripts, but new docs and installer guidance should point users to `set-model`.
+
+Rules:
+- Do not remove `set-api-key` until a later explicit compatibility-break decision.
+- Keep `set-model <model>` working for the old DeepSeek model-only flow.
+- Use `set-model <model> --provider custom --base-url <url>` for custom OpenAI-compatible providers.
+- Keep README, README.zh-CN, installer guidance, CLI help, and tests synchronized when provider setup commands change.

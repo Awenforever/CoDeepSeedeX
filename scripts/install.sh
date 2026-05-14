@@ -605,7 +605,7 @@ prompt_deepseek_api_key() {
       PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)
-      warn "Model API skipped. Configure later with: dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom"
+      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom"
       return 0
       ;;
     *)
@@ -633,7 +633,7 @@ prompt_deepseek_api_key() {
     candidate="$(read_secret_from_tty "Model API key (optional; press Enter to skip)" "${DEEPSEEK_API_KEY:-}")"
     if [ -z "$candidate" ]; then
       PROMPTED_API_KEY=""
-      warn "Model API key skipped. Configure later with: dsproxy config set-api-key --provider $PROMPTED_MODEL_PROVIDER"
+      warn "Model API key skipped. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
 
@@ -649,9 +649,9 @@ prompt_deepseek_api_key() {
 
   PROMPTED_API_KEY=""
   if [ "$PROMPTED_MODEL_PROVIDER" = "deepseek" ]; then
-    warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-api-key"
+    warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider deepseek"
   else
-    warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-api-key --provider $PROMPTED_MODEL_PROVIDER"
+    warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
   fi
 }
 
@@ -1481,7 +1481,7 @@ case "$WRAPPER_CHOICE" in
 esac
 
 if [ -z "$API_KEY" ]; then
-  warn "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-api-key"
+  warn "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-model --provider deepseek"
 fi
 
 sync_install_checkout_to_ref() {
@@ -1695,7 +1695,7 @@ printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy balance"
 printf '%s\n' "  dsproxy config show"
 printf '%s\n' "  dsproxy config wizard"
-printf '%s\n' "  dsproxy config set-api-key"
+printf '%s\n' "  dsproxy config set-model --provider deepseek"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
 printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal"

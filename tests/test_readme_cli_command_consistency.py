@@ -32,9 +32,11 @@ def _dsproxy_config_commands(text: str) -> list[str]:
 
 def test_readme_custom_skip_validation_example_is_complete() -> None:
     text = _readme_text()
-    for command in re.findall(r"dsproxy config set-api-key --provider custom[^\n]*--skip-validation", text):
+    commands = re.findall(r"dsproxy config set-model provider-model-name --provider custom[^\n]*--skip-validation", text)
+    assert commands
+    for command in commands:
         assert "--base-url" in command
-        assert "--model" in command
+        assert "--model" not in command
 
 
 def test_readme_explains_api_key_input_forms() -> None:
@@ -54,24 +56,24 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
     commands = _dsproxy_config_commands(text)
 
     assert "dsproxy config wizard" in commands
-    assert "dsproxy config set-api-key --provider deepseek" in commands
-    assert "dsproxy config set-api-key --provider zhipu" in commands
-    assert "dsproxy config set-api-key --provider zhipu-coding" in commands
-    assert "dsproxy config set-api-key --provider zai" in commands
-    assert "dsproxy config set-api-key --provider zai-coding" in commands
-    assert "dsproxy config set-api-key --provider qwen-beijing" in commands
-    assert "dsproxy config set-api-key --provider qwen-singapore" in commands
-    assert "dsproxy config set-api-key --provider qwen-us" in commands
-    assert "dsproxy config set-api-key --provider glm" not in commands
-    assert "dsproxy config set-api-key --provider qwen" not in commands
+    assert "dsproxy config set-model --provider deepseek" in commands
+    assert "dsproxy config set-model --provider zhipu" in commands
+    assert "dsproxy config set-model --provider zhipu-coding" in commands
+    assert "dsproxy config set-model --provider zai" in commands
+    assert "dsproxy config set-model --provider zai-coding" in commands
+    assert "dsproxy config set-model --provider qwen-beijing" in commands
+    assert "dsproxy config set-model --provider qwen-singapore" in commands
+    assert "dsproxy config set-model --provider qwen-us" in commands
+    assert "dsproxy config set-model --provider glm" not in commands
+    assert "dsproxy config set-model --provider qwen" not in commands
     assert "dsproxy config set-web-search-api-key --provider serpapi" in commands
     assert "dsproxy config set-web-search-api-key --provider brave" not in commands
     assert "dsproxy config set-image-api-key --provider zhipu" in commands
     assert "dsproxy config set-image-api-key --provider zai" in commands
     assert "dsproxy config set-image-api-key --provider glm" not in commands
-    assert "dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key" in commands
-    assert "dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation" in commands
-    assert "dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation" in commands
+    assert "dsproxy config set-model --provider deepseek --value sk-fake-deepseek-api-key" in commands
+    assert "dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation" in commands
+    assert "dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation" in commands
 
     parser = cli.build_parser()
     for command in commands:
@@ -83,11 +85,11 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
 
 def test_readme_model_provider_surface_uses_explicit_sites_and_plans() -> None:
     text = _readme_text()
-    assert "dsproxy config set-api-key --provider glm\n" not in text
-    assert "dsproxy config set-api-key --provider qwen\n" not in text
-    assert "dsproxy config set-api-key --provider zhipu-coding" in text
-    assert "dsproxy config set-api-key --provider zai-coding" in text
-    assert "dsproxy config set-api-key --provider qwen-beijing" in text
-    assert "dsproxy config set-api-key --provider qwen-singapore" in text
-    assert "dsproxy config set-api-key --provider qwen-us" in text
+    assert "dsproxy config set-model --provider glm\n" not in text
+    assert "dsproxy config set-model --provider qwen\n" not in text
+    assert "dsproxy config set-model --provider zhipu-coding" in text
+    assert "dsproxy config set-model --provider zai-coding" in text
+    assert "dsproxy config set-model --provider qwen-beijing" in text
+    assert "dsproxy config set-model --provider qwen-singapore" in text
+    assert "dsproxy config set-model --provider qwen-us" in text
     assert "dsproxy config set-web-search-api-key --provider brave" not in text

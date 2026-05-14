@@ -128,16 +128,16 @@ dsproxy config show
 dsproxy config wizard
 
 # Configure the model API provider used by Codex itself.
-dsproxy config set-api-key --provider deepseek
-dsproxy config set-api-key --provider kimi
-dsproxy config set-api-key --provider zhipu
-dsproxy config set-api-key --provider zhipu-coding
-dsproxy config set-api-key --provider zai
-dsproxy config set-api-key --provider zai-coding
-dsproxy config set-api-key --provider qwen-beijing
-dsproxy config set-api-key --provider qwen-singapore
-dsproxy config set-api-key --provider qwen-us
-dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
+dsproxy config set-model --provider deepseek
+dsproxy config set-model --provider kimi
+dsproxy config set-model --provider zhipu
+dsproxy config set-model --provider zhipu-coding
+dsproxy config set-model --provider zai
+dsproxy config set-model --provider zai-coding
+dsproxy config set-model --provider qwen-beijing
+dsproxy config set-model --provider qwen-singapore
+dsproxy config set-model --provider qwen-us
+dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
 
 # Test the currently configured model API key.
 dsproxy config test-api-key
@@ -161,7 +161,7 @@ dsproxy config set-image-api-key --provider fal
 Add `--skip-validation` only when you intentionally want to save the key without a live provider check, for example when you are offline, the provider validation endpoint is temporarily unavailable, or you are configuring a custom provider that cannot be validated automatically:
 
 ```bash
-dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --skip-validation
+dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
 dsproxy config set-web-search-api-key --provider serpapi --skip-validation
 dsproxy config set-image-api-key --provider zhipu --skip-validation
 ```
@@ -170,18 +170,18 @@ API key input examples with fake values:
 
 ```bash
 # Recommended interactive form. Paste the real key into the hidden prompt after running the command.
-dsproxy config set-api-key --provider deepseek
+dsproxy config set-model --provider deepseek
 # Prompt shown by the command:
 # DeepSeek API key: <paste-your-real-key-here; input is hidden>
 
 # Non-interactive examples. The key must be passed with --value, not as a positional argument.
 # Prefer fake values in documentation and avoid putting real keys in shell history.
-dsproxy config set-api-key --provider deepseek --value sk-fake-deepseek-api-key
+dsproxy config set-model --provider deepseek --value sk-fake-deepseek-api-key
 dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key
 dsproxy config set-image-api-key --provider zhipu --value fake-zhipu-api-key
 
 # Custom model provider example.
-dsproxy config set-api-key --provider custom --base-url https://api.example.com/v1 --model provider-model-name --value sk-fake-custom-api-key --skip-validation
+dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation
 ```
 
 The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see the configured model API key. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
@@ -197,15 +197,15 @@ Use explicit site and plan names for model API setup. Do not use the old `glm` o
 
 | Model API path | Current status | Configure |
 | --- | --- | --- |
-| DeepSeek | Existing primary path | `dsproxy config set-api-key --provider deepseek` |
-| Kimi / Moonshot | Endpoint reachable, supplied key returned HTTP 401 during live validation | `dsproxy config set-api-key --provider kimi` |
-| Zhipu / BigModel domestic general | `/models` verified | `dsproxy config set-api-key --provider zhipu` |
-| Zhipu / BigModel domestic Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-api-key --provider zhipu-coding` |
-| Z.AI international general | `/models` verified | `dsproxy config set-api-key --provider zai` |
-| Z.AI international Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-api-key --provider zai-coding` |
-| Qwen / DashScope Beijing pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-beijing` |
-| Qwen / DashScope Singapore pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-singapore` |
-| Qwen / DashScope US Virginia pay-as-you-go | `/models` verified | `dsproxy config set-api-key --provider qwen-us` |
+| DeepSeek | Existing primary path | `dsproxy config set-model --provider deepseek` |
+| Kimi / Moonshot | Endpoint reachable, supplied key returned HTTP 401 during live validation | `dsproxy config set-model --provider kimi` |
+| Zhipu / BigModel domestic general | `/models` verified | `dsproxy config set-model --provider zhipu` |
+| Zhipu / BigModel domestic Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-model --provider zhipu-coding` |
+| Z.AI international general | `/models` verified | `dsproxy config set-model --provider zai` |
+| Z.AI international Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-model --provider zai-coding` |
+| Qwen / DashScope Beijing pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-beijing` |
+| Qwen / DashScope Singapore pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-singapore` |
+| Qwen / DashScope US Virginia pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-us` |
 | Qwen Coding Plan / Token Plan | Not script-tested because these are plan-specific tool paths | Configure as `custom` only when validating the corresponding tool path, for example `dsproxy config set-api-key --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --model qwen3-coder-plus --skip-validation` |
 
 | Tool | Supported provider | Configure | Apply / quota page |
@@ -244,6 +244,7 @@ Release notes must mention milestone behavior changes, but the README also keeps
 
 | Version | Area | Previous behavior | New behavior | Migration note |
 |---|---|---|---|---|
+| unreleased / p2.10a4 | Model API configuration commands | `set-api-key` was the primary model API setup command, while `set-model` only changed the current upstream model. | `set-model` is now the primary model provider, model, and optional API key setup command. `set-api-key` remains as a compatibility alias with a deprecation note. | Prefer `dsproxy config set-model --provider <provider>` for model API setup. Existing `set-api-key` scripts can continue to run during the compatibility period. |
 | unreleased / p2.10a3 | Provider validation and Qwen Image regions | Non-generation image validation could classify HTTP 200 provider error bodies as generic validation failures. Qwen Image appeared as one generic DashScope option. | HTTP 200 provider error bodies are accepted as non-generation auth/account probes when no auth error is present. Qwen Image now lists Beijing and Singapore as supported choices and US Virginia/Germany Frankfurt as model-unavailable choices. | Re-run `dsproxy config set-image-api-key` with `qwen_image_beijing` or `qwen_image_singapore` when using Qwen Image. |
 | unreleased / p2.10a2 | Config apply and reasoning effort | API key/model/effort changes were saved, but users had to infer whether running proxies needed a restart. `medium` could appear in user-facing effort examples even though the DeepSeek proxy path normalizes it to `high`. | Successful config writes refresh already-running local stable/thinking proxies and report `all updates applied`. User-facing effort guidance uses `high`, while `low`/`medium` remain accepted compatibility inputs and are stored as `high`. | Rerun the installer or run `dsproxy config set-effort high` to refresh installed Codex profile wording. |
 

@@ -6,6 +6,33 @@ import deepseek_responses_proxy.cli as cli_module
 from deepseek_responses_proxy.cli import default_config_path, main
 
 
+def _clear_provider_probe_test_env(monkeypatch):
+    for key in [
+        "SERPAPI_API_KEY",
+        "DEEPSEEK_PROXY_SERPAPI_API_KEY",
+        "TAVILY_API_KEY",
+        "DEEPSEEK_PROXY_TAVILY_API_KEY",
+        "EXA_API_KEY",
+        "DEEPSEEK_PROXY_EXA_API_KEY",
+        "FIRECRAWL_API_KEY",
+        "DEEPSEEK_PROXY_FIRECRAWL_API_KEY",
+        "DEEPSEEK_PROXY_IMAGE_API_KEY",
+        "ZAI_API_KEY",
+        "ZHIPUAI_API_KEY",
+        "ZHIPU_API_KEY",
+        "GLM_API_KEY",
+        "DEEPSEEK_PROXY_DASHSCOPE_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "ALIBABA_DASHSCOPE_API_KEY",
+        "STABILITY_API_KEY",
+        "DEEPSEEK_PROXY_STABILITY_API_KEY",
+        "FAL_KEY",
+        "FAL_API_KEY",
+        "DEEPSEEK_PROXY_FAL_API_KEY",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
@@ -1296,8 +1323,10 @@ def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
     assert providers[("image_generation", "fal")]["configured"] is False
 
 
-def test_cli_doctor_providers_scopes_generic_image_key_to_selected_provider(tmp_path, capsys):
+def test_cli_doctor_providers_scopes_generic_image_key_to_selected_provider(tmp_path, capsys, monkeypatch):
     from deepseek_responses_proxy.cli import main
+
+    _clear_provider_probe_test_env(monkeypatch)
 
     env_file = tmp_path / "env"
     env_file.write_text(
@@ -1333,6 +1362,8 @@ def test_cli_doctor_providers_live_requires_allow_spend(tmp_path, capsys):
 
 def test_cli_doctor_providers_web_live_uses_validation(monkeypatch, tmp_path, capsys):
     import deepseek_responses_proxy.cli as cli
+
+    _clear_provider_probe_test_env(monkeypatch)
 
     env_file = tmp_path / "env"
     env_file.write_text("export SERPAPI_API_KEY='serpapi-test-key'\n", encoding="utf-8")
@@ -1380,6 +1411,8 @@ def test_cli_doctor_providers_image_live_zhipu_posts_generation(monkeypatch, tmp
     import urllib.request
 
     import deepseek_responses_proxy.cli as cli
+
+    _clear_provider_probe_test_env(monkeypatch)
 
     env_file = tmp_path / "env"
     env_file.write_text("export DEEPSEEK_PROXY_IMAGE_API_KEY='zhipu-test-key'\n", encoding="utf-8")
@@ -2122,8 +2155,8 @@ def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
     assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
     result = json.loads(capsys.readouterr().out)
     status = result["configuration_status"]
-    assert status["commands"]["model_api"] == "dsproxy config set-api-key --provider deepseek|kimi|glm|qwen|custom"
-    assert status["supported"]["model_api"] == ["deepseek", "kimi", "glm", "qwen", "custom"]
+    assert status["commands"]["model_api"] == "dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom"
+    assert status["supported"]["model_api"] == ["deepseek", "kimi", "zhipu", "zhipu-coding", "zai", "zai-coding", "qwen-beijing", "qwen-singapore", "qwen-us", "custom"]
     assert status["unsupported_catalog"]["model_api"] == ["mimo", "baichuan"]
 
 

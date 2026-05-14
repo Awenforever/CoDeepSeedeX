@@ -222,3 +222,11 @@
 - Added explicit Qwen Image region choices for Beijing, Singapore, US Virginia, and Germany Frankfurt.
 - Beijing and Singapore remain selectable for Qwen Image. US Virginia and Germany Frankfurt are listed but return a model-unavailable status for qwen-image-2.0-pro.
 - Updated README behavior-change tables and developer handbook rules for provider validation classification and Qwen Image regional status.
+
+## p2.10a4-config-menu-model-provider-ux
+
+- Made `dsproxy config set-model` the primary model API setup entrypoint for provider, upstream model, and optional API key configuration.
+- Kept `dsproxy config set-api-key` as a compatibility alias and added a compatibility/deprecation note in JSON output.
+- Preserved the old model-only flow: `dsproxy config set-model deepseek-v4-flash`.
+- Updated the guided wizard model provider catalog so supported model API providers are selectable from the wizard instead of only DeepSeek being handled as supported.
+- Updated installer guidance, README, README.zh-CN, developer handbooks, and tests to prefer `set-model` for model API setup.

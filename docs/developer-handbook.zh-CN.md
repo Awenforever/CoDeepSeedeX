@@ -355,3 +355,13 @@ DeepSeek侧effort体验不应继续推荐`medium`。`low`和`medium`可以作为
 非生成式provider probe可以有意发送空payload或metadata-only payload。如果这类probe收到HTTP 200，但响应体中仍包含结构化provider error body，并且没有检测到认证错误，CoDeepSeedeX应把它作为非生成式探测证据接受，而不是泛化为validation failed。这个分类只代表非生成式验证通过，不能写成真实文生图已成功。
 
 Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image provider。美国弗吉尼亚和德国法兰克福仍应列出，让用户看见地区决策，但必须报告qwen-image-2.0-pro模型暂不可用，而不是表现得像CoDeepSeedeX故障。
+
+### p2.10a4 config菜单model-provider体验
+
+`dsproxy config set-model`现在是model API配置主入口。它可以在一条命令中设置model provider、上游模型和可选API key。`dsproxy config set-api-key`保留为既有脚本的兼容别名，但新文档和安装器提示应引导用户使用`set-model`。
+
+规则：
+- 在后续明确做兼容性破坏决策前，不删除`set-api-key`。
+- 保持`set-model <model>`旧式DeepSeek单纯改模型流程可用。
+- custom OpenAI-compatible provider使用`set-model <model> --provider custom --base-url <url>`。
+- provider配置命令变化时，README、README.zh-CN、安装器提示、CLI帮助和测试必须同步。
