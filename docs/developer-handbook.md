@@ -430,3 +430,7 @@ Guided installer provider menus should prefer arrow-key navigation with Enter co
 Only the native DeepSeek model provider may be labeled `Supported` in installer and configuration UX. Other model providers, including Kimi, Zhipu / BigModel, Z.AI, and Qwen / DashScope, must be labeled `Experimental` until they pass full Codex workflow validation. API key validation, endpoint reachability, or a single model response is not enough to claim support because Codex compatibility also depends on streaming behavior, tool calls, reasoning semantics, context-window behavior, error recovery, and cost behavior.
 
 Policy statement: API connectivity is not equivalent to full Codex workflow support.
+
+## p2.10a12 bootstrap install-ref source banner
+
+Fresh VM pre-release installation must not rely on GitHub Latest. When `bootstrap.sh --install-ref <tag>` or `DEEPSEEK_PROXY_INSTALL_REF=<tag>` is set, bootstrap must first download `https://github.com/Awenforever/CoDeepSeedeX/releases/download/<tag>/install.sh`, then fall back to raw/tag clone paths only if needed. Bootstrap and install screens must display source information under the banner so operators can tell whether they are running Latest, a specific release tag, or a local checkout.

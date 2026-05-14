@@ -392,3 +392,7 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 安装器和配置交互中，只有DeepSeek原生model provider可以标为`Supported`。Kimi、Zhipu / BigModel、Z.AI和Qwen / DashScope等其他model provider，在完整Codex工作流验证通过前必须标为`Experimental`。API key验证、endpoint可达或单次模型响应不足以声明Supported，因为Codex兼容性还依赖流式行为、工具调用、reasoning语义、上下文窗口、错误恢复和费用行为。
 
 规则声明：API连通性不等于完整Codex工作流支持。
+
+## p2.10a12 bootstrap install-ref来源显示
+
+全新VM上的pre-release安装不能依赖GitHub Latest。当设置`bootstrap.sh --install-ref <tag>`或`DEEPSEEK_PROXY_INSTALL_REF=<tag>`时，bootstrap必须优先下载`https://github.com/Awenforever/CoDeepSeedeX/releases/download/<tag>/install.sh`，只有失败后才进入raw/tag clone fallback。Bootstrap和install界面必须在banner下显示来源信息，便于操作者确认当前运行的是Latest、指定Release tag还是本地checkout。

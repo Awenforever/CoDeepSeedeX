@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = ROOT / "scripts" / "install.sh"
 
 
@@ -291,3 +293,36 @@ def test_installer_marks_non_deepseek_model_providers_experimental() -> None:
     assert '"9|Qwen / DashScope US Virginia pay-as-you-go|experimental"' in text
     assert "Only DeepSeek is marked Supported for model providers" in text
     assert "Experimental until full Codex workflow validation passes" in text
+
+
+def test_bootstrap_install_ref_uses_release_asset_installer_url(tmp_path) -> None:
+    bootstrap = REPO_ROOT / "bootstrap.sh"
+    text = bootstrap.read_text(encoding="utf-8")
+    assert "--install-ref)" in text
+    assert "https://github.com/Awenforever/CoDeepSeedeX/releases/download/${fallback_ref}/install.sh" in text
+    assert "DEEPSEEK_PROXY_INSTALLER_SOURCE" in text
+    assert "installer source:" in text
+    assert "requested install ref:" in text
+
+    result = subprocess.run(
+        ["bash", str(bootstrap), "--dry-run", "--install-ref", "v0.3.8-alpha", "--", "--non-interactive"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=True,
+    )
+    output = result.stdout + result.stderr
+    assert "would download install.sh from https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/install.sh" in output
+    assert "would pass DEEPSEEK_PROXY_INSTALL_REF=v0.3.8-alpha" in output
+    assert "would pass DEEPSEEK_PROXY_INSTALLER_SOURCE=https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/install.sh" in output
+
+
+def test_installer_prints_version_source_under_logo() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "show_version_source()" in text
+    assert 'sub_title "Version source"' in text
+    assert "Install ref:" in text
+    assert "Installer source:" in text
+    assert "Repository source:" in text
+    assert "show_version_source" in text

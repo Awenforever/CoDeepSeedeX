@@ -4,10 +4,15 @@ set -euo pipefail
 REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${DEEPSEEK_PROXY_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${DEEPSEEK_PROXY_INSTALL_REF:-}"
+INSTALLER_URL_WAS_EXPLICIT=0
+if [ -n "${DEEPSEEK_PROXY_INSTALLER_URL:-}" ]; then
+  INSTALLER_URL_WAS_EXPLICIT=1
+fi
 INSTALLER_URL="${DEEPSEEK_PROXY_INSTALLER_URL:-https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh}"
 ALT_INSTALLER_URL="${DEEPSEEK_PROXY_ALT_INSTALLER_URL:-}"
 THIRD_INSTALLER_URL="${DEEPSEEK_PROXY_THIRD_INSTALLER_URL:-}"
 RESOLVED_INSTALL_REF=""
+RESOLVED_INSTALLER_SOURCE=""
 INSTALL_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S).log}"
 BOOTSTRAP_WORKDIR="${DEEPSEEK_PROXY_BOOTSTRAP_WORKDIR:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S)-work}"
 INSTALLER_PATH="$BOOTSTRAP_WORKDIR/install.sh"
@@ -54,11 +59,13 @@ Usage: bootstrap.sh [bootstrap options] [-- install.sh options]
 
 Bootstrap options:
   --dry-run                  Show bootstrap plan without installing system packages or running install.sh
+  --install-ref REF          Download install.sh from this release tag/ref before falling back
   --print-python-selection   Print selected Python interpreter and stop
   -h, -H, --help             Show help
 
 Examples:
   curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
+  curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.8-alpha
   bash bootstrap.sh -- --non-interactive
   bash bootstrap.sh -- --repo-url /path/to/local/CoDeepSeedeX
 USAGE
@@ -68,6 +75,19 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --install-ref)
+      if [ "$#" -lt 2 ]; then
+        fail "--install-ref requires a value"
+        HELP_REQUESTED=1
+        break
+      fi
+      INSTALL_REF="$2"
+      shift 2
+      ;;
+    --install-ref=*)
+      INSTALL_REF="${1#--install-ref=}"
       shift
       ;;
     --print-python-selection)
@@ -170,49 +190,58 @@ download_installer() {
     RESOLVED_INSTALL_REF="$fallback_ref"
   fi
 
+  local primary_url="$INSTALLER_URL"
   local alt_url="$ALT_INSTALLER_URL"
   local third_url="$THIRD_INSTALLER_URL"
   if [ -n "$fallback_ref" ]; then
+    if [ "$INSTALLER_URL_WAS_EXPLICIT" != "1" ]; then
+      primary_url="https://github.com/Awenforever/CoDeepSeedeX/releases/download/${fallback_ref}/install.sh"
+    fi
     alt_url="${alt_url:-https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${fallback_ref}/scripts/install.sh}"
     third_url="${third_url:-https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${fallback_ref}/scripts/install.sh}"
   fi
 
+  RESOLVED_INSTALLER_SOURCE="$primary_url"
+
   if [ "$DRY_RUN" = "1" ]; then
-    warn "dry-run: would download install.sh from $INSTALLER_URL"
-    warn "dry-run: latest Release ref is ${fallback_ref:-<unresolved>}"
+    warn "dry-run: would download install.sh from $primary_url"
+    warn "dry-run: install ref is ${fallback_ref:-<unresolved latest>}"
     warn "dry-run: fallback URLs are ${alt_url:-<none>} and ${third_url:-<none>}"
     return 0
   fi
 
-  if curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$INSTALLER_URL" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
+  if curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$primary_url" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
+    RESOLVED_INSTALLER_SOURCE="$primary_url"
     chmod +x "$INSTALLER_PATH"
     return 0
   fi
 
-  warn "Primary install.sh download failed. Trying latest Release tag raw fallback."
+  warn "Primary install.sh download failed. Trying install ref raw fallback."
 
   if [ -z "$alt_url" ]; then
-    fail "Could not resolve the GitHub Latest Release tag for raw fallback."
+    fail "Could not resolve the GitHub install ref for raw fallback."
     warn "Bootstrap log: $INSTALL_LOG"
     return 1
   fi
 
   if curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$alt_url" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
+    RESOLVED_INSTALLER_SOURCE="$alt_url"
     chmod +x "$INSTALLER_PATH"
     return 0
   fi
 
-  warn "raw.githubusercontent.com install.sh download failed. Trying alternate latest Release tag raw URL."
+  warn "raw.githubusercontent.com install.sh download failed. Trying alternate install ref raw URL."
 
   if [ -n "$third_url" ] && curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$third_url" -o "$INSTALLER_PATH" >> "$INSTALL_LOG" 2>&1; then
+    RESOLVED_INSTALLER_SOURCE="$third_url"
     chmod +x "$INSTALLER_PATH"
     return 0
   fi
 
-  warn "Raw installer download failed. Trying latest Release tag shallow git clone fallback."
+  warn "Raw installer download failed. Trying install ref shallow git clone fallback."
 
   if [ -z "$fallback_ref" ]; then
-    fail "Could not resolve the GitHub Latest Release tag for git clone fallback."
+    fail "Could not resolve the GitHub install ref for git clone fallback."
     warn "Bootstrap log: $INSTALL_LOG"
     return 1
   fi
@@ -221,6 +250,7 @@ download_installer() {
   rm -rf "$clone_dir"
   if git clone --depth 1 --branch "$fallback_ref" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1 && [ -f "$clone_dir/scripts/install.sh" ]; then
     RESOLVED_INSTALL_REF="$fallback_ref"
+    RESOLVED_INSTALLER_SOURCE="git clone $REPO_URL@$fallback_ref"
     cp "$clone_dir/scripts/install.sh" "$INSTALLER_PATH"
     chmod +x "$INSTALLER_PATH"
     return 0
@@ -231,9 +261,12 @@ download_installer() {
   warn "Bootstrap log: $INSTALL_LOG"
   return 1
 }
+
 main() {
   color "1;36" "CoDeepSeedeX bootstrap"
   printf '  log: %s\n' "$INSTALL_LOG"
+  printf '  bootstrap source: %s\n' "${DEEPSEEK_PROXY_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}"
+  printf '  requested install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}"
 
   if [ "$HELP_REQUESTED" = "1" ]; then
     return 0
@@ -262,10 +295,13 @@ main() {
 
   download_installer
   ok "Installer ready"
+  printf '  installer source: %s\n' "${RESOLVED_INSTALLER_SOURCE:-unknown}"
+  printf '  install ref: %s\n' "${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<GitHub Latest Release>}}"
 
   if [ "$DRY_RUN" = "1" ]; then
     warn "dry-run: would run install.sh with DEEPSEEK_PROXY_PYTHON_BIN=$selected_python"
     warn "dry-run: would pass DEEPSEEK_PROXY_INSTALL_REF=${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<install.sh resolves latest>}}"
+    warn "dry-run: would pass DEEPSEEK_PROXY_INSTALLER_SOURCE=${RESOLVED_INSTALLER_SOURCE:-unknown}"
     printf '  install args:'
     printf ' %q' "${INSTALL_ARGS[@]}"
     printf '\n'
@@ -273,9 +309,9 @@ main() {
   fi
 
   if [ -n "$RESOLVED_INSTALL_REF" ] && [ -z "${DEEPSEEK_PROXY_INSTALL_REF:-}" ]; then
-    DEEPSEEK_PROXY_INSTALL_REF="$RESOLVED_INSTALL_REF" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+    DEEPSEEK_PROXY_INSTALL_REF="$RESOLVED_INSTALL_REF" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   else
-    DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+    DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   fi
 }
 

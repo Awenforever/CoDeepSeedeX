@@ -27,6 +27,13 @@ PROMPTED_MODEL_PROVIDER=""
 PROMPTED_MODEL_BASE_URL=""
 PROMPTED_MODEL_NAME=""
 
+show_version_source() {
+  sub_title "Version source"
+  printf '  Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}"
+  printf '  Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}"
+  printf '  Repository source: %s\n' "$REPO_URL"
+}
+
 logo() {
   cat <<'LOGO'
    ____      ____                 ____              _      __  __
@@ -1588,6 +1595,7 @@ if [ "$UNINSTALL" = "1" ]; then
 fi
 
 logo
+show_version_source
 
 divider
 section_title "Setup plan"

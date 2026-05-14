@@ -7,6 +7,13 @@
 
 
 
+
+## p2.10a12-bootstrap-install-ref-source-banner
+
+- Fixed bootstrap `--install-ref` handling so pre-release fresh VM installs download the matching release asset `install.sh` first instead of GitHub Latest.
+- Added bootstrap/installer source display under the banner.
+- Added dry-run coverage for `bootstrap.sh --install-ref v0.3.8-alpha`.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a11-model-provider-experimental-labels
 
 - Reclassified non-DeepSeek model providers from Supported to Experimental in installer/configuration UX.

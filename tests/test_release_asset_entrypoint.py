@@ -65,6 +65,6 @@ def test_bootstrap_prefers_release_install_asset_before_latest_tag_fallbacks() -
     assert TAGGED_RAW_INSTALL in data
     assert TAGGED_GITHUB_RAW_INSTALL in data
     assert data.index(RELEASE_INSTALL) < data.index("resolve_install_ref()")
-    assert "latest Release tag shallow git clone fallback" in data
+    assert "install ref shallow git clone fallback" in data
     assert "master/scripts/install.sh" not in data
     assert "refs/heads/master/scripts/install.sh" not in data
