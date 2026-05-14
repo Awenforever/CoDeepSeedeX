@@ -2,6 +2,29 @@
 
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
+
+## p2.10a7-doc-sync
+
+- Synchronized README, README.zh-CN, developer handbook, Chinese handbook, and this development log after the p2.10a6 installer model provider surface repair.
+- Developer runtime internal version now advances to `p2.10a7-doc-sync`, while the public runtime version remains `v0.3.7-alpha | 466706f` until the next public Release.
+- No public Release tag was moved or recreated.
+
+## p2.10a6-installer-model-provider-surface
+
+- Repaired `scripts/install.sh` so guided installer model API setup no longer presents ambiguous public choices such as `GLM / Z.AI`, generic `Qwen / DashScope`, Mimo, or Baichuan.
+- The installer now mirrors the public model API provider surface:
+  - `zhipu`
+  - `zhipu-coding`
+  - `zai`
+  - `zai-coding`
+  - `qwen-beijing`
+  - `qwen-singapore`
+  - `qwen-us`
+  - `custom`
+- Kept legacy `glm`, `qwen`, `dashscope`, and related aliases only as backward-compatible selection inputs, mapping them to explicit canonical providers.
+- Added `tests/test_installer_model_provider_surface.py` and updated installer UI tests to prevent reverting to generic provider labels.
+- Validation passed before merge: `git diff --check`, `bash -n bootstrap.sh`, `bash -n scripts/install.sh`, focused tests, broader tests, and full suite `379 passed`.
+
 ## 记录格式规范
 
 每条记录使用统一模板：

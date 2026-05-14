@@ -334,6 +334,9 @@ p2.9a40后的provider配置面状态：
   - `qwen-singapore`
   - `qwen-us`
 - 含混的`glm`和`qwen`快捷入口不再作为公开推荐命令。它们最多只能作为内部归一化或旧配置兼容辅助能力存在。
+- p2.10a6已修复`scripts/install.sh`，使安装器交互式model API配置使用同一套显式provider surface，并新增`tests/test_installer_model_provider_surface.py`防止回归。
+- `p2.10a7-doc-sync`同步README、开发手册和development-log中关于p2.10a6安装器provider surface修复的记录。
+- p2.10a7同步README、开发手册和development-log中关于p2.10a6安装器provider surface修复的记录。
 - README和测试应继续区分verified、endpoint reachable but auth failed、implemented but not yet verified、not script-tested和abandoned等状态，不要退回supported/unsupported二分法。
 
 下一阶段开发方向：

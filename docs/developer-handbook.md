@@ -372,6 +372,9 @@ Provider-surface state after p2.9a40:
   - `qwen-singapore`
   - `qwen-us`
 - The ambiguous `glm` and `qwen` shortcuts are not recommended public commands. They may remain only as internal canonicalization or backward-config helpers.
+- p2.10a6 repaired `scripts/install.sh` so guided installer model API setup uses the same explicit provider surface and added `tests/test_installer_model_provider_surface.py` to prevent regression.
+- `p2.10a7-doc-sync` synchronized README, developer handbook, and development-log records for the p2.10a6 installer surface repair.
+- p2.10a7 synchronized README, developer handbook, and development-log records for the p2.10a6 installer surface repair.
 - README and tests should continue distinguishing provider states such as verified, endpoint reachable but auth failed, implemented but not yet verified, not script-tested, and abandoned.
 
 Next development direction:
