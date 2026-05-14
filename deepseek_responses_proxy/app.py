@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.3.8-alpha"
 PROXY_PUBLIC_COMMIT = "3b1a16c"
-PROXY_INTERNAL_VERSION = "p2.10a10-installer-arrow-provider-ui"
+PROXY_INTERNAL_VERSION = "p2.10a11-model-provider-experimental-labels"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

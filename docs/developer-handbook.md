@@ -424,3 +424,9 @@ The Codex wrapper installed by `scripts/install.sh` sets a random terminal tab t
 ## p2.10a10 installer provider selection UI
 
 Guided installer provider menus should prefer arrow-key navigation with Enter confirmation, while retaining numeric and text input as fallback for non-TTY or incompatible terminals. Public provider names must stay explicit by provider family and region. In particular, Qwen / DashScope model and image providers must not collapse back into a single generic `qwen` entry when regional endpoints or availability differ.
+
+## p2.10a11 model provider support labels
+
+Only the native DeepSeek model provider may be labeled `Supported` in installer and configuration UX. Other model providers, including Kimi, Zhipu / BigModel, Z.AI, and Qwen / DashScope, must be labeled `Experimental` until they pass full Codex workflow validation. API key validation, endpoint reachability, or a single model response is not enough to claim support because Codex compatibility also depends on streaming behavior, tool calls, reasoning semantics, context-window behavior, error recovery, and cost behavior.
+
+Policy statement: API connectivity is not equivalent to full Codex workflow support.

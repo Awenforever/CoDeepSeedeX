@@ -240,14 +240,14 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert 'read_menu_choice_from_tty "Select model provider" "1"' in text
     assert '"1|DeepSeek|supported"' in text
-    assert '"2|Kimi / Moonshot|supported"' in text
-    assert '"3|Zhipu / BigModel domestic general|supported"' in text
-    assert '"4|Zhipu / BigModel domestic Coding Plan|supported"' in text
-    assert '"5|Z.AI international general|supported"' in text
-    assert '"6|Z.AI international Coding Plan|supported"' in text
-    assert '"7|Qwen / DashScope Beijing pay-as-you-go|supported"' in text
-    assert '"8|Qwen / DashScope Singapore pay-as-you-go|supported"' in text
-    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|supported"' in text
+    assert '"2|Kimi / Moonshot|experimental"' in text
+    assert '"3|Zhipu / BigModel domestic general|experimental"' in text
+    assert '"4|Zhipu / BigModel domestic Coding Plan|experimental"' in text
+    assert '"5|Z.AI international general|experimental"' in text
+    assert '"6|Z.AI international Coding Plan|experimental"' in text
+    assert '"7|Qwen / DashScope Beijing pay-as-you-go|experimental"' in text
+    assert '"8|Qwen / DashScope Singapore pay-as-you-go|experimental"' in text
+    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|experimental"' in text
     assert '"10|Other OpenAI-compatible server|custom"' in text
 
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
@@ -276,3 +276,18 @@ def test_installer_guided_provider_menus_use_arrow_selector() -> None:
     assert "CODEEPSEEDEX_NO_ARROW_MENUS" in text
     assert "qwen_image_beijing|qwen-image-beijing" in text
     assert "qwen_image_singapore|qwen-image-singapore" in text
+
+
+def test_installer_marks_non_deepseek_model_providers_experimental() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert '"1|DeepSeek|supported"' in text
+    assert '"2|Kimi / Moonshot|experimental"' in text
+    assert '"3|Zhipu / BigModel domestic general|experimental"' in text
+    assert '"4|Zhipu / BigModel domestic Coding Plan|experimental"' in text
+    assert '"5|Z.AI international general|experimental"' in text
+    assert '"6|Z.AI international Coding Plan|experimental"' in text
+    assert '"7|Qwen / DashScope Beijing pay-as-you-go|experimental"' in text
+    assert '"8|Qwen / DashScope Singapore pay-as-you-go|experimental"' in text
+    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|experimental"' in text
+    assert "Only DeepSeek is marked Supported for model providers" in text
+    assert "Experimental until full Codex workflow validation passes" in text

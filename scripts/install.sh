@@ -594,6 +594,8 @@ read_menu_choice_from_tty() {
       fi
       if [ "$status" = "supported" ]; then
         printf '\033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$value." "$label"
+      elif [ "$status" = "experimental" ]; then
+        printf '\033[1;35m%s\033[0m %s  \033[1;35mExperimental\033[0m\n' "$value." "$label"
       elif [ "$status" = "custom" ]; then
         printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
       elif [ "$status" = "model unavailable" ]; then
@@ -699,17 +701,18 @@ prompt_deepseek_api_key() {
   esac
 
   sub_title "Model providers"
+  printf '  %s\n' "Only DeepSeek is marked Supported for model providers. Other model providers are Experimental until full Codex workflow validation passes."
   local provider=""
   provider="$(read_menu_choice_from_tty "Select model provider" "1" \
     "1|DeepSeek|supported" \
-    "2|Kimi / Moonshot|supported" \
-    "3|Zhipu / BigModel domestic general|supported" \
-    "4|Zhipu / BigModel domestic Coding Plan|supported" \
-    "5|Z.AI international general|supported" \
-    "6|Z.AI international Coding Plan|supported" \
-    "7|Qwen / DashScope Beijing pay-as-you-go|supported" \
-    "8|Qwen / DashScope Singapore pay-as-you-go|supported" \
-    "9|Qwen / DashScope US Virginia pay-as-you-go|supported" \
+    "2|Kimi / Moonshot|experimental" \
+    "3|Zhipu / BigModel domestic general|experimental" \
+    "4|Zhipu / BigModel domestic Coding Plan|experimental" \
+    "5|Z.AI international general|experimental" \
+    "6|Z.AI international Coding Plan|experimental" \
+    "7|Qwen / DashScope Beijing pay-as-you-go|experimental" \
+    "8|Qwen / DashScope Singapore pay-as-you-go|experimental" \
+    "9|Qwen / DashScope US Virginia pay-as-you-go|experimental" \
     "10|Other OpenAI-compatible server|custom" \
     "0|Skip|skip")"
   case "$provider" in

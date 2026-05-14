@@ -6,6 +6,13 @@
 
 
 
+
+## p2.10a11-model-provider-experimental-labels
+
+- Reclassified non-DeepSeek model providers from Supported to Experimental in installer/configuration UX.
+- Kept DeepSeek as the only Supported model provider.
+- Documented that API connectivity is not equivalent to full Codex workflow support.
+- No public Release tag was moved.
 ## p2.10a10-installer-arrow-provider-ui
 
 - Added arrow-key installer provider selection with numeric/text fallback.
