@@ -403,3 +403,11 @@ Rules:
 - Keep `set-model <model>` working for the old DeepSeek model-only flow.
 - Use `set-model <model> --provider custom --base-url <url>` for custom OpenAI-compatible providers.
 - Keep README, README.zh-CN, installer guidance, CLI help, and tests synchronized when provider setup commands change.
+
+### p2.10a5 post-config UX consistency
+
+After changing model API setup to `dsproxy config set-model`, the public configuration surface must remain internally consistent:
+- `configuration_status.commands.model_api` must list the same public provider families as the supported model provider list, including coding-plan and regional Qwen entries.
+- README and README.zh-CN must not recommend `dsproxy config set-api-key --provider custom` for new custom model API setup.
+- Custom OpenAI-compatible model API examples must use `dsproxy config set-model <model> --provider custom --base-url <url>`.
+- Compatibility mentions of `set-api-key` may remain only when they explicitly describe the legacy alias.

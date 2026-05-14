@@ -230,3 +230,9 @@
 - Preserved the old model-only flow: `dsproxy config set-model deepseek-v4-flash`.
 - Updated the guided wizard model provider catalog so supported model API providers are selectable from the wizard instead of only DeepSeek being handled as supported.
 - Updated installer guidance, README, README.zh-CN, developer handbooks, and tests to prefer `set-model` for model API setup.
+
+## p2.10a5-post-config-ux-consistency
+
+- Synchronized the model API command summary shown by `dsproxy config wizard --non-interactive` with the full explicit provider surface.
+- Replaced the remaining README and README.zh-CN Qwen Coding Plan custom-provider examples from the old `set-api-key --provider custom --model ...` form to the new `set-model <model> --provider custom --base-url ...` form.
+- Added tests to prevent README custom model API examples from regressing to the old `set-api-key --provider custom` command shape.

@@ -206,7 +206,7 @@ Use explicit site and plan names for model API setup. Do not use the old `glm` o
 | Qwen / DashScope Beijing pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-beijing` |
 | Qwen / DashScope Singapore pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-singapore` |
 | Qwen / DashScope US Virginia pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-us` |
-| Qwen Coding Plan / Token Plan | Not script-tested because these are plan-specific tool paths | Configure as `custom` only when validating the corresponding tool path, for example `dsproxy config set-api-key --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --model qwen3-coder-plus --skip-validation` |
+| Qwen Coding Plan / Token Plan | Not script-tested because these are plan-specific tool paths | Configure as `custom` only when validating the corresponding tool path, for example `dsproxy config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation` |
 
 | Tool | Supported provider | Configure | Apply / quota page |
 | --- | --- | --- | --- |

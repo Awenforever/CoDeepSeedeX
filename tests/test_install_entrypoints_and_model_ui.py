@@ -242,4 +242,4 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
     assert "DEEPSEEK_BASE_URL" in text
     assert "DEEPSEEK_PROXY_MODEL_PROVIDER" in text
     assert "PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4" in text
-    assert "dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom" in text
+    assert "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom" in text

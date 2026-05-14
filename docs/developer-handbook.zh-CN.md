@@ -365,3 +365,11 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 - 保持`set-model <model>`旧式DeepSeek单纯改模型流程可用。
 - custom OpenAI-compatible provider使用`set-model <model> --provider custom --base-url <url>`。
 - provider配置命令变化时，README、README.zh-CN、安装器提示、CLI帮助和测试必须同步。
+
+### p2.10a5配置后体验一致性
+
+将model API配置主入口切换为`dsproxy config set-model`后，公开配置界面必须保持一致：
+- `configuration_status.commands.model_api`应与supported model provider列表保持同一公开范围，包括coding-plan和Qwen分区入口。
+- README和README.zh-CN不得继续推荐`dsproxy config set-api-key --provider custom`作为新的custom model API配置写法。
+- custom OpenAI-compatible model API示例必须使用`dsproxy config set-model <model> --provider custom --base-url <url>`。
+- `set-api-key`只应在明确说明legacy alias兼容性时保留。

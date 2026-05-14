@@ -83,6 +83,13 @@ def test_readme_critical_config_commands_match_cli_parser() -> None:
         namespace = parser.parse_args(args)
         assert getattr(namespace, "func", None) is cli._config
 
+
+def test_readme_uses_set_model_for_custom_model_api_examples() -> None:
+    text = _readme_text()
+    assert "dsproxy config set-api-key --provider custom" not in text
+    assert "dsproxy config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation" in text
+    assert "--model qwen3-coder-plus" not in text
+
 def test_readme_model_provider_surface_uses_explicit_sites_and_plans() -> None:
     text = _readme_text()
     assert "dsproxy config set-model --provider glm\n" not in text

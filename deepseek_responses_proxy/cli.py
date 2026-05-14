@@ -2480,7 +2480,7 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "all_configured": not any(missing.values()),
         "commands": {
             "guided": "dsproxy config wizard",
-            "model_api": "dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom",
+            "model_api": "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom",
             "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
             "image_generation_api": "dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal",
         },

@@ -2155,7 +2155,7 @@ def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
     assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
     result = json.loads(capsys.readouterr().out)
     status = result["configuration_status"]
-    assert status["commands"]["model_api"] == "dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom"
+    assert status["commands"]["model_api"] == "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
     assert status["supported"]["model_api"] == ["deepseek", "kimi", "zhipu", "zhipu-coding", "zai", "zai-coding", "qwen-beijing", "qwen-singapore", "qwen-us", "custom"]
     assert status["unsupported_catalog"]["model_api"] == ["mimo", "baichuan"]
 

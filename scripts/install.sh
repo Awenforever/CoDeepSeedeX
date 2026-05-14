@@ -605,7 +605,7 @@ prompt_deepseek_api_key() {
       PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)
-      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zai|qwen-beijing|custom"
+      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
       return 0
       ;;
     *)
