@@ -266,3 +266,14 @@ For scripts that modify real HOME paths, keep the fail-before-write pattern: com
 Generated Python helper functions inside shell-driven commands must have signatures that cover every later call site. If a helper is later called as `run(..., env=sanitized)`, then the helper must be defined with `env=None` and must pass it through to `subprocess.run`. The same applies to other keyword parameters such as `timeout`, `check`, or `allow_fail`. This exact mistake caused `TypeError: run() got an unexpected keyword argument 'env'` in a read-only mainline resume audit.
 
 Before giving the user a generated command, statically scan the command for helper definitions and call sites. Check that every keyword argument used later is accepted by the helper signature. For long commands, prefer defining helpers with the superset signature used across the script.
+
+### Qwen/DashScope regional image live matrix
+
+p2.9a30-qwen-region-live-matrix-doc-sync records the current Qwen Image regional live-probe result:
+
+- Beijing: passed with `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- Singapore: passed with `qwen-image-2.0-pro`, HTTP 200, image evidence present.
+- US Virginia: regional endpoint override works, but `qwen-image-2.0-pro` and `qwen-image-2.0-pro-2026-03-03` return `Model not exist`.
+- Germany Frankfurt: regional workspace endpoint override works, but `qwen-image-2.0-pro` returns `Model not exist`.
+
+Do not interpret the US/Germany result as a generic DashScope failure. It means the tested Qwen Image model is not available on those endpoints. If US/Germany image generation is required, test Wan image/text-to-image as a separate provider mode instead of mixing it into `qwen_image`.
