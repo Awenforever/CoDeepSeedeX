@@ -601,6 +601,18 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _canonical_cli_reasoning_effort(value: object) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"minimal", "low", "medium", "high"}:
+        return "high"
+    if normalized in {"xhigh", "max"}:
+        return "max"
+    return None
+
+
 def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, value: str) -> bool:
     if not config_path.exists():
         return False
@@ -1088,6 +1100,95 @@ def _status(args: argparse.Namespace) -> int:
 
     print(json.dumps({"status": "error", "url": url, "http_status": status, "error": error}, ensure_ascii=False, indent=2))
     return 1
+
+
+def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str, object]:
+    command = [sys.executable, "-m", "deepseek_responses_proxy.cli", *argv]
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=str(Path.cwd()),
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "argv": ["dsproxy", *argv],
+            "stdout_tail": proc.stdout[-1200:],
+            "stderr_tail": proc.stderr[-1200:],
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "returncode": "timeout",
+            "argv": ["dsproxy", *argv],
+            "stdout_tail": str(exc.stdout or "")[-1200:],
+            "stderr_tail": str(exc.stderr or "")[-1200:],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "returncode": "error",
+            "argv": ["dsproxy", *argv],
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _post_config_apply() -> dict[str, object]:
+    mode = (
+        os.environ.get("DEEPSEEK_PROXY_POST_CONFIG_APPLY")
+        or os.environ.get("CODEEPSEEDEX_POST_CONFIG_APPLY")
+        or "auto"
+    ).strip().lower()
+    result: dict[str, object] = {
+        "status": "ok",
+        "mode": mode,
+        "message": "all updates applied",
+        "stable_proxy": {},
+        "thinking_proxy": {},
+    }
+    if mode in {"0", "false", "no", "off", "disabled", "never"}:
+        result["status"] = "skipped"
+        result["message"] = "post-config apply disabled"
+        return result
+
+    overall_ok = True
+    for target_name, thinking in [("stable_proxy", False), ("thinking_proxy", True)]:
+        port = _port_for(thinking, None)
+        target: dict[str, object] = {
+            "port": port,
+            "was_running": False,
+            "action": "not_running",
+            "ok": True,
+        }
+        if _port_status_looks_like_proxy(port):
+            target["was_running"] = True
+            stop_argv = ["stop", "thinking"] if thinking else ["stop"]
+            start_argv = ["start", "thinking"] if thinking else ["start"]
+            stop_step = _post_config_run_self(stop_argv)
+            start_step = _post_config_run_self(start_argv) if bool(stop_step.get("ok")) else {
+                "ok": False,
+                "argv": ["dsproxy", *start_argv],
+                "skipped": "stop_failed",
+            }
+            target.update(
+                {
+                    "action": "refreshed",
+                    "stop": stop_step,
+                    "start": start_step,
+                    "ok": bool(stop_step.get("ok")) and bool(start_step.get("ok")),
+                }
+            )
+        result[target_name] = target
+        overall_ok = overall_ok and bool(target.get("ok"))
+
+    if not overall_ok:
+        result["status"] = "partial"
+        result["message"] = "configuration saved, but one or more running proxies could not be refreshed"
+    return result
+
 
 
 def _usage(args: argparse.Namespace) -> int:
@@ -2554,7 +2655,10 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
 
 def _config_wizard(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
-    _run_guided_config(env_file, non_interactive=bool(getattr(args, "non_interactive", False)), emit_json=True)
+    result = _run_guided_config(env_file, non_interactive=bool(getattr(args, "non_interactive", False)), emit_json=False)
+    if result.get("configured"):
+        result["post_config_apply"] = _post_config_apply()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -2663,6 +2767,7 @@ def _config(args: argparse.Namespace) -> int:
         if provider == "deepseek":
             output["deepseek_api_key_configured"] = True
             output["deepseek_api_key_preview"] = _mask_api_key(api_key)
+        output["post_config_apply"] = _post_config_apply()
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
@@ -2770,6 +2875,7 @@ def _config(args: argparse.Namespace) -> int:
         if canonical_provider == "serpapi":
             output["serpapi_api_key_configured"] = True
             output["serpapi_api_key_preview"] = _mask_api_key(api_key)
+        output["post_config_apply"] = _post_config_apply()
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
@@ -2857,6 +2963,7 @@ def _config(args: argparse.Namespace) -> int:
         }
         if canonical_provider == "glm":
             output["glm_image_api_key_configured"] = True
+        output["post_config_apply"] = _post_config_apply()
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
@@ -2879,27 +2986,32 @@ def _config(args: argparse.Namespace) -> int:
             "codex_config": str(codex_path),
             "codex_profile": args.profile,
             "codex_profile_patched": patched,
+            "post_config_apply": _post_config_apply(),
         }, ensure_ascii=False, indent=2))
         return 0
 
     if args.config_command == "set-effort":
         allowed = {"low", "medium", "high", "xhigh", "max"}
-        if args.effort not in allowed:
+        canonical_effort = _canonical_cli_reasoning_effort(args.effort)
+        if canonical_effort is None:
             print(json.dumps({"error": "invalid_effort", "allowed": sorted(allowed)}, ensure_ascii=False, indent=2))
             return 2
         values = _read_env_exports(env_file)
-        values["DEEPSEEK_REASONING_EFFORT"] = args.effort
+        values["DEEPSEEK_REASONING_EFFORT"] = canonical_effort
         _write_env_exports(env_file, values)
 
         codex_path = Path(args.codex_config).expanduser() if args.codex_config else default_codex_config_path()
-        patched = _patch_codex_profile_value(codex_path, args.profile, "model_reasoning_effort", args.effort)
+        patched = _patch_codex_profile_value(codex_path, args.profile, "model_reasoning_effort", canonical_effort)
 
         print(json.dumps({
             "env_file": str(env_file),
-            "effort": args.effort,
+            "requested_effort": args.effort,
+            "effort": canonical_effort,
+            "compatibility_note": "low and medium are accepted for Codex compatibility but stored as high because DeepSeek supports high/max reasoning effort for this proxy path.",
             "codex_config": str(codex_path),
             "codex_profile": args.profile,
             "codex_profile_patched": patched,
+            "post_config_apply": _post_config_apply(),
         }, ensure_ascii=False, indent=2))
         return 0
 
@@ -3762,14 +3874,14 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_image_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_image_api_key.set_defaults(func=_config)
 
-    config_set_model = config_sub.add_parser("set-model", help="set DeepSeek upstream model")
+    config_set_model = config_sub.add_parser("set-model", help="set current upstream model for the selected model provider")
     config_set_model.add_argument("model")
     config_set_model.add_argument("--env-file")
     config_set_model.add_argument("--codex-config")
     config_set_model.add_argument("--profile", default="deepseek-thinking")
     config_set_model.set_defaults(func=_config)
 
-    config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort")
+    config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high for DeepSeek compatibility")
     config_set_effort.add_argument("effort")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")

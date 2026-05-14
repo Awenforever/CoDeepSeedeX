@@ -238,6 +238,14 @@ dsproxy doctor providers --kind image --provider zhipu --live --allow-spend
 ```
 
 
+## Behavior changes
+
+Release notes must mention milestone behavior changes, but the README also keeps this compact behavior-change table for changes that permanently alter CLI behavior or user workflow.
+
+| Version | Area | Previous behavior | New behavior | Migration note |
+|---|---|---|---|---|
+| unreleased / p2.10a2 | Config apply and reasoning effort | API key/model/effort changes were saved, but users had to infer whether running proxies needed a restart. `medium` could appear in user-facing effort examples even though the DeepSeek proxy path normalizes it to `high`. | Successful config writes refresh already-running local stable/thinking proxies and report `all updates applied`. User-facing effort guidance uses `high`, while `low`/`medium` remain accepted compatibility inputs and are stored as `high`. | Rerun the installer or run `dsproxy config set-effort high` to refresh installed Codex profile wording. |
+
 ## 🚀 Quick start
 
 After installation:
@@ -407,7 +415,6 @@ Switch the upstream model used by CoDeepSeedeX:
 
 Change Codex-side reasoning effort for the installed profiles:
 
-    dsproxy config set-effort medium
     dsproxy config set-effort high
     dsproxy config set-effort xhigh
     dsproxy config set-effort max

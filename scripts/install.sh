@@ -1572,7 +1572,7 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
     --provider-name deepseek-proxy \
     --base-url "http://127.0.0.1:${STABLE_PORT}/v1" \
     --model deepseek-v4-flash \
-    --reasoning-effort medium \
+    --reasoning-effort high \
     "${MODEL_CATALOG_ARGS[@]}"
 
   run_quiet "Codex profile installed: deepseek-thinking" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \

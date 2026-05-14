@@ -206,3 +206,12 @@
   - Start with read-only architecture evidence collection.
   - Assess DeepSeek-specific logic and the feasibility of an AnyCodex-style provider abstraction.
   - Keep the broader third-party tool replacement objective separate from a single SerpAPI-style bridge.
+
+## p2.10a2-config-refresh-and-effort-ux
+
+- Added a CoDeepSeedeX-only post-config apply hook for successful config writes.
+- API key, model, and effort config updates refresh already-running local stable/thinking proxy processes instead of requiring users to infer whether a restart is needed.
+- The hook reports `all updates applied` when the local apply path completes.
+- WeClaw stop/start/resume automation remains out of scope for this repository line.
+- User-facing effort guidance no longer recommends `medium`; compatibility inputs `low` and `medium` are stored as `high` for the DeepSeek proxy path.
+- README and README.zh-CN now include a compact behavior-change table for milestone CLI/workflow changes.

@@ -343,3 +343,9 @@ p2.9a40后的provider配置面状态：
 - 目标是评估CoDeepSeedeX是否应重构为AnyCodex式通用provider架构。
 - 重点检查DeepSeek强绑定区域，包括`reasoning_content`、reasoning/thinking事件处理、thinking profile行为、Responses到chat转换、stream事件归一化、tool-call repair、model catalog假设、`/model` UI预期和Codex profile wrapper行为。
 - 工具替换应作为更广义的一层处理：web search、image generation和未来第三方工具应能透明替换Codex原生不可达或不可用工具，而不是只做SerpAPI特例桥。
+
+### p2.10a2配置刷新与effort体验规则
+
+凡是会改变API key、model选择或reasoning effort的本地配置写入，成功后都应执行CoDeepSeedeX自身的post-config hook。该hook可以刷新已经运行的本地stable/thinking `dsproxy`进程，并报告`all updates applied`。它不能启动原本未运行的proxy。WeClaw resume自动化明确不属于CoDeepSeedeX本线，应交给WeClaw开发线处理。
+
+DeepSeek侧effort体验不应继续推荐`medium`。`low`和`medium`可以作为Codex或旧命令的兼容输入继续接受，但CoDeepSeedeX应把它们保存并转发为`high`。用户文档示例应优先使用`high`、`xhigh`或`max`。

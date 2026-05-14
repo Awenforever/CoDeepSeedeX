@@ -41,7 +41,7 @@ After p2.9a21, `master`, `origin/master`, and `p2.9a21-handbook-bilingual-restor
 ## 3. Key file map
 
 - `deepseek_responses_proxy/app.py`: runtime core, Responses-compatible API, DeepSeek bridge, tool bridge, provider dispatch, version metadata, debug trace.
-- `deepseek_responses_proxy/cli.py`: `dsproxy` CLI, config, provider setup, doctor commands, upgrade logic.
+- `deepseek_responses_proxy/cli.py`: `dsproxy` CLI, config, provider setup, post-config proxy refresh, doctor commands, upgrade logic.
 - `scripts/install.sh`: installer, installed checkout sync, venv setup, wrappers, Codex profiles, config initialization, local file backup.
 - `bootstrap.sh`: one-line bootstrap entrypoint, dependency handling, install.sh acquisition and fallback.
 - `tests/`: regression tests, document contract tests, provider and installer tests.
@@ -381,3 +381,9 @@ Next development direction:
 - The goal is to assess whether CoDeepSeedeX should be generalized into an AnyCodex-style provider architecture.
 - Key DeepSeek-specific areas to inspect include `reasoning_content`, reasoning or thinking event handling, thinking profile behavior, Responses-to-chat conversion, stream event normalization, tool-call repair, model catalog assumptions, `/model` UI expectations, and Codex profile wrapper behavior.
 - Tool replacement should be treated as a broader layer: web search, image generation, and future third-party tools should be able to transparently replace native Codex tools that are unreachable or unavailable, rather than being a SerpAPI-only bridge.
+
+### p2.10a2 config refresh and effort UX rule
+
+Successful local config writes that change API keys, model selection, or reasoning effort must apply a CoDeepSeedeX-only post-config hook. The hook may refresh already-running local stable/thinking `dsproxy` processes and report `all updates applied`; it must not start proxies that were not already running. WeClaw resume automation is deliberately out of scope for CoDeepSeedeX changes and must be handled in the WeClaw development line.
+
+DeepSeek-facing effort UX should not recommend `medium`. `low` and `medium` may remain accepted compatibility inputs from Codex or old commands, but CoDeepSeedeX stores and forwards them as `high` for the DeepSeek proxy path. User-facing examples should prefer `high`, `xhigh`, or `max` according to the intended behavior.
