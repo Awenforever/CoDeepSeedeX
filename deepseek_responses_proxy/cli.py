@@ -546,6 +546,7 @@ def _codex_profile_blocks(
         'model_reasoning_summary = "none"',
         "model_supports_reasoning_summaries = false",
         f"model_reasoning_effort = {_toml_quote(reasoning_effort)}",
+        'plan_mode_reasoning_effort = "high"',
     ]
     if model_catalog_json:
         profile_lines.append(f"model_catalog_json = {_toml_quote(model_catalog_json)}")
@@ -3231,6 +3232,7 @@ def _config(args: argparse.Namespace) -> int:
 
         codex_path = Path(args.codex_config).expanduser() if args.codex_config else default_codex_config_path()
         patched = _patch_codex_profile_value(codex_path, args.profile, "model_reasoning_effort", canonical_effort)
+        plan_patched = _patch_codex_profile_value(codex_path, args.profile, "plan_mode_reasoning_effort", "high")
 
         print(json.dumps({
             "env_file": str(env_file),
@@ -3240,6 +3242,8 @@ def _config(args: argparse.Namespace) -> int:
             "codex_config": str(codex_path),
             "codex_profile": args.profile,
             "codex_profile_patched": patched,
+            "codex_plan_mode_reasoning_effort": "high",
+            "codex_plan_mode_profile_patched": plan_patched,
             "post_config_apply": _post_config_apply(),
         }, ensure_ascii=False, indent=2))
         return 0
@@ -4180,7 +4184,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--profile", default="deepseek-thinking")
     config_set_model.set_defaults(func=_config)
 
-    config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high for DeepSeek compatibility")
+    config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for DeepSeek compatibility")
     config_set_effort.add_argument("effort")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")

@@ -406,4 +406,12 @@
 - Fixed source-archive installs so wrapper-sourced version metadata can preserve the installed release commit even when the install directory is not a git checkout.
 - Avoided noisy git clone fatal output when an existing install directory is non-git and non-empty by routing directly to source archive fallback.
 - Quieted pip install phases with pip progress/version checks disabled and output captured in the install log.
-- Clarified installer next steps for current-shell PATH refresh and Codex Plan mode effort aliasing. Codex may display medium in Plan mode, while CoDeepSeedeX maps Codex medium to DeepSeek high.
+- Clarified installer next steps for current-shell PATH refresh. p2.10a26 then pins native Codex Plan mode with `plan_mode_reasoning_effort`.
+
+### p2.10a26-wrapper-start-plan-mode-hardening
+
+- Made the CoDeepSeedeX Codex wrapper fail closed: it now starts the matching stable/thinking proxy route, verifies `dsproxy status`, and refuses to enter Codex if the backend remains unavailable.
+- Added `plan_mode_reasoning_effort = "high"` to generated Codex profiles so native Codex Plan mode uses the DeepSeek-compatible high effort.
+- Kept proxy-side compatibility normalization for legacy or Codex-originated `low` and `medium` inputs, which still map to DeepSeek `high`.
+- Added explicit uninstall rollback coverage to ensure a previous Codex command backup is restored after the CoDeepSeedeX wrapper is removed.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.

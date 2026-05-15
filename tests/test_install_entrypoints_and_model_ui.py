@@ -237,15 +237,43 @@ def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() 
     assert 'write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"' in text
 
 
-def test_codex_wrapper_prefers_public_dsproxy_and_tolerates_start_drift() -> None:
+def test_codex_wrapper_prefers_public_dsproxy_and_fails_closed_on_unhealthy_proxy() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'DSPROXY="\\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"' in text
-    assert 'if [ ! -x "\\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then' in text
-    assert 'DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"' in text
-    assert 'start_dsproxy_profile()' in text
-    assert '"\\$DSPROXY" start >/dev/null 2>&1 || "\\$DSPROXY" status >/dev/null 2>&1 || true' in text
-    assert '"\\$DSPROXY" start thinking >/dev/null 2>&1 || "\\$DSPROXY" status thinking >/dev/null 2>&1 || true' in text
-    assert 'exec "\\$REAL_CODEX" "\\$@"' in text
+    body = _install_function_body("write_codex_wrapper", "uninstall")
+    start_idx = body.index("start_dsproxy_profile() {")
+    end_idx = body.index('\n}\n\ncase "\\$profile" in', start_idx) + len("\n}")
+    start_fn = body[start_idx:end_idx]
+    assert 'DSPROXY="\\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"' in body
+    assert 'if [ ! -x "\\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then' in body
+    assert 'DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"' in body
+    assert 'start_args=(start thinking)' in start_fn
+    assert 'status_args=(status thinking)' in start_fn
+    assert '"\\$DSPROXY" "\\${start_args[@]}" >/dev/null 2>&1' in start_fn
+    assert '"\\$DSPROXY" "\\${status_args[@]}" >/dev/null 2>&1' in start_fn
+    assert "CoDeepSeedeX error: failed to start dsproxy for profile %s." in start_fn
+    assert "CoDeepSeedeX error: dsproxy started but status check failed for profile %s." in start_fn
+    assert "|| true" not in start_fn
+    assert 'exec "\\$REAL_CODEX" "\\$@"' in body
+
+
+def test_installer_uninstall_restores_previous_codex_command_from_manifest_backup() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    install_body = _install_function_body("write_codex_wrapper", "uninstall")
+    uninstall_start = text.index("uninstall() {")
+    uninstall_body = text[uninstall_start:]
+    assert 'CODEX_WRAPPER_BACKUP="$backup_path"' in install_body
+    assert 'backup_path="${CODEX_WRAPPER_BACKUP:-}"' in uninstall_body
+    assert 'rm -f "$wrapper_path"' in uninstall_body
+    assert 'mv "$backup_path" "$wrapper_path"' in uninstall_body
+    assert 'ok "Previous codex command restored"' in uninstall_body
+    assert uninstall_body.index('rm -f "$wrapper_path"') < uninstall_body.index('mv "$backup_path" "$wrapper_path"')
+
+
+def test_installer_documents_codex_plan_effort_alias() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Plan mode reasoning is pinned to high for DeepSeek profiles" in text
+    assert 'plan_mode_reasoning_effort = "high"' in text
+    assert "Codex may display medium, proxy maps it to DeepSeek high" not in text
 
 
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
@@ -586,8 +614,3 @@ def test_installer_uses_quiet_pip_commands() -> None:
     assert "PIP_DISABLE_PIP_VERSION_CHECK=1" in text
     assert "PIP_PROGRESS_BAR=off" in text
     assert "pip install --quiet --no-input -e" in text
-
-
-def test_installer_documents_codex_plan_effort_alias() -> None:
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "Codex may display medium, proxy maps it to DeepSeek high" in text

@@ -54,9 +54,9 @@ PROXY_PUBLIC_COMMIT = (
 )
 PROXY_INTERNAL_VERSION = (
     _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
-    or "p2.10a25-version-install-plan-polish"
+    or "p2.10a26-wrapper-start-plan-mode-hardening"
 )
-PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or "dcb390d"
+PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
 # USD per 1M tokens. Keep this table small and explicit.

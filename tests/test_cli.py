@@ -2346,3 +2346,46 @@ def test_cli_upgrade_alpha_rejects_explicit_tag(capsys) -> None:
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "error"
     assert out["error"] == "conflicting_upgrade_target"
+
+
+def test_cli_install_codex_profile_writes_plan_mode_reasoning_effort(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+
+    assert main([
+        "install-codex-profile",
+        "--path",
+        str(config_path),
+        "--name",
+        "deepseek-thinking",
+        "--base-url",
+        "http://127.0.0.1:8001/v1",
+        "--model",
+        "deepseek-v4-pro",
+        "--reasoning-effort",
+        "xhigh",
+        "--no-backup",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["profile"] == "deepseek-thinking"
+    profile_text = config_path.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "xhigh"' in profile_text
+    assert 'plan_mode_reasoning_effort = "high"' in profile_text
+
+
+def test_cli_config_set_effort_pins_codex_plan_mode_to_high(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+
+    assert main(["config", "set-effort", "medium", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    patched = config_path.read_text(encoding="utf-8")
+    assert result["requested_effort"] == "medium"
+    assert result["effort"] == "high"
+    assert result["codex_plan_mode_reasoning_effort"] == "high"
+    assert result["codex_plan_mode_profile_patched"] is True
+    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in patched
+    assert 'plan_mode_reasoning_effort = "high"' in patched

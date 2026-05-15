@@ -1615,7 +1615,7 @@ write_env_file() {
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q
 ' "1"
     printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q
-' "p2.10a25-version-install-plan-polish"
+' "p2.10a26-wrapper-start-plan-mode-hardening"
     if [ -n "${INSTALL_TARGET_COMMIT:-}" ]; then
       printf 'export DEEPSEEK_PROXY_PUBLIC_COMMIT=%q
 ' "$INSTALL_TARGET_COMMIT"
@@ -1810,18 +1810,42 @@ set_codeepseedex_terminal_title() {
 
 start_dsproxy_profile() {
   local profile_name="\$1"
+  local start_args=()
+  local status_args=()
+
   if [ ! -x "\$DSPROXY" ]; then
-    return 0
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
+    return 1
   fi
 
   case "\$profile_name" in
     deepseek)
-      "\$DSPROXY" start >/dev/null 2>&1 || "\$DSPROXY" status >/dev/null 2>&1 || true
+      start_args=(start)
+      status_args=(status)
       ;;
     deepseek-thinking)
-      "\$DSPROXY" start thinking >/dev/null 2>&1 || "\$DSPROXY" status thinking >/dev/null 2>&1 || true
+      start_args=(start thinking)
+      status_args=(status thinking)
+      ;;
+    *)
+      return 0
       ;;
   esac
+
+  if ! "\$DSPROXY" "\${start_args[@]}" >/dev/null 2>&1; then
+    if ! "\$DSPROXY" "\${status_args[@]}" >/dev/null 2>&1; then
+      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "\$profile_name" >&2
+      printf 'Run for details: %s %s\n' "\$DSPROXY" "\${start_args[*]}" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if ! "\$DSPROXY" "\${status_args[@]}" >/dev/null 2>&1; then
+    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "\$profile_name" >&2
+    printf 'Run for details: %s %s\n' "\$DSPROXY" "\${status_args[*]}" >&2
+    return 1
+  fi
 }
 
 case "\$profile" in
@@ -2316,7 +2340,7 @@ printf '%s\n' "  codex --profile deepseek-thinking  # recommended"
 sub_title "Inside Codex TUI"
 printf '%s\n' "  /status       show session/runtime status"
 printf '%s\n' "  /model        switch model or reasoning effort"
-printf '%s\n' "  /plan         plan before implementation; Codex may display medium, proxy maps it to DeepSeek high"
+printf '%s\n' "  /plan         plan before implementation; Plan mode reasoning is pinned to high for DeepSeek profiles"
 printf '%s\n' "  check balance"
 
 sub_title "Shell commands"
@@ -2346,3 +2370,4 @@ printf '  bash %s --uninstall\n' "$INSTALL_DIR/scripts/install.sh"
 print_install_logs
 
 divider
+# Generated Codex profiles include: plan_mode_reasoning_effort = "high"

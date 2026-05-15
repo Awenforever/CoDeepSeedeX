@@ -494,4 +494,12 @@ Installer TTY output should follow a Pixi-like separation of human-readable prog
 
 ### p2.10a25 installer polish rule
 
-For source archive installs, do not rely on `.git` being present for version metadata. The installer should resolve the target ref commit when possible and persist it through the generated env file consumed by the dsproxy wrapper. Existing non-git install directories should go directly to source archive fallback instead of first printing a git clone fatal message. Codex Plan mode may show `medium`; the proxy maps that request to DeepSeek `high`.
+For source archive installs, do not rely on `.git` being present for version metadata. The installer should resolve the target ref commit when possible and persist it through the generated env file consumed by the dsproxy wrapper. Existing non-git install directories should go directly to source archive fallback instead of first printing a git clone fatal message. DeepSeek Codex profiles must explicitly set `plan_mode_reasoning_effort = "high"` so native Codex Plan mode does not surface unsupported `medium` semantics. The proxy still accepts legacy or Codex-originated `medium` and maps it to DeepSeek `high` as a compatibility fallback.
+
+### p2.10a26 wrapper startup, Plan mode, and uninstall rule
+
+Codex wrapper startup is fail-closed for CoDeepSeedeX-managed profiles. When `codex --profile deepseek` or `codex --profile deepseek-thinking` is launched, the wrapper must start the matching proxy route and then verify `dsproxy status` for that route. If startup and status both fail, the wrapper must print a concise error and not enter Codex against an empty port.
+
+DeepSeek Codex profiles must write both `model_reasoning_effort` and `plan_mode_reasoning_effort`. `plan_mode_reasoning_effort` is pinned to `high` because Codex native Plan mode reads that dedicated config key. Do not document Plan mode as merely showing `medium` while proxy-side aliases repair it.
+
+Uninstall must restore the previous Codex command when `CODEX_WRAPPER_BACKUP` is present in the install manifest. Any wrapper rewrite must preserve manifest-backed rollback: remove the CoDeepSeedeX wrapper first, then move the saved backup back to the original wrapper path.
