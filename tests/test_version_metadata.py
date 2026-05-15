@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from deepseek_responses_proxy.app import (
+    PROXY_INTERNAL_COMMIT,
     PROXY_INTERNAL_VERSION,
     PROXY_PUBLIC_COMMIT,
     PROXY_PUBLIC_VERSION,
@@ -33,12 +34,17 @@ def _expected_public_commit() -> str:
 def test_public_runtime_version_matches_declared_release_tag() -> None:
     assert PROXY_PUBLIC_VERSION == "v0.3.8-alpha"
     assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
+
+
+def test_internal_runtime_version_metadata_is_not_unknown() -> None:
+    assert PROXY_INTERNAL_VERSION == "p2.10a25-version-install-plan-polish"
+    assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.10a24-installer-ui-live-image-validation"
+    assert PROXY_INTERNAL_VERSION == "p2.10a25-version-install-plan-polish"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:

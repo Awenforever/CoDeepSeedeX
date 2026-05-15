@@ -44,9 +44,19 @@ def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
     return fallback
 
 
-PROXY_PUBLIC_COMMIT = _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "7a90d95")
-PROXY_INTERNAL_VERSION = "p2.10a24-installer-ui-live-image-validation"
-PROXY_INTERNAL_COMMIT = "unknown"
+def _metadata_env_value(name: str) -> str:
+    return os.environ.get(name, "").strip()
+
+
+PROXY_PUBLIC_COMMIT = (
+    _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
+    or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "dcb390d")
+)
+PROXY_INTERNAL_VERSION = (
+    _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
+    or "p2.10a25-version-install-plan-polish"
+)
+PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or "dcb390d"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
 # USD per 1M tokens. Keep this table small and explicit.

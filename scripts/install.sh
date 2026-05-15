@@ -1614,6 +1614,14 @@ write_env_file() {
 ' "xhigh"
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q
 ' "1"
+    printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q
+' "p2.10a25-version-install-plan-polish"
+    if [ -n "${INSTALL_TARGET_COMMIT:-}" ]; then
+      printf 'export DEEPSEEK_PROXY_PUBLIC_COMMIT=%q
+' "$INSTALL_TARGET_COMMIT"
+      printf 'export DEEPSEEK_PROXY_INTERNAL_COMMIT=%q
+' "$INSTALL_TARGET_COMMIT"
+    fi
     printf 'export DEEPSEEK_PROXY_TOOL_MAX_ROUNDS=%q
 ' "6"
     printf 'export DEEPSEEK_PROXY_COMPACT_POLICY=%q
@@ -2129,6 +2137,15 @@ prepare_install_checkout() {
     return $?
   fi
 
+  if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
+    if [ ! -d "$INSTALL_DIR" ] || [ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+      warn "Using source archive fallback for existing non-git install directory."
+      printf '+ Existing install directory is not a git checkout, using source archive fallback: %s\n' "$INSTALL_DIR" >> "$INSTALL_LOG"
+      download_source_archive_to_install_dir "$target_ref"
+      return $?
+    fi
+  fi
+
   run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
   if run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR" &&
      run_git_quiet "Repository tags fetched" "git fetch --tags --force origin" git -C "$INSTALL_DIR" fetch --tags origin; then
@@ -2137,6 +2154,35 @@ prepare_install_checkout() {
 
   warn "Git clone/fetch failed. Trying source archive fallback for $target_ref."
   download_source_archive_to_install_dir "$target_ref"
+}
+
+resolve_install_commit_for_metadata() {
+  local ref="$1"
+
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    git -C "$INSTALL_DIR" rev-parse --short HEAD 2>> "$INSTALL_LOG" || true
+    return 0
+  fi
+
+  if [ -z "$ref" ] || ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if printf '%s\n' "$ref" | grep -Eq '^[0-9a-fA-F]{7,40}$'; then
+    printf '%s\n' "$ref" | cut -c1-7
+    return 0
+  fi
+
+  local refs
+  refs="$(git ls-remote --tags "$REPO_URL" "$ref" "refs/tags/$ref" "refs/tags/$ref^{}" 2>> "$INSTALL_LOG" || true)"
+  local peeled
+  peeled="$(printf '%s\n' "$refs" | awk '$2 ~ /\^\{\}$/ {print substr($1,1,7); exit}')"
+  if [ -n "$peeled" ]; then
+    printf '%s\n' "$peeled"
+    return 0
+  fi
+
+  printf '%s\n' "$refs" | awk 'NF >= 1 {print substr($1,1,7); exit}'
 }
 
 step "Installing"
@@ -2148,9 +2194,17 @@ prepare_install_checkout "$INSTALL_TARGET_REF"
 
 sync_install_checkout_to_ref "$INSTALL_TARGET_REF"
 
+INSTALL_TARGET_COMMIT="$(resolve_install_commit_for_metadata "$INSTALL_TARGET_REF")"
+if [ -n "$INSTALL_TARGET_COMMIT" ]; then
+  ok "Install target commit: $INSTALL_TARGET_COMMIT"
+  printf '+ Install target commit: %s\n' "$INSTALL_TARGET_COMMIT" >> "$INSTALL_LOG"
+else
+  warn "Install target commit could not be resolved. Version output will use packaged fallback metadata."
+fi
+
 run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
-run_quiet "pip upgraded" "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip
-run_quiet "Python package installed" "$INSTALL_DIR/.venv/bin/python" -m pip install -e "$INSTALL_DIR"
+run_quiet "pip upgraded" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade --quiet pip
+run_quiet "Python package installed" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --quiet --no-input -e "$INSTALL_DIR"
 
 write_env_file "$STABLE_PORT" "$THINKING_PORT" "$API_KEY" "$SERPAPI_KEY" "$IMAGE_API_KEY"
 write_dsproxy_wrapper
@@ -2250,6 +2304,9 @@ if [ -n "$SHELL_PROFILE_FILE" ]; then
   printf '%s\n' "  current shell may need: source $SHELL_PROFILE_FILE"
   printf '  current shell immediate PATH: export PATH="%s:$PATH"\n' "$BIN_DIR"
   printf '  verify wrapper: command -v codex && command -v dsproxy\n'
+  if [ "$(command -v codex 2>/dev/null || true)" != "$BIN_DIR/codex" ]; then
+    printf '  current shell note: run the PATH command above before launching Codex in this shell\n'
+  fi
 fi
 
 sub_title "Next steps"
@@ -2259,7 +2316,7 @@ printf '%s\n' "  codex --profile deepseek-thinking  # recommended"
 sub_title "Inside Codex TUI"
 printf '%s\n' "  /status       show session/runtime status"
 printf '%s\n' "  /model        switch model or reasoning effort"
-printf '%s\n' "  /plan         plan before implementation"
+printf '%s\n' "  /plan         plan before implementation; Codex may display medium, proxy maps it to DeepSeek high"
 printf '%s\n' "  check balance"
 
 sub_title "Shell commands"

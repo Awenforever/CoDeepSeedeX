@@ -338,6 +338,21 @@ def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
     assert 'model_reasoning_effort = "high"' in config_path.read_text(encoding="utf-8")
 
 
+
+def test_cli_config_set_effort_accepts_codex_medium_as_high(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+
+    assert main(["config", "set-effort", "medium", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["requested_effort"] == "medium"
+    assert result["effort"] == "high"
+    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in config_path.read_text(encoding="utf-8")
+
+
 def test_cli_balance_missing_api_key(monkeypatch, tmp_path, capsys):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     assert main(["balance", "--env-file", str(tmp_path / "missing.env")]) == 1

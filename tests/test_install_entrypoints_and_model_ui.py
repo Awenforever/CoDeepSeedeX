@@ -573,3 +573,21 @@ def test_installer_live_image_validation_supports_primary_providers() -> None:
     assert "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation" in text
     assert "https://api.stability.ai/v2beta/stable-image/generate/core" in text
     assert "https://fal.run/fal-ai/fast-sdxl" in text
+
+
+def test_installer_uses_source_archive_for_existing_non_git_install_dir() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "existing non-git install directory" in text
+    assert "download_source_archive_to_install_dir \"$target_ref\"" in text
+
+
+def test_installer_uses_quiet_pip_commands() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "PIP_DISABLE_PIP_VERSION_CHECK=1" in text
+    assert "PIP_PROGRESS_BAR=off" in text
+    assert "pip install --quiet --no-input -e" in text
+
+
+def test_installer_documents_codex_plan_effort_alias() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Codex may display medium, proxy maps it to DeepSeek high" in text

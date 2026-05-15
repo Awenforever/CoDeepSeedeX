@@ -491,3 +491,7 @@ Installer tests must not only assert that a call string exists; they must also a
 ## p2.10a24 installer output and live image validation
 
 Installer TTY output should follow a Pixi-like separation of human-readable progress and detailed logs: compact sections, dim explanatory lines, no raw source URLs near the logo, and a combined `Install logs` section for bootstrap and install logs. Image API setup is now an explicit live validation path: it warns that one safe image will be generated and may consume provider credits, then saves the generated artifact under `/tmp`. Avoid reintroducing non-generating image probes as the guided installer gate.
+
+### p2.10a25 installer polish rule
+
+For source archive installs, do not rely on `.git` being present for version metadata. The installer should resolve the target ref commit when possible and persist it through the generated env file consumed by the dsproxy wrapper. Existing non-git install directories should go directly to source archive fallback instead of first printing a git clone fatal message. Codex Plan mode may show `medium`; the proxy maps that request to DeepSeek `high`.

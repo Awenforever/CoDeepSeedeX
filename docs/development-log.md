@@ -400,3 +400,10 @@
 - Synchronized the model API command summary shown by `dsproxy config wizard --non-interactive` with the full explicit provider surface.
 - Replaced the remaining README and README.zh-CN Qwen Coding Plan custom-provider examples from the old `set-api-key --provider custom --model ...` form to the new `set-model <model> --provider custom --base-url ...` form.
 - Added tests to prevent README custom model API examples from regressing to the old `set-api-key --provider custom` command shape.
+
+### p2.10a25-version-install-plan-polish
+
+- Fixed source-archive installs so wrapper-sourced version metadata can preserve the installed release commit even when the install directory is not a git checkout.
+- Avoided noisy git clone fatal output when an existing install directory is non-git and non-empty by routing directly to source archive fallback.
+- Quieted pip install phases with pip progress/version checks disabled and output captured in the install log.
+- Clarified installer next steps for current-shell PATH refresh and Codex Plan mode effort aliasing. Codex may display medium in Plan mode, while CoDeepSeedeX maps Codex medium to DeepSeek high.
