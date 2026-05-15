@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a30-profile-model-sync-title-delay`
+- Current internal development line: `p2.10a31-post-start-title-refresh`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -555,3 +555,10 @@ Managed Codex profile `model` values must match each profile's effective upstrea
 `codex_model`, `effective_model`, and `model_conflict` remain part of the diagnostic contract. Under normal managed state, `model_conflict` should be false. If it is true, run `dsproxy profile repair --managed-only --json`.
 
 The Codex wrapper should not rely on a single pre-Codex OSC title update. Codex may set the tab title during startup. The wrapper therefore sets the title once before launching Codex and schedules short delayed OSC 0/2 refreshes, including a 5-second refresh, before `exec "$REAL_CODEX" "$@"`. Do not use a long-running keeper unless later evidence shows Codex continuously overwrites the title.
+
+
+## p2.10a31 post-start tab-title refresh
+
+Do not set the Codex tab title before launching Codex. Codex may set the title to the working directory during startup and overwrite the wrapper's pre-start OSC update. The wrapper should first prepare the matching dsproxy route, then schedule a finite delayed OSC 0/2 refresh sequence after startup. The current sequence is 8 seconds, then 4 seconds, then 8 seconds.
+
+The wrapper must keep the real Codex execution path quiet. Avoid undefined helper names in background jobs because interactive shells print job-exit messages such as `Exit 127`.

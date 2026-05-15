@@ -2595,7 +2595,8 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     assert "set_codeepseedex_terminal_title()" in text
     assert "schedule_codeepseedex_terminal_title_refresh()" in text
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in text
-    assert "sleep 5" in text
+    assert "sleep 8" in text
+    assert "sleep 4" in text
     assert "> /dev/tty" in text
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
@@ -2767,7 +2768,8 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
     assert "schedule_codeepseedex_terminal_title_refresh()" in text
-    assert "sleep 5" in text
+    assert "sleep 8" in text
+    assert "sleep 4" in text
     assert "> /dev/tty" in text
     assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
     case_idx = text.index('case "$profile" in')

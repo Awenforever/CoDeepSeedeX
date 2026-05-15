@@ -995,11 +995,11 @@ schedule_codeepseedex_terminal_title_refresh() {
   esac
 
   (
-    sleep 1
+    sleep 8
     set_codeepseedex_terminal_title
-    sleep 2
+    sleep 4
     set_codeepseedex_terminal_title
-    sleep 5
+    sleep 8
     set_codeepseedex_terminal_title
   ) >/dev/null 2>&1 &
 }
@@ -1046,7 +1046,6 @@ start_dsproxy_profile() {
 
 case "$profile" in
   deepseek|deepseek-thinking)
-    set_codeepseedex_terminal_title
     start_dsproxy_profile "$profile"
     schedule_codeepseedex_terminal_title_refresh
     ;;

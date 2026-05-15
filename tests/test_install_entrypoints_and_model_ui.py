@@ -299,6 +299,7 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
     assert "PROMPTED_MODEL_PROVIDER=\"qwen-us\"" in text
 
 
+
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
     assert "set_codeepseedex_terminal_title()" in body
@@ -307,16 +308,19 @@ def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profile
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
     assert r'local title="\${CODEEPSEEDEX_TERMINAL_TITLE:-}"' in body
     assert "printf '\\033]0;%s\\007\\033]2;%s\\007' \"\\$title\" \"\\$title\" > /dev/tty 2>/dev/null || true" in body
-    assert "sleep 5" in body
+    assert "sleep 8" in body
+    assert "sleep 4" in body
     title_function_idx = body.index("set_codeepseedex_terminal_title()")
     schedule_function_idx = body.index("schedule_codeepseedex_terminal_title_refresh()")
     start_function_idx = body.index("start_dsproxy_profile()")
-    title_call_idx = body.index("set_codeepseedex_terminal_title", start_function_idx)
-    start_call_idx = body.index(r'start_dsproxy_profile "\$profile"', title_call_idx)
+    case_idx = body.index(r'case "\$profile" in')
+    start_call_idx = body.index(r'start_dsproxy_profile "\$profile"', case_idx)
     schedule_call_idx = body.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     exec_idx = body.index(r'exec "\$REAL_CODEX" "\$@"')
+    case_block_before_start = body[case_idx:start_call_idx]
+    assert "set_codeepseedex_terminal_title" not in case_block_before_start
     assert title_function_idx < schedule_function_idx < start_function_idx
-    assert title_call_idx < start_call_idx < schedule_call_idx < exec_idx
+    assert start_call_idx < schedule_call_idx < exec_idx
 
 
 def test_installer_guided_provider_menus_use_arrow_selector() -> None:

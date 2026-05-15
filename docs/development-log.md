@@ -1,5 +1,11 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a31-post-start-title-refresh
+
+- Changed generated Codex wrappers to avoid setting the tab title before Codex startup.
+- Kept a finite delayed OSC 0/2 refresh sequence after the matching dsproxy route is prepared, using 8s, 4s and 8s delays.
+- Documented the observed failure mode where Codex overwrites a pre-start title with the working-directory title, and where undefined test helper names can print shell job `Exit 127` messages.
+
 ## p2.10a30-profile-model-sync-title-delay
 
 - Added `dsproxy profile repair --managed-only --json` to repair managed Codex profile `model` fields according to each profile's effective upstream model.

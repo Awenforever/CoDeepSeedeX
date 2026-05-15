@@ -26,7 +26,7 @@
 - 当前公开pre-release：`v0.3.8-alpha`
 - 公开Release commit：`54d81ab`
 - Release内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a30-profile-model-sync-title-delay`
+- 当前内部开发线：`p2.10a31-post-start-title-refresh`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -523,3 +523,10 @@ Managed Codex profile的`model`值必须与该profile自己的有效上游模型
 `codex_model`、`effective_model`和`model_conflict`继续作为诊断契约保留。正常managed状态下，`model_conflict`应为false。若为true，应执行`dsproxy profile repair --managed-only --json`。
 
 Codex wrapper不能只依赖Codex启动前的一次OSC标题更新，因为Codex可能在启动阶段设置tab标题。wrapper应在启动Codex前设置一次标题，并在`exec "$REAL_CODEX" "$@"`前安排短时延迟OSC 0/2刷新，包括5秒刷新。除非后续证据证明Codex会持续覆盖标题，否则不要使用长期keeper。
+
+
+## p2.10a31 Codex启动后tab标题刷新
+
+不要在Codex启动前设置tab标题。Codex启动阶段可能把标题设置为工作目录，从而覆盖wrapper提前发出的OSC更新。wrapper应先准备对应dsproxy route，然后只在启动后安排有限次数的延迟OSC 0/2刷新。当前序列为8秒、4秒、8秒。
+
+wrapper必须保持真实Codex执行路径安静。后台任务中不要出现未定义helper名，否则交互式shell会打印类似`Exit 127`的作业退出提示。
