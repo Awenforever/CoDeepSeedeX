@@ -109,10 +109,10 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 
 ### Release tag fallback
 
-When the Latest Release asset path is unavailable, use the resolved release tag fallback:
+When the Latest Release asset path is unavailable, use the resolved release tag fallback. Replace the tag below with the exact release you intend to install:
 
 ```bash
-tag="v0.3.7-alpha"
+tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 

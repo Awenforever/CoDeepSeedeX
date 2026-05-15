@@ -3,22 +3,13 @@
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
 
+## p2.10a27-doc-structure-process-rules
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- Scope: structured documentation cleanup after p2.10a26 VM validation.
+- Starting point: `master = origin/master = 54d81ab`, public pre-release `v0.3.8-alpha = 54d81ab`, internal tag `p2.10a26-wrapper-start-plan-mode-hardening = 54d81ab`.
+- Changes: updated current state in both developer handbooks, replaced stale p2.9/v0.3.7 current-state blocks with p2.10/v0.3.8-alpha, added the eight failure-prevention classes, and clarified that install, upgrade, uninstall, rollback, wrappers, user config, Release assets, and VM/user-path validation are part of every affected task.
+- Documentation structure rule: README stays user-facing, TROUBLESHOOTING stays operator recovery guidance, developer-handbook stays the AI startup context, and development-log stays chronological.
+- Public Release note: this p2.10a27 task does not move or rebuild `v0.3.8-alpha`.
 
 ## p2.10a24-installer-ui-live-image-validation
 

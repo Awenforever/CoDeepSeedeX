@@ -27,16 +27,19 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
-- Current public release: `v0.3.7-alpha`
-- Public release commit: `466706f`
-- Release internal tag: `p2.9a18-release-v0.3.7-alpha`
-- Current documentation baseline before p2.9a21: `p2.9a20-docs-consolidation = b160525`
+- Current public pre-release: `v0.3.8-alpha`
+- Public release commit: `54d81ab`
+- Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
+- Current internal development line: `p2.10a27-doc-structure-process-rules`
 - Older public tags must not move:
+  - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tag `v0.3.5` must not exist.
+- `v0.3.8-alpha` is still a GitHub pre-release unless the maintainer explicitly promotes it.
+- Public Release assets for `v0.3.8-alpha` are `bootstrap.sh` and `install.sh`.
 
-After p2.9a21, `master`, `origin/master`, and `p2.9a21-handbook-bilingual-restoration` should point to the same new commit.
+This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
 
 ## 3. Key file map
 
@@ -98,24 +101,38 @@ Push over HTTPS by default. Do not rely on SSH port 22. Every network step must 
 
 GitHub Release notes must not repeat the release title. The body should start with `Highlights:`, `Changes:`, `Fixes:`, `Install:`, or `Validation:`.
 
-## 6. Release lessons learned
+## 6. Failure-prevention and release lessons
 
-These are high-priority lessons that must remain in the handbook, not only in the long development log.
+These rules are mandatory development controls. They belong in the handbook because they prevent recurring tool-generated failures.
 
-### v0.3.7-alpha release mistakes
+### 6.1 Avoidable failure classes
 
-1. Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`, not root-level `app.py`.
-2. Do not assume only one Python file contains version metadata. Runtime code and tests can both contain version strings.
-3. Version files have separate roles: runtime public/internal version, package PEP440 version, version consistency tests, and CLI output tests. Runtime version metadata is dual-track: public Release runtime is fixed at the public `v~` tag and the internal `p~` tag that existed when that Release was cut; developer checkout runtime on `master` keeps the same current public `v~` until the next Release, but its internal `p~` version must advance with the latest `master` internal tag. Therefore, after post-Release documentation or maintenance commits, the developer machine may correctly show a newer internal `p~` than users running the latest public Release.
-4. Updating `pyproject.toml` requires updating package-version assertions in tests.
-5. Focused test lists must filter nonexistent test files before invoking pytest.
-6. Release scripts must be idempotent and resume-aware.
-7. Git push must use HTTPS and timeout controls to avoid SSH 22 stalls.
-8. Public release tags should be pushed late to avoid half-published states.
-9. `gh release view` must not rely on fields unsupported by the installed `gh` version, such as `isLatest`.
-10. Release notes must not duplicate the GitHub Release title.
-11. Documentation refactors must update the test contract. Do not keep ghost documents just because stale tests read them.
-12. The developer handbook must not become a long archive. Keep it as AI startup context and send detailed chronology to `docs/development-log.md`.
+1. **Script variable scope.** Shell variables such as `ts`, `out`, and `run_id` do not exist inside Python heredocs unless passed through environment variables. Use one canonical run identifier and read it from `os.environ`.
+2. **Source anchors.** Do not patch from memory. When anchors are uncertain or repeated, audit the real source and patch by function, section, or explicit boundary rather than a fragile single string.
+3. **Helper function semantics.** Read helper definitions before using them in tests or patch scripts. Do not assume a helper parameter accepts arbitrary text when it expects a function name or structured marker.
+4. **Regex boundaries.** Regex patching is acceptable only when the boundary is stable. For tests and functions, prefer whole-block replacement from `def name` to the next `def`, or parse structure where practical.
+5. **Pre-test marker checks.** Before pytest, assert that the intended source markers exist and old forbidden markers are gone. This catches half-applied patches before expensive test runs.
+6. **Two-phase heavy changes.** For broad installer, wrapper, profile, or Release changes, first patch and test locally. Only after focused and full tests pass should the script commit, tag, push, merge, or rebuild Release assets.
+7. **Acceptance criteria must match the user-visible defect.** Do not record a compatibility fallback as a fix when the defect is a visible UI or profile behavior. Example: Plan mode had to write `plan_mode_reasoning_effort = "high"`, not merely map `medium` to `high` inside the proxy.
+8. **Integration surfaces are part of every task.** Every development task must explicitly consider install, upgrade, uninstall, rollback, generated wrappers, user config files, Release assets, and VM/user-path validation when the changed behavior can affect them.
+
+### 6.2 Release-specific guardrails
+
+- Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`.
+- Do not assume only one Python file contains version metadata. Runtime code and tests can both contain version strings.
+- Version files have separate roles: runtime public/internal version, package PEP440 version, version consistency tests, and CLI output tests.
+- Runtime version metadata is dual-track. User installations from a public Release tag report the public `v~` tag and the internal `p~` tag that existed when that Release was cut. Developer checkout runtime on `master` keeps the same public `v~` until the next Release, while internal `p~` advances with the latest internal tag.
+- Release scripts must be idempotent and resume-aware.
+- Git push must use HTTPS and timeout controls to avoid SSH 22 stalls.
+- Public release tags should be pushed late to avoid half-published states.
+- `gh release view --json` must not rely on fields unsupported by the installed `gh` version, such as `isLatest`.
+- Release notes must not duplicate the GitHub Release title.
+- Documentation refactors must update the test contract. Do not keep ghost documents only because stale tests read them.
+- The developer handbook must not become a long archive. Keep stable rules here and send chronology to `docs/development-log.md`.
+
+### 6.3 Upgrade and uninstall scope rule
+
+Any development task that can affect an installed user environment must include install, upgrade, and uninstall in the design review. At minimum, check whether the change touches one-line bootstrap, `scripts/install.sh`, `dsproxy upgrade`, generated `dsproxy` or `codex` wrappers, `~/.codex/config.toml`, local env files, manifest-backed rollback, source archive fallback, and Release assets.
 
 ## 7. Installer and local file ownership rules
 
@@ -184,40 +201,37 @@ The handbook is an AI startup pack:
 - Do not reintroduce fragmented handoff, operations, install, usage, upgrade, security, troubleshooting, or release-note documents under `docs/`.
 - If a test still reads a retired path, update the test contract instead of preserving a ghost document.
 
-## 11. Current major-line summary: p2.9 / v0.3.7-alpha
+## 11. Current major-line summary: p2.10 / v0.3.8-alpha
 
-p2.9 covered:
+p2.10 covered the current `v0.3.8-alpha` pre-release line:
 
-- Provider endpoint cleanup and validation semantics.
-- Zhipu/Z.AI image provider separation.
-- `dsproxy doctor providers` live probe matrix.
-- Installer repair for affected machines and same-version rerun.
-- Installed checkout sync to selected release refs.
-- Local bin ownership guards.
-- VM GitHub proxy documentation.
-- `v0.3.7-alpha` release.
-- SerpAPI live web search probe passed with `dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`.
-- Zhipu live image generation probe passed with `dsproxy doctor providers --kind image --provider zhipu --live --allow-spend`.
-- Release lessons written into maintainer docs.
-- p2.9a20 documentation consolidation.
-- p2.9a21 restoration of English-primary developer handbook and Chinese mirror.
+- Model API setup surface repair: `set-model` is the primary provider/model/API-key entrypoint; `set-api-key` remains compatibility-only.
+- Explicit provider families and regions for Zhipu / BigModel, Z.AI, and Qwen / DashScope, including Coding Plan distinctions.
+- Installer UI compaction, arrow-key menu rendering, secret prompt semantics, source archive fallback, and quiet pip install logging.
+- Live image API validation in the guided installer, with explicit quota/credit warning and generated artifact saved under `/tmp`.
+- Version metadata repair for non-git source archive installs.
+- Codex wrapper fail-closed startup, automatic route verification, and native Plan mode pinning with `plan_mode_reasoning_effort = "high"`.
+- Manifest-backed uninstall rollback for the Codex wrapper.
+- VM user-path validation of `v0.3.8-alpha` after p2.10a26.
 
-Detailed chronology belongs in `docs/development-log.md`.
+Older p2.9 details remain in `docs/development-log.md` and should not be duplicated here.
 
 ## 12. New conversation startup checklist
 
-At the start of a new development conversation, run a read-only audit:
+Start with a read-only audit before changing anything:
 
 ```bash
 git branch --show-current
 git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
-git rev-parse --short v0.3.7-alpha^{}
-git rev-parse --short p2.9a20-docs-consolidation^{}
+git rev-parse --short v0.3.8-alpha^{}
+git rev-parse --short p2.10a26-wrapper-start-plan-mode-hardening^{}
+git rev-parse --short refs/tags/v0.3.5^{} || true
+gh release view v0.3.8-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets
 ```
 
-Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only if historical trace-back is needed.
+Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
 
 ## 13. Install and fallback entrypoints
 
@@ -230,7 +244,7 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 Resolved tag fallback:
 
 ```bash
-tag="v0.3.7-alpha"
+tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 

@@ -23,14 +23,19 @@
 - 项目路径：`~/projects/deepseek-responses-proxy`
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
-- 当前公开Release：`v0.3.7-alpha`
-- 公开Release commit：`466706f`
-- Release内部tag：`p2.9a18-release-v0.3.7-alpha`
-- p2.9a20文档基线：`p2.9a20-docs-consolidation = b160525`
-- 旧公开tag不能移动：`v0.3.6-alpha = 7fd8fb6`，`v0.3.5-alpha = 53897ad`
+- 当前公开pre-release：`v0.3.8-alpha`
+- 公开Release commit：`54d81ab`
+- Release内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
+- 当前内部开发线：`p2.10a27-doc-structure-process-rules`
+- 旧公开tag不能移动：
+  - `v0.3.7-alpha = 466706f`
+  - `v0.3.6-alpha = 7fd8fb6`
+  - `v0.3.5-alpha = 53897ad`
 - 普通错误tag`v0.3.5`必须不存在。
+- 除非维护者明确提升，否则`v0.3.8-alpha`仍是GitHub pre-release。
+- `v0.3.8-alpha`公开Release资产为`bootstrap.sh`和`install.sh`。
 
-p2.9a21完成后，`master`、`origin/master`和`p2.9a21-handbook-bilingual-restoration`应指向同一个新commit。
+本手册是新AI开发对话的启动上下文，只保留当前状态、稳定规则和高价值经验。详细流水写入`docs/development-log.md`。
 
 ## 3. 关键文件地图
 
@@ -80,22 +85,38 @@ Release必须按状态机执行：
 
 push默认走HTTPS，不走SSH。所有网络步骤必须设置timeout。Release notes正文不得重复Release标题行。
 
-## 6. Release错题本
+## 6. 防错规则和Release经验
 
-这些经验必须保留在手册里：
+以下规则用于防止反复出现的开发失败，属于长期规则，必须保留在手册中。
 
-1. 不能硬编码运行时版本文件路径，实际路径是`deepseek_responses_proxy/app.py`。
-2. 不能假设只有一个Python文件含版本元数据。
-3. 版本文件职责不同：运行时版本、包版本、版本一致性测试、CLI输出测试要分开处理。
-4. 修改`pyproject.toml`后必须同步测试断言。
-5. focused tests必须过滤不存在的测试文件。
-6. Release脚本必须幂等且可续跑。
-7. push必须走HTTPS并设置timeout，避免SSH 22端口长时间卡住。
-8. 公开Release tag应靠后推送，避免半发布状态。
-9. `gh release view`不得依赖当前gh版本不支持的字段，例如`isLatest`。
-10. Release notes正文不得重复标题。
-11. 文档重构必须同步测试契约，不要为了旧测试保留幽灵文档。
-12. 开发者手册是新对话启动包，不是历史档案馆，详尽流水写入`docs/development-log.md`。
+### 6.1 可避免失败类型
+
+1. **脚本变量作用域。** `ts`、`out`、`run_id`等shell变量不会自动进入Python heredoc。必须通过环境变量传入，或在Python内部生成。每个脚本只使用一个规范run id。
+2. **源码锚点。** 锚点不确定或可能重复时，先审计真实源码。优先按函数、章节或明确边界补丁，不要依赖凭印象写出的单字符串锚点。
+3. **辅助函数语义。** 写测试或补丁前先读helper定义。不能把期待“函数名”的参数当作任意文本边界使用。
+4. **正则边界。** 正则补丁只能用于稳定边界。替换测试或函数时，优先从`def name`到下一个`def`整块处理，必要时使用结构化解析。
+5. **pytest前marker检查。** 进入pytest前必须验证目标marker已出现、旧marker已消失，避免半补丁进入长测试。
+6. **重改动两阶段。** 涉及installer、wrapper、profile或Release资产的改动，应先只补丁和测试。focused/full tests通过后，第二阶段再commit、tag、push、merge或重建Release资产。
+7. **验收标准必须对应用户可见缺陷。** 不能把兼容fallback写成修复。Plan mode问题的验收是写入`plan_mode_reasoning_effort = "high"`并确认TUI不再显示`medium`，不只是proxy内部把`medium`映射成`high`。
+8. **集成面属于每个任务。** 凡是可能影响用户路径的开发任务，都必须显式考虑install、upgrade、uninstall、rollback、生成wrapper、用户配置文件、Release资产和VM/user-path验证。
+
+### 6.2 Release专项规则
+
+- 不要猜运行时版本文件路径。运行时文件是`deepseek_responses_proxy/app.py`。
+- 不要假设只有一个Python文件包含版本字符串。运行时代码和测试都可能包含版本字符串。
+- 版本文件职责分离：运行时public/internal版本、PEP440包版本、版本一致性测试、CLI输出测试。
+- 运行时版本元数据采用双轨规则。用户从公开Release tag安装时显示该公开`v~`tag和发布时绑定的内部`p~`tag。开发机从`master`运行时，public保持当前公开`v~`直到下一次Release，internal随最新内部tag前进。
+- Release脚本必须幂等且可续跑。
+- push默认走HTTPS并设置timeout，避免SSH 22端口卡死。
+- 公开Release tag应靠后推送，避免半发布状态。
+- `gh release view --json`不得依赖当前gh不支持的字段，例如`isLatest`。
+- Release notes正文不得重复GitHub Release标题。
+- 文档重构必须同步测试契约，不要为了旧测试保留幽灵文档。
+- 开发者手册不是历史档案馆，长期规则留在这里，详细流水写入`docs/development-log.md`。
+
+### 6.3 upgrade和uninstall范围规则
+
+凡是可能影响用户安装态的开发任务，都必须在设计阶段同时检查install、upgrade和uninstall。至少要判断是否涉及一键bootstrap、`scripts/install.sh`、`dsproxy upgrade`、生成的`dsproxy`或`codex`wrapper、`~/.codex/config.toml`、本地env文件、manifest-backed rollback、source archive fallback和Release资产。
 
 ## 7. 安装器和本地文件覆盖规则
 
@@ -153,38 +174,37 @@ VM -> 192.168.231.1:7896 -> Windows portproxy -> 127.0.0.1:7892 -> 极连云
 - 新经验先判断是“长期规则”还是“流水记录”。长期规则进手册，流水记录进development log。
 - 文档结构变化必须同步测试契约。
 
-## 11. 当前大版本摘要：p2.9 / v0.3.7-alpha
+## 11. 当前大版本摘要：p2.10 / v0.3.8-alpha
 
-p2.9阶段包括：
+p2.10对应当前`v0.3.8-alpha`pre-release线，主要包括：
 
-- provider endpoint和validation语义修正。
-- Zhipu/Z.AI图像provider区分。
-- `dsproxy doctor providers` live probe矩阵。
-- 安装器修复受影响机器和同版本rerun。
-- installed checkout同步到目标Release ref。
-- local bin ownership guard。
-- VM GitHub代理经验沉淀。
-- `v0.3.7-alpha`发布闭环。
-- SerpAPI真实web search probe已通过，命令为`dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`。
-- Zhipu真实图像生成probe已通过，命令为`dsproxy doctor providers --kind image --provider zhipu --live --allow-spend`。
-- p2.9a19写入Release错题。
-- p2.9a20文档收敛。
-- p2.9a21恢复英文主开发者手册和中文镜像。
+- Model API配置面修复：`set-model`成为provider、model和API key主入口，`set-api-key`仅保留兼容。
+- 明确区分Zhipu / BigModel、Z.AI、Qwen / DashScope的provider族、地区和Coding Plan。
+- 安装器UI压缩、方向键菜单、密钥输入语义、source archive fallback和pip静默日志。
+- 安装器图像API live验证，明确提示可能消耗额度，生成结果保存到`/tmp`。
+- 非git source archive安装的版本元数据修复。
+- Codex wrapper fail-closed启动、自动验证proxy路由，以及通过`plan_mode_reasoning_effort = "high"`固定原生Plan mode。
+- Codex wrapper的manifest-backed uninstall rollback。
+- p2.10a26后，`v0.3.8-alpha`已通过VM用户路径验证。
 
-更细流水见`docs/development-log.md`。
+p2.9旧细节保留在`docs/development-log.md`，不要在手册中重复铺开。
 
 ## 12. 新对话启动检查
+
+修改前先做只读审计：
 
 ```bash
 git branch --show-current
 git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
-git rev-parse --short v0.3.7-alpha^{}
-git rev-parse --short p2.9a20-docs-consolidation^{}
+git rev-parse --short v0.3.8-alpha^{}
+git rev-parse --short p2.10a26-wrapper-start-plan-mode-hardening^{}
+git rev-parse --short refs/tags/v0.3.5^{} || true
+gh release view v0.3.8-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets
 ```
 
-新对话优先读取`docs/developer-handbook.md`，需要回溯时再读`docs/development-log.md`。
+新对话优先读取`docs/developer-handbook.md`。需要回溯时再读`docs/development-log.md`。
 
 ## 13. 安装和回退入口
 
@@ -197,7 +217,7 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 tag fallback：
 
 ```bash
-tag="v0.3.7-alpha"
+tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 

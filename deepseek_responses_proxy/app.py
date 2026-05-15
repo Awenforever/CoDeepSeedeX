@@ -50,11 +50,11 @@ def _metadata_env_value(name: str) -> str:
 
 PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
-    or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "dcb390d")
+    or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
 PROXY_INTERNAL_VERSION = (
     _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
-    or "p2.10a26-wrapper-start-plan-mode-hardening"
+    or "p2.10a27-doc-structure-process-rules"
 )
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
@@ -1148,7 +1148,6 @@ def _long_session_usage_prompt_tokens(event: dict[str, Any]) -> int:
     return 0
 
 
-
 def _debug_runtime_payload_file_summary(filename: str) -> dict[str, Any]:
     path = Path(".debug") / filename
     summary: dict[str, Any] = {
@@ -1826,7 +1825,6 @@ def _classify_tool_output_category(tool_name: str | None) -> str:
     return "unknown"
 
 
-
 def _tool_output_category_policy(category: str) -> dict[str, Any]:
     category = str(category or "unknown")
     defaults: dict[str, dict[str, int]] = {
@@ -2230,7 +2228,6 @@ def _format_trimmed_tool_output_text(
     )
 
 
-
 def _tool_output_artifact_dir() -> Path:
     raw = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR") or ".generated/tool-output-artifacts"
     return Path(raw)
@@ -2337,7 +2334,6 @@ def _write_tool_output_image_payload_artifact(
         "preserved": True,
         "note": "Full image payload was preserved on disk. The chat context contains only this lightweight reference.",
     }
-
 
 
 def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, Any]]:
@@ -3890,7 +3886,6 @@ def _repair_thinking_history_messages(messages: list[dict[str, Any]]) -> tuple[l
     return repaired, changed
 
 
-
 def _normalize_deepseek_role(role: Any) -> str:
     """Normalize OpenAI/Codex message roles to DeepSeek ChatCompletions roles."""
     role_str = str(role or "user")
@@ -3918,7 +3913,6 @@ def _prepare_messages_for_deepseek(messages: list[dict[str, Any]]) -> list[dict[
         message["role"] = _normalize_deepseek_role(message.get("role"))
 
     return prepared
-
 
 
 def _repair_tool_call_message_order(
@@ -4500,7 +4494,6 @@ class SQLiteResponseStore:
             ).fetchone()
 
         return dict(row)
-
 
 
 def _env_float(name: str, default: float) -> float:
@@ -6634,7 +6627,6 @@ def _normalize_response_tool(
     }
 
 
-
 def _message_from_response_content(role: str, content: Any) -> dict[str, Any]:
     message = {
         "role": role,
@@ -6856,7 +6848,6 @@ def _image_provider() -> str:
     return provider.strip().lower() or "mock"
 
 
-
 def _image_api_key() -> str:
     provider = _image_provider()
     if provider in {"zai", "z.ai", "glm"}:
@@ -6874,7 +6865,6 @@ def _image_api_key() -> str:
     )
 
 
-
 def _dashscope_api_key() -> str:
     return (
         os.environ.get("DEEPSEEK_PROXY_DASHSCOPE_API_KEY")
@@ -6885,7 +6875,6 @@ def _dashscope_api_key() -> str:
     )
 
 
-
 def _stability_api_key() -> str:
     return (
         os.environ.get("STABILITY_API_KEY")
@@ -6893,7 +6882,6 @@ def _stability_api_key() -> str:
         or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
         or ""
     )
-
 
 
 def _fal_api_key() -> str:
@@ -6921,7 +6909,6 @@ def _zai_compatible_image_endpoint(provider: str | None = None) -> str:
     if selected in {"zhipu", "zhipuai", "bigmodel"}:
         return "https://open.bigmodel.cn/api/paas/v4/images/generations"
     return "https://api.z.ai/api/paas/v4/images/generations"
-
 
 
 _QWEN_IMAGE_REGION_ALIASES = {
@@ -6990,7 +6977,6 @@ def _is_qwen_image_provider(provider: str | None = None) -> bool:
 def _qwen_image_region_status(provider: str | None = None) -> dict[str, Any]:
     canonical = _canonical_qwen_image_provider(provider)
     return dict(_QWEN_IMAGE_REGION_STATUS.get(canonical) or _QWEN_IMAGE_REGION_STATUS["qwen_image"])
-
 
 
 def _image_model() -> str:
@@ -9118,7 +9104,6 @@ def _user_tool_command_risk_env_config() -> dict[str, Any]:
     }
 
 
-
 def _command_risk_policy_status() -> dict[str, Any]:
     config = _user_tool_command_risk_env_config()
     mode = str(config.get("mode") or "dry_run")
@@ -9148,7 +9133,6 @@ def _command_risk_policy_status() -> dict[str, Any]:
 
 def _command_risk_debug_report_path() -> Path:
     return Path(".debug") / "user_tool_command_risk_report.json"
-
 
 
 def _user_tool_command_risk_should_suppress_tool_calls(report: dict[str, Any] | None) -> bool:
