@@ -19,6 +19,15 @@
 
 
 
+
+## p2.10a24-installer-ui-live-image-validation
+
+- Removed the visible bootstrap `log:` line above the installer banner.
+- Passed the bootstrap log path into `install.sh` and showed both bootstrap and install logs under `Install logs`.
+- Changed guided image API validation from a non-generating probe to live image generation.
+- Added a dim warning under the image provider family menu explaining that validation generates one safe test image and may consume provider credits.
+- Saved generated validation images under `/tmp/codeepseedex-image-validation-*`.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a23-installer-image-validation-tag-fetch
 
 - Added the missing `test_image_api_key()` shell function used by the guided image generation API configuration flow.

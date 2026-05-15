@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BOOTSTRAP = ROOT / "bootstrap.sh"
 
 
 def test_bootstrap_help() -> None:
@@ -72,3 +73,10 @@ def test_bootstrap_hides_duplicate_ready_messages() -> None:
     assert 'ok "Installer ready"' not in text
     assert "installer ready:" in text
     assert "python:" in text
+
+
+def test_bootstrap_hides_top_level_log_line_and_passes_bootstrap_log() -> None:
+    text = BOOTSTRAP.read_text(encoding="utf-8")
+    assert 'printf \'  log: %s\\n\' "$INSTALL_LOG"' not in text
+    assert 'color "1;36" "CoDeepSeedeX bootstrap"' not in text
+    assert 'DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG"' in text

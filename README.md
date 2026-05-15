@@ -258,6 +258,10 @@ Release notes must mention milestone behavior changes, but the README also keeps
 
 
 
+
+| unreleased / p2.10a24 | Installer output polish and live image validation | Bootstrap printed a separate top-level log line before the installer UI, and image API validation still used a fragile non-generating probe. | Bootstrap log and install log are shown together under `Install logs`. Image API setup now warns that validation creates one safe test image and may consume credits, then performs live image generation and saves the test image under `/tmp`. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
+
+
 | unreleased / p2.10a23 | Installer image validation and moved pre-release tag fetch | The guided image API flow called an undefined `test_image_api_key` function, so real VM installs failed at runtime. Rebuilt pre-release tags could also make `git fetch --tags` fail with `would clobber existing tag`. | Added the missing non-generating image API validation function, added installer tests that verify project-like shell calls are defined before use, and changed installer tag fetches to `git fetch --tags --force origin` for pre-release retest loops. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 
 

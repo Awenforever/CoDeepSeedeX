@@ -486,3 +486,8 @@ Installer UI should call the 8000 profile `Non-Thinking`, not `Stable`, because 
 ## p2.10a23 installer runtime call coverage
 
 Installer tests must not only assert that a call string exists; they must also assert the called shell function is defined before use. Runtime-only branches such as image API validation can pass `bash -n` while still failing with `command not found`. Pre-release install tests may rebuild and move the same public alpha tag repeatedly, so installer checkout refresh should use force tag fetches for managed install directories instead of failing on `would clobber existing tag`.
+
+
+## p2.10a24 installer output and live image validation
+
+Installer TTY output should follow a Pixi-like separation of human-readable progress and detailed logs: compact sections, dim explanatory lines, no raw source URLs near the logo, and a combined `Install logs` section for bootstrap and install logs. Image API setup is now an explicit live validation path: it warns that one safe image will be generated and may consume provider credits, then saves the generated artifact under `/tmp`. Avoid reintroducing non-generating image probes as the guided installer gate.

@@ -10,6 +10,7 @@ CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
 MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
 INSTALL_LOG="${DEEPSEEK_PROXY_INSTALL_LOG:-/tmp/codeepseedex-install-$(date +%Y%m%d_%H%M%S).log}"
+BOOTSTRAP_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-}"
 LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"
 PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"
 
@@ -98,6 +99,15 @@ section_title() {
 
 sub_title() {
   printf '\n\033[1;35m%s\033[0m\n' "$1"
+}
+
+
+print_install_logs() {
+  sub_title "Install logs"
+  if [ -n "${BOOTSTRAP_LOG:-}" ]; then
+    printf '  \033[2mbootstrap\033[0m %s\n' "$BOOTSTRAP_LOG"
+  fi
+  printf '  \033[2minstall  \033[0m %s\n' "$INSTALL_LOG"
 }
 
 run_quiet() {
@@ -387,256 +397,265 @@ PYCODEEPSEEDEX_INSTALL_WEB_VALIDATION_P28A1
   [ "$result" = "ok" ]
 }
 
-
-test_image_generation_api_key() {
-  local provider="$1"
-  local api_key="$2"
-  if [ -z "$provider" ] || [ -z "$api_key" ]; then
-    return 1
-  fi
-  local result
-  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3'
-import json
-import sys
-import urllib.error
-import urllib.parse
-import urllib.request
-
-provider = sys.argv[1].strip().lower()
-api_key = sys.argv[2]
-
-def collect_values(data):
-    values = []
-
-    def collect(value):
-        if isinstance(value, str) and value.strip():
-            values.append(value.strip())
-        elif isinstance(value, (int, float)):
-            values.append(str(value))
-        elif isinstance(value, dict):
-            for nested in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
-                collect(value.get(nested))
-        elif isinstance(value, list):
-            for item in value[:5]:
-                collect(item)
-
-    if isinstance(data, dict):
-        for key in ("error", "error_message", "message", "msg", "detail", "code", "status_code"):
-            collect(data.get(key))
-    return values
-
-def decode(raw):
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except Exception:
-        data = {}
-    return data if isinstance(data, dict) else {}
-
-def has_auth_error(raw):
-    data = decode(raw)
-    for value in collect_values(data):
-        lowered = value.lower()
-        if lowered in {"1002", "401", "403"} or any(token in lowered for token in ("unauthorized", "forbidden", "api key", "api-key", "apikey", "access key", "access token", "token", "authentication", "authorization", "auth", "invalid api key", "invalid apikey", "invalid token", "invalid authentication", "invalid authorization")):
-            return True
-    return False
-
-def has_provider_error_body(raw):
-    data = decode(raw)
-    if not data:
-        return False
-    if collect_values(data):
-        return True
-    return str(data.get("status") or "").strip().lower() in {"error", "failed", "failure"}
-
-def request(method, url, headers=None, payload=None, ok_statuses=(200,), require_error_body=False):
-    data = None
-    request_headers = dict(headers or {})
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        request_headers.setdefault("Content-Type", "application/json")
-    request_headers.setdefault("Accept", "application/json")
-    req = urllib.request.Request(url, data=data, headers=request_headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read()
-            provider_error = has_provider_error_body(raw)
-            status_ok = int(resp.status) in ok_statuses
-            accepted_provider_error = require_error_body and provider_error and 200 <= int(resp.status) < 300
-            ok = (status_ok or accepted_provider_error) and not has_auth_error(raw)
-            if ok and require_error_body and not provider_error:
-                ok = False
-            return ok
-    except urllib.error.HTTPError as exc:
-        raw = exc.read()
-        provider_error = has_provider_error_body(raw)
-        status_ok = int(exc.code) in ok_statuses
-        accepted_provider_error = require_error_body and provider_error and 200 <= int(exc.code) < 300
-        ok = (status_ok or accepted_provider_error) and not has_auth_error(raw)
-        if ok and require_error_body and not provider_error:
-            ok = False
-        return ok
-    except Exception:
-        return False
-
-if provider in {"glm", "zai"}:
-    ok = request("POST", "https://api.z.ai/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
-elif provider in {"zhipu", "zhipuai", "bigmodel"}:
-    ok = request("POST", "https://open.bigmodel.cn/api/paas/v4/images/generations", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
-elif provider in {"qwen_image", "qwen-image", "dashscope", "aliyun", "qwen_image_beijing", "qwen-image-beijing"}:
-    ok = request("POST", "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
-elif provider in {"qwen_image_singapore", "qwen-image-singapore"}:
-    ok = request("POST", "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {"Authorization": "Bearer " + api_key}, {}, (400, 422), True)
-elif provider in {"qwen_image_us", "qwen-image-us", "qwen_image_germany", "qwen-image-germany"}:
-    ok = False
-elif provider in {"stability", "stability_ai", "stable_image"}:
-    ok = request("GET", "https://api.stability.ai/v1/user/balance", {"Authorization": "Bearer " + api_key}, None, (200,))
-elif provider in {"fal", "fal_ai", "fal.ai"}:
-    params = urllib.parse.urlencode({"endpoint_id": "fal-ai/flux/schnell", "limit": "1"})
-    ok = request("GET", "https://api.fal.ai/v1/models?" + params, {"Authorization": "Key " + api_key}, None, (200,))
-else:
-    ok = False
-print("ok" if ok else "bad")
-PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
-)"
-  [ "$result" = "ok" ]
-}
-
-
 test_image_api_key() {
   local provider="$1"
   local api_key="$2"
+  LAST_IMAGE_VALIDATION_ARTIFACT=""
+
   if [ -z "$provider" ] || [ -z "$api_key" ]; then
     return 1
   fi
 
-  local result
-  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3'
+  local out_dir="${TMPDIR:-/tmp}/codeepseedex-image-validation-$(date +%Y%m%d_%H%M%S)"
+  mkdir -p "$out_dir"
+
+  local result_file="$out_dir/result.env"
+  "$PYTHON_BIN" - "$provider" "$api_key" "$out_dir" <<'PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24' > "$result_file"
+import base64
 import json
+import mimetypes
+import re
 import sys
+import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 provider = sys.argv[1].strip().lower().replace("-", "_")
 api_key = sys.argv[2]
+out_dir = Path(sys.argv[3])
+out_dir.mkdir(parents=True, exist_ok=True)
 
-def canonical_provider(value):
+prompt = 'A breathtaking glamorous adult anime-style woman, confident and alluring gaze, sleek off-shoulder evening dress, elegant curves, long flowing hair, luxury fashion editorial style, dramatic cinematic lighting, vivid colors, high detail, tasteful sensual atmosphere, safe for work, fully clothed, no nudity.'
+timeout = 90
+
+def emit(**items):
+    for key, value in items.items():
+        value = "" if value is None else str(value)
+        value = value.replace("\n", " ").replace("\r", " ")
+        print(f"{key}={value}")
+
+def canonical(value):
     aliases = {
-        "glm": "zai",
-        "z_ai": "zai",
-        "zai": "zai",
         "zhipuai": "zhipu",
         "bigmodel": "zhipu",
         "zhipu": "zhipu",
+        "glm": "zai",
+        "z_ai": "zai",
+        "z.ai": "zai",
+        "zai": "zai",
         "qwen": "qwen_image",
         "qwen_image": "qwen_image",
         "qwen_image_beijing": "qwen_image",
+        "qwen_beijing": "qwen_image",
+        "dashscope_beijing": "qwen_image",
         "qwen_image_singapore": "qwen_image_singapore",
-        "qwen_image_us": "qwen_image_us",
-        "qwen_image_de": "qwen_image_de",
+        "qwen_singapore": "qwen_image_singapore",
+        "dashscope_singapore": "qwen_image_singapore",
         "stability_ai": "stability",
         "stable_image": "stability",
         "stability": "stability",
         "fal_ai": "fal",
+        "fal.ai": "fal",
         "fal": "fal",
     }
     return aliases.get(value, value)
 
-def has_provider_error_body(raw):
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except Exception:
-        return False
-    if not isinstance(data, dict):
-        return False
-    if isinstance(data.get("error"), dict) and data["error"]:
-        return True
-    if isinstance(data.get("error"), str) and data["error"]:
-        return True
-    if isinstance(data.get("message"), str) and data["message"]:
-        return True
-    if isinstance(data.get("code"), (str, int)):
-        return True
-    return False
+def request_json(url, headers, payload, method="POST"):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    for key, value in headers.items():
+        req.add_header(key, value)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return int(resp.status), json.loads(raw.decode("utf-8"))
 
-provider = canonical_provider(provider)
+def request_binary(url, headers, payload_bytes, content_type, method="POST"):
+    req = urllib.request.Request(url, data=payload_bytes, method=method)
+    for key, value in headers.items():
+        req.add_header(key, value)
+    if content_type:
+        req.add_header("Content-Type", content_type)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return int(resp.status), resp.headers.get("content-type", ""), resp.read()
 
-image_specs = {
-    "zhipu": (
-        "https://open.bigmodel.cn/api/paas/v4/images/generations",
-        "POST",
-        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        b'{}',
-        (400, 422), True,
-    ),
-    "zai": (
-        "https://api.z.ai/api/paas/v4/images/generations",
-        "POST",
-        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        b'{}',
-        (400, 422), True,
-    ),
-    "qwen_image": (
-        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-        "POST",
-        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        b'{}',
-        (400, 422), True,
-    ),
-    "qwen_image_singapore": (
-        "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-        "POST",
-        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        b'{}',
-        (400, 422), True,
-    ),
-    "stability": (
-        "https://api.stability.ai/v1/user/balance",
-        "GET",
-        {"Authorization": "Bearer " + api_key, "Accept": "application/json"},
-        None,
-        (200,), False,
-    ),
-    "fal": (
-        "https://api.fal.ai/v1/models",
-        "GET",
-        {"Authorization": "Key " + api_key, "Accept": "application/json"},
-        None,
-        (200,), False,
-    ),
-}
+def download_image(url, target):
+    req = urllib.request.Request(url, headers={"User-Agent": "CoDeepSeedeX image validation"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        content_type = resp.headers.get("content-type", "")
+        raw = resp.read()
+    if not raw:
+        raise RuntimeError("empty image download")
+    suffix = ".png"
+    guessed = mimetypes.guess_extension(content_type.split(";")[0].strip())
+    if guessed in {".png", ".jpg", ".jpeg", ".webp"}:
+        suffix = guessed
+    path = target.with_suffix(suffix)
+    path.write_bytes(raw)
+    return path
 
-if provider in {"qwen_image_us", "qwen_image_de"}:
-    print("bad")
-    raise SystemExit(0)
+def save_base64(value, target):
+    if "," in value and value.strip().startswith("data:"):
+        value = value.split(",", 1)[1]
+    raw = base64.b64decode(value)
+    if not raw:
+        raise RuntimeError("empty base64 image")
+    path = target.with_suffix(".png")
+    path.write_bytes(raw)
+    return path
 
-spec = image_specs.get(provider)
-if spec is None:
-    print("bad")
-    raise SystemExit(0)
+def first_image_evidence(data):
+    candidates = []
+    if isinstance(data, dict):
+        candidates.append(data)
+        for key in ("data", "images", "output", "results"):
+            value = data.get(key)
+            if isinstance(value, list):
+                candidates.extend(x for x in value if isinstance(x, dict))
+            elif isinstance(value, dict):
+                candidates.append(value)
+        output = data.get("output")
+        if isinstance(output, dict):
+            for key in ("choices", "results"):
+                value = output.get(key)
+                if isinstance(value, list):
+                    candidates.extend(x for x in value if isinstance(x, dict))
+    elif isinstance(data, list):
+        candidates.extend(x for x in data if isinstance(x, dict))
 
-url, method, headers, payload, ok_statuses, require_provider_error_body = spec
-request = urllib.request.Request(url, data=payload, headers=headers, method=method)
+    for item in candidates:
+        for key in ("url", "image_url", "signed_url"):
+            value = item.get(key)
+            if isinstance(value, str) and value.startswith(("http://", "https://")):
+                return ("url", value)
+        for key in ("b64_json", "base64", "image_base64"):
+            value = item.get(key)
+            if isinstance(value, str) and len(value) > 80:
+                return ("base64", value)
+        image = item.get("image")
+        if isinstance(image, str):
+            if image.startswith(("http://", "https://")):
+                return ("url", image)
+            if len(image) > 80:
+                return ("base64", image)
+        if isinstance(image, dict):
+            for key in ("url", "b64_json", "base64"):
+                value = image.get(key)
+                if isinstance(value, str):
+                    if value.startswith(("http://", "https://")):
+                        return ("url", value)
+                    if len(value) > 80:
+                        return ("base64", value)
+    return ("", "")
+
+def stability_multipart(prompt_text):
+    boundary = "----CoDeepSeedeXBoundary%d" % int(time.time() * 1000)
+    parts = []
+    def add(name, value):
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode())
+    add("prompt", prompt_text)
+    add("output_format", "png")
+    add("aspect_ratio", "1:1")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return boundary, b"".join(parts)
+
+provider = canonical(provider)
+target = out_dir / "test-image"
 
 try:
-    with urllib.request.urlopen(request, timeout=10) as response:
-        response.read()
-        print("ok" if int(response.status) in ok_statuses else "bad")
-except urllib.error.HTTPError as exc:
-    raw = exc.read()
-    if int(exc.code) in ok_statuses:
-        if require_provider_error_body:
-            print("ok" if has_provider_error_body(raw) else "bad")
-        else:
-            print("ok")
+    if provider == "zhipu":
+        status, data = request_json(
+            "https://open.bigmodel.cn/api/paas/v4/images/generations",
+            {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+            {"model": "cogview-4-250304", "prompt": prompt, "size": "1024x1024"},
+        )
+        kind, evidence = first_image_evidence(data)
+    elif provider == "zai":
+        status, data = request_json(
+            "https://api.z.ai/api/paas/v4/images/generations",
+            {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+            {"model": "cogview-4-250304", "prompt": prompt, "size": "1024x1024"},
+        )
+        kind, evidence = first_image_evidence(data)
+    elif provider == "qwen_image":
+        status, data = request_json(
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+            {"model": "qwen-image-2.0-pro", "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]}, "parameters": {"size": "1024*1024", "n": 1}},
+        )
+        kind, evidence = first_image_evidence(data)
+    elif provider == "qwen_image_singapore":
+        status, data = request_json(
+            "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+            {"model": "qwen-image-2.0-pro", "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]}, "parameters": {"size": "1024*1024", "n": 1}},
+        )
+        kind, evidence = first_image_evidence(data)
+    elif provider == "stability":
+        boundary, body = stability_multipart(prompt)
+        status, content_type, raw = request_binary(
+            "https://api.stability.ai/v2beta/stable-image/generate/core",
+            {"Authorization": "Bearer " + api_key, "Accept": "image/*"},
+            body,
+            "multipart/form-data; boundary=" + boundary,
+        )
+        if status < 200 or status >= 300 or not raw:
+            raise RuntimeError(f"unexpected_status_{status}")
+        path = target.with_suffix(".png")
+        path.write_bytes(raw)
+        emit(status="ok", artifact=path, provider=provider, evidence="binary_image", http_status=status)
+        raise SystemExit(0)
+    elif provider == "fal":
+        status, data = request_json(
+            "https://fal.run/fal-ai/fast-sdxl",
+            {"Authorization": "Key " + api_key, "Content-Type": "application/json"},
+            {"prompt": prompt, "image_size": "square_hd", "num_images": 1},
+        )
+        kind, evidence = first_image_evidence(data)
     else:
-        print("bad")
-except Exception:
-    print("bad")
-PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
-)"
-  [ "$result" = "ok" ]
-}
+        raise RuntimeError("unsupported_provider_for_live_install_validation")
 
+    if kind == "url":
+        artifact = download_image(evidence, target)
+    elif kind == "base64":
+        artifact = save_base64(evidence, target)
+    else:
+        debug_path = out_dir / "response.json"
+        try:
+            debug_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        raise RuntimeError("missing_image_evidence")
+
+    emit(status="ok", artifact=artifact, provider=provider, evidence=kind, http_status=status)
+except urllib.error.HTTPError as exc:
+    body = exc.read().decode("utf-8", errors="replace")
+    msg = re.sub(r"\s+", " ", body)[:240]
+    emit(status="bad", provider=provider, error=f"http_{exc.code}", message=msg, artifact="")
+except Exception as exc:
+    emit(status="bad", provider=provider, error=type(exc).__name__, message=str(exc)[:240], artifact="")
+PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24
+
+  local status=""
+  local artifact=""
+  local error=""
+  local message=""
+  status="$(sed -n 's/^status=//p' "$result_file" | tail -1)"
+  artifact="$(sed -n 's/^artifact=//p' "$result_file" | tail -1)"
+  error="$(sed -n 's/^error=//p' "$result_file" | tail -1)"
+  message="$(sed -n 's/^message=//p' "$result_file" | tail -1)"
+
+  if [ "$status" = "ok" ] && [ -n "$artifact" ] && [ -s "$artifact" ]; then
+    LAST_IMAGE_VALIDATION_ARTIFACT="$artifact"
+    return 0
+  fi
+
+  if [ -n "$error" ]; then
+    warn "Live image validation error: $error ${message:+- $message}"
+  fi
+  warn "Live image validation workspace: $out_dir"
+  return 1
+}
 model_api_base_url() {
   local provider="$1"
   case "$provider" in
@@ -1205,6 +1224,7 @@ prompt_image_generation_api_key() {
   sub_title "Image generation providers"
   local family=""
   local prompt=""
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="Live image validation will generate one safe test image and may consume provider credits. Choose Skip to avoid unexpected charges. Test image path will be shown under /tmp."
   family="$(read_menu_choice_from_tty "Select image generation provider family" "1" \
     "1|ZhipuAI / BigModel|supported" \
     "2|Z.AI / CogView|supported" \
@@ -1269,21 +1289,23 @@ prompt_image_generation_api_key() {
       continue
     fi
 
-    ok "Received ${#candidate} characters. Validating provider: $PROMPTED_IMAGE_PROVIDER"
+    ok "Received ${#candidate} characters. Creating one safe test image with provider: $PROMPTED_IMAGE_PROVIDER"
     empty_attempts=0
     if test_image_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then
       PROMPTED_IMAGE_API_KEY="$candidate"
-      ok "Image generation API key accepted by non-generating validation for provider: $PROMPTED_IMAGE_PROVIDER"
-      warn "This does not prove real image generation; use dsproxy doctor providers --kind image --provider $PROMPTED_IMAGE_PROVIDER --live --allow-spend for a quota-consuming test."
+      ok "Image generation API key validated by live image generation for provider: $PROMPTED_IMAGE_PROVIDER"
+      if [ -n "${LAST_IMAGE_VALIDATION_ARTIFACT:-}" ]; then
+        printf '  \033[2mtest image saved: %s\033[0m\n' "$LAST_IMAGE_VALIDATION_ARTIFACT"
+      fi
       return 0
     fi
 
     attempts=$((attempts + 1))
-    warn "Image generation API validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
+    warn "Live image validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
   done
 
   PROMPTED_IMAGE_API_KEY=""
-  warn "Image generation API key was not saved because validation failed. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+  warn "Image generation API key was not saved because live validation failed. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
 }
 
 backup_local_file_before_overwrite() {
@@ -1879,8 +1901,7 @@ uninstall() {
   fi
 
   step "Done"
-  sub_title "Install log"
-  printf '  %s\n' "$INSTALL_LOG"
+  print_install_logs
 }
 
 while [ "$#" -gt 0 ]; do
@@ -1926,8 +1947,7 @@ printf '%s\n' "  4. Install dsproxy"
 printf '%s\n' "  5. Guided API configuration and local env file"
 printf '%s\n' "  6. Install Codex profiles"
 printf '%s\n' "  7. Install safe Codex wrapper, recommended"
-sub_title "Install log"
-printf '  %s\n' "$INSTALL_LOG"
+print_install_logs
 
 step "Checking requirements"
 
@@ -2266,7 +2286,6 @@ printf '%s\n' "  codex --profile deepseek-thinking resume"
 sub_title "Uninstall integration"
 printf '  bash %s --uninstall\n' "$INSTALL_DIR/scripts/install.sh"
 
-sub_title "Install log"
-printf '  %s\n' "$INSTALL_LOG"
+print_install_logs
 
 divider

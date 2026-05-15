@@ -130,20 +130,21 @@ def test_installer_validates_web_and_image_provider_keys_before_saving() -> None
     assert "test_image_api_key() {" in text
     assert "if test_image_api_key \"$PROMPTED_IMAGE_PROVIDER\" \"$candidate\"; then" in text
     assert "Web search API key validated for provider" in text
-    assert "Image generation API key accepted by non-generating validation for provider" in text
+    assert "Image generation API key validated by live image generation for provider" in text
     assert "Received ${#candidate} characters" in text
     assert "Press Enter three times to skip" in text
     assert "Web search API key was not saved because validation failed" in text
-    assert "Image generation API key was not saved because validation failed" in text
+    assert "Image generation API key was not saved because live validation failed" in text
 
-def test_installer_image_validation_requires_error_body_for_non_generation_probes() -> None:
+def test_installer_image_validation_is_live_generation_not_non_generation_probe() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3" in text
-    assert "has_provider_error_body" in text
-    assert "(400, 422), True" in text
-    assert "non-generating validation" in text
-    assert "api.stability.ai/v1/user/balance" in text
-    assert "api.fal.ai/v1/models" in text
+    assert "PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24" in text
+    assert "A breathtaking glamorous adult anime-style woman" in text
+    assert "safe for work, fully clothed, no nudity" in text
+    assert "Live image validation workspace:" in text
+    assert "test image saved:" in text
+    assert ("PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_" + "P28A3") not in text
+    assert ("non-" + "generating validation") not in text
 
 def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -505,7 +506,7 @@ def test_installer_project_like_shell_calls_are_defined() -> None:
     import re
 
     text = INSTALL_SH.read_text(encoding="utf-8")
-    defined = set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\(\) \{", text, flags=re.MULTILINE))
+    defined = set(re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\(\)\s*\{", text, flags=re.MULTILINE))
     prefixes = ("test_", "prompt_", "read_", "download_", "prepare_", "sync_", "write_", "ensure_", "is_")
     ignored = {"test"}
     missing = []
@@ -538,8 +539,37 @@ def test_installer_image_validation_function_is_defined_before_prompt_use() -> N
     prompt = text.index("prompt_image_generation_api_key() {")
     call = text.index('if test_image_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then')
     assert definition < prompt < call
-    assert "PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3" in text
-    assert "has_provider_error_body" in text
-    assert "(400, 422), True" in text
-    assert "api.stability.ai/v1/user/balance" in text
-    assert "api.fal.ai/v1/models" in text
+    assert "PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24" in text
+    assert "Live image validation workspace:" in text
+    assert "test image saved:" in text
+
+def test_installer_prints_combined_install_logs() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'BOOTSTRAP_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-}"' in text
+    assert "print_install_logs() {" in text
+    assert 'sub_title "Install logs"' in text
+    assert "bootstrap" in text
+    assert "install" in text
+    assert 'sub_title "Install log"' not in text
+
+def test_installer_image_validation_is_live_and_quota_warning_is_visible() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Live image validation will generate one safe test image and may consume provider credits." in text
+    assert "Choose Skip to avoid unexpected charges." in text
+    assert "A breathtaking glamorous adult anime-style woman" in text
+    assert "safe for work, fully clothed, no nudity" in text
+    assert "Creating one safe test image with provider" in text
+    assert "Image generation API key validated by live image generation" in text
+    assert "test image saved:" in text
+    assert ("Image generation API key accepted by " + "non-" + "generating validation") not in text
+    assert "This does not prove real image generation" not in text
+    assert "PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24" in text
+
+def test_installer_live_image_validation_supports_primary_providers() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "https://open.bigmodel.cn/api/paas/v4/images/generations" in text
+    assert "https://api.z.ai/api/paas/v4/images/generations" in text
+    assert "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation" in text
+    assert "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation" in text
+    assert "https://api.stability.ai/v2beta/stable-image/generate/core" in text
+    assert "https://fal.run/fal-ai/fast-sdxl" in text

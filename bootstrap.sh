@@ -263,8 +263,7 @@ download_installer() {
 }
 
 main() {
-  color "1;36" "CoDeepSeedeX bootstrap"
-  printf '  log: %s\n' "$INSTALL_LOG"
+  printf 'bootstrap log: %s\n' "$INSTALL_LOG" >> "$INSTALL_LOG"
   printf 'bootstrap source: %s\n' "${DEEPSEEK_PROXY_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}" >> "$INSTALL_LOG"
   printf 'requested install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 
@@ -309,9 +308,9 @@ main() {
   fi
 
   if [ -n "$RESOLVED_INSTALL_REF" ] && [ -z "${DEEPSEEK_PROXY_INSTALL_REF:-}" ]; then
-    DEEPSEEK_PROXY_INSTALL_REF="$RESOLVED_INSTALL_REF" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+    DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG" DEEPSEEK_PROXY_INSTALL_REF="$RESOLVED_INSTALL_REF" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   else
-    DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+    DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   fi
 }
 
