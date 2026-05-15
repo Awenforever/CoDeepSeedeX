@@ -369,7 +369,7 @@ def test_installer_source_logging_uses_install_log_variable() -> None:
 
 def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "CoDeepSeedeX ${INSTALL_REF:-GitHub Latest}" in text
+    assert "printf \'  CoDeepSeedeX %s\\n\' \"${INSTALL_REF:-GitHub Latest}\"" in text
     assert '"Y|$yes_label|plain"' in text
     assert '"Y|$yes_label|supported"' not in text
     assert "Select model provider family" in text
@@ -386,3 +386,24 @@ def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
     assert "prepare_install_checkout()" in text
     assert "codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref" in text
     assert "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-model --provider deepseek" not in text
+
+
+def test_installer_logo_function_renders_without_backtick_substitution(tmp_path) -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "cat <<'CODEEPSEEDEX_INSTALLER_LOGO_ART'" in text
+    assert "printf '  CoDeepSeedeX %s\\n' \"${INSTALL_REF:-GitHub Latest}\"" in text
+
+    start = text.index("logo() {")
+    end = text.index("\nshow_version_source()", start) if "\nshow_version_source()" in text[start:] else text.index("\nrun_quiet()", start)
+    logo_func = text[start:end]
+    script = tmp_path / "logo-smoke.sh"
+    script.write_text(
+        "set -euo pipefail\n"
+        "INSTALL_REF=v0.3.8-alpha\n"
+        f"{logo_func}\n"
+        "logo\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(["bash", str(script)], text=True, capture_output=True, timeout=20, check=True)
+    assert "CoDeepSeedeX v0.3.8-alpha" in result.stdout
+    assert "Codex × DeepSeek local Responses proxy" in result.stdout

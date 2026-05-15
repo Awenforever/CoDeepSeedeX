@@ -450,3 +450,7 @@ When moving installer source details out of the interactive UI, write them to th
 ## p2.10a15 installer provider flow
 
 Guided installer menus should first ask for a provider family, then show endpoint, region, Token API, or Coding Plan API choices only when that family requires disambiguation. Yes/No menus must use plain rendering and must not inherit provider status labels such as Supported. The installer logo should show the active install ref beside CoDeepSeedeX. If Git clone or `git fetch --tags origin` fails during VM installation, the installer may fall back to a tagged GitHub/codeload source archive for the requested install ref.
+
+## p2.10a16 installer logo heredoc
+
+ASCII art in shell scripts must use quoted heredocs when it contains backticks, backslashes, or dollar signs. `bash -n` does not catch command substitution triggered inside an unquoted heredoc at runtime, so installer banner changes should include a runtime smoke test for the rendered function.

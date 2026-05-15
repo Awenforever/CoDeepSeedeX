@@ -35,17 +35,19 @@ show_version_source() {
 }
 
 logo() {
-  cat <<LOGO
+  cat <<'CODEEPSEEDEX_INSTALLER_LOGO_ART'
    ____      ____                 ____              _      __  __
   / ___|___ |  _ \  ___  ___ _ __/ ___|  ___  ___  __| | ___ \ \/ /
  | |   / _ \| | | |/ _ \/ _ \ '_ \___ \ / _ \/ _ \/ _` |/ _ \ \  /
- | |__| (_) | |_| |  __/  __/ |_) |__) |  __/ __/ (_| |  __/ /  \
+ | |__| (_) | |_| |  __/  __/ |_) |__) |  __/  __/ (_| |  __/ /  \
   \____\___/|____/ \___|\___| .__/____/ \___|\___|\__,_|\___|/_/\_\
                              |_|
 
-  CoDeepSeedeX ${INSTALL_REF:-GitHub Latest}
+CODEEPSEEDEX_INSTALLER_LOGO_ART
+  printf '  CoDeepSeedeX %s\n' "${INSTALL_REF:-GitHub Latest}"
+  cat <<'CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE'
   Codex × DeepSeek local Responses proxy
-LOGO
+CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE
 }
 
 usage() {

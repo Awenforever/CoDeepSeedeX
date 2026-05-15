@@ -412,3 +412,7 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 ## p2.10a15安装器provider流程
 
 引导式安装菜单应先选择provider族，只有在该族需要区分endpoint、地区、Token API或Coding Plan API时才进入二级菜单。Yes/No菜单必须使用plain渲染，不得继承Supported等provider状态标记。安装器Logo旁应显示当前install ref。VM安装期间如果Git clone或`git fetch --tags origin`失败，安装器可fallback到请求install ref对应的GitHub/codeload源码归档。
+
+## p2.10a16安装器Logo heredoc
+
+Shell脚本中的ASCII art如果包含反引号、反斜线或美元符号，必须使用引用heredoc。`bash -n`不会发现未引用heredoc在运行时触发的命令替换，因此安装器banner改动应增加实际调用渲染函数的运行时烟测。

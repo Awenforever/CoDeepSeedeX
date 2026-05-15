@@ -11,6 +11,13 @@
 
 
 
+
+## p2.10a16-installer-logo-heredoc-runtime-fix
+
+- Fixed installer logo runtime rendering by using quoted heredocs for ASCII art.
+- Kept the visible version line beside CoDeepSeedeX.
+- Added a runtime logo smoke test so `bash -n` cannot miss heredoc command-substitution failures.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a15-installer-provider-flow-source-fallback
 
 - Added installer logo install-ref display.
