@@ -1611,7 +1611,7 @@ write_env_file() {
     printf 'export DEEPSEEK_PROXY_MODEL=%q
 ' "$final_model_name"
     printf 'export DEEPSEEK_REASONING_EFFORT=%q
-' "xhigh"
+' "max"
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q
 ' "1"
     printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q

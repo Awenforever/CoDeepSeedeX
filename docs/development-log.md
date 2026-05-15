@@ -2,6 +2,14 @@
 
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
+## p2.10a28-dsproxy-weclaw-profile-contract
+
+- Scope: make dsproxy the owner of Codex profile effort semantics and expose machine-readable profile/status skeletons for WeClaw.
+- Root cause: `config set-effort` wrote the same canonical DeepSeek effort into `DEEPSEEK_REASONING_EFFORT` and Codex `model_reasoning_effort`, allowing `max` to enter Codex config.
+- Contract: DeepSeek/env effort may be `max`, but Codex profile effort must be `xhigh`; `xhigh` input normalizes to DeepSeek `max`.
+- Added structured profile status and WeClaw status JSON skeletons while marking unaudited token, pricing, cost, balance, auxiliary-call, and compaction fields unavailable instead of letting WeClaw guess.
+- Install/upgrade/uninstall review: installer env effort now uses DeepSeek semantic `max`; install profile generation still writes Codex-compatible `xhigh`; no Release assets or public tags are moved in this internal patch phase.
+
 
 ## p2.10a27-doc-structure-process-rules
 

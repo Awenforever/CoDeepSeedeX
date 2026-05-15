@@ -2389,3 +2389,138 @@ def test_cli_config_set_effort_pins_codex_plan_mode_to_high(tmp_path, capsys):
     assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in patched
     assert 'plan_mode_reasoning_effort = "high"' in patched
+
+
+def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"high\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["config", "set-effort", "max", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = config_path.read_text(encoding="utf-8")
+    assert result["requested_effort"] == "max"
+    assert result["deepseek_reasoning_effort"] == "max"
+    assert result["codex_model_reasoning_effort"] == "xhigh"
+    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    assert result["codex_config_loadable"] is True
+    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'model_reasoning_effort = "max"' not in text
+
+
+def test_cli_config_set_effort_xhigh_is_compat_input_for_max(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-flash\"\nmodel_reasoning_effort = \"high\"\n", encoding="utf-8")
+
+    assert main(["config", "set-effort", "xhigh", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = config_path.read_text(encoding="utf-8")
+    assert result["deepseek_reasoning_effort"] == "max"
+    assert result["codex_model_reasoning_effort"] == "xhigh"
+    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'model_reasoning_effort = "max"' not in text
+
+
+def test_cli_config_set_effort_high_repairs_previous_codex_max(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"max\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = config_path.read_text(encoding="utf-8")
+    assert result["deepseek_reasoning_effort"] == "high"
+    assert result["codex_model_reasoning_effort"] == "high"
+    assert result["codex_config_loadable"] is True
+    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in text
+    assert 'model_reasoning_effort = "max"' not in text
+
+
+def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    config_path.write_text(
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "plan_mode_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["profile"] == "deepseek-thinking"
+    assert result["effort"]["user_facing"] == "max"
+    assert result["effort"]["deepseek_reasoning_effort"] == "max"
+    assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
+    assert result["health"]["codex_config_loadable"] is True
+    assert result["context_window"]["effective_safe_window_tokens"] == 750000
+
+
+def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\n", encoding="utf-8")
+    config_path.write_text("[profiles.deepseek-thinking]\nmodel_reasoning_effort = \"max\"\n", encoding="utf-8")
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 1
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["health"]["codex_config_loadable"] is False
+    assert result["health"]["invalid_profile_fields"][0]["field"] == "model_reasoning_effort"
+    assert result["health"]["invalid_profile_fields"][0]["value"] == "max"
+
+
+def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
+
+    assert main(["status", "thinking", "--weclaw-json"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["profile"] == "deepseek-thinking"
+    assert result["effort"]["deepseek_reasoning_effort"] == "max"
+    assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
+    assert result["tokens"]["last_turn"]["available"] is False
+    assert result["pricing"]["available"] is False

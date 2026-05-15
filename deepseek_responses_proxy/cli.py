@@ -607,11 +607,47 @@ def _canonical_cli_reasoning_effort(value: object) -> str | None:
     normalized = str(value or "").strip().lower()
     if not normalized:
         return None
-    if normalized in {"minimal", "low", "medium", "high"}:
+    if normalized in {"none", "minimal", "low", "medium", "high"}:
         return "high"
     if normalized in {"xhigh", "max"}:
         return "max"
     return None
+
+
+CODEX_MODEL_REASONING_EFFORT_ALLOWED = {"none", "minimal", "low", "medium", "high", "xhigh"}
+CODEEPSEEDEX_MANAGED_CODEX_PROFILES = ("deepseek", "deepseek-thinking")
+
+
+def _codex_model_reasoning_effort_for_deepseek(deepseek_effort: str) -> str:
+    if deepseek_effort == "max":
+        return "xhigh"
+    return "high"
+
+
+def _reasoning_effort_contract(value: object) -> dict[str, object] | None:
+    requested = str(value or "").strip().lower()
+    deepseek_effort = _canonical_cli_reasoning_effort(requested)
+    if deepseek_effort is None:
+        return None
+    codex_effort = _codex_model_reasoning_effort_for_deepseek(deepseek_effort)
+    return {
+        "requested_effort": str(value),
+        "user_facing": "max" if deepseek_effort == "max" else "high",
+        "deepseek_reasoning_effort": deepseek_effort,
+        "codex_model_reasoning_effort": codex_effort,
+        "normalized": requested != deepseek_effort or codex_effort != deepseek_effort,
+        "compatibility_note": (
+            "low/medium/minimal are accepted compatibility inputs and normalize to DeepSeek high; "
+            "xhigh is accepted as Codex-compatible input and normalizes to DeepSeek max while Codex profile stores xhigh."
+        ),
+    }
+
+
+def _managed_profile_targets(profile_value: object) -> list[str]:
+    raw = str(profile_value or "").strip()
+    if raw in {"", "__managed__", "managed", "all", "all-managed"}:
+        return list(CODEEPSEEDEX_MANAGED_CODEX_PROFILES)
+    return [raw]
 
 
 def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, value: str) -> bool:
@@ -638,6 +674,286 @@ def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, v
     patched = "\n".join(out) + "\n"
     config_path.write_text(text[:start] + patched + text[end:], encoding="utf-8")
     return True
+
+
+def _parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
+    if not path.exists():
+        return {}
+    sections: dict[str, dict[str, str]] = {}
+    current: str | None = None
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"^\[([^\]]+)\]\s*$", stripped)
+        if match:
+            current = match.group(1).strip()
+            sections.setdefault(current, {})
+            continue
+        if current and "=" in stripped:
+            key, value = stripped.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+            else:
+                value = value.split("#", 1)[0].strip()
+            sections[current][key] = value
+    return sections
+
+
+def _codex_config_health(config_path: Path) -> dict[str, object]:
+    sections = _parse_simple_toml_sections(config_path)
+    invalid_fields: list[dict[str, object]] = []
+    warnings: list[str] = []
+    if not config_path.exists():
+        warnings.append("codex_config_missing")
+    for section, values in sections.items():
+        if not section.startswith("profiles."):
+            continue
+        profile_name = section.removeprefix("profiles.")
+        effort = values.get("model_reasoning_effort")
+        if effort is not None and effort not in CODEX_MODEL_REASONING_EFFORT_ALLOWED:
+            invalid_fields.append({
+                "profile": profile_name,
+                "field": "model_reasoning_effort",
+                "value": effort,
+                "allowed": sorted(CODEX_MODEL_REASONING_EFFORT_ALLOWED),
+                "suggested_repair_command": f"dsproxy profile set-effort {profile_name} max --json",
+            })
+    return {
+        "codex_config": str(config_path),
+        "codex_config_exists": config_path.exists(),
+        "codex_config_loadable": not invalid_fields,
+        "invalid_profile_fields": invalid_fields,
+        "warnings": warnings,
+    }
+
+
+def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, codex_config: Path | None = None) -> dict[str, object]:
+    env_path = env_file or default_env_file_path()
+    codex_path = codex_config or default_codex_config_path()
+    env_values = _read_env_exports(env_path)
+    sections = _parse_simple_toml_sections(codex_path)
+    profile_section = sections.get(f"profiles.{profile_name}", {})
+    provider_name = profile_section.get("model_provider") or f"{profile_name}-proxy"
+    provider_section = sections.get(f"model_providers.{provider_name}", {})
+
+    env_effort_raw = env_values.get("DEEPSEEK_REASONING_EFFORT")
+    deepseek_effort = _canonical_cli_reasoning_effort(env_effort_raw or profile_section.get("model_reasoning_effort") or "high") or "high"
+    codex_effort = profile_section.get("model_reasoning_effort")
+    expected_codex_effort = _codex_model_reasoning_effort_for_deepseek(deepseek_effort)
+    health = _codex_config_health(codex_path)
+    profile_invalid = [
+        item for item in health["invalid_profile_fields"]
+        if isinstance(item, dict) and item.get("profile") == profile_name
+    ]
+
+    model = profile_section.get("model") or env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL") or "unknown"
+    model_context_window = int(profile_section.get("model_context_window") or 0)
+    auto_compact_token_limit = int(profile_section.get("model_auto_compact_token_limit") or 0)
+    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+
+    return {
+        "status": "ok" if not profile_invalid else "error",
+        "profile": profile_name,
+        "profile_source": "codex_config",
+        "codex_config": str(codex_path),
+        "env_file": str(env_path),
+        "model": {
+            "provider": env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek",
+            "model": model,
+            "codex_model": profile_section.get("model"),
+            "upstream_model": env_values.get("DEEPSEEK_PROXY_MODEL") or model,
+            "model_provider": provider_name,
+            "base_url": provider_section.get("base_url"),
+            "source": "codex_profile_and_dsproxy_env",
+        },
+        "effort": {
+            "user_facing": "max" if deepseek_effort == "max" else "high",
+            "deepseek_reasoning_effort": deepseek_effort,
+            "codex_model_reasoning_effort": codex_effort,
+            "expected_codex_model_reasoning_effort": expected_codex_effort,
+            "source": "dsproxy_config",
+            "codex_profile_valid": codex_effort in CODEX_MODEL_REASONING_EFFORT_ALLOWED if codex_effort else False,
+            "normalized": codex_effort == expected_codex_effort,
+        },
+        "thinking": {
+            "enabled": profile_name.endswith("thinking"),
+            "source": "profile_route",
+        },
+        "context_window": {
+            "display_limit_tokens": effective_safe_window,
+            "model_context_window_tokens": model_context_window,
+            "auto_compact_token_limit": auto_compact_token_limit,
+            "effective_safe_window_tokens": effective_safe_window,
+            "source": "codex_profile.model_auto_compact_token_limit",
+            "is_estimated": False,
+        },
+        "health": {
+            "codex_config_loadable": bool(health["codex_config_loadable"]),
+            "invalid_profile_fields": profile_invalid,
+            "warnings": health["warnings"],
+        },
+    }
+
+
+def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_profiles: list[str] | None = None) -> int:
+    contract = _reasoning_effort_contract(args.effort)
+    allowed = {"low", "medium", "high", "xhigh", "max", "minimal", "none"}
+    if contract is None:
+        print(json.dumps({"status": "error", "error": "invalid_effort", "allowed": sorted(allowed)}, ensure_ascii=False, indent=2))
+        return 2
+
+    deepseek_effort = str(contract["deepseek_reasoning_effort"])
+    codex_effort = str(contract["codex_model_reasoning_effort"])
+
+    values = _read_env_exports(env_file)
+    values["DEEPSEEK_REASONING_EFFORT"] = deepseek_effort
+    _write_env_exports(env_file, values)
+
+    codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
+    target_profiles = explicit_profiles or _managed_profile_targets(getattr(args, "profile", "__managed__"))
+
+    profile_results: list[dict[str, object]] = []
+    updated_profiles: list[str] = []
+    for profile_name in target_profiles:
+        model_patched = _patch_codex_profile_value(codex_path, profile_name, "model_reasoning_effort", codex_effort)
+        plan_patched = _patch_codex_profile_value(codex_path, profile_name, "plan_mode_reasoning_effort", "high")
+        if model_patched or plan_patched:
+            updated_profiles.append(profile_name)
+        profile_results.append({
+            "profile": profile_name,
+            "model_reasoning_effort": codex_effort,
+            "model_reasoning_effort_patched": model_patched,
+            "plan_mode_reasoning_effort": "high",
+            "plan_mode_reasoning_effort_patched": plan_patched,
+        })
+
+    health = _codex_config_health(codex_path)
+    output = {
+        "status": "ok" if health["codex_config_loadable"] else "error",
+        "env_file": str(env_file),
+        "requested_effort": args.effort,
+        "effort": deepseek_effort,
+        "user_facing": contract["user_facing"],
+        "deepseek_reasoning_effort": deepseek_effort,
+        "codex_model_reasoning_effort": codex_effort,
+        "codex_plan_mode_reasoning_effort": "high",
+        "normalized": contract["normalized"],
+        "compatibility_note": contract["compatibility_note"],
+        "codex_config": str(codex_path),
+        "codex_profile": getattr(args, "profile", "__managed__"),
+        "target_profiles": target_profiles,
+        "updated_profiles": updated_profiles,
+        "codex_profile_patched": bool(updated_profiles),
+        "codex_plan_mode_profile_patched": any(bool(item["plan_mode_reasoning_effort_patched"]) for item in profile_results),
+        "profile_results": profile_results,
+        "codex_config_loadable": health["codex_config_loadable"],
+        "invalid_profile_fields": health["invalid_profile_fields"],
+        "post_config_apply": _post_config_apply(),
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _profile(args: argparse.Namespace) -> int:
+    env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
+    if args.profile_command == "status":
+        codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
+        payload = _profile_status_payload(args.profile, env_file=env_file, codex_config=codex_path)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload.get("status") == "ok" else 1
+    if args.profile_command == "set-effort":
+        return _set_effort_contract(args, env_file, explicit_profiles=[args.profile])
+    print(json.dumps({"status": "error", "error": "unknown_profile_command"}, ensure_ascii=False, indent=2))
+    return 2
+
+
+def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
+    profile_name = "deepseek-thinking" if bool(getattr(args, "thinking", False)) else "deepseek"
+    env_file = Path(getattr(args, "env_file", "")).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
+    profile_status = _profile_status_payload(profile_name, env_file=env_file, codex_config=default_codex_config_path())
+    return {
+        "status": profile_status.get("status", "ok"),
+        "version": {
+            "public_version": globals().get("PROXY_PUBLIC_VERSION", "unknown"),
+            "internal_version": globals().get("PROXY_INTERNAL_VERSION", "unknown"),
+        },
+        "profile": profile_name,
+        "session": {
+            "id": None,
+            "started_at": None,
+            "source": "not_available_from_dsproxy_cli_status_yet",
+            "available": False,
+        },
+        "model": {
+            **dict(profile_status.get("model", {})),
+            "thinking_enabled": bool(profile_status.get("thinking", {}).get("enabled")) if isinstance(profile_status.get("thinking"), dict) else profile_name.endswith("thinking"),
+        },
+        "effort": profile_status.get("effort", {}),
+        "context_window": profile_status.get("context_window", {}),
+        "tokens": {
+            "taxonomy": {
+                "version": 1,
+                "categories": [
+                    "user",
+                    "assistant_history",
+                    "tool",
+                    "environment",
+                    "runtime",
+                    "compaction_summary",
+                    "judge",
+                    "cached_input",
+                    "output",
+                    "reasoning",
+                    "other",
+                ],
+                "notes": [
+                    "This contract is owned by dsproxy. Exact category attribution requires audited payload construction and provider usage data.",
+                ],
+            },
+            "last_turn": {
+                "available": False,
+                "is_estimated": False,
+                "missing": ["live_turn_usage_attribution"],
+                "source": "not_available_without_runtime_usage_snapshot",
+            },
+            "session_total": {
+                "available": False,
+                "is_estimated": False,
+                "missing": ["session_usage_attribution"],
+            },
+            "auxiliary_model_calls": {
+                "available": False,
+                "included_in_session_total": None,
+                "missing": ["auxiliary_model_call_ledger"],
+            },
+        },
+        "pricing": {
+            "available": False,
+            "source_kind": "not_configured_for_weclaw_contract_yet",
+            "is_stale": None,
+            "fallback_used": None,
+            "missing": ["dynamic_pricing_cache"],
+        },
+        "cost": {
+            "available": False,
+            "is_estimated": False,
+            "missing": ["dynamic_pricing_cache", "usage_attribution"],
+            "balance": {
+                "available": False,
+                "reason": "not_queried_by_weclaw_status_contract",
+            },
+        },
+        "compaction": {
+            "available": False,
+            "is_estimated": False,
+            "missing": ["context_compaction_report_binding"],
+        },
+        "health": profile_status.get("health", {}),
+    }
+
 
 def _uninstall_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
@@ -1090,6 +1406,10 @@ def _stop_proxy(args: argparse.Namespace) -> int:
     return 0
 
 def _status(args: argparse.Namespace) -> int:
+    if getattr(args, "weclaw_json", False):
+        print(json.dumps(_weclaw_status_payload(args), ensure_ascii=False, indent=2))
+        return 0
+
     thinking = bool(args.thinking)
     port = _port_for(thinking, args.port)
     url = f"{_base_url(thinking=thinking, port=port)}/v1/proxy/status"
@@ -3221,32 +3541,7 @@ def _config(args: argparse.Namespace) -> int:
         return _configure_model_api_command(args, env_file, legacy_command=False)
 
     if args.config_command == "set-effort":
-        allowed = {"low", "medium", "high", "xhigh", "max"}
-        canonical_effort = _canonical_cli_reasoning_effort(args.effort)
-        if canonical_effort is None:
-            print(json.dumps({"error": "invalid_effort", "allowed": sorted(allowed)}, ensure_ascii=False, indent=2))
-            return 2
-        values = _read_env_exports(env_file)
-        values["DEEPSEEK_REASONING_EFFORT"] = canonical_effort
-        _write_env_exports(env_file, values)
-
-        codex_path = Path(args.codex_config).expanduser() if args.codex_config else default_codex_config_path()
-        patched = _patch_codex_profile_value(codex_path, args.profile, "model_reasoning_effort", canonical_effort)
-        plan_patched = _patch_codex_profile_value(codex_path, args.profile, "plan_mode_reasoning_effort", "high")
-
-        print(json.dumps({
-            "env_file": str(env_file),
-            "requested_effort": args.effort,
-            "effort": canonical_effort,
-            "compatibility_note": "low and medium are accepted for Codex compatibility but stored as high because DeepSeek supports high/max reasoning effort for this proxy path.",
-            "codex_config": str(codex_path),
-            "codex_profile": args.profile,
-            "codex_profile_patched": patched,
-            "codex_plan_mode_reasoning_effort": "high",
-            "codex_plan_mode_profile_patched": plan_patched,
-            "post_config_apply": _post_config_apply(),
-        }, ensure_ascii=False, indent=2))
-        return 0
+        return _set_effort_contract(args, env_file)
 
     raise SystemExit("unknown config command")
 
@@ -4079,6 +4374,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--thinking", action="store_true")
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
+    status.add_argument("--weclaw-json", action="store_true", help="print WeClaw integration status JSON")
     status.set_defaults(func=_status)
 
     doctor = sub.add_parser("doctor", help="diagnose local proxy setup")
@@ -4188,8 +4484,26 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_effort.add_argument("effort")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")
-    config_set_effort.add_argument("--profile", default="deepseek-thinking")
+    config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek and deepseek-thinking")
     config_set_effort.set_defaults(func=_config)
+
+    profile = sub.add_parser("profile", help="inspect and manage CoDeepSeedeX-owned Codex profiles")
+    profile_sub = profile.add_subparsers(dest="profile_command", required=True)
+
+    profile_status = profile_sub.add_parser("status", help="print machine-readable Codex profile status")
+    profile_status.add_argument("profile", nargs="?", default="deepseek-thinking")
+    profile_status.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_status.add_argument("--env-file")
+    profile_status.add_argument("--codex-config")
+    profile_status.set_defaults(func=_profile)
+
+    profile_set_effort = profile_sub.add_parser("set-effort", help="set one managed Codex profile effort through the dsproxy contract")
+    profile_set_effort.add_argument("profile")
+    profile_set_effort.add_argument("effort")
+    profile_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_set_effort.add_argument("--env-file")
+    profile_set_effort.add_argument("--codex-config")
+    profile_set_effort.set_defaults(func=_profile)
 
     debug = sub.add_parser("debug", help="inspect proxy debug trace state")
     debug_sub = debug.add_subparsers(dest="debug_command", required=True)

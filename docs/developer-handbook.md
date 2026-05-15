@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a27-doc-structure-process-rules`
+- Current internal development line: `p2.10a28-dsproxy-weclaw-profile-contract`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -517,3 +517,17 @@ Codex wrapper startup is fail-closed for CoDeepSeedeX-managed profiles. When `co
 DeepSeek Codex profiles must write both `model_reasoning_effort` and `plan_mode_reasoning_effort`. `plan_mode_reasoning_effort` is pinned to `high` because Codex native Plan mode reads that dedicated config key. Do not document Plan mode as merely showing `medium` while proxy-side aliases repair it.
 
 Uninstall must restore the previous Codex command when `CODEX_WRAPPER_BACKUP` is present in the install manifest. Any wrapper rewrite must preserve manifest-backed rollback: remove the CoDeepSeedeX wrapper first, then move the saved backup back to the original wrapper path.
+
+
+## p2.10a28 dsproxy-owned WeClaw profile contract
+
+CoDeepSeedeX / `dsproxy` owns Codex profile files and DeepSeek runtime configuration. WeClaw must not edit `~/.codex/config.toml` or infer model, effort, context-window, token, cost, pricing, balance, or compaction state from private files.
+
+`dsproxy config set-effort max` stores `DEEPSEEK_REASONING_EFFORT=max` for the DeepSeek side and writes Codex-compatible `model_reasoning_effort = "xhigh"` to managed Codex profiles. `xhigh` remains accepted as a compatibility input and normalizes to DeepSeek `max`. `low`, `medium`, `minimal`, and `none` are compatibility inputs that normalize to DeepSeek/Codex `high` for this proxy path.
+
+Machine-readable contract surfaces:
+- `dsproxy profile status [profile] --json`
+- `dsproxy profile set-effort <profile> <effort> --json`
+- `dsproxy status [thinking] --weclaw-json`
+
+The WeClaw status contract must report unavailable token, pricing, cost, balance, auxiliary-token, and compaction fields as structured `available=false` or `missing=[...]` values until dsproxy has audited exact data sources. Do not make WeClaw guess these values.
