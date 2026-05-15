@@ -474,3 +474,7 @@ Selected and unselected menu rows must keep option values in the same visual col
 ## p2.10a20 installer secret prompt semantics
 
 Secret prompts must distinguish a newly typed secret from an empty submission that keeps an existing secret. Empty input with a default secret must not be reported as newly received characters and must not trigger validation as if the user pasted the key. Helper text such as optional/hidden/keep-existing instructions should be dim. The Codex wrapper prompt should explain that after installation users can run `codex --profile deepseek` or `codex --profile deepseek-thinking`, with the wrapper handling local dsproxy backend startup or refresh.
+
+## p2.10a21 installer wrapper help placement
+
+Prompt-specific explanatory text should be rendered by the menu renderer immediately under the prompt and before the global keybinding hint. Do not print prompt-specific help as a standalone line before invoking the menu, because it visually detaches the explanation from the question.

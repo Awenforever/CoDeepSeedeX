@@ -16,6 +16,12 @@
 
 
 
+
+## p2.10a21-installer-wrapper-help-placement
+
+- Moved the Codex wrapper explanatory line from above the wrapper question into the menu renderer.
+- The explanation now appears under `Install codex wrapper...` and before the global arrow-key hint.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a20-installer-secret-prompt-wrapper-help
 
 - Dimmed secret prompt helper text.

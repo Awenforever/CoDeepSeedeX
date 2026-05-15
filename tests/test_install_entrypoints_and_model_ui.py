@@ -470,3 +470,13 @@ def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "After installing, use codex --profile deepseek or codex --profile deepseek-thinking." in text
     assert "The wrapper starts or refreshes the local dsproxy backend automatically." in text
+
+
+def test_installer_menu_prints_detail_between_prompt_and_global_help() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    detail_line = "menu_tty_printf '  \\033[2m%s\\033[0m\\n' \"$CODEEPSEEDEX_NEXT_MENU_DETAIL\""
+    help_line = "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back."
+    assert "CODEEPSEEDEX_NEXT_MENU_DETAIL" in text
+    assert detail_line in text
+    assert text.index(detail_line) < text.index(help_line)
+    assert text.index("CODEEPSEEDEX_NEXT_MENU_DETAIL=\"After installing") < text.index("WRAPPER_CHOICE=\"$(read_yes_no_menu")

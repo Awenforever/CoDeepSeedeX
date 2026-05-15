@@ -706,6 +706,10 @@ read_menu_choice_from_tty() {
   width="$(menu_terminal_cols)"
 
   menu_tty_printf '\n\033[1m%s\033[0m\n' "$prompt"
+  if [ -n "${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}" ]; then
+    menu_tty_printf '  \033[2m%s\033[0m\n' "$CODEEPSEEDEX_NEXT_MENU_DETAIL"
+    CODEEPSEEDEX_NEXT_MENU_DETAIL=""
+  fi
   if [ "${CODEEPSEEDEX_MENU_HELP_SHOWN:-0}" != "1" ]; then
     menu_tty_printf '  \033[2mUse ↑/↓ or j/k to move, Enter to select, Backspace to go back.\033[0m\n'
     CODEEPSEEDEX_MENU_HELP_SHOWN=1
@@ -1823,6 +1827,7 @@ prompt_image_generation_api_key
 IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
 menu_print_separator
 printf '  \033[2mAfter installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically.\033[0m\n'
+CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically."
 WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
 case "$WRAPPER_CHOICE" in
