@@ -1884,7 +1884,7 @@ case "\$profile" in
     ;;
 esac
 
-exec "\$REAL_CODEX" "\$@"
+"\$REAL_CODEX" "\$@"
 EOF
 
   chmod +x "$wrapper_path"

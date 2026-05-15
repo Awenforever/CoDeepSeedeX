@@ -1051,7 +1051,7 @@ case "$profile" in
     ;;
 esac
 
-exec "$REAL_CODEX" "$@"
+"$REAL_CODEX" "$@"
 """
     wrapper = (
         wrapper_template

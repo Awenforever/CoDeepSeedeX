@@ -26,7 +26,7 @@
 - 当前公开pre-release：`v0.3.8-alpha`
 - 公开Release commit：`54d81ab`
 - Release内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a31-post-start-title-refresh`
+- 当前内部开发线：`p2.10a32-wrapper-foreground-codex`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -530,3 +530,10 @@ Codex wrapper不能只依赖Codex启动前的一次OSC标题更新，因为Codex
 不要在Codex启动前设置tab标题。Codex启动阶段可能把标题设置为工作目录，从而覆盖wrapper提前发出的OSC更新。wrapper应先准备对应dsproxy route，然后只在启动后安排有限次数的延迟OSC 0/2刷新。当前序列为8秒、4秒、8秒。
 
 wrapper必须保持真实Codex执行路径安静。后台任务中不要出现未定义helper名，否则交互式shell会打印类似`Exit 127`的作业退出提示。
+
+
+## p2.10a32 前台Codex wrapper用于延迟标题刷新
+
+wrapper必须在真实Codex进程启动期间保持自身存活。在Windows Terminal + WSL实测中，如果wrapper进程被真实Codex二进制替换，延迟OSC标题刷新不可靠。
+
+生成的wrapper应先准备匹配的dsproxy route，再安排有限次数的启动后OSC 0/2刷新序列，然后以前台命令运行真实Codex二进制。由于该命令是wrapper中的最后一条命令，真实Codex的返回状态会自然成为wrapper的返回状态。

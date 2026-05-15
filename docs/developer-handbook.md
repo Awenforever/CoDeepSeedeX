@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a31-post-start-title-refresh`
+- Current internal development line: `p2.10a32-wrapper-foreground-codex`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -562,3 +562,10 @@ The Codex wrapper should not rely on a single pre-Codex OSC title update. Codex 
 Do not set the Codex tab title before launching Codex. Codex may set the title to the working directory during startup and overwrite the wrapper's pre-start OSC update. The wrapper should first prepare the matching dsproxy route, then schedule a finite delayed OSC 0/2 refresh sequence after startup. The current sequence is 8 seconds, then 4 seconds, then 8 seconds.
 
 The wrapper must keep the real Codex execution path quiet. Avoid undefined helper names in background jobs because interactive shells print job-exit messages such as `Exit 127`.
+
+
+## p2.10a32 foreground Codex wrapper for delayed title refresh
+
+The wrapper must keep itself alive while the real Codex process starts. Replacing the wrapper process with the real Codex binary makes delayed OSC title refreshes unreliable in observed Windows Terminal + WSL sessions.
+
+The generated wrapper should prepare the matching dsproxy route, schedule the finite post-start OSC 0/2 refresh sequence, and then run the real Codex binary as the foreground command. Because that command is the final command in the wrapper, its return status naturally becomes the wrapper return status.

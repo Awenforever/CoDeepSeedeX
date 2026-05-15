@@ -2601,9 +2601,11 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
-    exec_idx = text.index('exec "$REAL_CODEX" "$@"', schedule_call_idx)
-    assert start_call_idx < schedule_call_idx < exec_idx
-    assert 'exec "$REAL_CODEX" "$@"' in text
+    real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
+    assert 'exec "$REAL_CODEX" "$@"' not in text
+    assert start_call_idx < schedule_call_idx < real_codex_idx
+    assert 'exec "$REAL_CODEX" "$@"' not in text
+    assert '"$REAL_CODEX" "$@"' in text
 
 
 def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):
@@ -2775,6 +2777,8 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
-    exec_idx = text.index('exec "$REAL_CODEX" "$@"', schedule_call_idx)
-    assert start_call_idx < schedule_call_idx < exec_idx
-    assert 'exec "$REAL_CODEX" "$@"' in text
+    real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
+    assert 'exec "$REAL_CODEX" "$@"' not in text
+    assert start_call_idx < schedule_call_idx < real_codex_idx
+    assert 'exec "$REAL_CODEX" "$@"' not in text
+    assert '"$REAL_CODEX" "$@"' in text

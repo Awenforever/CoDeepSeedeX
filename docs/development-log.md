@@ -1,5 +1,11 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a32-wrapper-foreground-codex
+
+- Changed generated Codex wrappers to keep the wrapper process alive while the real Codex binary starts.
+- The wrapper now prepares the matching dsproxy route, schedules the finite delayed OSC 0/2 title refresh sequence, and runs the real Codex binary as the final foreground command.
+- This preserves the real Codex return status naturally while giving the delayed title refresh process a reliable execution window.
+
 ## p2.10a31-post-start-title-refresh
 
 - Changed generated Codex wrappers to avoid setting the tab title before Codex startup.
