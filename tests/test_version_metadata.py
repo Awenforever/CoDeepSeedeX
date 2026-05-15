@@ -38,7 +38,7 @@ def test_public_runtime_version_matches_declared_release_tag() -> None:
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.10a17-installer-menu-render-layout-polish"
+    assert PROXY_INTERNAL_VERSION == "p2.10a18-installer-minimal-arrow-ui"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
@@ -80,3 +80,14 @@ def test_version_metadata_reports_public_release_and_head_commit() -> None:
     assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7
+
+
+def test_cli_version_output_uses_declared_internal_version() -> None:
+    result = subprocess.run(
+        [".venv/bin/python", "-m", "deepseek_responses_proxy.cli", "--version"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert f"internal version: {PROXY_INTERNAL_VERSION} |" in result.stdout

@@ -122,8 +122,8 @@ def _version_metadata() -> dict[str, str]:
         or "unknown"
     )
 
-    declared_internal_version = str(getattr(proxy_app, "PROXY_INTERNAL_VERSION", "unknown")).strip()
-    internal_version = _git_internal_tag_for_head(fallback=declared_internal_version)
+    declared_internal_version = str(PROXY_INTERNAL_VERSION).strip()
+    internal_version = declared_internal_version or "unknown"
     internal_commit = (
         runtime_head
         or str(getattr(proxy_app, "PROXY_INTERNAL_COMMIT", "")).strip()

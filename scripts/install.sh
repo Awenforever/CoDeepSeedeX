@@ -44,7 +44,7 @@ logo() {
                              |_|
 
 CODEEPSEEDEX_INSTALLER_LOGO_ART
-  printf '  CoDeepSeedeX %s\n' "${INSTALL_REF:-GitHub Latest}"
+  printf '  CoDeepSeedeX \033[1;35m%s\033[0m\n' "${INSTALL_REF:-GitHub Latest}"
   cat <<'CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE'
   Codex × DeepSeek local Responses proxy
 CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE
@@ -182,7 +182,8 @@ read_from_tty() {
   fi
 
   if [ -n "$default_value" ]; then
-    printf "%s [%s]: " "$prompt" "$default_value" > /dev/tty
+    printf "%s " "$prompt" > /dev/tty
+    printf '\033[2m[Enter keeps %s]\033[0m: ' "$default_value" > /dev/tty
   else
     printf "%s: " "$prompt" > /dev/tty
   fi
@@ -639,17 +640,23 @@ menu_render_option_line() {
   fi
 }
 
-menu_value_exists() {
-  local wanted="$1"
-  shift
+menu_back_value() {
   local option value _label _status
   for option in "$@"; do
     IFS='|' read -r value _label _status <<< "$option"
-    if [ "$value" = "$wanted" ]; then
+    if [ "$value" = "0" ]; then
+      printf '0\n'
       return 0
     fi
   done
-  return 1
+  for option in "$@"; do
+    IFS='|' read -r value _label _status <<< "$option"
+    if [ "$value" = "N" ]; then
+      printf 'N\n'
+      return 0
+    fi
+  done
+  printf '\n'
 }
 
 menu_print_separator() {
@@ -664,13 +671,13 @@ read_menu_choice_from_tty() {
   local count="${#options[@]}"
 
   if [ "$count" -eq 0 ]; then
-    read_from_tty "$prompt" "$default"
-    return $?
+    printf '%s\n' "$default"
+    return 0
   fi
 
   if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
-    read_from_tty "$prompt" "$default"
-    return $?
+    printf '%s\n' "$default"
+    return 0
   fi
 
   local selected=0
@@ -688,7 +695,7 @@ read_menu_choice_from_tty() {
 
   menu_tty_printf '\n\033[1m%s\033[0m\n' "$prompt"
   if [ "${CODEEPSEEDEX_MENU_HELP_SHOWN:-0}" != "1" ]; then
-    menu_tty_printf '  Use ↑/↓ or j/k, Enter to select. Press a listed number for a quick choice.\n'
+    menu_tty_printf '  \033[2mUse ↑/↓ or j/k to move, Enter to select, Backspace to go back.\033[0m\n'
     CODEEPSEEDEX_MENU_HELP_SHOWN=1
   fi
 
@@ -710,8 +717,8 @@ read_menu_choice_from_tty() {
     done
 
     IFS= read -rsn1 key < /dev/tty || {
-      read_from_tty "$prompt" "$default"
-      return $?
+      printf '%s\n' "$default"
+      return 0
     }
 
     case "$key" in
@@ -736,132 +743,18 @@ read_menu_choice_from_tty() {
       j|J)
         selected=$(( (selected + 1) % count ))
         ;;
-      [0-9])
-        if menu_value_exists "$key" "${options[@]}"; then
-          menu_tty_printf '\n'
-          printf '%s\n' "$key"
-          return 0
+      $'\x7f'|$'\b')
+        local back_value=""
+        back_value="$(menu_back_value "${options[@]}")"
+        menu_tty_printf '\n'
+        if [ -n "$back_value" ]; then
+          printf '%s\n' "$back_value"
+        else
+          printf '%s\n' "$default"
         fi
-        local rest=""
-        IFS= read -r rest < /dev/tty || rest=""
-        local typed="${key}${rest}"
-        typed="${typed%%$'\r'}"
-        typed="${typed%%$'\n'}"
-        menu_tty_printf '\n'
-        printf '%s\n' "$typed"
         return 0
         ;;
-      [A-Za-z_./:-])
-        local rest=""
-        IFS= read -r rest < /dev/tty || rest=""
-        local typed="${key}${rest}"
-        typed="${typed%%$'\r'}"
-        typed="${typed%%$'\n'}"
-        menu_tty_printf '\n'
-        printf '%s\n' "$typed"
-        return 0
-        ;;
-    esac
-  done
-}
-
-read_menu_choice_from_tty() {
-  local prompt="$1"
-  local default="${2:-}"
-  shift 2 || true
-  local options=("$@")
-  local count="${#options[@]}"
-
-  if [ "$count" -eq 0 ]; then
-    read_from_tty "$prompt" "$default"
-    return $?
-  fi
-
-  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
-    read_from_tty "$prompt" "$default"
-    return $?
-  fi
-
-  local selected=0
-  local i
-  for i in "${!options[@]}"; do
-    IFS='|' read -r value _label _status <<< "${options[$i]}"
-    if [ "$value" = "$default" ]; then
-      selected="$i"
-      break
-    fi
-  done
-
-  menu_tty_printf '%s\n' "$prompt"
-  menu_tty_printf '  Use ↑/↓ or j/k, Enter to select. Type a number/text for fallback.\n'
-  for ((i=0; i<count; i++)); do
-    menu_tty_printf '\n'
-  done
-
-  local key
-  while true; do
-    menu_tty_printf '\033[%sA' "$count"
-    for i in "${!options[@]}"; do
-      IFS='|' read -r value label status <<< "${options[$i]}"
-      menu_tty_printf '\033[2K'
-      if [ "$i" -eq "$selected" ]; then
-        menu_tty_printf '  \033[1;36m›\033[0m '
-      else
-        menu_tty_printf '    '
-      fi
-      if [ "$status" = "supported" ]; then
-        menu_tty_printf '\033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$value." "$label"
-      elif [ "$status" = "experimental" ]; then
-        menu_tty_printf '\033[1;35m%s\033[0m %s  \033[1;35mExperimental\033[0m\n' "$value." "$label"
-      elif [ "$status" = "custom" ]; then
-        menu_tty_printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
-      elif [ "$status" = "model unavailable" ]; then
-        menu_tty_printf '\033[2m%s %s  Model unavailable\033[0m\n' "$value." "$label"
-      elif [ "$status" = "plain" ]; then
-        menu_tty_printf '%s. %s\n' "$value" "$label"
-      elif [ "$status" = "skip" ]; then
-        menu_tty_printf '  %s. %s\n' "$value" "$label"
-      else
-        menu_tty_printf '\033[2m%s %s  Unsupported\033[0m\n' "$value." "$label"
-      fi
-    done
-
-    IFS= read -rsn1 key < /dev/tty || {
-      read_from_tty "$prompt" "$default"
-      return $?
-    }
-
-    case "$key" in
-      "")
-        IFS='|' read -r value _label _status <<< "${options[$selected]}"
-        menu_tty_printf '\n'
-        printf '%s\n' "$value"
-        return 0
-        ;;
-      $'\x1b')
-        local rest=""
-        IFS= read -rsn2 -t 0.15 rest < /dev/tty || true
-        case "$rest" in
-          "[A") selected=$(( (selected + count - 1) % count )) ;;
-          "[B") selected=$(( (selected + 1) % count )) ;;
-          *) ;;
-        esac
-        ;;
-      k|K)
-        selected=$(( (selected + count - 1) % count ))
-        ;;
-      j|J)
-        selected=$(( (selected + 1) % count ))
-        ;;
-      [0-9A-Za-z_./:-])
-        local rest=""
-        IFS= read -r rest < /dev/tty || rest=""
-        local typed="${key}${rest}"
-        typed="${typed%%$'\r'}"
-        typed="${typed%%$'\n'}"
-        menu_tty_printf '\n'
-        printf '%s\n' "$typed"
-        return 0
+      *)
         ;;
     esac
   done
@@ -1895,8 +1788,8 @@ step "Guided configuration"
 
 DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
 DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-STABLE_PORT="$(read_from_tty "Stable proxy port [press Enter to keep default]" "$DEFAULT_STABLE_PORT")"
-THINKING_PORT="$(read_from_tty "Thinking proxy port [press Enter to keep default]" "$DEFAULT_THINKING_PORT")"
+STABLE_PORT="$(read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT")"
+THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
 prompt_deepseek_api_key
 API_KEY="$PROMPTED_API_KEY"
 menu_print_separator

@@ -291,10 +291,10 @@ main() {
     warn "Bootstrap log: $INSTALL_LOG"
     return 1
   fi
-  ok "Python $(python_version_text "$selected_python") via $selected_python"
+  printf 'python: %s via %s\n' "$(python_version_text "$selected_python")" "$selected_python" >> "$INSTALL_LOG"
 
   download_installer
-  ok "Installer ready"
+  printf 'installer ready: %s\n' "$INSTALLER_PATH" >> "$INSTALL_LOG"
   printf 'installer source: %s\n' "${RESOLVED_INSTALLER_SOURCE:-unknown}" >> "$INSTALL_LOG"
   printf 'install ref: %s\n' "${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<GitHub Latest Release>}}" >> "$INSTALL_LOG"
 

@@ -64,3 +64,11 @@ def test_install_script_defaults_to_latest_release_ref() -> None:
     assert 'git checkout -B "$requested_ref" "origin/$requested_ref"' in text
     assert 'git checkout -f "$requested_ref"' in text
     assert 'git -C "$INSTALL_DIR" pull --ff-only' not in text
+
+
+def test_bootstrap_hides_duplicate_ready_messages() -> None:
+    text = (ROOT / "bootstrap.sh").read_text(encoding="utf-8") if "ROOT" in globals() else (REPO_ROOT / "bootstrap.sh").read_text(encoding="utf-8")
+    assert 'ok "Python $(python_version_text "$selected_python") via $selected_python"' not in text
+    assert 'ok "Installer ready"' not in text
+    assert "installer ready:" in text
+    assert "python:" in text

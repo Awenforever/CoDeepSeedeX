@@ -288,7 +288,7 @@ def test_installer_guided_provider_menus_use_arrow_selector() -> None:
     assert "read_yes_no_menu()" in text
     assert "menu_render_option_line()" in text
     assert "menu_truncate_line()" in text
-    assert "Use ↑/↓ or j/k, Enter to select. Press a listed number for a quick choice." in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
     assert 'family="$(read_menu_choice_from_tty "Select model provider family" "1"' in text
     assert 'endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1"' in text
     assert 'family="$(read_menu_choice_from_tty "Select image generation provider family" "1"' in text
@@ -357,7 +357,7 @@ def test_installer_arrow_menu_uses_dev_tty_when_stdout_is_logged() -> None:
     assert "[ ! -t 0 ]" not in menu_func
     assert "[ ! -t 1 ]" not in menu_func
     assert "printf \"$@\" > /dev/tty" in text
-    assert "Use ↑/↓ or j/k, Enter to select" in menu_func
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in menu_func
 
 
 def test_installer_source_logging_uses_install_log_variable() -> None:
@@ -371,7 +371,7 @@ def test_installer_source_logging_uses_install_log_variable() -> None:
 
 def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "printf \'  CoDeepSeedeX %s\\n\' \"${INSTALL_REF:-GitHub Latest}\"" in text
+    assert "printf \'  CoDeepSeedeX \\033[1;35m%s\\033[0m\\n\' \"${INSTALL_REF:-GitHub Latest}\"" in text
     assert '"Y|$yes_label|plain"' in text
     assert '"Y|$yes_label|supported"' not in text
     assert "Select model provider family" in text
@@ -393,7 +393,7 @@ def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
 def test_installer_logo_function_renders_without_backtick_substitution(tmp_path) -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "cat <<'CODEEPSEEDEX_INSTALLER_LOGO_ART'" in text
-    assert "printf '  CoDeepSeedeX %s\\n' \"${INSTALL_REF:-GitHub Latest}\"" in text
+    assert "printf '  CoDeepSeedeX \\033[1;35m%s\\033[0m\\n' \"${INSTALL_REF:-GitHub Latest}\"" in text
 
     start = text.index("logo() {")
     end = text.index("\nshow_version_source()", start) if "\nshow_version_source()" in text[start:] else text.index("\nrun_quiet()", start)
@@ -407,20 +407,39 @@ def test_installer_logo_function_renders_without_backtick_substitution(tmp_path)
         encoding="utf-8",
     )
     result = subprocess.run(["bash", str(script)], text=True, capture_output=True, timeout=20, check=True)
-    assert "CoDeepSeedeX v0.3.8-alpha" in result.stdout
+    assert "CoDeepSeedeX " in result.stdout
+    assert "v0.3.8-alpha" in result.stdout
+    assert "\x1b[1;35m" in result.stdout
     assert "Codex × DeepSeek local Responses proxy" in result.stdout
 
 
-def test_installer_menu_renderer_prevents_wrapping_and_supports_numeric_quick_choice() -> None:
+def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
+    assert text.count("read_menu_choice_from_tty() {") == 1
     assert "menu_terminal_cols()" in text
     assert "menu_truncate_line()" in text
     assert "menu_render_option_line()" in text
-    assert "menu_value_exists()" in text
-    assert "Press a listed number for a quick choice" in text
-    assert 'case "$key" in' in text
-    assert '[0-9])' in text
-    assert 'if menu_value_exists "$key" "${options[@]}"; then' in text
-    assert "CODEEPSEEDEX_MENU_HELP_SHOWN" in text
+    assert "menu_back_value()" in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
+    assert "Press a listed number for a quick choice" not in text
+    assert "Type a number/text for fallback" not in text
+    assert "menu_value_exists()" not in text
+    assert "[0-9])" not in text
+    assert "[0-9A-Za-z_./:-])" not in text
+    assert "$'\\x7f'|$'\\b')" in text
     assert "\\033[7;1m%s\\033[0m" in text
     assert "menu_print_separator" in text
+
+
+
+def test_installer_port_prompts_use_dim_default_hint() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT"' in text
+    assert 'read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT"' in text
+    assert "press Enter to keep default" not in text
+    assert "\\033[2m[Enter keeps %s]\\033[0m: " in text
+
+
+def test_installer_logo_colors_version() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "CoDeepSeedeX \\033[1;35m%s\\033[0m" in text

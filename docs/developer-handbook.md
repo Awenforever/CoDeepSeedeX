@@ -458,3 +458,11 @@ ASCII art in shell scripts must use quoted heredocs when it contains backticks, 
 ## p2.10a17 installer menu rendering
 
 Arrow-key menus must not rely on long raw lines wrapping correctly. Render each option as one terminal-width bounded row, truncate before printing, and use a full-row highlight for the selected item. Numeric shortcuts for listed option values should return immediately, including `0` for skip/back. The global menu help hint should appear once per installer run, and guided configuration blocks should be visually separated.
+
+## p2.10a18 installer minimal arrow UI
+
+Installer menus must have exactly one active `read_menu_choice_from_tty()` implementation. Do not leave duplicate shell function definitions because Bash will use the later definition and silently override the intended renderer. The guided installer menu is arrow-only: use `↑/↓` or `j/k`, `Enter` to select, and `Backspace` to go back or skip. Do not advertise or implement numeric/text fallback for TTY menus. Dim helper text and default-value hints, and keep bootstrap prerequisite checks in logs when the install script repeats equivalent checks.
+
+## p2.10a18 CLI version metadata source
+
+CLI version metadata must use constants imported from `deepseek_responses_proxy.app` directly. Declared internal version wins over any existing p-tag on HEAD. Do not read version metadata through `from deepseek_responses_proxy import app`, because the package-level `app` name can refer to the FastAPI application object and not the `deepseek_responses_proxy.app` module. If that happens, the CLI can silently fall back to git tag inference and report the previous internal tag while source tests still pass.

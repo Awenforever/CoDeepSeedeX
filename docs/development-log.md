@@ -13,6 +13,28 @@
 
 
 
+
+## p2.10a18-installer-minimal-arrow-ui
+
+- Removed the duplicate old `read_menu_choice_from_tty()` definition that overrode the p2.10a17 renderer.
+- Removed numeric/text fallback from TTY menus.
+- Kept only ↑/↓ or j/k movement, Enter selection, and Backspace back/skip behavior.
+- Dimmed menu helper text and input default hints.
+- Colored the installer logo version.
+- Hid duplicate bootstrap Python and installer-ready messages from the visible UI.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
+
+### CLI version metadata source guard
+
+- Fixed the p2.10a18 finalization blocker where `app.py` declared the new internal version but `dsproxy --version` still reported the previous internal tag.
+- Root cause: CLI version metadata was reading `proxy_app.PROXY_INTERNAL_VERSION`; the package-level `app` name can resolve to the FastAPI object rather than the `deepseek_responses_proxy.app` module.
+- Added a test requiring CLI output to include the declared `PROXY_INTERNAL_VERSION`.
+
+### Declared internal version precedence
+
+- Finalized the p2.10a18 CLI version source fix by making the declared `PROXY_INTERNAL_VERSION` win over any existing `p*` tag on the current HEAD.
+- This prevents a pre-tag finalization build from reporting the previous internal tag before the new p-tag is created.
+
 ## p2.10a17-installer-menu-render-layout-polish
 
 - Reworked installer arrow-menu row rendering to truncate to terminal width and avoid wrapped-line residue.

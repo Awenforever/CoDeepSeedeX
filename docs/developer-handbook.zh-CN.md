@@ -420,3 +420,11 @@ Shell脚本中的ASCII art如果包含反引号、反斜线或美元符号，必
 ## p2.10a17安装器菜单渲染
 
 方向键菜单不能依赖长原始文本在终端中正确换行。每个选项都应渲染为受终端宽度限制的一行，打印前先截断，并对选中项使用整行高亮。列表中存在的数字快捷键应立即返回，包括用于跳过或返回的`0`。全局菜单帮助提示每次安装只显示一次，引导配置块之间应有明显视觉分隔。
+
+## p2.10a18极简方向键安装器UI
+
+安装器菜单必须只有一个实际生效的`read_menu_choice_from_tty()`实现。不要留下重复shell函数定义，因为Bash会使用后定义版本并静默覆盖预期渲染器。引导式安装菜单只使用方向键：`↑/↓`或`j/k`移动，`Enter`确认，`Backspace`返回或跳过。TTY菜单不再宣传或实现数字/text fallback。辅助提示和默认值提示应使用淡色，bootstrap中与安装器重复的依赖检查结果应写入日志，不再在可见界面重复打印。
+
+## p2.10a18 CLI版本元数据来源
+
+CLI版本元数据必须直接使用从`deepseek_responses_proxy.app`导入的常量。声明的内部版本优先于HEAD上已有的p-tag。不要通过`from deepseek_responses_proxy import app`读取版本元数据，因为包级`app`名称可能指向FastAPI应用对象，而不是`deepseek_responses_proxy.app`模块。否则CLI可能静默回退到git tag推断，导致源码测试通过但CLI仍显示上一内部tag。
