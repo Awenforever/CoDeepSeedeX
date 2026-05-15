@@ -482,3 +482,7 @@ Prompt-specific explanatory text should be rendered by the menu renderer immedia
 ## p2.10a22 installer port label and effort surface
 
 Installer UI should call the 8000 profile `Non-Thinking`, not `Stable`, because the user-facing concept is the DeepSeek thinking mode rather than release stability. CoDeepSeedeX-owned profile install and upgrade paths should not write `medium` for DeepSeek profiles. `low` and `medium` remain accepted compatibility inputs from Codex or older commands and are normalized to DeepSeek `high`.
+
+## p2.10a23 installer runtime call coverage
+
+Installer tests must not only assert that a call string exists; they must also assert the called shell function is defined before use. Runtime-only branches such as image API validation can pass `bash -n` while still failing with `command not found`. Pre-release install tests may rebuild and move the same public alpha tag repeatedly, so installer checkout refresh should use force tag fetches for managed install directories instead of failing on `would clobber existing tag`.

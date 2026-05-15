@@ -18,6 +18,13 @@
 
 
 
+
+## p2.10a23-installer-image-validation-tag-fetch
+
+- Added the missing `test_image_api_key()` shell function used by the guided image generation API configuration flow.
+- Added installer test coverage that verifies project-like shell calls are defined before use.
+- Changed installer tag refresh commands to `git fetch --tags --force origin` to support repeatedly rebuilt pre-release tags such as `v0.3.8-alpha`.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a22-port-label-effort-surface
 
 - Renamed the guided installer prompt from `Stable proxy port` to `Non-Thinking proxy port`.

@@ -502,6 +502,141 @@ PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
 }
 
 
+test_image_api_key() {
+  local provider="$1"
+  local api_key="$2"
+  if [ -z "$provider" ] || [ -z "$api_key" ]; then
+    return 1
+  fi
+
+  local result
+  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+provider = sys.argv[1].strip().lower().replace("-", "_")
+api_key = sys.argv[2]
+
+def canonical_provider(value):
+    aliases = {
+        "glm": "zai",
+        "z_ai": "zai",
+        "zai": "zai",
+        "zhipuai": "zhipu",
+        "bigmodel": "zhipu",
+        "zhipu": "zhipu",
+        "qwen": "qwen_image",
+        "qwen_image": "qwen_image",
+        "qwen_image_beijing": "qwen_image",
+        "qwen_image_singapore": "qwen_image_singapore",
+        "qwen_image_us": "qwen_image_us",
+        "qwen_image_de": "qwen_image_de",
+        "stability_ai": "stability",
+        "stable_image": "stability",
+        "stability": "stability",
+        "fal_ai": "fal",
+        "fal": "fal",
+    }
+    return aliases.get(value, value)
+
+def has_provider_error_body(raw):
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("error"), dict) and data["error"]:
+        return True
+    if isinstance(data.get("error"), str) and data["error"]:
+        return True
+    if isinstance(data.get("message"), str) and data["message"]:
+        return True
+    if isinstance(data.get("code"), (str, int)):
+        return True
+    return False
+
+provider = canonical_provider(provider)
+
+image_specs = {
+    "zhipu": (
+        "https://open.bigmodel.cn/api/paas/v4/images/generations",
+        "POST",
+        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        b'{}',
+        (400, 422), True,
+    ),
+    "zai": (
+        "https://api.z.ai/api/paas/v4/images/generations",
+        "POST",
+        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        b'{}',
+        (400, 422), True,
+    ),
+    "qwen_image": (
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "POST",
+        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        b'{}',
+        (400, 422), True,
+    ),
+    "qwen_image_singapore": (
+        "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        "POST",
+        {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        b'{}',
+        (400, 422), True,
+    ),
+    "stability": (
+        "https://api.stability.ai/v1/user/balance",
+        "GET",
+        {"Authorization": "Bearer " + api_key, "Accept": "application/json"},
+        None,
+        (200,), False,
+    ),
+    "fal": (
+        "https://api.fal.ai/v1/models",
+        "GET",
+        {"Authorization": "Key " + api_key, "Accept": "application/json"},
+        None,
+        (200,), False,
+    ),
+}
+
+if provider in {"qwen_image_us", "qwen_image_de"}:
+    print("bad")
+    raise SystemExit(0)
+
+spec = image_specs.get(provider)
+if spec is None:
+    print("bad")
+    raise SystemExit(0)
+
+url, method, headers, payload, ok_statuses, require_provider_error_body = spec
+request = urllib.request.Request(url, data=payload, headers=headers, method=method)
+
+try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
+        print("ok" if int(response.status) in ok_statuses else "bad")
+except urllib.error.HTTPError as exc:
+    raw = exc.read()
+    if int(exc.code) in ok_statuses:
+        if require_provider_error_body:
+            print("ok" if has_provider_error_body(raw) else "bad")
+        else:
+            print("ok")
+    else:
+        print("bad")
+except Exception:
+    print("bad")
+PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3
+)"
+  [ "$result" = "ok" ]
+}
+
 model_api_base_url() {
   local provider="$1"
   case "$provider" in
@@ -1858,7 +1993,7 @@ sync_install_checkout_to_ref() {
   (
     cd "$INSTALL_DIR"
 
-    git fetch --tags origin >> "$INSTALL_LOG" 2>&1 || return 1
+    git fetch --tags --force origin >> "$INSTALL_LOG" 2>&1 || return 1
 
     local untracked_count
     untracked_count="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
@@ -1966,7 +2101,7 @@ prepare_install_checkout() {
   local target_ref="$1"
 
   if [ -d "$INSTALL_DIR/.git" ]; then
-    if run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin; then
+    if run_git_quiet "Repository tags fetched" "git fetch --tags --force origin" git -C "$INSTALL_DIR" fetch --tags origin; then
       return 0
     fi
     warn "Git fetch failed. Trying source archive fallback for $target_ref."
@@ -1976,7 +2111,7 @@ prepare_install_checkout() {
 
   run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
   if run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR" &&
-     run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin; then
+     run_git_quiet "Repository tags fetched" "git fetch --tags --force origin" git -C "$INSTALL_DIR" fetch --tags origin; then
     return 0
   fi
 

@@ -127,7 +127,8 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
 def test_installer_validates_web_and_image_provider_keys_before_saving() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "test_web_search_api_key()" in text
-    assert "test_image_api_key()" in text or "test_image_generation_api_key()" in text
+    assert "test_image_api_key() {" in text
+    assert "if test_image_api_key \"$PROMPTED_IMAGE_PROVIDER\" \"$candidate\"; then" in text
     assert "Web search API key validated for provider" in text
     assert "Image generation API key accepted by non-generating validation for provider" in text
     assert "Received ${#candidate} characters" in text
@@ -211,7 +212,8 @@ def test_installer_sync_checkout_logging_uses_defined_shell_command() -> None:
 def test_installer_syncs_installed_checkout_before_editable_install() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "sync_install_checkout_to_ref()" in text
-    assert 'git fetch --tags origin' in text
+    assert "git fetch --tags --force origin" in text
+    assert "git fetch --tags origin" not in text
     assert 'installed-checkout-dirty-$(date +%Y%m%d_%H%M%S).patch' in text
     assert 'installed-checkout-untracked-$(date +%Y%m%d_%H%M%S).tar.gz' in text
     assert 'git checkout -B "$requested_ref" "origin/$requested_ref"' in text
@@ -497,3 +499,47 @@ def test_cli_upgrade_reinstalls_deepseek_profile_with_high_effort() -> None:
     assert '"--reasoning-effort",' in block
     assert '"high",' in block
     assert '"medium",' not in block
+
+
+def test_installer_project_like_shell_calls_are_defined() -> None:
+    import re
+
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    defined = set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\(\) \{", text, flags=re.MULTILINE))
+    prefixes = ("test_", "prompt_", "read_", "download_", "prepare_", "sync_", "write_", "ensure_", "is_")
+    ignored = {"test"}
+    missing = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^(?:if|while|until)\s+([A-Za-z_][A-Za-z0-9_]*)\b", line)
+        if not match:
+            continue
+        name = match.group(1)
+        if name in ignored:
+            continue
+        if name.startswith(prefixes) and name not in defined:
+            missing.append(name)
+
+    assert "test_image_api_key" in defined
+    assert not sorted(set(missing))
+
+def test_installer_uses_force_tag_fetch_for_moved_prerelease_tags() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "git fetch --tags --force origin" in text
+    assert "git fetch --tags origin" not in text
+
+
+def test_installer_image_validation_function_is_defined_before_prompt_use() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    definition = text.index("test_image_api_key() {")
+    prompt = text.index("prompt_image_generation_api_key() {")
+    call = text.index('if test_image_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then')
+    assert definition < prompt < call
+    assert "PYCODEEPSEEDEX_INSTALL_IMAGE_VALIDATION_P28A3" in text
+    assert "has_provider_error_body" in text
+    assert "(400, 422), True" in text
+    assert "api.stability.ai/v1/user/balance" in text
+    assert "api.fal.ai/v1/models" in text
