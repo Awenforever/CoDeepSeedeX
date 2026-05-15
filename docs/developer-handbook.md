@@ -434,3 +434,11 @@ Policy statement: API connectivity is not equivalent to full Codex workflow supp
 ## p2.10a12 bootstrap install-ref source banner
 
 Fresh VM pre-release installation must not rely on GitHub Latest. When `bootstrap.sh --install-ref <tag>` or `DEEPSEEK_PROXY_INSTALL_REF=<tag>` is set, bootstrap must first download `https://github.com/Awenforever/CoDeepSeedeX/releases/download/<tag>/install.sh`, then fall back to raw/tag clone paths only if needed. Bootstrap and install screens must display source information under the banner so operators can tell whether they are running Latest, a specific release tag, or a local checkout.
+
+## p2.10a13 installer UI compaction
+
+Interactive installer screens should avoid printing full release asset URLs under the logo. Keep the visible UI compact: show the product name and public version near the banner, and write bootstrap/installer source details to logs. Arrow-key menus must render to and read from `/dev/tty`, not stdout, because stdout is often captured by tee/log wrappers during VM validation.
+
+## p2.10a13 public commit resolution
+
+Runtime public commit metadata should resolve the configured public Release tag when Git metadata is available, instead of requiring a static self-referential commit hash in source. This avoids repeated test churn when a pre-release tag is rebuilt to a new commit. The fallback remains in source for non-Git installations.

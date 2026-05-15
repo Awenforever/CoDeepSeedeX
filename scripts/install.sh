@@ -555,6 +555,10 @@ PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4
   [ "$result" = "ok" ]
 }
 
+menu_tty_printf() {
+  printf "$@" > /dev/tty
+}
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -567,7 +571,7 @@ read_menu_choice_from_tty() {
     return $?
   fi
 
-  if [ ! -t 0 ] || [ ! -t 1 ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
+  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
     read_from_tty "$prompt" "$default"
     return $?
   fi
@@ -582,35 +586,35 @@ read_menu_choice_from_tty() {
     fi
   done
 
-  printf '%s\n' "$prompt"
-  printf '  Use ↑/↓ or j/k, Enter to select. Type a number/text for fallback.\n'
+  menu_tty_printf '%s\n' "$prompt"
+  menu_tty_printf '  Use ↑/↓ or j/k, Enter to select. Type a number/text for fallback.\n'
   for ((i=0; i<count; i++)); do
-    printf '\n'
+    menu_tty_printf '\n'
   done
 
   local key
   while true; do
-    printf '\033[%sA' "$count"
+    menu_tty_printf '\033[%sA' "$count"
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
-      printf '\033[2K'
+      menu_tty_printf '\033[2K'
       if [ "$i" -eq "$selected" ]; then
-        printf '  \033[1;36m›\033[0m '
+        menu_tty_printf '  \033[1;36m›\033[0m '
       else
-        printf '    '
+        menu_tty_printf '    '
       fi
       if [ "$status" = "supported" ]; then
-        printf '\033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$value." "$label"
+        menu_tty_printf '\033[1;32m%s\033[0m %s  \033[1;32mSupported\033[0m\n' "$value." "$label"
       elif [ "$status" = "experimental" ]; then
-        printf '\033[1;35m%s\033[0m %s  \033[1;35mExperimental\033[0m\n' "$value." "$label"
+        menu_tty_printf '\033[1;35m%s\033[0m %s  \033[1;35mExperimental\033[0m\n' "$value." "$label"
       elif [ "$status" = "custom" ]; then
-        printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
+        menu_tty_printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
       elif [ "$status" = "model unavailable" ]; then
-        printf '\033[2m%s %s  Model unavailable\033[0m\n' "$value." "$label"
+        menu_tty_printf '\033[2m%s %s  Model unavailable\033[0m\n' "$value." "$label"
       elif [ "$status" = "skip" ]; then
-        printf '  %s. %s\n' "$value" "$label"
+        menu_tty_printf '  %s. %s\n' "$value" "$label"
       else
-        printf '\033[2m%s %s  Unsupported\033[0m\n' "$value." "$label"
+        menu_tty_printf '\033[2m%s %s  Unsupported\033[0m\n' "$value." "$label"
       fi
     done
 
@@ -622,7 +626,7 @@ read_menu_choice_from_tty() {
     case "$key" in
       "")
         IFS='|' read -r value _label _status <<< "${options[$selected]}"
-        printf '\n'
+        menu_tty_printf '\n'
         printf '%s\n' "$value"
         return 0
         ;;
@@ -647,7 +651,7 @@ read_menu_choice_from_tty() {
         local typed="${key}${rest}"
         typed="${typed%%$'\r'}"
         typed="${typed%%$'\n'}"
-        printf '\n'
+        menu_tty_printf '\n'
         printf '%s\n' "$typed"
         return 0
         ;;
@@ -1595,7 +1599,9 @@ if [ "$UNINSTALL" = "1" ]; then
 fi
 
 logo
-show_version_source
+printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$LOG_FILE"
+printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$LOG_FILE"
+printf 'Repository source: %s\n' "$REPO_URL" >> "$LOG_FILE"
 
 divider
 section_title "Setup plan"

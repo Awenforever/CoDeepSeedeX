@@ -396,3 +396,11 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 ## p2.10a12 bootstrap install-ref来源显示
 
 全新VM上的pre-release安装不能依赖GitHub Latest。当设置`bootstrap.sh --install-ref <tag>`或`DEEPSEEK_PROXY_INSTALL_REF=<tag>`时，bootstrap必须优先下载`https://github.com/Awenforever/CoDeepSeedeX/releases/download/<tag>/install.sh`，只有失败后才进入raw/tag clone fallback。Bootstrap和install界面必须在banner下显示来源信息，便于操作者确认当前运行的是Latest、指定Release tag还是本地checkout。
+
+## p2.10a13安装器UI压缩
+
+交互式安装界面不要在Logo下打印完整Release资产URL。可见UI应保持紧凑：banner附近只显示产品名和公开版本，bootstrap/installer来源详情写入日志。方向键菜单必须通过`/dev/tty`渲染和读取，不能依赖stdout，因为VM验证时stdout经常会被tee或日志包装捕获。
+
+## p2.10a13公开commit解析
+
+运行时public commit元数据在存在Git信息时应解析配置的公开Release tag，而不是在源码中维护自指向的静态commit hash。这样可以避免pre-release tag重建到新commit后反复修改测试。非Git安装场景仍保留源码fallback。

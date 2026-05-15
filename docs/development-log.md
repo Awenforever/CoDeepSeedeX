@@ -8,6 +8,13 @@
 
 
 
+
+## p2.10a13-installer-tty-menu-ui-polish
+
+- Removed verbose source URL display from interactive bootstrap/install screens.
+- Kept source information in logs.
+- Routed installer arrow menus through `/dev/tty` so they still work when stdout is captured.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a12-bootstrap-install-ref-source-banner
 
 - Fixed bootstrap `--install-ref` handling so pre-release fresh VM installs download the matching release asset `install.sh` first instead of GitHub Latest.

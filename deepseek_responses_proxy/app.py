@@ -15,12 +15,37 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+import subprocess
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.3.8-alpha"
-PROXY_PUBLIC_COMMIT = "7a90d95"
-PROXY_INTERNAL_VERSION = "p2.10a12-bootstrap-install-ref-source-banner"
+def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        f"{public_version}^{{}}",
+        public_version,
+        "HEAD",
+    ]
+    for candidate in candidates:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", candidate],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                timeout=2,
+            )
+        except Exception:
+            continue
+        value = result.stdout.strip()
+        if result.returncode == 0 and value:
+            return value
+    return fallback
+
+
+PROXY_PUBLIC_COMMIT = _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "7a90d95")
+PROXY_INTERNAL_VERSION = "p2.10a13-installer-tty-menu-ui-polish"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

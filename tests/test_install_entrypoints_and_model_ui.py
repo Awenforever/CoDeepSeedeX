@@ -318,11 +318,24 @@ def test_bootstrap_install_ref_uses_release_asset_installer_url(tmp_path) -> Non
     assert "would pass DEEPSEEK_PROXY_INSTALLER_SOURCE=https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/install.sh" in output
 
 
-def test_installer_prints_version_source_under_logo() -> None:
+def test_installer_logs_source_without_verbose_visible_source_block() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "show_version_source()" in text
+    assert "show_version_source\n\n" not in text
+    assert ">> \"$LOG_FILE\"" in text
     assert 'sub_title "Version source"' in text
-    assert "Install ref:" in text
-    assert "Installer source:" in text
-    assert "Repository source:" in text
-    assert "show_version_source" in text
+
+
+def test_installer_arrow_menu_uses_dev_tty_when_stdout_is_logged() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start = text.index("read_menu_choice_from_tty() {")
+    end = text.index("\nread_yes_no_menu()", start)
+    menu_func = text[start:end]
+
+    assert "menu_tty_printf()" in text
+    assert "[ ! -r /dev/tty ]" in menu_func
+    assert "[ ! -w /dev/tty ]" in menu_func
+    assert "[ ! -t 0 ]" not in menu_func
+    assert "[ ! -t 1 ]" not in menu_func
+    assert "printf \"$@\" > /dev/tty" in text
+    assert "Use ↑/↓ or j/k, Enter to select" in menu_func

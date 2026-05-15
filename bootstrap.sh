@@ -265,8 +265,8 @@ download_installer() {
 main() {
   color "1;36" "CoDeepSeedeX bootstrap"
   printf '  log: %s\n' "$INSTALL_LOG"
-  printf '  bootstrap source: %s\n' "${DEEPSEEK_PROXY_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}"
-  printf '  requested install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}"
+  printf 'bootstrap source: %s\n' "${DEEPSEEK_PROXY_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}" >> "$INSTALL_LOG"
+  printf 'requested install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 
   if [ "$HELP_REQUESTED" = "1" ]; then
     return 0
@@ -295,8 +295,8 @@ main() {
 
   download_installer
   ok "Installer ready"
-  printf '  installer source: %s\n' "${RESOLVED_INSTALLER_SOURCE:-unknown}"
-  printf '  install ref: %s\n' "${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<GitHub Latest Release>}}"
+  printf 'installer source: %s\n' "${RESOLVED_INSTALLER_SOURCE:-unknown}" >> "$INSTALL_LOG"
+  printf 'install ref: %s\n' "${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<GitHub Latest Release>}}" >> "$INSTALL_LOG"
 
   if [ "$DRY_RUN" = "1" ]; then
     warn "dry-run: would run install.sh with DEEPSEEK_PROXY_PYTHON_BIN=$selected_python"

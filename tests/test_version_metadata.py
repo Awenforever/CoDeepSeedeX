@@ -16,15 +16,29 @@ from deepseek_responses_proxy.cli import _format_version_metadata, _version_meta
 ROOT = Path(__file__).resolve().parents[1]
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _expected_public_commit() -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--short", "v0.3.8-alpha^{}"],
+        cwd=PROJECT_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=True,
+    )
+    return result.stdout.strip()
+
 def test_public_runtime_version_matches_declared_release_tag() -> None:
     assert PROXY_PUBLIC_VERSION == "v0.3.8-alpha"
-    assert PROXY_PUBLIC_COMMIT == "7a90d95"
+    assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.10a12-bootstrap-install-ref-source-banner"
+    assert PROXY_INTERNAL_VERSION == "p2.10a13-installer-tty-menu-ui-polish"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
@@ -63,6 +77,6 @@ def test_version_metadata_formatter_shape() -> None:
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
     assert data["public_version"] == "v0.3.8-alpha"
-    assert data["public_commit"] == "7a90d95"
+    assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7

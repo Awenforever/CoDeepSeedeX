@@ -247,6 +247,8 @@ Release notes must mention milestone behavior changes, but the README also keeps
 
 
 
+
+| unreleased / p2.10a13 | Installer UI compaction and TTY menu routing | Bootstrap/install screens printed full source URLs and arrow menus fell back when stdout was captured by logs. | Interactive screens now keep only the compact version label near the logo, write source details to logs, and render arrow menus through `/dev/tty`. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 | unreleased / p2.10a12 | Bootstrap install-ref release asset resolution | `bootstrap.sh --install-ref v0.3.8-alpha` still downloaded the Latest `install.sh` first, so pre-release fresh VM tests could enter an older installer. | Bootstrap now consumes `--install-ref`, prefers the matching release-asset `install.sh`, and prints bootstrap/installer source information under the banner. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 | unreleased / p2.10a11 | Model provider support labels | Non-DeepSeek model providers were labeled Supported even though only API connectivity had been verified. | Only DeepSeek remains Supported. Kimi, Zhipu / BigModel, Z.AI, and Qwen / DashScope model providers are now labeled Experimental until full Codex workflow validation passes. | This is a classification and UX correction only. |
 | unreleased / p2.10a10 | Installer provider selection UI | Installer provider menus relied on number input and some image-provider hints still used generic Qwen names. | Guided installer menus now prefer arrow-key selection with numeric/text fallback, and image-provider hints use explicit Qwen region names. | This changes installer UX only; no Release tag is moved. |
