@@ -2,7 +2,7 @@
 
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
-## p2.10a28-dsproxy-weclaw-profile-contract
+## p2.10a29-weclaw-runtime-contract-unification
 
 - Scope: make dsproxy the owner of Codex profile effort semantics and expose machine-readable profile/status skeletons for WeClaw.
 - Root cause: `config set-effort` wrote the same canonical DeepSeek effort into `DEEPSEEK_REASONING_EFFORT` and Codex `model_reasoning_effort`, allowing `max` to enter Codex config.

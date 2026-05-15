@@ -730,6 +730,348 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
     }
 
 
+
+def _env_value_truthy(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def _int_or_zero(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _profile_model_contract(profile_section: dict[str, str], env_values: dict[str, str]) -> dict[str, object]:
+    codex_model = profile_section.get("model")
+    env_model = env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL")
+    force_model_enabled = _env_value_truthy(
+        env_values.get("DEEPSEEK_PROXY_FORCE_MODEL", os.environ.get("DEEPSEEK_PROXY_FORCE_MODEL"))
+    )
+
+    if force_model_enabled and env_model:
+        effective_model = env_model
+        source = "dsproxy_env.DEEPSEEK_PROXY_MODEL_forced"
+    elif codex_model:
+        effective_model = codex_model
+        source = "codex_profile.model"
+    elif env_model:
+        effective_model = env_model
+        source = "dsproxy_env.DEEPSEEK_PROXY_MODEL"
+    else:
+        effective_model = "unknown"
+        source = "unknown"
+
+    upstream_model = effective_model if effective_model != "unknown" else env_model
+    model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
+
+    return {
+        "provider": env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek",
+        "model": effective_model,
+        "display_model": effective_model,
+        "weclaw_display_model": effective_model,
+        "requested_model": codex_model,
+        "codex_model": codex_model,
+        "upstream_model": upstream_model,
+        "effective_model": effective_model,
+        "force_model_enabled": force_model_enabled,
+        "model_conflict": model_conflict,
+        "source": source,
+        "notes": (
+            [
+                "Codex profile model differs from the effective upstream model. WeClaw should display effective_model and may show codex_model as a conflict detail."
+            ]
+            if model_conflict
+            else []
+        ),
+    }
+
+
+def _profile_context_contract(profile_section: dict[str, str]) -> dict[str, object]:
+    model_context_window = _int_or_zero(profile_section.get("model_context_window"))
+    auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+
+    return {
+        "display_limit_tokens": effective_safe_window,
+        "model_context_window_tokens": model_context_window,
+        "auto_compact_token_limit": auto_compact_token_limit,
+        "effective_safe_window_tokens": effective_safe_window,
+        "source": "codex_profile.model_auto_compact_token_limit",
+        "is_estimated": False,
+        "codex_profile": {
+            "model_context_window_tokens": model_context_window,
+            "auto_compact_token_limit": auto_compact_token_limit,
+            "unit": "tokens",
+            "source": "codex_config.profiles.<profile>",
+        },
+        "model_catalog": {
+            "available": False,
+            "source": "not_bound_to_weclaw_contract_yet",
+        },
+        "runtime": {
+            "available": False,
+            "unit": "chars",
+            "source": "not_queried",
+        },
+        "effective_display": {
+            "limit_tokens": effective_safe_window,
+            "source": "codex_profile.model_auto_compact_token_limit",
+            "is_estimated": False,
+        },
+        "conflicts": [],
+        "notes": [
+            "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
+        ],
+    }
+
+
+def _merge_runtime_context_contract(context_window: dict[str, object], runtime_status: dict[str, object] | None) -> dict[str, object]:
+    merged = dict(context_window)
+    if not isinstance(runtime_status, dict):
+        merged["runtime"] = {
+            "available": False,
+            "unit": "chars",
+            "source": "http_status_unavailable",
+        }
+        return merged
+
+    runtime_context = runtime_status.get("context")
+    semantic_compaction = runtime_status.get("semantic_compaction")
+    if not isinstance(runtime_context, dict):
+        runtime_context = {}
+
+    merged["runtime"] = {
+        "available": bool(runtime_context),
+        "unit": "chars",
+        "source": "dsproxy_runtime./v1/proxy/status.context",
+        "context": runtime_context,
+        "semantic_compaction": semantic_compaction if isinstance(semantic_compaction, dict) else None,
+    }
+    merged["runtime_compaction"] = runtime_context.get("compaction") if isinstance(runtime_context, dict) else None
+    merged["runtime_trimming"] = runtime_context.get("trimming") if isinstance(runtime_context, dict) else None
+    return merged
+
+
+def _manifest_path_from_args(args: argparse.Namespace) -> Path:
+    explicit = getattr(args, "manifest", None)
+    if explicit:
+        return Path(explicit).expanduser()
+    return default_env_file_path().parent / "install-manifest.env"
+
+
+def _read_manifest_exports(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        raw_value = raw_value.strip()
+        try:
+            parsed = shlex.split(raw_value)
+            value = parsed[0] if parsed else ""
+        except ValueError:
+            value = raw_value.strip('"').strip("'")
+        values[key] = value
+    return values
+
+
+def _shell_quote(value: object) -> str:
+    return shlex.quote(str(value or ""))
+
+
+def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict[str, object]:
+    manifest_path = _manifest_path_from_args(args)
+    values = _read_manifest_exports(manifest_path)
+    wrapper_path = Path(values.get("CODEX_WRAPPER_PATH") or (Path.home() / ".local" / "bin" / "codex")).expanduser()
+    backup_path = values.get("CODEX_WRAPPER_BACKUP", "")
+    real_codex = values.get("REAL_CODEX", "")
+    env_file = values.get("ENV_FILE") or str(default_env_file_path())
+    install_dir = values.get("INSTALL_DIR") or str(Path.home() / ".local" / "share" / "deepseek-responses-proxy")
+    bin_dir = values.get("BIN_DIR") or str(wrapper_path.parent)
+
+    result: dict[str, object] = {
+        "status": "ok",
+        "manifest": str(manifest_path),
+        "wrapper_path": str(wrapper_path),
+        "real_codex": real_codex,
+        "env_file": env_file,
+        "install_dir": install_dir,
+        "bin_dir": bin_dir,
+        "refreshed": False,
+        "backup": None,
+    }
+
+    if not real_codex:
+        result.update({"status": "error", "error": "manifest_missing_REAL_CODEX"})
+        return result
+    if not Path(real_codex).expanduser().exists():
+        result.update({"status": "error", "error": "real_codex_missing"})
+        return result
+
+    existing = wrapper_path.read_text(encoding="utf-8", errors="replace") if wrapper_path.exists() else ""
+    is_managed = "CoDeepSeedeX codex wrapper" in existing
+    if wrapper_path.exists() and not is_managed and not bool(getattr(args, "force", False)):
+        result.update({
+            "status": "error",
+            "error": "unknown_existing_codex_wrapper",
+            "hint": "Refusing to overwrite a non-CoDeepSeedeX codex command without --force.",
+        })
+        return result
+
+    if wrapper_path.exists() and not is_managed:
+        backup = wrapper_path.with_name(wrapper_path.name + f".codeepseedex.bak.{int(time.time())}")
+        shutil.move(str(wrapper_path), str(backup))
+        backup_path = str(backup)
+        result["backup"] = backup_path
+
+    title_emojis = '"✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻"'
+    wrapper_template = r"""#!/usr/bin/env bash
+# CoDeepSeedeX codex wrapper
+set -euo pipefail
+
+REAL_CODEX=__REAL_CODEX__
+DSPROXY="${CODEEPSEEDEX_DSPROXY:-__BIN_DIR__/dsproxy}"
+if [ ! -x "$DSPROXY" ] && [ -x "__INSTALL_DIR__/.venv/bin/dsproxy" ]; then
+  DSPROXY="__INSTALL_DIR__/.venv/bin/dsproxy"
+fi
+ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-__ENV_FILE__}"
+
+if [ -f "$ENV_FILE" ]; then
+  source "$ENV_FILE"
+fi
+
+profile=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--profile" ] || [ "$prev" = "-p" ]; then
+    profile="$arg"
+    break
+  fi
+  case "$arg" in
+    --profile=*) profile="${arg#--profile=}"; break ;;
+    -p*) profile="${arg#-p}"; break ;;
+  esac
+  prev="$arg"
+done
+
+set_codeepseedex_terminal_title() {
+  if [ ! -t 1 ]; then
+    return 0
+  fi
+  case "${TERM:-}" in
+    ""|dumb)
+      return 0
+      ;;
+  esac
+
+  local emojis=(__TITLE_EMOJIS__)
+  local idx=$((RANDOM % ${#emojis[@]}))
+  local title="${emojis[$idx]}CoDeepSeedeX"
+  printf '\033]0;%s\007' "$title" 2>/dev/null || true
+}
+
+start_dsproxy_profile() {
+  local profile_name="$1"
+  local start_args=()
+  local status_args=()
+
+  if [ ! -x "$DSPROXY" ]; then
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+    return 1
+  fi
+
+  case "$profile_name" in
+    deepseek)
+      start_args=(start)
+      status_args=(status)
+      ;;
+    deepseek-thinking)
+      start_args=(start thinking)
+      status_args=(status thinking)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if ! "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1; then
+    if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
+      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "$profile_name" >&2
+      printf 'Run for details: %s %s\n' "$DSPROXY" "${start_args[*]}" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
+    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "$profile_name" >&2
+    printf 'Run for details: %s %s\n' "$DSPROXY" "${status_args[*]}" >&2
+    return 1
+  fi
+}
+
+case "$profile" in
+  deepseek|deepseek-thinking)
+    set_codeepseedex_terminal_title
+    start_dsproxy_profile "$profile"
+    ;;
+esac
+
+exec "$REAL_CODEX" "$@"
+"""
+    wrapper = (
+        wrapper_template
+        .replace("__REAL_CODEX__", _shell_quote(real_codex))
+        .replace("__BIN_DIR__", bin_dir)
+        .replace("__INSTALL_DIR__", install_dir)
+        .replace("__ENV_FILE__", env_file)
+        .replace("__TITLE_EMOJIS__", title_emojis)
+    )
+
+    wrapper_path.parent.mkdir(parents=True, exist_ok=True)
+    if bool(getattr(args, "dry_run", False)):
+        result["config_preview"] = wrapper
+        result["dry_run"] = True
+        result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
+        result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
+        return result
+
+    wrapper_path.write_text(wrapper, encoding="utf-8")
+    wrapper_path.chmod(0o755)
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_text = "\n".join([
+        f"CODEX_WRAPPER_PATH={_shell_quote(str(wrapper_path))}",
+        f"CODEX_WRAPPER_BACKUP={_shell_quote(backup_path)}",
+        f"REAL_CODEX={_shell_quote(real_codex)}",
+        f"ENV_FILE={_shell_quote(env_file)}",
+        f"INSTALL_DIR={_shell_quote(install_dir)}",
+        f"BIN_DIR={_shell_quote(bin_dir)}",
+        "",
+    ])
+    manifest_path.write_text(manifest_text, encoding="utf-8")
+    try:
+        manifest_path.chmod(0o600)
+    except OSError:
+        pass
+
+    result["refreshed"] = True
+    result["dry_run"] = False
+    result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
+    result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
+    return result
+
+
+def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
+    result = _write_managed_codex_wrapper_from_manifest(args)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("status") == "ok" else 1
+
 def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, codex_config: Path | None = None) -> dict[str, object]:
     env_path = env_file or default_env_file_path()
     codex_path = codex_config or default_codex_config_path()
@@ -749,10 +1091,14 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         if isinstance(item, dict) and item.get("profile") == profile_name
     ]
 
-    model = profile_section.get("model") or env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL") or "unknown"
-    model_context_window = int(profile_section.get("model_context_window") or 0)
-    auto_compact_token_limit = int(profile_section.get("model_auto_compact_token_limit") or 0)
-    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    model_contract = _profile_model_contract(profile_section, env_values)
+    model_contract["model_provider"] = provider_name
+    model_contract["base_url"] = provider_section.get("base_url")
+    context_contract = _profile_context_contract(profile_section)
+
+    warnings = list(health["warnings"])
+    if bool(model_contract.get("model_conflict")):
+        warnings.append("codex_profile_model_differs_from_effective_upstream_model")
 
     return {
         "status": "ok" if not profile_invalid else "error",
@@ -760,15 +1106,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         "profile_source": "codex_config",
         "codex_config": str(codex_path),
         "env_file": str(env_path),
-        "model": {
-            "provider": env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek",
-            "model": model,
-            "codex_model": profile_section.get("model"),
-            "upstream_model": env_values.get("DEEPSEEK_PROXY_MODEL") or model,
-            "model_provider": provider_name,
-            "base_url": provider_section.get("base_url"),
-            "source": "codex_profile_and_dsproxy_env",
-        },
+        "model": model_contract,
         "effort": {
             "user_facing": "max" if deepseek_effort == "max" else "high",
             "deepseek_reasoning_effort": deepseek_effort,
@@ -782,18 +1120,11 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "enabled": profile_name.endswith("thinking"),
             "source": "profile_route",
         },
-        "context_window": {
-            "display_limit_tokens": effective_safe_window,
-            "model_context_window_tokens": model_context_window,
-            "auto_compact_token_limit": auto_compact_token_limit,
-            "effective_safe_window_tokens": effective_safe_window,
-            "source": "codex_profile.model_auto_compact_token_limit",
-            "is_estimated": False,
-        },
+        "context_window": context_contract,
         "health": {
             "codex_config_loadable": bool(health["codex_config_loadable"]),
             "invalid_profile_fields": profile_invalid,
-            "warnings": health["warnings"],
+            "warnings": warnings,
         },
     }
 
@@ -866,6 +1197,8 @@ def _profile(args: argparse.Namespace) -> int:
         return 0 if payload.get("status") == "ok" else 1
     if args.profile_command == "set-effort":
         return _set_effort_contract(args, env_file, explicit_profiles=[args.profile])
+    if args.profile_command == "refresh-wrapper":
+        return _refresh_codex_wrapper(args)
     print(json.dumps({"status": "error", "error": "unknown_profile_command"}, ensure_ascii=False, indent=2))
     return 2
 
@@ -874,6 +1207,29 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
     profile_name = "deepseek-thinking" if bool(getattr(args, "thinking", False)) else "deepseek"
     env_file = Path(getattr(args, "env_file", "")).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     profile_status = _profile_status_payload(profile_name, env_file=env_file, codex_config=default_codex_config_path())
+
+    runtime_status: dict[str, object] | None = None
+    runtime_error: dict[str, object] | None = None
+    try:
+        thinking = bool(getattr(args, "thinking", False))
+        port = _port_for(thinking, getattr(args, "port", None))
+        timeout = float(getattr(args, "timeout", 2.0) or 2.0)
+        http_status, data, error = _http_json(f"{_base_url(thinking=thinking, port=port)}/v1/proxy/status", timeout=timeout)
+        if isinstance(data, dict):
+            runtime_status = data
+        else:
+            runtime_error = {"http_status": http_status, "error": error}
+    except Exception as exc:
+        runtime_error = {"error": f"{type(exc).__name__}: {exc}"}
+
+    context_window = _merge_runtime_context_contract(
+        dict(profile_status.get("context_window", {})),
+        runtime_status,
+    )
+
+    compaction_available = bool(runtime_status and isinstance(runtime_status.get("context"), dict))
+    runtime_context = runtime_status.get("context") if isinstance(runtime_status, dict) else None
+
     return {
         "status": profile_status.get("status", "ok"),
         "version": {
@@ -892,7 +1248,12 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "thinking_enabled": bool(profile_status.get("thinking", {}).get("enabled")) if isinstance(profile_status.get("thinking"), dict) else profile_name.endswith("thinking"),
         },
         "effort": profile_status.get("effort", {}),
-        "context_window": profile_status.get("context_window", {}),
+        "context_window": context_window,
+        "runtime_status": {
+            "available": runtime_status is not None,
+            "source": "http://127.0.0.1:<route>/v1/proxy/status",
+            "error": runtime_error,
+        },
         "tokens": {
             "taxonomy": {
                 "version": 1,
@@ -947,9 +1308,11 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             },
         },
         "compaction": {
-            "available": False,
+            "available": compaction_available,
             "is_estimated": False,
-            "missing": ["context_compaction_report_binding"],
+            "source": "dsproxy_runtime./v1/proxy/status.context",
+            "runtime_context": runtime_context if isinstance(runtime_context, dict) else None,
+            "missing": [] if compaction_available else ["context_compaction_report_binding"],
         },
         "health": profile_status.get("health", {}),
     }
@@ -4504,6 +4867,13 @@ def build_parser() -> argparse.ArgumentParser:
     profile_set_effort.add_argument("--env-file")
     profile_set_effort.add_argument("--codex-config")
     profile_set_effort.set_defaults(func=_profile)
+
+    profile_refresh_wrapper = profile_sub.add_parser("refresh-wrapper", help="refresh the managed Codex wrapper from the install manifest")
+    profile_refresh_wrapper.add_argument("--manifest", help="install manifest path; defaults to ~/.config/deepseek-responses-proxy/install-manifest.env")
+    profile_refresh_wrapper.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_refresh_wrapper.add_argument("--dry-run", action="store_true")
+    profile_refresh_wrapper.add_argument("--force", action="store_true", help="allow backup and replacement of an unknown existing codex command")
+    profile_refresh_wrapper.set_defaults(func=_profile)
 
     debug = sub.add_parser("debug", help="inspect proxy debug trace state")
     debug_sub = debug.add_subparsers(dest="debug_command", required=True)

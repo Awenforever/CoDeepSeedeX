@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import sqlite3
 import time
 import tomllib
@@ -54,7 +55,7 @@ PROXY_PUBLIC_COMMIT = (
 )
 PROXY_INTERNAL_VERSION = (
     _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
-    or "p2.10a28-dsproxy-weclaw-profile-contract"
+    or "p2.10a29-weclaw-runtime-contract-unification"
 )
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
@@ -11203,6 +11204,258 @@ async def _mcp_discovery_status() -> dict[str, Any]:
     return result
 
 
+
+def _runtime_codex_config_path() -> Path:
+    return Path(os.environ.get("CODEX_CONFIG_FILE", str(Path.home() / ".codex" / "config.toml"))).expanduser()
+
+
+def _runtime_parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
+    if not path.exists():
+        return {}
+    sections: dict[str, dict[str, str]] = {}
+    current: str | None = None
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"^\[([^\]]+)\]\s*$", stripped)
+        if match:
+            current = match.group(1).strip()
+            sections.setdefault(current, {})
+            continue
+        if current and "=" in stripped:
+            key, value = stripped.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+            else:
+                value = value.split("#", 1)[0].strip()
+            sections[current][key] = value
+    return sections
+
+
+def _runtime_int_or_zero(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[str, Any]:
+    allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
+    invalid: list[dict[str, Any]] = []
+    for section, values in sections.items():
+        if not section.startswith("profiles."):
+            continue
+        effort = values.get("model_reasoning_effort")
+        if effort is not None and effort not in allowed:
+            invalid.append({
+                "profile": section.removeprefix("profiles."),
+                "field": "model_reasoning_effort",
+                "value": effort,
+                "allowed": sorted(allowed),
+            })
+    return {
+        "codex_config_loadable": not invalid,
+        "invalid_profile_fields": invalid,
+        "warnings": [],
+    }
+
+
+def _runtime_profile_context_contract(profile_section: dict[str, str]) -> dict[str, Any]:
+    model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window"))
+    auto_compact_token_limit = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    return {
+        "display_limit_tokens": effective_safe_window,
+        "model_context_window_tokens": model_context_window,
+        "auto_compact_token_limit": auto_compact_token_limit,
+        "effective_safe_window_tokens": effective_safe_window,
+        "source": "codex_profile.model_auto_compact_token_limit",
+        "is_estimated": False,
+        "codex_profile": {
+            "model_context_window_tokens": model_context_window,
+            "auto_compact_token_limit": auto_compact_token_limit,
+            "unit": "tokens",
+            "source": "codex_config.profiles.<profile>",
+        },
+        "model_catalog": {
+            "available": False,
+            "source": "not_bound_to_weclaw_contract_yet",
+        },
+        "effective_display": {
+            "limit_tokens": effective_safe_window,
+            "source": "codex_profile.model_auto_compact_token_limit",
+            "is_estimated": False,
+        },
+        "notes": [
+            "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
+        ],
+        "conflicts": [],
+    }
+
+
+def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str, Any]:
+    codex_model = profile_section.get("model")
+    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL") or os.environ.get("DEEPSEEK_MODEL")
+    force_model_enabled = _force_proxy_model_enabled()
+    effective_model = _select_upstream_model(codex_model)
+    model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
+    return {
+        "provider": os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+        "model": effective_model,
+        "display_model": effective_model,
+        "weclaw_display_model": effective_model,
+        "requested_model": codex_model,
+        "codex_model": codex_model,
+        "upstream_model": effective_model,
+        "effective_model": effective_model,
+        "env_model": env_model,
+        "force_model_enabled": force_model_enabled,
+        "model_conflict": model_conflict,
+        "source": "dsproxy_runtime._select_upstream_model",
+        "notes": (
+            [
+                "Codex profile model differs from the effective upstream model. WeClaw should display effective_model and may show codex_model as a conflict detail."
+            ]
+            if model_conflict
+            else []
+        ),
+    }
+
+
+def _runtime_effort_contract(profile_section: dict[str, str]) -> dict[str, Any]:
+    codex_effort = profile_section.get("model_reasoning_effort")
+    raw_effort = os.environ.get("DEEPSEEK_REASONING_EFFORT") or codex_effort or "high"
+    normalized = str(raw_effort or "").strip().lower()
+    if normalized in {"xhigh", "max"}:
+        deepseek_effort = "max"
+        expected_codex_effort = "xhigh"
+    else:
+        deepseek_effort = "high"
+        expected_codex_effort = "high"
+    return {
+        "user_facing": "max" if deepseek_effort == "max" else "high",
+        "deepseek_reasoning_effort": deepseek_effort,
+        "codex_model_reasoning_effort": codex_effort,
+        "expected_codex_model_reasoning_effort": expected_codex_effort,
+        "source": "dsproxy_runtime_env_and_codex_profile",
+        "codex_profile_valid": codex_effort in {"none", "minimal", "low", "medium", "high", "xhigh"} if codex_effort else False,
+        "normalized": codex_effort == expected_codex_effort,
+    }
+
+
+def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
+    codex_path = _runtime_codex_config_path()
+    sections = _runtime_parse_simple_toml_sections(codex_path)
+    profile_section = sections.get(f"profiles.{profile}", {})
+    provider_name = profile_section.get("model_provider") or f"{profile}-proxy"
+    provider_section = sections.get(f"model_providers.{provider_name}", {})
+    health = _runtime_codex_config_health(sections)
+    invalid = [
+        item for item in health["invalid_profile_fields"]
+        if isinstance(item, dict) and item.get("profile") == profile
+    ]
+    model = _runtime_profile_model_contract(profile_section)
+    model["model_provider"] = provider_name
+    model["base_url"] = provider_section.get("base_url")
+    warnings = list(health.get("warnings", []))
+    if bool(model.get("model_conflict")):
+        warnings.append("codex_profile_model_differs_from_effective_upstream_model")
+
+    return {
+        "status": "ok" if not invalid else "error",
+        "profile": profile,
+        "profile_source": "codex_config",
+        "codex_config": str(codex_path),
+        "model": model,
+        "effort": _runtime_effort_contract(profile_section),
+        "thinking": {
+            "enabled": profile.endswith("thinking"),
+            "source": "profile_route",
+        },
+        "context_window": _runtime_profile_context_contract(profile_section),
+        "health": {
+            "codex_config_loadable": bool(health["codex_config_loadable"]),
+            "invalid_profile_fields": invalid,
+            "warnings": warnings,
+        },
+    }
+
+
+def _runtime_weclaw_status(profile: str) -> dict[str, Any]:
+    profile_status = _runtime_weclaw_profile_status(profile)
+    context_status = _proxy_context_status()
+    semantic_status = _semantic_compaction_runtime_status()
+    context_window = dict(profile_status.get("context_window", {}))
+    context_window["runtime"] = {
+        "available": True,
+        "unit": "chars",
+        "source": "dsproxy_runtime._proxy_context_status",
+        "context": context_status,
+        "semantic_compaction": semantic_status,
+    }
+    context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
+    context_window["runtime_trimming"] = context_status.get("trimming") if isinstance(context_status, dict) else None
+
+    return {
+        "status": profile_status.get("status", "ok"),
+        "version": {
+            "public_version": PROXY_PUBLIC_VERSION,
+            "internal_version": PROXY_INTERNAL_VERSION,
+        },
+        "profile": profile,
+        "model": profile_status.get("model", {}),
+        "effort": profile_status.get("effort", {}),
+        "context_window": context_window,
+        "tokens": {
+            "taxonomy": {
+                "version": 1,
+                "categories": [
+                    "user",
+                    "assistant_history",
+                    "tool",
+                    "environment",
+                    "runtime",
+                    "compaction_summary",
+                    "judge",
+                    "cached_input",
+                    "output",
+                    "reasoning",
+                    "other",
+                ],
+            },
+            "last_turn": {
+                "available": False,
+                "missing": ["live_turn_usage_attribution"],
+            },
+            "session_total": {
+                "available": False,
+                "missing": ["session_usage_attribution"],
+            },
+            "auxiliary_model_calls": {
+                "available": False,
+                "missing": ["auxiliary_model_call_ledger"],
+            },
+        },
+        "pricing": {
+            "available": False,
+            "missing": ["dynamic_pricing_cache"],
+        },
+        "cost": {
+            "available": False,
+            "missing": ["dynamic_pricing_cache", "usage_attribution"],
+        },
+        "compaction": {
+            "available": True,
+            "source": "dsproxy_runtime._proxy_context_status",
+            "runtime_context": context_status,
+            "semantic_compaction": semantic_status,
+        },
+        "health": profile_status.get("health", {}),
+    }
+
 def create_app(
     *,
     deepseek_client: DeepSeekClient | None = None,
@@ -11241,6 +11494,16 @@ def create_app(
             "repair_count": app.state.repair_count,
             "deepseek_base_url": getattr(app.state.deepseek_client, "base_url", None),
         }
+
+    @app.get("/v1/proxy/weclaw/profile-status")
+    async def proxy_weclaw_profile_status(profile: str = "deepseek-thinking") -> dict[str, Any]:
+        return _runtime_weclaw_profile_status(profile)
+
+
+    @app.get("/v1/proxy/weclaw/status")
+    async def proxy_weclaw_status(profile: str = "deepseek-thinking") -> dict[str, Any]:
+        return _runtime_weclaw_status(profile)
+
 
     @app.get("/v1/proxy/tool-bridge/status")
     async def proxy_tool_bridge_status() -> dict[str, Any]:

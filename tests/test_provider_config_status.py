@@ -597,3 +597,66 @@ async def test_proxy_image_generation_fal_provider(monkeypatch):
     assert result["provider"] == "fal"
     assert result["model"] == "fal-ai/flux/schnell"
     assert result["images"][0]["url"] == "https://example.test/fal-image.png"
+
+
+
+def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from deepseek_responses_proxy.app import create_app
+
+    codex_config = tmp_path / "config.toml"
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    client = TestClient(create_app())
+    data = client.get("/v1/proxy/weclaw/profile-status?profile=deepseek-thinking").json()
+
+    assert data["status"] == "ok"
+    assert data["profile"] == "deepseek-thinking"
+    assert data["model"]["codex_model"] == "glm-5.1"
+    assert data["model"]["effective_model"] == "deepseek-v4-flash"
+    assert data["model"]["force_model_enabled"] is True
+    assert data["model"]["model_conflict"] is True
+    assert data["context_window"]["effective_safe_window_tokens"] == 750000
+    assert "codex_profile_model_differs_from_effective_upstream_model" in data["health"]["warnings"]
+
+
+def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from deepseek_responses_proxy.app import create_app
+
+    codex_config = tmp_path / "config.toml"
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION_TRIGGER_CHARS", "12345")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION_TARGET_CHARS", "6789")
+
+    client = TestClient(create_app())
+    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking").json()
+
+    assert data["status"] == "ok"
+    assert data["profile"] == "deepseek-thinking"
+    assert data["context_window"]["codex_profile"]["unit"] == "tokens"
+    assert data["context_window"]["runtime"]["unit"] == "chars"
+    assert data["context_window"]["runtime"]["available"] is True
+    assert data["compaction"]["available"] is True
+    assert "tokens" in data
+    assert data["tokens"]["last_turn"]["available"] is False

@@ -301,6 +301,7 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
     assert "set_codeepseedex_terminal_title()" in body
+    assert body.count("🐦‍🔥") == 1
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
     assert r'local title="\${emojis[\$idx]}CoDeepSeedeX"' in body
     assert "printf '\\033]0;%s\\007' \"\\$title\" 2>/dev/null || true" in body

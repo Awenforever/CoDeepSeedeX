@@ -2524,3 +2524,142 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
     assert result["tokens"]["last_turn"]["available"] is False
     assert result["pricing"]["available"] is False
+
+
+
+def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    model = result["model"]
+    assert model["codex_model"] == "glm-5.1"
+    assert model["effective_model"] == "deepseek-v4-flash"
+    assert model["upstream_model"] == "deepseek-v4-flash"
+    assert model["force_model_enabled"] is True
+    assert model["model_conflict"] is True
+    assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
+
+
+def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    dsproxy = bin_dir / "dsproxy"
+    env_file = tmp_path / "env"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nexec \"$REAL_CODEX\" \"$@\"\n",
+        encoding="utf-8",
+    )
+    for p in (real_codex, dsproxy, wrapper):
+        p.chmod(0o755)
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={env_file}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = wrapper.read_text(encoding="utf-8")
+    assert result["status"] == "ok"
+    assert result["refreshed"] is True
+    assert result["contains_terminal_title"] is True
+    assert result["emoji_firebird_count"] == 1
+    assert "set_codeepseedex_terminal_title()" in text
+    assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in text
+    assert text.index("set_codeepseedex_terminal_title") < text.index("start_dsproxy_profile \"$profile\"")
+    assert 'exec "$REAL_CODEX" "$@"' in text
+
+
+def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf real\n", encoding="utf-8")
+    real_codex.chmod(0o755)
+    wrapper.write_text("#!/usr/bin/env bash\nprintf user-wrapper\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["error"] == "unknown_existing_codex_wrapper"
+    assert "user-wrapper" in wrapper.read_text(encoding="utf-8")
+
+
+def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkeypatch, tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
+
+    from deepseek_responses_proxy import cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module,
+        "_http_json",
+        lambda url, timeout=2.0: (None, None, "blocked_by_test"),
+    )
+
+    assert main(["status", "thinking", "--weclaw-json", "--timeout", "0.05"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["profile"] == "deepseek-thinking"
+    assert result["model"]["effective_model"] == "deepseek-v4-flash"
+    assert result["model"]["model_conflict"] is True
+    assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 750000
+    assert result["context_window"]["runtime"]["available"] is False
+    assert result["runtime_status"]["available"] is False

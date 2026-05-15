@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a28-dsproxy-weclaw-profile-contract`
+- Current internal development line: `p2.10a29-weclaw-runtime-contract-unification`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -531,3 +531,18 @@ Machine-readable contract surfaces:
 - `dsproxy status [thinking] --weclaw-json`
 
 The WeClaw status contract must report unavailable token, pricing, cost, balance, auxiliary-token, and compaction fields as structured `available=false` or `missing=[...]` values until dsproxy has audited exact data sources. Do not make WeClaw guess these values.
+
+
+## p2.10a29 WeClaw runtime contract unification
+
+`dsproxy` must expose model and context source-of-truth fields for WeClaw instead of relying on WeClaw to parse private Codex files. The WeClaw-facing contract must distinguish:
+- `codex_model`: the model declared in the Codex profile.
+- `effective_model`: the model actually selected by dsproxy for upstream calls.
+- `force_model_enabled`: whether `DEEPSEEK_PROXY_FORCE_MODEL` overrides the Codex request model.
+- `model_conflict`: whether the Codex profile model differs from the effective upstream model.
+
+When `model_conflict=true`, WeClaw should display `effective_model` and may show `codex_model` only as a diagnostic detail.
+
+Context fields must distinguish token-level Codex declarations from char-level dsproxy runtime controls. Codex profile fields such as `model_context_window` and `model_auto_compact_token_limit` are token-level declarations. Runtime compaction/trimming status from `/v1/proxy/status.context` is char-level behavior. Do not combine these values without explicitly labeling units and source.
+
+Installed Codex wrappers may be stale after source updates. `dsproxy profile refresh-wrapper --json` refreshes a CoDeepSeedeX-managed wrapper from the install manifest while preserving manifest-backed rollback metadata. Unknown user-owned wrappers must not be overwritten unless the operator explicitly passes `--force`.
