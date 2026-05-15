@@ -216,6 +216,7 @@ read_yes_no() {
 read_secret_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
+  local helper="${3:-}"
   local value=""
 
   if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ]; then
@@ -223,10 +224,19 @@ read_secret_from_tty() {
     return 0
   fi
 
+  printf "%s " "$prompt" > /dev/tty
   if [ -n "$default_value" ]; then
-    printf "%s [hidden, press Enter to keep existing]: " "$prompt" > /dev/tty
+    if [ -n "$helper" ]; then
+      printf '\033[2m(%s) [hidden, Enter keeps existing]\033[0m: ' "$helper" > /dev/tty
+    else
+      printf '\033[2m[hidden, Enter keeps existing]\033[0m: ' > /dev/tty
+    fi
   else
-    printf "%s [hidden]: " "$prompt" > /dev/tty
+    if [ -n "$helper" ]; then
+      printf '\033[2m(%s) [hidden]\033[0m: ' "$helper" > /dev/tty
+    else
+      printf '\033[2m[hidden]\033[0m: ' > /dev/tty
+    fi
   fi
 
   stty -echo < /dev/tty 2>/dev/null || true
@@ -234,9 +244,11 @@ read_secret_from_tty() {
   stty echo < /dev/tty 2>/dev/null || true
   printf "\n" > /dev/tty
 
-  if [ -z "$value" ]; then
-    value="$default_value"
+  if [ -z "$value" ] && [ -n "$default_value" ]; then
+    printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
+    return 0
   fi
+
   printf '%s\n' "$value"
 }
 
@@ -908,8 +920,19 @@ prompt_deepseek_api_key() {
   local attempts=0
   local empty_attempts=0
   local candidate=""
+  local existing_api_key="${DEEPSEEK_API_KEY:-}"
+  local prompt_hint="optional; press Enter three times to skip"
+  if [ -n "$existing_api_key" ]; then
+    prompt_hint="optional, type a new key to replace the existing one"
+  fi
+
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "Model API key (optional; press Enter three times to skip)" "${DEEPSEEK_API_KEY:-}")"
+    candidate="$(read_secret_from_tty "Model API key" "$existing_api_key" "$prompt_hint")"
+    if [ "$candidate" = "__CODEEPSEEDEX_KEEP_EXISTING__" ]; then
+      PROMPTED_API_KEY="$existing_api_key"
+      ok "Existing model API key kept for provider: $PROMPTED_MODEL_PROVIDER"
+      return 0
+    fi
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
@@ -992,7 +1015,7 @@ prompt_serpapi_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "$prompt (optional; press Enter three times to skip)" "")"
+    candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
@@ -1095,7 +1118,7 @@ prompt_image_generation_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "$prompt (optional; press Enter three times to skip)" "")"
+    candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
@@ -1799,6 +1822,7 @@ menu_print_separator
 prompt_image_generation_api_key
 IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
 menu_print_separator
+printf '  \033[2mAfter installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically.\033[0m\n'
 WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
 case "$WRAPPER_CHOICE" in

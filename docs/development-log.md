@@ -15,6 +15,13 @@
 
 
 
+
+## p2.10a20-installer-secret-prompt-wrapper-help
+
+- Dimmed secret prompt helper text.
+- Changed empty secret input with an existing model API key to keep the existing key without reporting it as newly entered characters.
+- Added installer guidance explaining that the Codex wrapper enables `codex --profile deepseek` and `codex --profile deepseek-thinking` while automatically starting or refreshing the local dsproxy backend.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a19-installer-menu-column-alignment
 
 - Aligned installer selected-row and unselected-row option value columns.

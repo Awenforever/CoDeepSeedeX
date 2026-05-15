@@ -452,3 +452,21 @@ def test_installer_menu_selected_and_unselected_value_columns_align() -> None:
     assert "row=\"$(printf " in text
     assert "%s%s. %s  %s" in text
     assert "\"$prefix\" \"$value\" \"$label\" \"$suffix\")" in text
+
+
+def test_installer_secret_prompt_keeps_existing_key_without_counting_it_as_new_input() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "read_secret_from_tty()" in text
+    assert "__CODEEPSEEDEX_KEEP_EXISTING__" in text
+    assert "Existing model API key kept for provider:" in text
+    assert "optional, type a new key to replace the existing one" in text
+    assert "Model API key (optional; press Enter three times to skip)" not in text
+    assert "\\033[2m(%s) [hidden, Enter keeps existing]\\033[0m: " in text
+    assert "\\033[2m(%s) [hidden]\\033[0m: " in text
+    assert "press Enter to keep existing" not in text
+
+
+def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "After installing, use codex --profile deepseek or codex --profile deepseek-thinking." in text
+    assert "The wrapper starts or refreshes the local dsproxy backend automatically." in text

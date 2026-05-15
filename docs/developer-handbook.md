@@ -470,3 +470,7 @@ CLI version metadata must use constants imported from `deepseek_responses_proxy.
 ## p2.10a19 installer menu column alignment
 
 Selected and unselected menu rows must keep option values in the same visual column. Because the selected marker uses `▶ `, the unselected marker column should use two spaces rather than three. Keep this covered by a text-level installer test.
+
+## p2.10a20 installer secret prompt semantics
+
+Secret prompts must distinguish a newly typed secret from an empty submission that keeps an existing secret. Empty input with a default secret must not be reported as newly received characters and must not trigger validation as if the user pasted the key. Helper text such as optional/hidden/keep-existing instructions should be dim. The Codex wrapper prompt should explain that after installation users can run `codex --profile deepseek` or `codex --profile deepseek-thinking`, with the wrapper handling local dsproxy backend startup or refresh.
