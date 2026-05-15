@@ -286,7 +286,9 @@ def test_installer_guided_provider_menus_use_arrow_selector() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "read_menu_choice_from_tty()" in text
     assert "read_yes_no_menu()" in text
-    assert "Use ↑/↓ or j/k, Enter to select" in text
+    assert "menu_render_option_line()" in text
+    assert "menu_truncate_line()" in text
+    assert "Use ↑/↓ or j/k, Enter to select. Press a listed number for a quick choice." in text
     assert 'family="$(read_menu_choice_from_tty "Select model provider family" "1"' in text
     assert 'endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1"' in text
     assert 'family="$(read_menu_choice_from_tty "Select image generation provider family" "1"' in text
@@ -407,3 +409,18 @@ def test_installer_logo_function_renders_without_backtick_substitution(tmp_path)
     result = subprocess.run(["bash", str(script)], text=True, capture_output=True, timeout=20, check=True)
     assert "CoDeepSeedeX v0.3.8-alpha" in result.stdout
     assert "Codex × DeepSeek local Responses proxy" in result.stdout
+
+
+def test_installer_menu_renderer_prevents_wrapping_and_supports_numeric_quick_choice() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "menu_terminal_cols()" in text
+    assert "menu_truncate_line()" in text
+    assert "menu_render_option_line()" in text
+    assert "menu_value_exists()" in text
+    assert "Press a listed number for a quick choice" in text
+    assert 'case "$key" in' in text
+    assert '[0-9])' in text
+    assert 'if menu_value_exists "$key" "${options[@]}"; then' in text
+    assert "CODEEPSEEDEX_MENU_HELP_SHOWN" in text
+    assert "\\033[7;1m%s\\033[0m" in text
+    assert "menu_print_separator" in text

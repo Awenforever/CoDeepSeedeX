@@ -12,6 +12,15 @@
 
 
 
+
+## p2.10a17-installer-menu-render-layout-polish
+
+- Reworked installer arrow-menu row rendering to truncate to terminal width and avoid wrapped-line residue.
+- Added full-row reverse-video highlighting for selected rows.
+- Made listed numeric values return immediately, including `0` skip/back choices.
+- Displayed the arrow-menu help hint only once per installer run.
+- Added blank separators between guided configuration sections.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a16-installer-logo-heredoc-runtime-fix
 
 - Fixed installer logo runtime rendering by using quoted heredocs for ASCII art.

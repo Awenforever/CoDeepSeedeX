@@ -454,3 +454,7 @@ Guided installer menus should first ask for a provider family, then show endpoin
 ## p2.10a16 installer logo heredoc
 
 ASCII art in shell scripts must use quoted heredocs when it contains backticks, backslashes, or dollar signs. `bash -n` does not catch command substitution triggered inside an unquoted heredoc at runtime, so installer banner changes should include a runtime smoke test for the rendered function.
+
+## p2.10a17 installer menu rendering
+
+Arrow-key menus must not rely on long raw lines wrapping correctly. Render each option as one terminal-width bounded row, truncate before printing, and use a full-row highlight for the selected item. Numeric shortcuts for listed option values should return immediately, including `0` for skip/back. The global menu help hint should appear once per installer run, and guided configuration blocks should be visually separated.

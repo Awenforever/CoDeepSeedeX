@@ -561,6 +561,210 @@ menu_tty_printf() {
   printf "$@" > /dev/tty
 }
 
+menu_terminal_cols() {
+  local cols=""
+  if command -v tput >/dev/null 2>&1; then
+    cols="$(tput cols 2>/dev/null || true)"
+  fi
+  case "$cols" in
+    ''|*[!0-9]*) cols=80 ;;
+  esac
+  if [ "$cols" -lt 50 ]; then
+    cols=50
+  fi
+  printf '%s\n' "$cols"
+}
+
+menu_truncate_line() {
+  local line="$1"
+  local width="$2"
+  local max="$((width - 1))"
+  if [ "$max" -lt 40 ]; then
+    max=40
+  fi
+  if [ "${#line}" -gt "$max" ]; then
+    printf '%s...\n' "${line:0:$((max - 3))}"
+  else
+    printf '%s\n' "$line"
+  fi
+}
+
+menu_status_suffix() {
+  local status="$1"
+  case "$status" in
+    supported) printf '[Supported]' ;;
+    experimental) printf '[Experimental]' ;;
+    custom) printf '[Custom]' ;;
+    "model unavailable") printf '[Model unavailable]' ;;
+    unsupported) printf '[Unsupported]' ;;
+    plain|skip|'') printf '' ;;
+    *) printf '[Unsupported]' ;;
+  esac
+}
+
+menu_render_option_line() {
+  local selected="$1"
+  local value="$2"
+  local label="$3"
+  local status="$4"
+  local width="$5"
+  local prefix="   "
+  local suffix=""
+  local row=""
+  local rendered=""
+
+  if [ "$selected" = "1" ]; then
+    prefix="▶ "
+  fi
+
+  suffix="$(menu_status_suffix "$status")"
+  if [ -n "$suffix" ]; then
+    row="$(printf '%s%s. %s  %s' "$prefix" "$value" "$label" "$suffix")"
+  else
+    row="$(printf '%s%s. %s' "$prefix" "$value" "$label")"
+  fi
+
+  rendered="$(menu_truncate_line "$row" "$width")"
+  rendered="$(printf "%-$((width - 1))s" "$rendered")"
+  if [ "$selected" = "1" ]; then
+    menu_tty_printf '\033[7;1m%s\033[0m\n' "$rendered"
+  else
+    case "$status" in
+      supported) menu_tty_printf '\033[1;32m%s\033[0m\n' "$rendered" ;;
+      experimental) menu_tty_printf '\033[1;35m%s\033[0m\n' "$rendered" ;;
+      custom) menu_tty_printf '\033[1;33m%s\033[0m\n' "$rendered" ;;
+      "model unavailable"|unsupported) menu_tty_printf '\033[2m%s\033[0m\n' "$rendered" ;;
+      *) menu_tty_printf '%s\n' "$rendered" ;;
+    esac
+  fi
+}
+
+menu_value_exists() {
+  local wanted="$1"
+  shift
+  local option value _label _status
+  for option in "$@"; do
+    IFS='|' read -r value _label _status <<< "$option"
+    if [ "$value" = "$wanted" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+menu_print_separator() {
+  printf '\n'
+}
+
+read_menu_choice_from_tty() {
+  local prompt="$1"
+  local default="${2:-}"
+  shift 2 || true
+  local options=("$@")
+  local count="${#options[@]}"
+
+  if [ "$count" -eq 0 ]; then
+    read_from_tty "$prompt" "$default"
+    return $?
+  fi
+
+  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
+    read_from_tty "$prompt" "$default"
+    return $?
+  fi
+
+  local selected=0
+  local i
+  for i in "${!options[@]}"; do
+    IFS='|' read -r value _label _status <<< "${options[$i]}"
+    if [ "$value" = "$default" ]; then
+      selected="$i"
+      break
+    fi
+  done
+
+  local width
+  width="$(menu_terminal_cols)"
+
+  menu_tty_printf '\n\033[1m%s\033[0m\n' "$prompt"
+  if [ "${CODEEPSEEDEX_MENU_HELP_SHOWN:-0}" != "1" ]; then
+    menu_tty_printf '  Use ↑/↓ or j/k, Enter to select. Press a listed number for a quick choice.\n'
+    CODEEPSEEDEX_MENU_HELP_SHOWN=1
+  fi
+
+  for ((i=0; i<count; i++)); do
+    menu_tty_printf '\n'
+  done
+
+  local key
+  while true; do
+    menu_tty_printf '\033[%sA' "$count"
+    for i in "${!options[@]}"; do
+      IFS='|' read -r value label status <<< "${options[$i]}"
+      menu_tty_printf '\r\033[2K'
+      if [ "$i" -eq "$selected" ]; then
+        menu_render_option_line "1" "$value" "$label" "$status" "$width"
+      else
+        menu_render_option_line "0" "$value" "$label" "$status" "$width"
+      fi
+    done
+
+    IFS= read -rsn1 key < /dev/tty || {
+      read_from_tty "$prompt" "$default"
+      return $?
+    }
+
+    case "$key" in
+      "")
+        IFS='|' read -r value _label _status <<< "${options[$selected]}"
+        menu_tty_printf '\n'
+        printf '%s\n' "$value"
+        return 0
+        ;;
+      $'\x1b')
+        local rest=""
+        IFS= read -rsn2 -t 0.15 rest < /dev/tty || true
+        case "$rest" in
+          "[A") selected=$(( (selected + count - 1) % count )) ;;
+          "[B") selected=$(( (selected + 1) % count )) ;;
+          *) ;;
+        esac
+        ;;
+      k|K)
+        selected=$(( (selected + count - 1) % count ))
+        ;;
+      j|J)
+        selected=$(( (selected + 1) % count ))
+        ;;
+      [0-9])
+        if menu_value_exists "$key" "${options[@]}"; then
+          menu_tty_printf '\n'
+          printf '%s\n' "$key"
+          return 0
+        fi
+        local rest=""
+        IFS= read -r rest < /dev/tty || rest=""
+        local typed="${key}${rest}"
+        typed="${typed%%$'\r'}"
+        typed="${typed%%$'\n'}"
+        menu_tty_printf '\n'
+        printf '%s\n' "$typed"
+        return 0
+        ;;
+      [A-Za-z_./:-])
+        local rest=""
+        IFS= read -r rest < /dev/tty || rest=""
+        local typed="${key}${rest}"
+        typed="${typed%%$'\r'}"
+        typed="${typed%%$'\n'}"
+        menu_tty_printf '\n'
+        printf '%s\n' "$typed"
+        return 0
+        ;;
+    esac
+  done
+}
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -1695,10 +1899,13 @@ STABLE_PORT="$(read_from_tty "Stable proxy port [press Enter to keep default]" "
 THINKING_PORT="$(read_from_tty "Thinking proxy port [press Enter to keep default]" "$DEFAULT_THINKING_PORT")"
 prompt_deepseek_api_key
 API_KEY="$PROMPTED_API_KEY"
+menu_print_separator
 prompt_serpapi_api_key
 SERPAPI_KEY="$PROMPTED_SERPAPI_API_KEY"
+menu_print_separator
 prompt_image_generation_api_key
 IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
+menu_print_separator
 WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
 case "$WRAPPER_CHOICE" in
