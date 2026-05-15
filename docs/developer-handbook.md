@@ -466,3 +466,7 @@ Installer menus must have exactly one active `read_menu_choice_from_tty()` imple
 ## p2.10a18 CLI version metadata source
 
 CLI version metadata must use constants imported from `deepseek_responses_proxy.app` directly. Declared internal version wins over any existing p-tag on HEAD. Do not read version metadata through `from deepseek_responses_proxy import app`, because the package-level `app` name can refer to the FastAPI application object and not the `deepseek_responses_proxy.app` module. If that happens, the CLI can silently fall back to git tag inference and report the previous internal tag while source tests still pass.
+
+## p2.10a19 installer menu column alignment
+
+Selected and unselected menu rows must keep option values in the same visual column. Because the selected marker uses `▶ `, the unselected marker column should use two spaces rather than three. Keep this covered by a text-level installer test.

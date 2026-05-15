@@ -428,3 +428,7 @@ Shell脚本中的ASCII art如果包含反引号、反斜线或美元符号，必
 ## p2.10a18 CLI版本元数据来源
 
 CLI版本元数据必须直接使用从`deepseek_responses_proxy.app`导入的常量。声明的内部版本优先于HEAD上已有的p-tag。不要通过`from deepseek_responses_proxy import app`读取版本元数据，因为包级`app`名称可能指向FastAPI应用对象，而不是`deepseek_responses_proxy.app`模块。否则CLI可能静默回退到git tag推断，导致源码测试通过但CLI仍显示上一内部tag。
+
+## p2.10a19安装器菜单列对齐
+
+选中和未选中菜单行必须让选项编号保持在同一视觉列。由于选中标记使用`▶ `，未选中行的占位前缀应使用两个空格，而不是三个空格。该规则应由安装器文本级测试覆盖。

@@ -443,3 +443,12 @@ def test_installer_port_prompts_use_dim_default_hint() -> None:
 def test_installer_logo_colors_version() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "CoDeepSeedeX \\033[1;35m%s\\033[0m" in text
+
+
+def test_installer_menu_selected_and_unselected_value_columns_align() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'local prefix="  "' in text
+    assert 'prefix="▶ "' in text
+    assert "row=\"$(printf " in text
+    assert "%s%s. %s  %s" in text
+    assert "\"$prefix\" \"$value\" \"$label\" \"$suffix\")" in text

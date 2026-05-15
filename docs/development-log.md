@@ -14,6 +14,12 @@
 
 
 
+
+## p2.10a19-installer-menu-column-alignment
+
+- Aligned installer selected-row and unselected-row option value columns.
+- Changed the unselected menu prefix from three spaces to two spaces so `▶ ` and blank rows occupy the same marker width.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a18-installer-minimal-arrow-ui
 
 - Removed the duplicate old `read_menu_choice_from_tty()` definition that overrode the p2.10a17 renderer.

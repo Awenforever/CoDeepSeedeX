@@ -609,7 +609,7 @@ menu_render_option_line() {
   local label="$3"
   local status="$4"
   local width="$5"
-  local prefix="   "
+  local prefix="  "
   local suffix=""
   local row=""
   local rendered=""
