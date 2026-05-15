@@ -404,3 +404,7 @@ Qwen Image地区支持必须显式展示。北京和新加坡是可选Qwen Image
 ## p2.10a13公开commit解析
 
 运行时public commit元数据在存在Git信息时应解析配置的公开Release tag，而不是在源码中维护自指向的静态commit hash。这样可以避免pre-release tag重建到新commit后反复修改测试。非Git安装场景仍保留源码fallback。
+
+## p2.10a14安装器来源日志变量
+
+将安装器来源详情从交互界面移入日志时，必须写入既有`INSTALL_LOG`变量。不要引入`LOG_FILE`；安装器启用了`set -u`，未定义变量会直接中断全新VM安装。

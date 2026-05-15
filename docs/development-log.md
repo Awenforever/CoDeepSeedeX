@@ -9,6 +9,13 @@
 
 
 
+
+## p2.10a14-install-log-source-polish-fix
+
+- Fixed installer source logging to use `INSTALL_LOG` instead of undefined `LOG_FILE`.
+- Added installer test coverage to prevent `LOG_FILE` references.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
+- Purged jsDelivr tag cache best-effort for `v0.3.8-alpha/bootstrap.sh`.
 ## p2.10a13-installer-tty-menu-ui-polish
 
 - Removed verbose source URL display from interactive bootstrap/install screens.

@@ -322,7 +322,7 @@ def test_installer_logs_source_without_verbose_visible_source_block() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "show_version_source()" in text
     assert "show_version_source\n\n" not in text
-    assert ">> \"$LOG_FILE\"" in text
+    assert ">> \"$INSTALL_LOG\"" in text
     assert 'sub_title "Version source"' in text
 
 
@@ -339,3 +339,12 @@ def test_installer_arrow_menu_uses_dev_tty_when_stdout_is_logged() -> None:
     assert "[ ! -t 1 ]" not in menu_func
     assert "printf \"$@\" > /dev/tty" in text
     assert "Use ↑/↓ or j/k, Enter to select" in menu_func
+
+
+def test_installer_source_logging_uses_install_log_variable() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert '"$LOG_FILE"' not in text
+    assert '"$INSTALL_LOG"' in text
+    assert 'printf \'Install ref: %s\\n\'' in text
+    assert 'printf \'Installer source: %s\\n\'' in text
+    assert 'printf \'Repository source: %s\\n\'' in text

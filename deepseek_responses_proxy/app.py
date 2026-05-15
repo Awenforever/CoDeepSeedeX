@@ -45,7 +45,7 @@ def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
 
 
 PROXY_PUBLIC_COMMIT = _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "7a90d95")
-PROXY_INTERNAL_VERSION = "p2.10a13-installer-tty-menu-ui-polish"
+PROXY_INTERNAL_VERSION = "p2.10a14-install-log-source-polish-fix"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

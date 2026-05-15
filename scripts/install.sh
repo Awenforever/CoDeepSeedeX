@@ -1599,9 +1599,9 @@ if [ "$UNINSTALL" = "1" ]; then
 fi
 
 logo
-printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$LOG_FILE"
-printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$LOG_FILE"
-printf 'Repository source: %s\n' "$REPO_URL" >> "$LOG_FILE"
+printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
+printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
+printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
 
 divider
 section_title "Setup plan"

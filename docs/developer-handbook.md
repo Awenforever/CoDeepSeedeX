@@ -442,3 +442,7 @@ Interactive installer screens should avoid printing full release asset URLs unde
 ## p2.10a13 public commit resolution
 
 Runtime public commit metadata should resolve the configured public Release tag when Git metadata is available, instead of requiring a static self-referential commit hash in source. This avoids repeated test churn when a pre-release tag is rebuilt to a new commit. The fallback remains in source for non-Git installations.
+
+## p2.10a14 installer source log variable
+
+When moving installer source details out of the interactive UI, write them to the existing `INSTALL_LOG` variable. Do not introduce `LOG_FILE`; the installer runs with `set -u`, so undefined variables abort fresh VM installs.
