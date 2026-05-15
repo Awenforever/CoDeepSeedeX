@@ -969,10 +969,39 @@ set_codeepseedex_terminal_title() {
       ;;
   esac
 
-  local emojis=(__TITLE_EMOJIS__)
-  local idx=$((RANDOM % ${#emojis[@]}))
-  local title="${emojis[$idx]}CoDeepSeedeX"
-  printf '\033]0;%s\007' "$title" 2>/dev/null || true
+  local title="${CODEEPSEEDEX_TERMINAL_TITLE:-}"
+  if [ -z "$title" ]; then
+    local emojis=(__TITLE_EMOJIS__)
+    local idx=$((RANDOM % ${#emojis[@]}))
+    title="${emojis[$idx]}CoDeepSeedeX"
+    CODEEPSEEDEX_TERMINAL_TITLE="$title"
+  fi
+
+  if [ -w /dev/tty ]; then
+    printf '\033]0;%s\007\033]2;%s\007' "$title" "$title" > /dev/tty 2>/dev/null || true
+  else
+    printf '\033]0;%s\007\033]2;%s\007' "$title" "$title" 2>/dev/null || true
+  fi
+}
+
+schedule_codeepseedex_terminal_title_refresh() {
+  if [ ! -t 1 ]; then
+    return 0
+  fi
+  case "${TERM:-}" in
+    ""|dumb)
+      return 0
+      ;;
+  esac
+
+  (
+    sleep 1
+    set_codeepseedex_terminal_title
+    sleep 2
+    set_codeepseedex_terminal_title
+    sleep 5
+    set_codeepseedex_terminal_title
+  ) >/dev/null 2>&1 &
 }
 
 start_dsproxy_profile() {
@@ -1019,6 +1048,7 @@ case "$profile" in
   deepseek|deepseek-thinking)
     set_codeepseedex_terminal_title
     start_dsproxy_profile "$profile"
+    schedule_codeepseedex_terminal_title_refresh
     ;;
 esac
 
@@ -1188,6 +1218,92 @@ def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_p
     return 0
 
 
+
+def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
+    codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
+    target_profiles = _managed_profile_targets("__managed__" if bool(getattr(args, "managed_only", False)) else getattr(args, "profile", "__managed__"))
+    dry_run = bool(getattr(args, "dry_run", False))
+
+    profile_results: list[dict[str, object]] = []
+    updated_profiles: list[str] = []
+    skipped_profiles: list[str] = []
+
+    sections_before = _parse_simple_toml_sections(codex_path)
+    for profile_name in target_profiles:
+        before_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
+        model_info = before_payload.get("model", {}) if isinstance(before_payload, dict) else {}
+        effective_model = str(model_info.get("effective_model") or "").strip()
+        codex_model = str(model_info.get("codex_model") or "").strip()
+        provider_name = str(model_info.get("model_provider") or f"{profile_name}-proxy")
+
+        effort_info = before_payload.get("effort", {}) if isinstance(before_payload, dict) else {}
+        expected_effort = str(effort_info.get("expected_codex_model_reasoning_effort") or "").strip() or "high"
+
+        if not effective_model or effective_model == "unknown":
+            skipped_profiles.append(profile_name)
+            profile_results.append({
+                "profile": profile_name,
+                "status": "skipped",
+                "reason": "effective_model_unknown",
+                "codex_model_before": codex_model or None,
+                "effective_model": effective_model or None,
+            })
+            continue
+
+        model_needs_patch = codex_model != effective_model
+        effort_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("model_reasoning_effort") != expected_effort
+        plan_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("plan_mode_reasoning_effort") != "high"
+
+        model_patched = False
+        effort_patched = False
+        plan_patched = False
+        if not dry_run:
+            if model_needs_patch:
+                model_patched = _patch_codex_profile_value(codex_path, profile_name, "model", effective_model)
+            if effort_needs_patch:
+                effort_patched = _patch_codex_profile_value(codex_path, profile_name, "model_reasoning_effort", expected_effort)
+            if plan_needs_patch:
+                plan_patched = _patch_codex_profile_value(codex_path, profile_name, "plan_mode_reasoning_effort", "high")
+
+        if model_needs_patch or effort_needs_patch or plan_needs_patch:
+            updated_profiles.append(profile_name)
+
+        profile_results.append({
+            "profile": profile_name,
+            "status": "ok",
+            "provider": provider_name,
+            "codex_model_before": codex_model or None,
+            "effective_model": effective_model,
+            "codex_model_after": effective_model if model_needs_patch else codex_model,
+            "model_needs_patch": model_needs_patch,
+            "model_patched": model_patched,
+            "model_reasoning_effort": expected_effort,
+            "model_reasoning_effort_needs_patch": effort_needs_patch,
+            "model_reasoning_effort_patched": effort_patched,
+            "plan_mode_reasoning_effort": "high",
+            "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
+            "plan_mode_reasoning_effort_patched": plan_patched,
+        })
+
+    health = _codex_config_health(codex_path)
+    output = {
+        "status": "ok" if health["codex_config_loadable"] else "error",
+        "operation": "profile_repair",
+        "env_file": str(env_file),
+        "codex_config": str(codex_path),
+        "managed_only": bool(getattr(args, "managed_only", False)),
+        "target_profiles": target_profiles,
+        "updated_profiles": updated_profiles,
+        "skipped_profiles": skipped_profiles,
+        "profile_results": profile_results,
+        "codex_config_loadable": health["codex_config_loadable"],
+        "invalid_profile_fields": health["invalid_profile_fields"],
+        "dry_run": dry_run,
+        "post_config_apply": None if dry_run else _post_config_apply(),
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0 if output["status"] == "ok" else 1
+
 def _profile(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     if args.profile_command == "status":
@@ -1197,6 +1313,8 @@ def _profile(args: argparse.Namespace) -> int:
         return 0 if payload.get("status") == "ok" else 1
     if args.profile_command == "set-effort":
         return _set_effort_contract(args, env_file, explicit_profiles=[args.profile])
+    if args.profile_command == "repair":
+        return _repair_profile_models(args, env_file)
     if args.profile_command == "refresh-wrapper":
         return _refresh_codex_wrapper(args)
     print(json.dumps({"status": "error", "error": "unknown_profile_command"}, ensure_ascii=False, indent=2))
@@ -4867,6 +4985,15 @@ def build_parser() -> argparse.ArgumentParser:
     profile_set_effort.add_argument("--env-file")
     profile_set_effort.add_argument("--codex-config")
     profile_set_effort.set_defaults(func=_profile)
+
+    profile_repair = profile_sub.add_parser("repair", help="repair managed Codex profile model and effort fields")
+    profile_repair.add_argument("--managed-only", action="store_true", help="repair CoDeepSeedeX-managed profiles only")
+    profile_repair.add_argument("--profile", default="__managed__", help="profile to repair when --managed-only is not used")
+    profile_repair.add_argument("--env-file")
+    profile_repair.add_argument("--codex-config")
+    profile_repair.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_repair.add_argument("--dry-run", action="store_true")
+    profile_repair.set_defaults(func=_profile)
 
     profile_refresh_wrapper = profile_sub.add_parser("refresh-wrapper", help="refresh the managed Codex wrapper from the install manifest")
     profile_refresh_wrapper.add_argument("--manifest", help="install manifest path; defaults to ~/.config/deepseek-responses-proxy/install-manifest.env")

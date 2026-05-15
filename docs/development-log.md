@@ -1,5 +1,12 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a30-profile-model-sync-title-delay
+
+- Added `dsproxy profile repair --managed-only --json` to repair managed Codex profile `model` fields according to each profile's effective upstream model.
+- Kept `codex_model`, `effective_model`, and `model_conflict` as diagnostics, while making normal managed state repairable to `model_conflict=false`.
+- Changed generated Codex wrappers to schedule short delayed OSC 0/2 tab-title refreshes, including a 5-second refresh, after starting the matching dsproxy route and before executing the real Codex binary.
+- Preserved the non-duplicated 🐦‍🔥 emoji candidate rule.
+
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
 ## p2.10a29-weclaw-runtime-contract-unification

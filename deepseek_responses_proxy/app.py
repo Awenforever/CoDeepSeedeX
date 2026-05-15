@@ -55,7 +55,7 @@ PROXY_PUBLIC_COMMIT = (
 )
 PROXY_INTERNAL_VERSION = (
     _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
-    or "p2.10a29-weclaw-runtime-contract-unification"
+    or "p2.10a30-profile-model-sync-title-delay"
 )
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION

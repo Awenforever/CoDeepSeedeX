@@ -2593,8 +2593,15 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     assert result["contains_terminal_title"] is True
     assert result["emoji_firebird_count"] == 1
     assert "set_codeepseedex_terminal_title()" in text
+    assert "schedule_codeepseedex_terminal_title_refresh()" in text
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in text
-    assert text.index("set_codeepseedex_terminal_title") < text.index("start_dsproxy_profile \"$profile\"")
+    assert "sleep 5" in text
+    assert "> /dev/tty" in text
+    case_idx = text.index('case "$profile" in')
+    start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
+    schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
+    exec_idx = text.index('exec "$REAL_CODEX" "$@"', schedule_call_idx)
+    assert start_call_idx < schedule_call_idx < exec_idx
     assert 'exec "$REAL_CODEX" "$@"' in text
 
 
@@ -2663,3 +2670,109 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
     assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 750000
     assert result["context_window"]["runtime"]["available"] is False
     assert result["runtime_status"]["available"] is False
+
+
+
+def test_cli_profile_repair_managed_models_syncs_effective_models(tmp_path, capsys):
+    env_file = tmp_path / "env"
+    codex_config = tmp_path / "config.toml"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    codex_config.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"old-stable-model\"\n"
+        "model_provider = \"deepseek-proxy\"\n"
+        "model_reasoning_effort = \"high\"\n"
+        "plan_mode_reasoning_effort = \"medium\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "plan_mode_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = codex_config.read_text(encoding="utf-8")
+    assert result["status"] == "ok"
+    assert result["target_profiles"] == ["deepseek", "deepseek-thinking"]
+    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    assert text.count('model = "deepseek-v4-flash"') == 2
+    assert 'model = "glm-5.1"' not in text
+    assert 'model = "old-stable-model"' not in text
+    assert 'plan_mode_reasoning_effort = "high"' in text
+
+
+def test_cli_profile_repair_clears_model_conflict(tmp_path, capsys):
+    env_file = tmp_path / "env"
+    codex_config = tmp_path / "config.toml"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "repair", "--profile", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+    capsys.readouterr()
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["model"]["codex_model"] == "deepseek-v4-flash"
+    assert status["model"]["effective_model"] == "deepseek-v4-flash"
+    assert status["model"]["model_conflict"] is False
+
+
+def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    dsproxy = bin_dir / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for p in (real_codex, dsproxy, wrapper):
+        p.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = wrapper.read_text(encoding="utf-8")
+    assert result["status"] == "ok"
+    assert result["emoji_firebird_count"] == 1
+    assert "schedule_codeepseedex_terminal_title_refresh()" in text
+    assert "sleep 5" in text
+    assert "> /dev/tty" in text
+    assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
+    case_idx = text.index('case "$profile" in')
+    start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
+    schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
+    exec_idx = text.index('exec "$REAL_CODEX" "$@"', schedule_call_idx)
+    assert start_call_idx < schedule_call_idx < exec_idx
+    assert 'exec "$REAL_CODEX" "$@"' in text

@@ -26,7 +26,7 @@
 - 当前公开pre-release：`v0.3.8-alpha`
 - 公开Release commit：`54d81ab`
 - Release内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a29-weclaw-runtime-contract-unification`
+- 当前内部开发线：`p2.10a30-profile-model-sync-title-delay`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -514,3 +514,12 @@ WeClaw status契约中，token、pricing、cost、balance、辅助token和compac
 Context字段必须区分Codex token级声明和dsproxy char级运行时控制。Codex profile中的`model_context_window`和`model_auto_compact_token_limit`是token级声明。`/v1/proxy/status.context`中的runtime compaction/trimming是char级行为。除非明确标注单位和来源，否则不得混合这些值。
 
 源码更新后，已安装Codex wrapper可能仍停留在旧版本。`dsproxy profile refresh-wrapper --json`会根据install manifest刷新CoDeepSeedeX-managed wrapper，同时保留manifest-backed rollback元数据。未知用户自有wrapper不得静默覆盖，除非操作者显式传入`--force`。
+
+
+## p2.10a30 profile model同步和延迟标题刷新
+
+Managed Codex profile的`model`值必须与该profile自己的有效上游模型一致，不能写死某个模型名。`dsproxy profile repair --managed-only --json`会通过`profile status`使用的同一profile契约计算每个profile的effective model，并修复`deepseek`和`deepseek-thinking`。
+
+`codex_model`、`effective_model`和`model_conflict`继续作为诊断契约保留。正常managed状态下，`model_conflict`应为false。若为true，应执行`dsproxy profile repair --managed-only --json`。
+
+Codex wrapper不能只依赖Codex启动前的一次OSC标题更新，因为Codex可能在启动阶段设置tab标题。wrapper应在启动Codex前设置一次标题，并在`exec "$REAL_CODEX" "$@"`前安排短时延迟OSC 0/2刷新，包括5秒刷新。除非后续证据证明Codex会持续覆盖标题，否则不要使用长期keeper。

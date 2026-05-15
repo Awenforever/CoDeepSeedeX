@@ -1802,10 +1802,39 @@ set_codeepseedex_terminal_title() {
       ;;
   esac
 
-  local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")
-  local idx=\$((RANDOM % \${#emojis[@]}))
-  local title="\${emojis[\$idx]}CoDeepSeedeX"
-  printf '\033]0;%s\007' "\$title" 2>/dev/null || true
+  local title="\${CODEEPSEEDEX_TERMINAL_TITLE:-}"
+  if [ -z "\$title" ]; then
+    local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")
+    local idx=\$((RANDOM % \${#emojis[@]}))
+    title="\${emojis[\$idx]}CoDeepSeedeX"
+    CODEEPSEEDEX_TERMINAL_TITLE="\$title"
+  fi
+
+  if [ -w /dev/tty ]; then
+    printf '\033]0;%s\007\033]2;%s\007' "\$title" "\$title" > /dev/tty 2>/dev/null || true
+  else
+    printf '\033]0;%s\007\033]2;%s\007' "\$title" "\$title" 2>/dev/null || true
+  fi
+}
+
+schedule_codeepseedex_terminal_title_refresh() {
+  if [ ! -t 1 ]; then
+    return 0
+  fi
+  case "\${TERM:-}" in
+    ""|dumb)
+      return 0
+      ;;
+  esac
+
+  (
+    sleep 1
+    set_codeepseedex_terminal_title
+    sleep 2
+    set_codeepseedex_terminal_title
+    sleep 5
+    set_codeepseedex_terminal_title
+  ) >/dev/null 2>&1 &
 }
 
 start_dsproxy_profile() {
@@ -1852,6 +1881,7 @@ case "\$profile" in
   deepseek|deepseek-thinking)
     set_codeepseedex_terminal_title
     start_dsproxy_profile "\$profile"
+    schedule_codeepseedex_terminal_title_refresh
     ;;
 esac
 

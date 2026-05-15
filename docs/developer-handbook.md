@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a29-weclaw-runtime-contract-unification`
+- Current internal development line: `p2.10a30-profile-model-sync-title-delay`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -546,3 +546,12 @@ When `model_conflict=true`, WeClaw should display `effective_model` and may show
 Context fields must distinguish token-level Codex declarations from char-level dsproxy runtime controls. Codex profile fields such as `model_context_window` and `model_auto_compact_token_limit` are token-level declarations. Runtime compaction/trimming status from `/v1/proxy/status.context` is char-level behavior. Do not combine these values without explicitly labeling units and source.
 
 Installed Codex wrappers may be stale after source updates. `dsproxy profile refresh-wrapper --json` refreshes a CoDeepSeedeX-managed wrapper from the install manifest while preserving manifest-backed rollback metadata. Unknown user-owned wrappers must not be overwritten unless the operator explicitly passes `--force`.
+
+
+## p2.10a30 profile model sync and delayed title refresh
+
+Managed Codex profile `model` values must match each profile's effective upstream model, not a hard-coded model name. `dsproxy profile repair --managed-only --json` repairs `deepseek` and `deepseek-thinking` by computing each profile's effective model through the same profile contract used by `profile status`.
+
+`codex_model`, `effective_model`, and `model_conflict` remain part of the diagnostic contract. Under normal managed state, `model_conflict` should be false. If it is true, run `dsproxy profile repair --managed-only --json`.
+
+The Codex wrapper should not rely on a single pre-Codex OSC title update. Codex may set the tab title during startup. The wrapper therefore sets the title once before launching Codex and schedules short delayed OSC 0/2 refreshes, including a 5-second refresh, before `exec "$REAL_CODEX" "$@"`. Do not use a long-running keeper unless later evidence shows Codex continuously overwrites the title.
