@@ -17,6 +17,14 @@
 
 
 
+
+## p2.10a22-port-label-effort-surface
+
+- Renamed the guided installer prompt from `Stable proxy port` to `Non-Thinking proxy port`.
+- Removed the duplicate standalone Codex wrapper help line so prompt-specific help is only rendered by the menu detail mechanism.
+- Changed the CLI upgrade profile reinstall path from `medium` to `high` for the non-thinking DeepSeek Codex profile.
+- Kept compatibility normalization: old `low` and `medium` inputs normalize to DeepSeek `high`, while `xhigh` and `max` normalize to DeepSeek `max`.
+- Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a21-installer-wrapper-help-placement
 
 - Moved the Codex wrapper explanatory line from above the wrapper question into the menu renderer.

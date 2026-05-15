@@ -45,7 +45,7 @@ def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
 
 
 PROXY_PUBLIC_COMMIT = _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "7a90d95")
-PROXY_INTERNAL_VERSION = "p2.10a21-installer-wrapper-help-placement"
+PROXY_INTERNAL_VERSION = "p2.10a22-port-label-effort-surface"
 PROXY_INTERNAL_COMMIT = "unknown"
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

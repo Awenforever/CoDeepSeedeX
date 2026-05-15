@@ -48,7 +48,7 @@ The installer will:
 - create the `dsproxy` command
 - create two Codex profiles: `deepseek` and `deepseek-thinking`
 - optionally install a safe `codex` wrapper for these two profiles only
-- ask for stable/thinking ports
+- ask for non-thinking/thinking ports
 - open a guided API configuration menu for the model API, optional web search providers, and optional image generation providers
 - ask you to paste each API key at the corresponding hidden prompt
 - validate configured API keys before saving them, unless you skip validation or skip that provider
@@ -256,6 +256,8 @@ Release notes must mention milestone behavior changes, but the README also keeps
 
 
 
+
+| unreleased / p2.10a22 | Installer port label and effort surface | The installer used `Stable proxy port`, and the CLI upgrade profile reinstall path could still write `medium` for the non-thinking Codex profile. | The installer now says `Non-Thinking proxy port`. CoDeepSeedeX-owned profile install and upgrade surfaces use `high` or `xhigh`, while the proxy still accepts old `low` and `medium` compatibility inputs and normalizes them to DeepSeek `high`. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 | unreleased / p2.10a21 | Installer wrapper help placement | The Codex wrapper explanation appeared above the wrapper question, visually separated from the relevant prompt. | Wrapper help is now printed by the menu renderer directly under the question and before the global arrow-key hint. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 | unreleased / p2.10a20 | Installer secret prompt and wrapper help | Pressing Enter on an existing model API key reused the hidden default and reported it as newly entered characters. Secret prompt helper text and wrapper usage guidance were not visually clear. | Secret prompt helper text is dimmed. Empty input with an existing key keeps the key without re-counting or re-validating it. The installer now explains that the Codex wrapper enables `codex --profile deepseek` and `codex --profile deepseek-thinking` with automatic local dsproxy backend handling. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |
 | unreleased / p2.10a19 | Installer menu selected-row column alignment | Selected menu rows used `▶ ` while unselected rows used a wider blank prefix, making the selected option visually shift left. | Align selected and unselected value columns by using a two-space blank prefix for unselected rows. | Rebuild `v0.3.8-alpha` pre-release assets before VM retest. |

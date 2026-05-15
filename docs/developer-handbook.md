@@ -478,3 +478,7 @@ Secret prompts must distinguish a newly typed secret from an empty submission th
 ## p2.10a21 installer wrapper help placement
 
 Prompt-specific explanatory text should be rendered by the menu renderer immediately under the prompt and before the global keybinding hint. Do not print prompt-specific help as a standalone line before invoking the menu, because it visually detaches the explanation from the question.
+
+## p2.10a22 installer port label and effort surface
+
+Installer UI should call the 8000 profile `Non-Thinking`, not `Stable`, because the user-facing concept is the DeepSeek thinking mode rather than release stability. CoDeepSeedeX-owned profile install and upgrade paths should not write `medium` for DeepSeek profiles. `low` and `medium` remain accepted compatibility inputs from Codex or older commands and are normalized to DeepSeek `high`.

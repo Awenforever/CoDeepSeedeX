@@ -38,7 +38,7 @@ def test_public_runtime_version_matches_declared_release_tag() -> None:
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.10a21-installer-wrapper-help-placement"
+    assert PROXY_INTERNAL_VERSION == "p2.10a22-port-label-effort-surface"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:

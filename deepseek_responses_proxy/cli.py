@@ -3545,7 +3545,7 @@ def _upgrade(args: argparse.Namespace) -> int:
                         "--model",
                         "deepseek-v4-flash",
                         "--reasoning-effort",
-                        "medium",
+                        "high",
                     ],
                     False,
                 ),

@@ -1815,7 +1815,7 @@ step "Guided configuration"
 
 DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
 DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-STABLE_PORT="$(read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT")"
+STABLE_PORT="$(read_from_tty "Non-Thinking proxy port" "$DEFAULT_STABLE_PORT")"
 THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
 prompt_deepseek_api_key
 API_KEY="$PROMPTED_API_KEY"
@@ -1826,7 +1826,6 @@ menu_print_separator
 prompt_image_generation_api_key
 IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
 menu_print_separator
-printf '  \033[2mAfter installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically.\033[0m\n'
 CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically."
 WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
