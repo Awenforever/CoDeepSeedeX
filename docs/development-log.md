@@ -10,6 +10,15 @@
 
 
 
+
+## p2.10a15-installer-provider-flow-source-fallback
+
+- Added installer logo install-ref display.
+- Removed Supported labels from Yes/No menus.
+- Changed model and image provider setup to use provider-family menus followed by endpoint/region submenus.
+- Restored unsupported provider visibility for Mimo and Baichuan without prompting for unusable keys.
+- Added key-entry character-count feedback and three-empty-submission skip behavior.
+- Added tagged source archive fallback when git clone/fetch fails during VM installation.
 ## p2.10a14-install-log-source-polish-fix
 
 - Fixed installer source logging to use `INSTALL_LOG` instead of undefined `LOG_FILE`.

@@ -446,3 +446,7 @@ Runtime public commit metadata should resolve the configured public Release tag 
 ## p2.10a14 installer source log variable
 
 When moving installer source details out of the interactive UI, write them to the existing `INSTALL_LOG` variable. Do not introduce `LOG_FILE`; the installer runs with `set -u`, so undefined variables abort fresh VM installs.
+
+## p2.10a15 installer provider flow
+
+Guided installer menus should first ask for a provider family, then show endpoint, region, Token API, or Coding Plan API choices only when that family requires disambiguation. Yes/No menus must use plain rendering and must not inherit provider status labels such as Supported. The installer logo should show the active install ref beside CoDeepSeedeX. If Git clone or `git fetch --tags origin` fails during VM installation, the installer may fall back to a tagged GitHub/codeload source archive for the requested install ref.

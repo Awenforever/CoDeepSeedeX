@@ -35,15 +35,15 @@ show_version_source() {
 }
 
 logo() {
-  cat <<'LOGO'
+  cat <<LOGO
    ____      ____                 ____              _      __  __
   / ___|___ |  _ \  ___  ___ _ __/ ___|  ___  ___  __| | ___ \ \/ /
  | |   / _ \| | | |/ _ \/ _ \ '_ \___ \ / _ \/ _ \/ _` |/ _ \ \  /
- | |__| (_) | |_| |  __/  __/ |_) |__) |  __/  __/ (_| |  __/ /  \
+ | |__| (_) | |_| |  __/  __/ |_) |__) |  __/ __/ (_| |  __/ /  \
   \____\___/|____/ \___|\___| .__/____/ \___|\___|\__,_|\___|/_/\_\
                              |_|
 
-  CoDeepSeedeX
+  CoDeepSeedeX ${INSTALL_REF:-GitHub Latest}
   Codex × DeepSeek local Responses proxy
 LOGO
 }
@@ -611,6 +611,8 @@ read_menu_choice_from_tty() {
         menu_tty_printf '\033[1;33m%s\033[0m %s  \033[1;33mCustom\033[0m\n' "$value." "$label"
       elif [ "$status" = "model unavailable" ]; then
         menu_tty_printf '\033[2m%s %s  Model unavailable\033[0m\n' "$value." "$label"
+      elif [ "$status" = "plain" ]; then
+        menu_tty_printf '%s. %s\n' "$value" "$label"
       elif [ "$status" = "skip" ]; then
         menu_tty_printf '  %s. %s\n' "$value" "$label"
       else
@@ -667,10 +669,10 @@ read_yes_no_menu() {
 
   case "$default" in
     y|Y|yes|YES|Yes)
-      read_menu_choice_from_tty "$prompt" "Y" "Y|$yes_label|supported" "N|$no_label|skip"
+      read_menu_choice_from_tty "$prompt" "Y" "Y|$yes_label|plain" "N|$no_label|plain"
       ;;
     *)
-      read_menu_choice_from_tty "$prompt" "N" "Y|$yes_label|supported" "N|$no_label|skip"
+      read_menu_choice_from_tty "$prompt" "N" "Y|$yes_label|plain" "N|$no_label|plain"
       ;;
   esac
 }
@@ -712,21 +714,20 @@ prompt_deepseek_api_key() {
   esac
 
   sub_title "Model providers"
-  printf '  %s\n' "Only DeepSeek is marked Supported for model providers. Other model providers are Experimental until full Codex workflow validation passes."
-  local provider=""
-  provider="$(read_menu_choice_from_tty "Select model provider" "1" \
+  printf '  %s\n' "Only DeepSeek is marked Supported. Other implemented model providers are Experimental until full Codex workflow validation passes."
+  local family=""
+  family="$(read_menu_choice_from_tty "Select model provider family" "1" \
     "1|DeepSeek|supported" \
     "2|Kimi / Moonshot|experimental" \
-    "3|Zhipu / BigModel domestic general|experimental" \
-    "4|Zhipu / BigModel domestic Coding Plan|experimental" \
-    "5|Z.AI international general|experimental" \
-    "6|Z.AI international Coding Plan|experimental" \
-    "7|Qwen / DashScope Beijing pay-as-you-go|experimental" \
-    "8|Qwen / DashScope Singapore pay-as-you-go|experimental" \
-    "9|Qwen / DashScope US Virginia pay-as-you-go|experimental" \
-    "10|Other OpenAI-compatible server|custom" \
+    "3|ZhipuAI / BigModel|experimental" \
+    "4|Z.AI|experimental" \
+    "5|Qwen / DashScope|experimental" \
+    "6|Mimo|unsupported" \
+    "7|Baichuan|unsupported" \
+    "8|Other OpenAI-compatible server|custom" \
     "0|Skip|skip")"
-  case "$provider" in
+
+  case "$family" in
     1|deepseek|DeepSeek|DEEPSEEK)
       PROMPTED_MODEL_PROVIDER="deepseek"
       ;;
@@ -734,27 +735,52 @@ prompt_deepseek_api_key() {
       PROMPTED_MODEL_PROVIDER="kimi"
       ;;
     3|zhipu|zhipuai|bigmodel|ZHIPU|ZHIPUAI|BIGMODEL)
-      PROMPTED_MODEL_PROVIDER="zhipu"
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select ZhipuAI / BigModel endpoint" "1" \
+        "1|Domestic Token API / general endpoint|experimental" \
+        "2|Domestic Coding Plan API endpoint|experimental" \
+        "0|Back / skip|skip")"
+      case "$endpoint" in
+        1|token|general|domestic) PROMPTED_MODEL_PROVIDER="zhipu" ;;
+        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zhipu-coding" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zhipu"; return 0 ;;
+      esac
       ;;
-    4|zhipu-coding|zhipu_coding|bigmodel-coding|bigmodel_coding|ZHIPU-CODING|ZHIPU_CODING|BIGMODEL-CODING|BIGMODEL_CODING)
-      PROMPTED_MODEL_PROVIDER="zhipu-coding"
+    4|zai|z.ai|ZAI|Z.AI)
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select Z.AI endpoint" "1" \
+        "1|International Token API / general endpoint|experimental" \
+        "2|International Coding Plan API endpoint|experimental" \
+        "0|Back / skip|skip")"
+      case "$endpoint" in
+        1|token|general|international) PROMPTED_MODEL_PROVIDER="zai" ;;
+        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zai-coding" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zai"; return 0 ;;
+      esac
       ;;
-    5|zai|z.ai|ZAI|Z.AI|glm|GLM)
-      PROMPTED_MODEL_PROVIDER="zai"
+    5|qwen|dashscope|aliyun|QWEN|DASHSCOPE)
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1" \
+        "1|Beijing pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "2|Singapore pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "3|US Virginia pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "0|Back / skip|skip")"
+      case "$endpoint" in
+        1|beijing|cn) PROMPTED_MODEL_PROVIDER="qwen-beijing" ;;
+        2|singapore|sg) PROMPTED_MODEL_PROVIDER="qwen-singapore" ;;
+        3|us|us-virginia|virginia) PROMPTED_MODEL_PROVIDER="qwen-us" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider qwen-beijing"; return 0 ;;
+      esac
       ;;
-    6|zai-coding|zai_coding|z.ai-coding|z.ai_coding|ZAI-CODING|ZAI_CODING|Z.AI-CODING|Z.AI_CODING)
-      PROMPTED_MODEL_PROVIDER="zai-coding"
+    6|mimo|Mimo|MIMO)
+      warn "Mimo is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
+      return 0
       ;;
-    7|qwen-beijing|qwen_beijing|dashscope-beijing|dashscope_beijing|QWEN-BEIJING|QWEN_BEIJING|DASHSCOPE-BEIJING|DASHSCOPE_BEIJING|qwen|Qwen|QWEN|dashscope|DashScope|DASHSCOPE|aliyun|ALIYUN)
-      PROMPTED_MODEL_PROVIDER="qwen-beijing"
+    7|baichuan|Baichuan|BAICHUAN)
+      warn "Baichuan is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
+      return 0
       ;;
-    8|qwen-singapore|qwen_singapore|dashscope-singapore|dashscope_singapore|QWEN-SINGAPORE|QWEN_SINGAPORE|DASHSCOPE-SINGAPORE|DASHSCOPE_SINGAPORE)
-      PROMPTED_MODEL_PROVIDER="qwen-singapore"
-      ;;
-    9|qwen-us|qwen_us|qwen-us-virginia|qwen_us_virginia|dashscope-us|dashscope_us|QWEN-US|QWEN_US|QWEN-US-VIRGINIA|QWEN_US_VIRGINIA|DASHSCOPE-US|DASHSCOPE_US)
-      PROMPTED_MODEL_PROVIDER="qwen-us"
-      ;;
-    10|custom|other|Other|CUSTOM)
+    8|custom|other|Other|CUSTOM)
       PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)
@@ -763,7 +789,7 @@ prompt_deepseek_api_key() {
       ;;
     *)
       warn "Selected model provider is currently unsupported. Configure as custom only if it is OpenAI-compatible."
-      PROMPTED_MODEL_PROVIDER="custom"
+      return 0
       ;;
   esac
 
@@ -781,40 +807,43 @@ prompt_deepseek_api_key() {
   fi
 
   local attempts=0
+  local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "Model API key (optional; press Enter to skip)" "${DEEPSEEK_API_KEY:-}")"
+    candidate="$(read_secret_from_tty "Model API key (optional; press Enter three times to skip)" "${DEEPSEEK_API_KEY:-}")"
     if [ -z "$candidate" ]; then
-      PROMPTED_API_KEY=""
-      warn "Model API key skipped. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
-      return 0
+      empty_attempts=$((empty_attempts + 1))
+      if [ "$empty_attempts" -ge 3 ]; then
+        PROMPTED_API_KEY=""
+        warn "Model API key skipped after three empty submissions. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+        return 0
+      fi
+      warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
+      continue
     fi
 
+    ok "Received ${#candidate} characters. Validating provider: $PROMPTED_MODEL_PROVIDER"
+    empty_attempts=0
     if test_model_api_key "$PROMPTED_MODEL_PROVIDER" "$candidate" "$PROMPTED_MODEL_BASE_URL"; then
       PROMPTED_API_KEY="$candidate"
       ok "Model API key validated for provider: $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
 
-    warn "Model API key validation failed. Please paste it again, or press Enter to skip."
     attempts=$((attempts + 1))
+    warn "Model API key validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
   done
 
   PROMPTED_API_KEY=""
-  if [ "$PROMPTED_MODEL_PROVIDER" = "deepseek" ]; then
-    warn "DeepSeek API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider deepseek"
-  else
-    warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
-  fi
+  warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
 }
-
 
 prompt_serpapi_api_key() {
   PROMPTED_SERPAPI_API_KEY=""
   PROMPTED_WEB_SEARCH_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${BRAVE_SEARCH_API_KEY:-${EXA_API_KEY:-${FIRECRAWL_API_KEY:-}}}}}"
+    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${EXA_API_KEY:-${FIRECRAWL_API_KEY:-}}}}"
     PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
     return 0
   fi
@@ -838,16 +867,16 @@ prompt_serpapi_api_key() {
     "3|Exa|supported" \
     "4|Firecrawl|supported" \
     "5|Bing Web Search|unsupported" \
-    "7|Google Programmable Search|unsupported" \
-    "8|Other custom server|unsupported" \
+    "6|Google Programmable Search|unsupported" \
+    "7|Other custom server|unsupported" \
     "0|Skip|skip")"
   case "$provider" in
     1|serpapi|SerpAPI|SERPAPI) PROMPTED_WEB_SEARCH_PROVIDER="serpapi"; prompt="SerpAPI API key" ;;
     2|tavily|Tavily|TAVILY) PROMPTED_WEB_SEARCH_PROVIDER="tavily"; prompt="Tavily API key" ;;
-    4|exa|Exa|EXA) PROMPTED_WEB_SEARCH_PROVIDER="exa"; prompt="Exa API key" ;;
-    5|firecrawl|Firecrawl|FIRECRAWL) PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"; prompt="Firecrawl API key" ;;
-    8|other|Other|OTHER|custom|Custom)
-      warn "Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
+    3|exa|Exa|EXA) PROMPTED_WEB_SEARCH_PROVIDER="exa"; prompt="Exa API key" ;;
+    4|firecrawl|Firecrawl|FIRECRAWL) PROMPTED_WEB_SEARCH_PROVIDER="firecrawl"; prompt="Firecrawl API key" ;;
+    7|other|Other|OTHER|custom|Custom)
+      warn "Custom web search servers are configured manually."
       return 0
       ;;
     0|skip|Skip|SKIP)
@@ -861,29 +890,36 @@ prompt_serpapi_api_key() {
   esac
 
   local attempts=0
+  local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "")"
+    candidate="$(read_secret_from_tty "$prompt (optional; press Enter three times to skip)" "")"
     if [ -z "$candidate" ]; then
-      PROMPTED_SERPAPI_API_KEY=""
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
-      return 0
+      empty_attempts=$((empty_attempts + 1))
+      if [ "$empty_attempts" -ge 3 ]; then
+        PROMPTED_SERPAPI_API_KEY=""
+        warn "Web search API skipped after three empty submissions. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
+        return 0
+      fi
+      warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
+      continue
     fi
 
+    ok "Received ${#candidate} characters. Validating provider: $PROMPTED_WEB_SEARCH_PROVIDER"
+    empty_attempts=0
     if test_web_search_api_key "$PROMPTED_WEB_SEARCH_PROVIDER" "$candidate"; then
       PROMPTED_SERPAPI_API_KEY="$candidate"
       ok "Web search API key validated for provider: $PROMPTED_WEB_SEARCH_PROVIDER"
       return 0
     fi
 
-    warn "Web search API key validation failed. Please paste it again, or press Enter to skip."
     attempts=$((attempts + 1))
+    warn "Web search API key validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
   done
 
   PROMPTED_SERPAPI_API_KEY=""
   warn "Web search API key was not saved because validation failed. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
 }
-
 
 prompt_image_generation_api_key() {
   PROMPTED_IMAGE_API_KEY=""
@@ -906,35 +942,44 @@ prompt_image_generation_api_key() {
   esac
 
   sub_title "Image generation providers"
-  local provider=""
+  local family=""
   local prompt=""
-  provider="$(read_menu_choice_from_tty "Select image generation provider" "1" \
+  family="$(read_menu_choice_from_tty "Select image generation provider family" "1" \
     "1|ZhipuAI / BigModel|supported" \
     "2|Z.AI / CogView|supported" \
-    "3|Qwen Image / DashScope Beijing|supported" \
-    "4|Qwen Image / DashScope Singapore|supported" \
-    "5|Qwen Image / DashScope US Virginia|model unavailable" \
-    "6|Qwen Image / DashScope Germany Frankfurt|model unavailable" \
-    "7|Stability AI|supported" \
-    "8|fal.ai|supported" \
-    "9|Kolors|unsupported" \
-    "10|Hunyuan Image|unsupported" \
-    "11|Volcengine Ark|unsupported" \
-    "12|Other custom server|unsupported" \
+    "3|Qwen Image / DashScope|supported" \
+    "4|Stability AI|supported" \
+    "5|fal.ai|supported" \
+    "6|Kolors|unsupported" \
+    "7|Hunyuan Image|unsupported" \
+    "8|Volcengine Ark|unsupported" \
+    "9|Other custom server|unsupported" \
     "0|Skip|skip")"
-  case "$provider" in
+  case "$family" in
     1|zhipu|ZHIPU|zhipuai|ZHIPUAI|bigmodel|BIGMODEL) PROMPTED_IMAGE_PROVIDER="zhipu"; prompt="ZhipuAI / BigModel image API key" ;;
     2|glm|GLM|cogview|CogView|zai|ZAI|z.ai|Z.AI) PROMPTED_IMAGE_PROVIDER="zai"; prompt="Z.AI image API key" ;;
-    3|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun|qwen_image_beijing|qwen-image-beijing) PROMPTED_IMAGE_PROVIDER="qwen_image_beijing"; prompt="DashScope Beijing API key" ;;
-    4|qwen_image_singapore|qwen-image-singapore|dashscope_singapore) PROMPTED_IMAGE_PROVIDER="qwen_image_singapore"; prompt="DashScope Singapore API key" ;;
-    5|qwen_image_us|qwen-image-us|dashscope_us|6|qwen_image_germany|qwen-image-germany|dashscope_germany)
-      warn "Selected Qwen Image region is listed for clarity, but qwen-image-2.0-pro is currently unavailable there. Choose Beijing or Singapore."
-      return 0
+    3|qwen|Qwen|qwen_image|qwen-image|dashscope|DashScope|aliyun)
+      local region=""
+      region="$(read_menu_choice_from_tty "Select Qwen Image / DashScope region" "1" \
+        "1|Beijing multimodal generation endpoint|supported" \
+        "2|Singapore multimodal generation endpoint|supported" \
+        "3|US Virginia endpoint; qwen-image-2.0-pro currently unavailable|model unavailable" \
+        "4|Germany Frankfurt endpoint; qwen-image-2.0-pro currently unavailable|model unavailable" \
+        "0|Back / skip|skip")"
+      case "$region" in
+        1|beijing|cn) PROMPTED_IMAGE_PROVIDER="qwen_image_beijing"; prompt="DashScope Beijing API key" ;;
+        2|singapore|sg) PROMPTED_IMAGE_PROVIDER="qwen_image_singapore"; prompt="DashScope Singapore API key" ;;
+        3|us|us-virginia|virginia|4|germany|frankfurt|de)
+          warn "Selected Qwen Image region is listed for clarity, but qwen-image-2.0-pro is currently unavailable there. Choose Beijing or Singapore."
+          return 0
+          ;;
+        *) warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider qwen_image_beijing"; return 0 ;;
+      esac
       ;;
-    7|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
-    8|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
-    12|other|Other|OTHER|custom|Custom)
-      warn "Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions."
+    4|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
+    5|fal|Fal|FAL|fal_ai|fal.ai) PROMPTED_IMAGE_PROVIDER="fal"; prompt="fal.ai API key" ;;
+    9|other|Other|OTHER|custom|Custom)
+      warn "Custom image generation servers are configured manually."
       return 0
       ;;
     0|skip|Skip|SKIP)
@@ -948,24 +993,32 @@ prompt_image_generation_api_key() {
   esac
 
   local attempts=0
+  local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    candidate="$(read_secret_from_tty "$prompt (optional; press Enter to skip)" "${DEEPSEEK_PROXY_IMAGE_API_KEY:-}")"
+    candidate="$(read_secret_from_tty "$prompt (optional; press Enter three times to skip)" "")"
     if [ -z "$candidate" ]; then
-      PROMPTED_IMAGE_API_KEY=""
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
-      return 0
+      empty_attempts=$((empty_attempts + 1))
+      if [ "$empty_attempts" -ge 3 ]; then
+        PROMPTED_IMAGE_API_KEY=""
+        warn "Image generation API skipped after three empty submissions. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+        return 0
+      fi
+      warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
+      continue
     fi
 
-    if test_image_generation_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then
+    ok "Received ${#candidate} characters. Validating provider: $PROMPTED_IMAGE_PROVIDER"
+    empty_attempts=0
+    if test_image_api_key "$PROMPTED_IMAGE_PROVIDER" "$candidate"; then
       PROMPTED_IMAGE_API_KEY="$candidate"
       ok "Image generation API key accepted by non-generating validation for provider: $PROMPTED_IMAGE_PROVIDER"
-      warn "This does not prove real image generation works. Run a live provider probe before relying on it."
+      warn "This does not prove real image generation; use dsproxy doctor providers --kind image --provider $PROMPTED_IMAGE_PROVIDER --live --allow-spend for a quota-consuming test."
       return 0
     fi
 
-    warn "Image generation API key validation failed. Please paste it again, or press Enter to skip."
     attempts=$((attempts + 1))
+    warn "Image generation API validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
   done
 
   PROMPTED_IMAGE_API_KEY=""
@@ -1652,7 +1705,11 @@ case "$WRAPPER_CHOICE" in
 esac
 
 if [ -z "$API_KEY" ]; then
-  warn "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-model --provider deepseek"
+  if [ -n "$PROMPTED_MODEL_PROVIDER" ]; then
+    warn "Model API key is empty; configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+  else
+    warn "Model API key is empty; configure later with: dsproxy config wizard"
+  fi
 fi
 
 sync_install_checkout_to_ref() {
@@ -1726,18 +1783,83 @@ sync_install_checkout_to_ref() {
 }
 
 
+download_source_archive_to_install_dir() {
+  local ref="$1"
+  if [ -z "$ref" ]; then
+    return 1
+  fi
+  if ! command -v tar >/dev/null 2>&1; then
+    warn "tar is required for source archive fallback."
+    return 1
+  fi
+
+  local tmp_root="$LOCAL_BACKUP_DIR/source-archive-fallback-$(date +%Y%m%d_%H%M%S)"
+  local archive="$tmp_root/source.tar.gz"
+  local extract_dir="$tmp_root/extract"
+  mkdir -p "$extract_dir"
+
+  local url1="https://codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref"
+  local url2="https://github.com/Awenforever/CoDeepSeedeX/archive/refs/tags/$ref.tar.gz"
+
+  printf '+ Source archive fallback for ref %s\n' "$ref" >> "$INSTALL_LOG"
+  if ! curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$url1" -o "$archive" >> "$INSTALL_LOG" 2>&1; then
+    warn "codeload source archive download failed. Trying GitHub archive URL."
+    if ! curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$url2" -o "$archive" >> "$INSTALL_LOG" 2>&1; then
+      warn "Source archive fallback failed. See log: $INSTALL_LOG"
+      return 1
+    fi
+  fi
+
+  tar -xzf "$archive" -C "$extract_dir" >> "$INSTALL_LOG" 2>&1 || return 1
+
+  local extracted=""
+  extracted="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  if [ -z "$extracted" ] || [ ! -f "$extracted/scripts/install.sh" ]; then
+    warn "Source archive fallback did not contain expected project layout."
+    return 1
+  fi
+
+  mkdir -p "$LOCAL_BACKUP_DIR"
+  if [ -e "$INSTALL_DIR" ]; then
+    local backup="$LOCAL_BACKUP_DIR/install-dir-before-source-archive-$(date +%Y%m%d_%H%M%S)"
+    mv "$INSTALL_DIR" "$backup"
+    warn "Moved existing install directory aside for source archive fallback: $backup"
+  fi
+
+  mkdir -p "$(dirname "$INSTALL_DIR")"
+  mv "$extracted" "$INSTALL_DIR"
+  ok "Repository installed from source archive"
+  return 0
+}
+
+prepare_install_checkout() {
+  local target_ref="$1"
+
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    if run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin; then
+      return 0
+    fi
+    warn "Git fetch failed. Trying source archive fallback for $target_ref."
+    download_source_archive_to_install_dir "$target_ref"
+    return $?
+  fi
+
+  run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
+  if run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR" &&
+     run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin; then
+    return 0
+  fi
+
+  warn "Git clone/fetch failed. Trying source archive fallback for $target_ref."
+  download_source_archive_to_install_dir "$target_ref"
+}
+
 step "Installing"
 
 INSTALL_TARGET_REF="$(resolve_install_ref)"
 ok "Install target ref: $INSTALL_TARGET_REF"
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-  run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin
-else
-  run_quiet "Install parent directory ready" mkdir -p "$(dirname "$INSTALL_DIR")"
-  run_git_quiet "Repository installed" "git clone" git clone "$REPO_URL" "$INSTALL_DIR"
-  run_git_quiet "Repository tags fetched" "git fetch --tags origin" git -C "$INSTALL_DIR" fetch --tags origin
-fi
+prepare_install_checkout "$INSTALL_TARGET_REF"
 
 sync_install_checkout_to_ref "$INSTALL_TARGET_REF"
 

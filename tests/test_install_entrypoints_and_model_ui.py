@@ -68,22 +68,30 @@ def test_installer_guided_api_provider_catalogs_are_visible() -> None:
     assert "Configure image generation API now?" in text
     assert "DeepSeek" in text
     assert "Kimi / Moonshot" in text
-    assert "Zhipu / BigModel domestic general" in text
-    assert "Zhipu / BigModel domestic Coding Plan" in text
-    assert "Z.AI international general" in text
-    assert "Z.AI international Coding Plan" in text
-    assert "Qwen / DashScope Beijing pay-as-you-go" in text
-    assert "Qwen / DashScope Singapore pay-as-you-go" in text
-    assert "Qwen / DashScope US Virginia pay-as-you-go" in text
-    assert "Mimo" not in text
-    assert "Baichuan" not in text
-    assert "GLM / Z.AI" not in text
-    assert 'provider_option_line "4" "Qwen / DashScope" "supported"' not in text
+    assert "ZhipuAI / BigModel" in text
+    assert "Z.AI" in text
+    assert "Qwen / DashScope" in text
+    assert "Mimo|unsupported" in text
+    assert "Baichuan|unsupported" in text
+    assert "Select ZhipuAI / BigModel endpoint" in text
+    assert "Domestic Token API / general endpoint" in text
+    assert "Domestic Coding Plan API endpoint" in text
+    assert "Select Z.AI endpoint" in text
+    assert "International Token API / general endpoint" in text
+    assert "International Coding Plan API endpoint" in text
+    assert "Select Qwen / DashScope endpoint" in text
+    assert "Beijing pay-as-you-go OpenAI-compatible endpoint" in text
+    assert "Singapore pay-as-you-go OpenAI-compatible endpoint" in text
+    assert "US Virginia pay-as-you-go OpenAI-compatible endpoint" in text
     assert "SerpAPI" in text
     assert "Tavily" in text
     assert "Exa" in text
     assert "Firecrawl" in text
-    assert "Brave" not in text
+    assert "ZhipuAI / BigModel image API key" in text
+    assert "Z.AI image API key" in text
+    assert "Select Qwen Image / DashScope region" in text
+    assert "Stability AI" in text
+    assert "fal.ai" in text
 
 def test_installer_guided_api_provider_catalogs_include_new_providers_and_other() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -119,14 +127,13 @@ def test_installer_guided_api_provider_catalogs_include_second_wave_providers() 
 def test_installer_validates_web_and_image_provider_keys_before_saving() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "test_web_search_api_key()" in text
-    assert "test_image_generation_api_key()" in text
+    assert "test_image_api_key()" in text or "test_image_generation_api_key()" in text
     assert "Web search API key validated for provider" in text
     assert "Image generation API key accepted by non-generating validation for provider" in text
-    assert "This does not prove real image generation works" in text
+    assert "Received ${#candidate} characters" in text
+    assert "Press Enter three times to skip" in text
     assert "Web search API key was not saved because validation failed" in text
     assert "Image generation API key was not saved because validation failed" in text
-    assert "DeepSeek API key was not saved because validation failed" in text
-
 
 def test_installer_image_validation_requires_error_body_for_non_generation_probes() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -240,17 +247,25 @@ def test_codex_wrapper_prefers_public_dsproxy_and_tolerates_start_drift() -> Non
 
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'read_menu_choice_from_tty "Select model provider" "1"' in text
+    assert 'read_menu_choice_from_tty "Select model provider family" "1"' in text
     assert '"1|DeepSeek|supported"' in text
     assert '"2|Kimi / Moonshot|experimental"' in text
-    assert '"3|Zhipu / BigModel domestic general|experimental"' in text
-    assert '"4|Zhipu / BigModel domestic Coding Plan|experimental"' in text
-    assert '"5|Z.AI international general|experimental"' in text
-    assert '"6|Z.AI international Coding Plan|experimental"' in text
-    assert '"7|Qwen / DashScope Beijing pay-as-you-go|experimental"' in text
-    assert '"8|Qwen / DashScope Singapore pay-as-you-go|experimental"' in text
-    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|experimental"' in text
-    assert '"10|Other OpenAI-compatible server|custom"' in text
+    assert '"3|ZhipuAI / BigModel|experimental"' in text
+    assert '"4|Z.AI|experimental"' in text
+    assert '"5|Qwen / DashScope|experimental"' in text
+    assert '"6|Mimo|unsupported"' in text
+    assert '"7|Baichuan|unsupported"' in text
+    assert '"8|Other OpenAI-compatible server|custom"' in text
+    assert "Select ZhipuAI / BigModel endpoint" in text
+    assert "Select Z.AI endpoint" in text
+    assert "Select Qwen / DashScope endpoint" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"zhipu\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"zhipu-coding\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"zai\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"zai-coding\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"qwen-beijing\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"qwen-singapore\"" in text
+    assert "PROMPTED_MODEL_PROVIDER=\"qwen-us\"" in text
 
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
@@ -272,28 +287,30 @@ def test_installer_guided_provider_menus_use_arrow_selector() -> None:
     assert "read_menu_choice_from_tty()" in text
     assert "read_yes_no_menu()" in text
     assert "Use ↑/↓ or j/k, Enter to select" in text
-    assert 'provider="$(read_menu_choice_from_tty "Select model provider" "1"' in text
-    assert 'provider="$(read_menu_choice_from_tty "Select web search provider" "1"' in text
-    assert 'provider="$(read_menu_choice_from_tty "Select image generation provider" "1"' in text
-    assert "CODEEPSEEDEX_NO_ARROW_MENUS" in text
-    assert "qwen_image_beijing|qwen-image-beijing" in text
-    assert "qwen_image_singapore|qwen-image-singapore" in text
-
+    assert 'family="$(read_menu_choice_from_tty "Select model provider family" "1"' in text
+    assert 'endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1"' in text
+    assert 'family="$(read_menu_choice_from_tty "Select image generation provider family" "1"' in text
+    assert 'region="$(read_menu_choice_from_tty "Select Qwen Image / DashScope region" "1"' in text
+    assert '"Y|$yes_label|plain"' in text
+    assert '"Y|$yes_label|supported"' not in text
 
 def test_installer_marks_non_deepseek_model_providers_experimental() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert '"1|DeepSeek|supported"' in text
     assert '"2|Kimi / Moonshot|experimental"' in text
-    assert '"3|Zhipu / BigModel domestic general|experimental"' in text
-    assert '"4|Zhipu / BigModel domestic Coding Plan|experimental"' in text
-    assert '"5|Z.AI international general|experimental"' in text
-    assert '"6|Z.AI international Coding Plan|experimental"' in text
-    assert '"7|Qwen / DashScope Beijing pay-as-you-go|experimental"' in text
-    assert '"8|Qwen / DashScope Singapore pay-as-you-go|experimental"' in text
-    assert '"9|Qwen / DashScope US Virginia pay-as-you-go|experimental"' in text
-    assert "Only DeepSeek is marked Supported for model providers" in text
-    assert "Experimental until full Codex workflow validation passes" in text
-
+    assert '"3|ZhipuAI / BigModel|experimental"' in text
+    assert '"4|Z.AI|experimental"' in text
+    assert '"5|Qwen / DashScope|experimental"' in text
+    assert '"6|Mimo|unsupported"' in text
+    assert '"7|Baichuan|unsupported"' in text
+    assert "Only DeepSeek is marked Supported" in text
+    assert "Domestic Token API / general endpoint|experimental" in text
+    assert "Domestic Coding Plan API endpoint|experimental" in text
+    assert "International Token API / general endpoint|experimental" in text
+    assert "International Coding Plan API endpoint|experimental" in text
+    assert "Beijing pay-as-you-go OpenAI-compatible endpoint|experimental" in text
+    assert "Singapore pay-as-you-go OpenAI-compatible endpoint|experimental" in text
+    assert "US Virginia pay-as-you-go OpenAI-compatible endpoint|experimental" in text
 
 def test_bootstrap_install_ref_uses_release_asset_installer_url(tmp_path) -> None:
     bootstrap = REPO_ROOT / "bootstrap.sh"
@@ -348,3 +365,24 @@ def test_installer_source_logging_uses_install_log_variable() -> None:
     assert 'printf \'Install ref: %s\\n\'' in text
     assert 'printf \'Installer source: %s\\n\'' in text
     assert 'printf \'Repository source: %s\\n\'' in text
+
+
+def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "CoDeepSeedeX ${INSTALL_REF:-GitHub Latest}" in text
+    assert '"Y|$yes_label|plain"' in text
+    assert '"Y|$yes_label|supported"' not in text
+    assert "Select model provider family" in text
+    assert "Select ZhipuAI / BigModel endpoint" in text
+    assert "Select Z.AI endpoint" in text
+    assert "Select Qwen / DashScope endpoint" in text
+    assert "Mimo|unsupported" in text
+    assert "Baichuan|unsupported" in text
+    assert "Select image generation provider family" in text
+    assert "Select Qwen Image / DashScope region" in text
+    assert "Received ${#candidate} characters" in text
+    assert "Press Enter three times to skip" in text
+    assert "download_source_archive_to_install_dir()" in text
+    assert "prepare_install_checkout()" in text
+    assert "codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref" in text
+    assert "DEEPSEEK_API_KEY is empty; configure later with: dsproxy config set-model --provider deepseek" not in text
