@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a52-semantic-payload-compaction-tui-plan`
+- Current internal development line: `p2.10a53-tui-compact-path-evidence-sync`
 - Verified repository baseline before post-release doc sync: `master = origin/master = 677d923`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
@@ -305,7 +305,7 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 | P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
 | P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
 | P0.5 | Semantic payload compaction hardening | Dry-run, canary, limited-enable, telemetry, and rollback rules exist for semantic payload compaction without corrupting user intent, patches, errors, git state, Release state, or WeClaw accounting. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned after WeClaw second-round unless TUI compaction risk forces escalation | 2026-05-16 | This line must audit usage/cost, compaction statistics, WeClaw display fields, debug budget, long-session observability, and token-vs-char semantics before implementation. |
-| P0.6 | Codex TUI third-party profile command compatibility | An isolated Codex TUI matrix proves which slash commands work under `codex --profile deepseek`, which commands need dsproxy compatibility or interception, and whether native `/compact` or auto-compact can safely run through the third-party profile. | Matrix pending after current Codex session stops | Audit pending | 2026-05-16 | Escalate before WeClaw follow-up if `/compact`, auto-compact, `/fork`, `/resume`, or model/status commands can damage sessions or stop the workflow. |
+| P0.6 | Codex TUI third-party profile command compatibility | Manual TUI matrix and compact path capture show `codex --profile deepseek` can start, normal requests work, `/status`, `/fork`, and manual `/compact` work, and manual `/compact` uses ordinary `/v1/responses` rather than `/responses/compact`. | Evidence captured before `p2.10a53-tui-compact-path-evidence-sync` | Partially closed; auto-compact near the token threshold remains unverified | 2026-05-17 | Do not implement `/responses/compact` compatibility based on the current evidence. If auto-compact later fails or uses a different route, reopen this as a compatibility task before AnyCodeX. |
 
 | P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is closed | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
 | P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 677d923` | Completed | 2026-05-16 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
@@ -317,6 +317,41 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a53 TUI compact path evidence sync
+
+p2.10a53 is a documentation and version-metadata sync node. It records manual Codex TUI evidence collected after p2.10a52. It does not implement new runtime behavior, does not move public Release tags, and does not rebuild Release assets.
+
+### Evidence captured
+
+Manual isolated Codex TUI testing under `codex --profile deepseek` confirmed:
+
+1. The TUI starts with the `deepseek` profile and reaches the dsproxy-backed provider.
+2. A normal short request, `reply ok exactly`, succeeds through the profile.
+3. Manual `/compact` succeeds and displays `Context compacted`.
+4. Manual `/fork` was previously observed to fork the current chat.
+5. `/status` works and reports token-level context information from Codex.
+6. The manual compact path capture found no `responses/compact` or `/responses/compact` marker in the TUI transcript.
+7. Codex-side logs show `codex.op="compact"`, `session_task.compact`, `model_client.stream_responses_api`, `wire_api=responses`, `http.method="POST"`, and `api.path="responses"`.
+8. The dsproxy listener on port 8000 is the local uvicorn process for `deepseek_responses_proxy.app:app`, and proxy access logs show ordinary `POST /v1/responses HTTP/1.1` requests.
+
+### Updated interpretation
+
+Current evidence indicates that manual `/compact` in Codex CLI `0.130.0` with `codex --profile deepseek` uses the ordinary Responses route, not a dedicated `/responses/compact` route. Therefore, there is no current evidence requiring a dsproxy `/responses/compact` compatibility surface for manual `/compact`.
+
+This conclusion is limited to manual `/compact` in a short isolated TUI session. It does not prove that Codex auto-compact near `model_auto_compact_token_limit` follows the same route. Auto-compact remains unverified because the test did not push the session near the token threshold.
+
+### Remaining P0.6 work
+
+P0.6 remains partially open for:
+
+1. auto-compact route capture near the token threshold,
+2. repeated or long-session compact stability,
+3. compact prompt and summary quality if payload-level debug tracing is enabled,
+4. usage and cost attribution for compact turns,
+5. whether WeClaw should display compact turns separately from normal turns.
+
+Do not prioritize implementation of a `/responses/compact` compatibility endpoint unless future evidence shows that auto-compact or a newer Codex CLI version calls that route and fails.
 
 ## p2.10a52 semantic payload compaction and TUI compatibility plan
 

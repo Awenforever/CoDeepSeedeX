@@ -278,7 +278,7 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 | P0 | WeClaw full telemetry基线 | WeClaw可从dsproxy维护的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance和compaction。 | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | 已被WeClaw侧认可并进入初步集成 | 2026-05-16 | WeClaw第二轮需求会在其审计后提出。prompt子类token拆分仍保持not-reported，除非后续新增经过审计的tokenizer层。 |
 | P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | 尚未开始 | 等待 | 2026-05-16 | 不做 speculative second-round work。需求到达后先只读审计。 |
 | P0.5 | semantic payload compaction强化 | 为semantic payload compaction建立dry-run、canary、有限启用、遥测、回退和展示规则，确保不破坏用户需求、补丁、错误、git状态、Release状态和WeClaw统计。 | 计划记录于`p2.10a52-semantic-payload-compaction-tui-plan` | 计划中，默认排在WeClaw第二轮之后和AnyCodeX之前 | 2026-05-16 | 实现前必须审计usage/cost、compact统计、WeClaw展示字段、debug budget、长会话观测和token-vs-char语义。 |
-| P0.6 | CodexTUI第三方profile命令兼容性 | 隔离验证`codex --profile deepseek`下TUI slash commands，确认哪些命令可用，哪些需要dsproxy兼容或接管，尤其是`/compact`、auto-compact、`/fork`和`/resume`。 | 等当前Codex会话停止后执行矩阵 | 等待审计 | 2026-05-16 | 如果发现`/compact`、auto-compact、`/fork`、`/resume`、`/model`或`/status`会损坏会话或中断工作流，则优先级提升到WeClaw第二轮之前。 |
+| P0.6 | CodexTUI第三方profile命令兼容性 | 人工TUI矩阵和compact路径抓取显示`codex --profile deepseek`可以启动，普通请求可用，`/status`、`/fork`和手动`/compact`可用，并且手动`/compact`走普通`/v1/responses`，不是`/responses/compact`。 | 证据已在`p2.10a53-tui-compact-path-evidence-sync`前捕获 | 部分闭环，接近token阈值的auto-compact仍未验证 | 2026-05-17 | 基于当前证据，不应实现`/responses/compact`兼容端点。若后续auto-compact失败或使用不同路径，再在AnyCodeX前重新打开兼容任务。 |
 
 | P1 | AnyCodeX级通用provider架构 | 形成基于证据的架构计划和渐进adapter/refactor顺序，同时保留现有CoDeepSeedeX公开表面。 | `p2.10a40-generalized-provider-architecture-audit-report` | 已规划，Release任务已关闭时仍不自动激活 | 2026-05-16 | AnyCodeX只是未来方向，不是当前项目名。 |
 | P2 | `v0.3.9-alpha`公开pre-release | GitHub pre-release存在且`prerelease=true`，资产包含`bootstrap.sh`和`install.sh`，Release notes不重复标题，并写明WeClaw最低版本要求。 | `v0.3.9-alpha = 677d923` | 已完成 | 2026-05-16 | Release notes已包含`Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
@@ -290,6 +290,41 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a53 TUI compact路径证据同步
+
+p2.10a53是文档和版本元数据同步节点，用于记录p2.10a52之后的CodexTUI人工验证证据。不实现新的运行时代码，不移动公开Release tag，也不重建Release资产。
+
+### 已捕获证据
+
+在隔离`CODEX_HOME`和临时工作目录下，`codex --profile deepseek`人工TUI验证确认：
+
+1. TUI可以用`deepseek`profile启动，并进入dsproxy-backed provider。
+2. 短请求`reply ok exactly`可以正常通过profile返回。
+3. 手动`/compact`可以成功，并显示`Context compacted`。
+4. 先前人工矩阵已观察到`/fork`可以fork当前chat。
+5. `/status`可以显示Codex侧token级上下文信息。
+6. compact路径抓取没有在TUI transcript中发现`responses/compact`或`/responses/compact`标记。
+7. Codex侧日志显示`codex.op="compact"`、`session_task.compact`、`model_client.stream_responses_api`、`wire_api=responses`、`http.method="POST"`和`api.path="responses"`。
+8. 8000端口监听进程是本项目`deepseek_responses_proxy.app:app`的uvicorn进程，proxy access log显示普通`POST /v1/responses HTTP/1.1`请求。
+
+### 更新解释
+
+当前证据表明，在Codex CLI `0.130.0`和`codex --profile deepseek`下，手动`/compact`走普通Responses路径，不走专用`/responses/compact`路径。因此，当前没有证据要求dsproxy实现`/responses/compact`兼容面。
+
+该结论只覆盖短会话中的手动`/compact`。它不能证明接近`model_auto_compact_token_limit`时的Codex auto-compact也走同一路径。auto-compact仍未验证，因为本次没有把会话推到token阈值附近。
+
+### P0.6剩余工作
+
+P0.6仍保留以下未闭环项：
+
+1. 接近token阈值时的auto-compact路径抓取。
+2. 多次compact和长会话稳定性。
+3. 启用payload级debug trace后审计compact prompt和摘要质量。
+4. compact turn的usage和cost归因。
+5. WeClaw是否需要把compact turn与普通turn分开展示。
+
+除非后续证据表明auto-compact或新版CodexCLI调用`/responses/compact`并失败，否则不应优先实现`/responses/compact`兼容端点。
 
 ## p2.10a52 semantic payload compaction和TUI兼容性计划
 

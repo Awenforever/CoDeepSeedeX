@@ -1,5 +1,19 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a53-tui-compact-path-evidence-sync
+
+- Scope: docs-only evidence sync for the Codex TUI compact path after p2.10a52.
+- Starting point: `master = origin/master = 2fe8c12`, internal tag `p2.10a52-semantic-payload-compaction-tui-plan = 2fe8c12`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Evidence: isolated TUI run under `codex --profile deepseek` started successfully with the dsproxy-backed profile.
+- Evidence: ordinary short request `reply ok exactly` returned successfully.
+- Evidence: manual `/compact` displayed `Context compacted`.
+- Evidence: TUI transcript markers did not contain `responses/compact` or `/responses/compact`.
+- Evidence: Codex-side logs showed `codex.op="compact"`, `session_task.compact`, `model_client.stream_responses_api`, `wire_api=responses`, `http.method="POST"`, and `api.path="responses"`.
+- Evidence: the dsproxy listener on port 8000 was the local uvicorn process for `deepseek_responses_proxy.app:app`; proxy access logs showed ordinary `POST /v1/responses HTTP/1.1` requests.
+- Interpretation: manual `/compact` in Codex CLI `0.130.0` with `codex --profile deepseek` currently uses ordinary `/v1/responses`, not a dedicated `/responses/compact` endpoint.
+- Remaining risk: auto-compact near `model_auto_compact_token_limit` remains unverified, as does long-session repeated compact behavior and usage/cost attribution for compact turns.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a52-semantic-payload-compaction-tui-plan
 
 - Scope: record the inserted semantic payload compaction hardening plan and Codex TUI third-party profile compatibility plan after the `v0.3.9-alpha` pre-release and p2.10a51 post-release documentation sync.
