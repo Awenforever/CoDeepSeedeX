@@ -30,9 +30,10 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a48-weclaw-full-telemetry-contract`
-- Verified repository baseline after p2.10a46: `master = origin/master = 3e6b922`
-- Completed P0 checkpoint: `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`
+- Current internal development line: `p2.10a49-final-handoff-sync`
+- Verified repository baseline after p2.10a48: `master = origin/master = 2e0edd0`
+- Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
+- WeClaw status: the WeClaw side accepted the current p2.10a48 reporting baseline and started initial integration. Second-round WeClaw requirements will be proposed in a new development conversation after their audit.
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -40,6 +41,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Erroneous plain tag `v0.3.5` must not exist.
 - `v0.3.8-alpha` is the current GitHub Release and is not marked as a GitHub pre-release. It still uses the alpha tag naming scheme.
 - Public Release assets for `v0.3.8-alpha` are `bootstrap.sh` and `install.sh`.
+- p2.10a49 is a final handoff and documentation synchronization node. It must not move `v0.3.8-alpha`, create a GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
 
@@ -239,19 +241,22 @@ p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-r
 - Installer UX hardening, including arrow-key menus, compact source logging, quoted heredocs, source archive fallback, version metadata preservation, and live image validation.
 - Config and profile UX hardening, including `set-model` as the primary model API configuration entrypoint, post-config proxy refresh, provider validation semantics, and DeepSeek-compatible effort surfaces.
 - Codex wrapper startup hardening, including fail-closed proxy route startup, `plan_mode_reasoning_effort = "high"`, manifest-backed uninstall rollback, and source/installer/user-path verification.
-- WeClaw-facing contract work, including `profile status --json`, `profile set-effort --json`, `status --weclaw-json`, HTTP WeClaw endpoints, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, and context-window source separation.
+- WeClaw-facing contract work, including `profile status --json`, `profile set-effort --json`, `status --weclaw-json`, HTTP WeClaw endpoints, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, context-window source separation, runtime usage aggregation, pricing cache metadata, estimated cost, provider balance, and auxiliary-model-call accounting.
 - Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
 - Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Current verified baseline after p2.10a46:
+Current verified baseline after p2.10a48:
 
-- `master = origin/master = 3e6b922`.
+- `master = origin/master = 2e0edd0`.
+- `p2.10a49-final-handoff-sync` is the final documentation and handoff sync node after p2.10a48.
+- `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`.
+- `p2.10a47-doc-weclaw-contract-sync = 0a22063`.
 - `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`.
-- `p2.10a45-handbook-section-structure-cleanup = 5211830`.
 - `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
-- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a46 and p2.10a47 do not rebuild assets.
-- `dsproxy --version` after p2.10a46 reports `public version: v0.3.8-alpha | dfdc629` and `internal version: p2.10a46-weclaw-usage-test-env-isolation | 3e6b922`.
-- WeClaw P0 contract acceptance passed at p2.10a46. Remaining token attribution, pricing, cost, auxiliary model calls, and balance integration are structured degraded fields, not guessed values.
+- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a48 and p2.10a49 do not rebuild assets.
+- `dsproxy --version` after p2.10a48 reports `public version: v0.3.8-alpha | dfdc629` and `internal version: p2.10a48-weclaw-full-telemetry-contract | 2e0edd0`.
+- WeClaw accepted the p2.10a48 reporting baseline and started initial integration. The second round of WeClaw requirements will continue in a new conversation after their audit.
+- The only explicit p2.10a48 precision boundary is prompt subcategory token splitting such as user/tool/environment/history. Provider-reported totals and dsproxy purpose attribution are reported, while unaudited tokenizer-layer prompt subcategory splits must stay not-reported/unavailable.
 
 ## 12. New conversation startup checklist
 
@@ -639,29 +644,30 @@ Implementation order:
 
 This task bus is the durable mainline tracker for new conversations and inserted tasks.
 
-Active priority order:
+Current priority state after p2.10a49:
 
-1. P0 status: WeClaw contract acceptance passed at p2.10a46. Remaining token attribution, pricing, cost, auxiliary model calls, and balance-in-status work are structured degraded fields and require explicit maintainer prioritization before more implementation.
-2. P1 next default direction: AnyCodeX-level generalized provider architecture.
-3. P2 follow-up: public Release preparation only when the maintainer explicitly asks for a Release.
+1. P0 current state: the first WeClaw full telemetry contract baseline is complete at p2.10a48 and has been accepted by the WeClaw side for initial integration.
+2. P0 next step: wait for WeClaw's second-round audited requirements. Continue in a new conversation, starting from a read-only state audit before any patch.
+3. P1 next default direction if no WeClaw second-round task is active: AnyCodeX-level generalized provider architecture audit/refactor planning.
+4. P2 follow-up: public Release preparation only when the maintainer explicitly asks for a Release.
 
 Anti-drift rules:
 
-1. Inserted tasks such as documentation sync, version metadata updates, naming-boundary cleanup, and release-state fixes may interrupt the mainline, but they must return to the active task-bus priority after they close.
+1. Inserted tasks such as documentation sync, version metadata updates, naming-boundary cleanup, and release-state fixes may interrupt the mainline, but they must return to this task-bus priority after they close.
 2. A future architecture audit or refactor must not break the accepted WeClaw contract surfaces.
-3. Every handoff must include this task bus, current P0 status, and unresolved degraded fields.
+3. Every handoff must include this task bus, current P0 status, accepted fields, precision boundaries, and pending second-round WeClaw requirements.
 4. Completion claims require evidence: exact CLI or HTTP command, JSON output shape, field source, precision status, tests run, and remaining gaps.
 
-P0 WeClaw acceptance checklist after p2.10a46:
+Accepted WeClaw baseline after p2.10a48:
 
 1. `config set-effort` and `profile set-effort` do not write `model_reasoning_effort = "max"` into Codex profiles.
 2. `profile status --json` gives WeClaw authoritative profile, model, effort, thinking, context-window, and health fields.
-3. `status --weclaw-json` exposes stable profile, model, context, token taxonomy, pricing, cost, and compaction health fields, with unavailable fields explicitly marked.
+3. `status --weclaw-json` and runtime HTTP WeClaw status expose profile, model, context, token taxonomy, usage aggregation, pricing, cost, balance, and compaction status.
 4. HTTP WeClaw endpoints exist and are accepted:
    - `GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking`
    - `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`
-5. Ready fields include `model.effective_model`, `model.codex_model`, `model.model_conflict`, `model.force_model_enabled`, `effort.user_facing`, `effort.deepseek_reasoning_effort`, `effort.codex_model_reasoning_effort`, and `context_window.effective_safe_window_tokens`.
-6. Structured degraded fields include `tokens.last_turn`, `tokens.session_total`, `tokens.auxiliary_model_calls`, `pricing`, `cost`, and balance-in-status.
+5. Ready fields include `model.effective_model`, `model.codex_model`, `model.model_conflict`, `model.force_model_enabled`, `effort.user_facing`, `effort.deepseek_reasoning_effort`, `effort.codex_model_reasoning_effort`, `context_window.effective_safe_window_tokens`, `tokens.last_turn`, `tokens.session_total`, `tokens.auxiliary_model_calls`, `pricing`, `cost`, `balance`, and `compaction`.
+6. Precision boundary: provider-reported token totals and dsproxy purpose attribution are reported. Cost is estimated from dsproxy pricing cache. Prompt subcategory splits such as user/tool/environment/history remain not-reported/unavailable unless a future audited tokenizer layer is added.
 7. Isolated/sanitized tests are required when checking model attribution because exported `DEEPSEEK_PROXY_MODEL` and `DEEPSEEK_PROXY_FORCE_MODEL` can intentionally change effective model behavior.
 
 ## p2.10a43-effort-json-refresh-control effort JSON and refresh control
@@ -773,3 +779,24 @@ Implemented contract changes:
 - Token counts are provider-reported exact totals from the dsproxy usage ledger.
 - Cost fields are estimates from dsproxy pricing cache and are not provider invoice data.
 - Prompt subcategory split such as user/tool/environment/history remains marked as not provider-reported unless a future audited tokenizer layer is added.
+
+## p2.10a49 final handoff sync
+
+p2.10a49 is the final handoff synchronization node for the completed p2.10a48 WeClaw full telemetry contract line.
+
+Final handoff state:
+
+- `master = origin/master = 2e0edd0` before the p2.10a49 documentation sync.
+- `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`.
+- `v0.3.8-alpha = dfdc629`, unchanged.
+- WeClaw accepted the p2.10a48 reporting baseline and started initial integration.
+- WeClaw second-round requirements will be proposed after their audit and should continue in a new conversation.
+- This node updates the current-state blocks, task bus, development log, and runtime internal version metadata for handoff continuity.
+- This node is not a public Release and must not move `v0.3.8-alpha`, create a GitHub Release, or rebuild Release assets.
+
+New-conversation instruction:
+
+- Start with a read-only audit of branch, HEAD, origin/master, worktree, `p2.10a49-final-handoff-sync`, `p2.10a48-weclaw-full-telemetry-contract`, and `v0.3.8-alpha`.
+- Read `docs/developer-handbook.md` first.
+- Treat p2.10a48 as the accepted first WeClaw full telemetry baseline.
+- Continue second-round WeClaw requirements only after their concrete audited request is available.
