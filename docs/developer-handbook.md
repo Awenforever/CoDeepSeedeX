@@ -27,22 +27,24 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
-- Current public alpha Release: `v0.3.8-alpha`
-- Next planned public pre-release: `v0.3.9-alpha`
-- Current public release commit before v0.3.9-alpha: `dfdc629`
-- Current internal development line: `p2.10a50-v039-alpha-release-readiness-sync`
-- Verified repository baseline before release readiness: `master = origin/master = e8ca586`
+- Current public pre-release: `v0.3.9-alpha`
+- Public pre-release commit: `677d923`
+- GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
+- GitHub Release state: non-draft, pre-release
+- Public Release assets: `bootstrap.sh`, `install.sh`
+- Current internal development line: `p2.10a51-post-v039-alpha-release-doc-sync`
+- Verified repository baseline before post-release doc sync: `master = origin/master = 677d923`
+- Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- Completed final handoff sync: `p2.10a49-final-handoff-sync = e8ca586`
 - WeClaw status: the WeClaw side accepted the p2.10a48 reporting baseline and started initial integration. Second-round WeClaw requirements will be proposed in a later development conversation after their audit.
-- Release requirement for the next public pre-release: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
+- Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Older public tags must not move:
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a50 is a release-readiness and handbook-mainline synchronization node. It prepares `v0.3.9-alpha` but does not itself create the GitHub Release until the explicit release step.
+- p2.10a51 is a post-release documentation synchronization node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, current task bus, release rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
 
@@ -235,9 +237,9 @@ The handbook is an AI startup pack:
 - Do not reintroduce fragmented handoff, operations, install, usage, upgrade, security, troubleshooting, or release-note documents under `docs/`.
 - If a test still reads a retired path, update the test contract instead of preserving a ghost document.
 
-## 11. Current major-line summary: p2.10 / v0.3.9-alpha readiness
+## 11. Current major-line summary: p2.10 / v0.3.9-alpha
 
-p2.10 now spans the `v0.3.8-alpha` release line and the `v0.3.9-alpha` pre-release preparation line.
+p2.10 now spans the `v0.3.8-alpha` release line and the published `v0.3.9-alpha` public pre-release.
 
 User-visible changes since `v0.3.8-alpha`:
 
@@ -253,13 +255,13 @@ Release requirement for `v0.3.9-alpha`:
 
 - Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 
-Current verified baseline before publishing `v0.3.9-alpha`:
+Current verified release state:
 
-- `master = origin/master = e8ca586`.
-- `p2.10a49-final-handoff-sync = e8ca586`.
-- `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`.
-- `v0.3.8-alpha = dfdc629`, current public Release before `v0.3.9-alpha`.
-- `v0.3.9-alpha` does not exist yet before the release step.
+- `v0.3.9-alpha = 677d923`, GitHub Release title `CoDeepSeedeX v0.3.9-alpha`, non-draft and pre-release.
+- Release assets are `bootstrap.sh` and `install.sh`.
+- `master = origin/master = 677d923` before p2.10a51.
+- `p2.10a50-v039-alpha-release-readiness-sync = 677d923`.
+- `v0.3.8-alpha = dfdc629`, unchanged.
 - `v0.3.9` must not be created.
 
 ## 12. New conversation startup checklist
@@ -302,8 +304,8 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
 | P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
-| P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is active | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
-| P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `p2.10a50-v039-alpha-release-readiness-sync` | In progress | 2026-05-16 | Release notes must include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is closed | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
+| P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 677d923` | Completed | 2026-05-16 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-16 | `grep`/`rg` may identify candidate files only. |
 
 Checklist maintenance rules:

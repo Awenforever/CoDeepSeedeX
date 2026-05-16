@@ -1,5 +1,16 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a51-post-v0.3.9-alpha-release-doc-sync
+
+- Synchronized post-release documentation after the `v0.3.9-alpha` GitHub pre-release was created successfully.
+- Verified release state before this sync: `v0.3.9-alpha = 677d923`, GitHub Release title `CoDeepSeedeX v0.3.9-alpha`, non-draft and pre-release, assets `bootstrap.sh` and `install.sh` uploaded.
+- Confirmed `v0.3.8-alpha = dfdc629` remained unmoved and plain `v0.3.9` did not exist.
+- Updated developer handbooks from release-readiness wording to published pre-release wording.
+- Updated the long-term mainline checklist so the `v0.3.9-alpha` public pre-release task is marked completed.
+- Updated README behavior wording from future publication to currently installable pre-release.
+- Updated runtime internal version metadata to `p2.10a51-post-v039-alpha-release-doc-sync`.
+- No public tag was moved, no new GitHub Release was created, and no Release assets were rebuilt in this documentation sync node.
+
 ## p2.10a50-v039-alpha-release-readiness-sync
 
 - Prepared the repository for the `v0.3.9-alpha` public pre-release.
