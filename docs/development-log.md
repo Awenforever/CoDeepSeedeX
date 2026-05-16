@@ -1,5 +1,12 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a37-sanitized-test-env-rule
+
+- Added a handbook rule for sanitized test environments after p2.10a36 showed that full-suite failures can be caused by local exported model/provider/API-key variables rather than by the patch under test.
+- The recurring contamination pattern includes `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_PROXY_IMAGE_PROVIDER`, `DEEPSEEK_PROXY_IMAGE_DOWNLOAD`, provider API keys, and web-search/image-provider variables.
+- Future development scripts should record relevant environment overrides and rerun failing subsets plus full tests under a sanitized environment before attributing failures to the patch.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a36-release-state-doc-sync
 
 - Synchronized documentation with the verified GitHub Release state: `v0.3.8-alpha` is the current non-draft, non-prerelease GitHub Release at `dfdc629`, while `master = origin/master = 659854a`.

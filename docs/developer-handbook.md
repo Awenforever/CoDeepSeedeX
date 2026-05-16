@@ -117,7 +117,7 @@ These rules are mandatory development controls. They belong in the handbook beca
 8. **Acceptance criteria must match the user-visible defect.** Do not record a compatibility fallback as a fix when the defect is a visible UI or profile behavior. Example: Plan mode had to write `plan_mode_reasoning_effort = "high"`, not merely map `medium` to `high` inside the proxy.
 9. **Integration surfaces are part of every task.** Every development task must explicitly consider install, upgrade, uninstall, rollback, generated wrappers, user config files, Release assets, and VM/user-path validation when the changed behavior can affect them.
 10. **Runtime observations outrank assumptions.** For terminal, wrapper, and Codex TUI behavior, validate with isolated runtime probes before patching. This prevented guessing around Windows Terminal title behavior and showed that tab color was not a current wrapper-path feature.
-
+11. **Test environment contamination.** A dirty developer shell can make full tests fail for reasons unrelated to the patch. In p2.10a36, exported variables such as `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_PROXY_IMAGE_PROVIDER`, `DEEPSEEK_PROXY_IMAGE_DOWNLOAD`, and real provider API keys changed default model/provider behavior and caused unrelated full-suite failures. Before treating full-suite failures as patch evidence, record relevant environment overrides, rerun the failing subset and full suite under a sanitized environment, and only then decide whether the patch or the local environment is responsible.
 ### 6.2 Release-specific guardrails
 
 - Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`.

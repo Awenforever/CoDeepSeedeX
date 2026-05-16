@@ -101,7 +101,7 @@ push默认走HTTPS，不走SSH。所有网络步骤必须设置timeout。Release
 8. **验收标准必须对应用户可见缺陷。** 不能把兼容fallback写成修复。Plan mode问题的验收是写入`plan_mode_reasoning_effort = "high"`并确认TUI不再显示`medium`，不只是proxy内部把`medium`映射成`high`。
 9. **集成面属于每个任务。** 凡是可能影响用户路径的开发任务，都必须显式考虑install、upgrade、uninstall、rollback、生成wrapper、用户配置文件、Release资产和VM/user-path验证。
 10. **运行期观察优先于猜测。** terminal、wrapper和Codex TUI行为必须先用隔离命令验证，再补丁。本轮通过普通命令验证了Windows Terminal标题OSC有效，也确认tab颜色不属于当前wrapper可控范围。
-
+11. **测试环境污染。** 脏的开发shell可能让full tests因为补丁无关原因失败。p2.10a36中，`DEEPSEEK_PROXY_MODEL`、`DEEPSEEK_PROXY_FORCE_MODEL`、`DEEPSEEK_PROXY_IMAGE_PROVIDER`、`DEEPSEEK_PROXY_IMAGE_DOWNLOAD`以及真实provider API key等环境变量改变了默认模型和provider行为，导致与文档补丁无关的full tests失败。在把full tests失败当作补丁证据前，必须记录相关环境覆盖，用sanitized环境重跑失败子集和full tests，然后再判断责任在补丁还是本机环境。
 ### 6.2 Release专项规则
 
 - 不要猜运行时版本文件路径。运行时文件是`deepseek_responses_proxy/app.py`。
