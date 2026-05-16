@@ -2592,6 +2592,8 @@ def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
 
 
 def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
@@ -2606,6 +2608,11 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
 
+    def fake_http_json(url, timeout=2.0):
+        return 599, None, "connection refused"
+
+    monkeypatch.setattr(cli_module, "_http_json", fake_http_json)
+
     assert main(["status", "thinking", "--weclaw-json"]) == 0
 
     result = json.loads(capsys.readouterr().out)
@@ -2614,7 +2621,12 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     assert result["effort"]["deepseek_reasoning_effort"] == "max"
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
     assert result["tokens"]["last_turn"]["available"] is False
+    assert result["tokens"]["last_turn"]["missing"] == ["running_dsproxy_weclaw_status_endpoint"]
     assert result["pricing"]["available"] is False
+    assert result["pricing"]["missing"] == ["running_dsproxy_weclaw_status_endpoint"]
+    assert result["cost"]["available"] is False
+    assert result["balance"]["available"] is False
+    assert result["runtime_status"]["available"] is False
 
 
 

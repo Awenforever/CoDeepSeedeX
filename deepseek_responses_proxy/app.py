@@ -53,7 +53,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a47-doc-weclaw-contract-sync"
+PROXY_INTERNAL_VERSION = "p2.10a48-weclaw-full-telemetry-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11381,7 +11381,310 @@ def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
     }
 
 
-def _runtime_weclaw_status(profile: str) -> dict[str, Any]:
+_WECLAW_PRIMARY_USAGE_PURPOSES = {"primary", "final"}
+
+
+def _weclaw_zero_usage_summary() -> dict[str, Any]:
+    return {
+        "model_call_count": 0,
+        "request_count": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "estimated_cost_usd": 0.0,
+    }
+
+
+def _weclaw_usage_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _weclaw_usage_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = _weclaw_zero_usage_summary()
+    summary["model_call_count"] = len(events)
+    summary["request_count"] = len(events)
+    for event in events:
+        summary["prompt_tokens"] += _weclaw_usage_int(event.get("prompt_tokens"))
+        summary["completion_tokens"] += _weclaw_usage_int(event.get("completion_tokens"))
+        summary["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
+        summary["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
+        summary["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
+        summary["estimated_cost_usd"] += _weclaw_usage_float(event.get("estimated_cost_usd"))
+    summary["estimated_cost_usd"] = float(summary["estimated_cost_usd"])
+    return summary
+
+
+def _weclaw_usage_by_purpose(events: list[dict[str, Any]]) -> dict[str, Any]:
+    by_purpose: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        purpose = str(event.get("purpose") or "unknown")
+        by_purpose.setdefault(purpose, []).append(event)
+
+    return {
+        purpose: _weclaw_summarize_usage_events(items)
+        for purpose, items in sorted(by_purpose.items())
+    }
+
+
+def _weclaw_usage_events_for_profile(
+    store: Any | None,
+    *,
+    profile: str,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    if store is None or not hasattr(store, "usage_events"):
+        return []
+    thinking = profile.endswith("thinking")
+    try:
+        events = store.usage_events(limit=limit, thinking=thinking)
+    except TypeError:
+        events = store.usage_events(limit=limit)
+    except Exception:
+        return []
+    return [dict(event) for event in events if isinstance(event, dict)]
+
+
+def _weclaw_latest_turn_events(events: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
+    if not events:
+        return None, []
+    latest = events[0]
+    request_id = latest.get("request_id") or latest.get("response_id")
+    if not request_id:
+        return None, [latest]
+    key = str(request_id)
+    grouped = [
+        event
+        for event in events
+        if str(event.get("request_id") or event.get("response_id") or "") == key
+    ]
+    return key, grouped
+
+
+def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any]:
+    events = _weclaw_usage_events_for_profile(store, profile=profile)
+    request_id, latest_events = _weclaw_latest_turn_events(events)
+    auxiliary_events = [
+        event
+        for event in events
+        if str(event.get("purpose") or "final") not in _WECLAW_PRIMARY_USAGE_PURPOSES
+    ]
+
+    taxonomy = {
+        "version": 2,
+        "unit": "tokens",
+        "source": "dsproxy_usage_ledger.provider_reported_usage",
+        "categories": [
+            "input",
+            "cached_input",
+            "output",
+            "reasoning",
+            "primary_model_call",
+            "auxiliary_model_call",
+            "tool_bridge",
+            "liveness_judge",
+            "liveness_retry",
+            "compaction",
+            "semantic_audit",
+            "other",
+        ],
+        "precision": {
+            "provider_usage_totals": "exact_provider_reported",
+            "purpose_attribution": "exact_dsproxy_call_purpose",
+            "prompt_subcategory_split": "not_reported_by_provider_without_tokenizer",
+        },
+    }
+
+    if not events:
+        unavailable = {
+            "available": False,
+            "unit": "tokens",
+            "is_estimated": False,
+            "missing": ["usage_ledger_events"],
+            "source": "dsproxy_usage_ledger",
+        }
+        return {
+            "taxonomy": taxonomy,
+            "last_turn": dict(unavailable),
+            "session_total": dict(unavailable),
+            "auxiliary_model_calls": {
+                **dict(unavailable),
+                "included_in_session_total": True,
+            },
+        }
+
+    last_turn_summary = _weclaw_summarize_usage_events(latest_events)
+    session_summary = _weclaw_summarize_usage_events(events)
+    auxiliary_summary = _weclaw_summarize_usage_events(auxiliary_events)
+
+    return {
+        "taxonomy": taxonomy,
+        "last_turn": {
+            "available": True,
+            "unit": "tokens",
+            "is_estimated": False,
+            "source": "dsproxy_usage_ledger.grouped_by_request_id",
+            "request_id": request_id,
+            "model_call_count": len(latest_events),
+            "summary": last_turn_summary,
+            "by_purpose": _weclaw_usage_by_purpose(latest_events),
+            "events_tail": latest_events[:20],
+            "missing": [],
+        },
+        "session_total": {
+            "available": True,
+            "unit": "tokens",
+            "is_estimated": False,
+            "source": "dsproxy_usage_ledger.profile_route_history",
+            "model_call_count": len(events),
+            "summary": session_summary,
+            "by_purpose": _weclaw_usage_by_purpose(events),
+            "events_tail": events[:20],
+            "missing": [],
+        },
+        "auxiliary_model_calls": {
+            "available": True,
+            "unit": "tokens",
+            "is_estimated": False,
+            "source": "dsproxy_usage_ledger.non_primary_purposes",
+            "included_in_session_total": True,
+            "model_call_count": len(auxiliary_events),
+            "summary": auxiliary_summary,
+            "by_purpose": _weclaw_usage_by_purpose(auxiliary_events),
+            "events_tail": auxiliary_events[:20],
+            "missing": [],
+        },
+    }
+
+
+def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
+    pricing_path = _pricing_config_path()
+    path_exists = pricing_path.exists()
+    prices = _load_model_pricing_usd_per_1m()
+    model_key = str(model or DEFAULT_MODEL)
+    model_prices = prices.get(model_key)
+
+    return {
+        "available": bool(model_prices),
+        "provider": "deepseek",
+        "model": model_key,
+        "currency": "USD",
+        "unit": "per_1m_tokens",
+        "source": "DEEPSEEK_PROXY_PRICING_PATH" if path_exists else "built_in_default_pricing_cache",
+        "source_path": str(pricing_path),
+        "source_kind": "external_config" if path_exists else "built_in_default",
+        "fallback_used": not path_exists,
+        "is_stale": None,
+        "fetched_at": None,
+        "expires_at": None,
+        "prices": model_prices,
+        "all_models": sorted(prices),
+        "missing": [] if model_prices else ["model_pricing_entry"],
+        "refresh": {
+            "available": False,
+            "reason": "official_live_pricing_refresh_not_implemented",
+        },
+    }
+
+
+def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> dict[str, Any]:
+    last_turn = tokens.get("last_turn") if isinstance(tokens, dict) else {}
+    session_total = tokens.get("session_total") if isinstance(tokens, dict) else {}
+    auxiliary = tokens.get("auxiliary_model_calls") if isinstance(tokens, dict) else {}
+
+    available = bool(
+        isinstance(last_turn, dict)
+        and last_turn.get("available")
+        and isinstance(session_total, dict)
+        and session_total.get("available")
+        and pricing.get("available")
+    )
+
+    def _cost_from_summary(section: Any) -> float:
+        if not isinstance(section, dict):
+            return 0.0
+        summary = section.get("summary")
+        if not isinstance(summary, dict):
+            return 0.0
+        return _weclaw_usage_float(summary.get("estimated_cost_usd"))
+
+    return {
+        "available": available,
+        "currency": str(pricing.get("currency") or "USD"),
+        "is_estimated": True,
+        "source": "dsproxy_usage_ledger.estimated_cost_usd",
+        "pricing_source": pricing.get("source"),
+        "last_turn_estimated_cost": _cost_from_summary(last_turn),
+        "session_estimated_cost": _cost_from_summary(session_total),
+        "auxiliary_estimated_cost": _cost_from_summary(auxiliary),
+        "missing": [] if available else [
+            item
+            for item, present in {
+                "usage_attribution": bool(isinstance(session_total, dict) and session_total.get("available")),
+                "pricing": bool(pricing.get("available")),
+            }.items()
+            if not present
+        ],
+        "notes": [
+            "Token counts are provider-reported exact usage totals.",
+            "Cost is estimated from dsproxy pricing cache, not provider invoice data.",
+        ],
+    }
+
+
+def _weclaw_balance_unavailable(reason: str) -> dict[str, Any]:
+    return {
+        "available": False,
+        "source": "provider_balance_api",
+        "reason": reason,
+        "fetched_at": None,
+        "balance": None,
+    }
+
+
+async def _weclaw_balance_contract(
+    *,
+    deepseek_client: Any | None,
+    include_balance: bool = True,
+) -> dict[str, Any]:
+    if not include_balance:
+        return _weclaw_balance_unavailable("disabled_by_request")
+    if deepseek_client is None or not hasattr(deepseek_client, "user_balance"):
+        return _weclaw_balance_unavailable("balance_client_unavailable")
+    try:
+        balance = await deepseek_client.user_balance()
+    except Exception as exc:
+        return {
+            **_weclaw_balance_unavailable("balance_request_failed"),
+            "error_type": type(exc).__name__,
+            "message": str(exc)[:1000],
+        }
+    return {
+        "available": True,
+        "source": "provider_balance_api",
+        "provider": "deepseek",
+        "fetched_at": _now(),
+        "balance": balance,
+        "reason": None,
+    }
+
+def _runtime_weclaw_status(
+    profile: str,
+    *,
+    store: Any | None = None,
+    balance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
     context_status = _proxy_context_status()
     semantic_status = _semantic_compaction_runtime_status()
@@ -11396,6 +11699,18 @@ def _runtime_weclaw_status(profile: str) -> dict[str, Any]:
     context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
     context_window["runtime_trimming"] = context_status.get("trimming") if isinstance(context_status, dict) else None
 
+    model_contract = profile_status.get("model", {})
+    effective_model = None
+    if isinstance(model_contract, dict):
+        effective_model = model_contract.get("effective_model") or model_contract.get("upstream_model") or model_contract.get("codex_model")
+
+    tokens = _weclaw_tokens_contract(store, profile=profile)
+    pricing = _weclaw_pricing_contract(str(effective_model or DEFAULT_MODEL))
+    cost = _weclaw_cost_contract(tokens, pricing)
+    balance_contract = balance if isinstance(balance, dict) else _weclaw_balance_unavailable("not_queried")
+
+    cost["balance"] = balance_contract
+
     return {
         "status": profile_status.get("status", "ok"),
         "version": {
@@ -11403,52 +11718,21 @@ def _runtime_weclaw_status(profile: str) -> dict[str, Any]:
             "internal_version": PROXY_INTERNAL_VERSION,
         },
         "profile": profile,
-        "model": profile_status.get("model", {}),
+        "model": model_contract,
         "effort": profile_status.get("effort", {}),
         "context_window": context_window,
-        "tokens": {
-            "taxonomy": {
-                "version": 1,
-                "categories": [
-                    "user",
-                    "assistant_history",
-                    "tool",
-                    "environment",
-                    "runtime",
-                    "compaction_summary",
-                    "judge",
-                    "cached_input",
-                    "output",
-                    "reasoning",
-                    "other",
-                ],
-            },
-            "last_turn": {
-                "available": False,
-                "missing": ["live_turn_usage_attribution"],
-            },
-            "session_total": {
-                "available": False,
-                "missing": ["session_usage_attribution"],
-            },
-            "auxiliary_model_calls": {
-                "available": False,
-                "missing": ["auxiliary_model_call_ledger"],
-            },
-        },
-        "pricing": {
-            "available": False,
-            "missing": ["dynamic_pricing_cache"],
-        },
-        "cost": {
-            "available": False,
-            "missing": ["dynamic_pricing_cache", "usage_attribution"],
-        },
+        "tokens": tokens,
+        "pricing": pricing,
+        "cost": cost,
+        "balance": balance_contract,
         "compaction": {
             "available": True,
+            "is_estimated": False,
             "source": "dsproxy_runtime._proxy_context_status",
+            "unit": "chars",
             "runtime_context": context_status,
             "semantic_compaction": semantic_status,
+            "missing": [],
         },
         "health": profile_status.get("health", {}),
     }
@@ -11498,9 +11782,16 @@ def create_app(
 
 
     @app.get("/v1/proxy/weclaw/status")
-    async def proxy_weclaw_status(profile: str = "deepseek-thinking") -> dict[str, Any]:
-        return _runtime_weclaw_status(profile)
-
+    async def proxy_weclaw_status(profile: str = "deepseek-thinking", include_balance: bool = True) -> dict[str, Any]:
+        balance = await _weclaw_balance_contract(
+            deepseek_client=deepseek_client,
+            include_balance=include_balance,
+        )
+        return _runtime_weclaw_status(
+            profile,
+            store=store,
+            balance=balance,
+        )
 
     @app.get("/v1/proxy/tool-bridge/status")
     async def proxy_tool_bridge_status() -> dict[str, Any]:

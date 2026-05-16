@@ -1372,21 +1372,42 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         thinking = bool(getattr(args, "thinking", False))
         port = _port_for(thinking, getattr(args, "port", None))
         timeout = float(getattr(args, "timeout", 2.0) or 2.0)
-        http_status, data, error = _http_json(f"{_base_url(thinking=thinking, port=port)}/v1/proxy/status", timeout=timeout)
-        if isinstance(data, dict):
-            runtime_status = data
-        else:
-            runtime_error = {"http_status": http_status, "error": error}
+        base_url = _base_url(thinking=thinking, port=port)
+        weclaw_url = f"{base_url}/v1/proxy/weclaw/status?profile={profile_name}&include_balance=true"
+        http_status, data, error = _http_json(weclaw_url, timeout=timeout)
+        if isinstance(data, dict) and data.get("status") in {"ok", "error"}:
+            data = dict(data)
+            data["runtime_status"] = {
+                "available": True,
+                "source": weclaw_url,
+                "error": None,
+            }
+            return data
+        runtime_error = {"http_status": http_status, "error": error, "source": weclaw_url}
     except Exception as exc:
         runtime_error = {"error": f"{type(exc).__name__}: {exc}"}
 
+    legacy_runtime_status: dict[str, object] | None = None
+    try:
+        thinking = bool(getattr(args, "thinking", False))
+        port = _port_for(thinking, getattr(args, "port", None))
+        timeout = float(getattr(args, "timeout", 2.0) or 2.0)
+        legacy_url = f"{_base_url(thinking=thinking, port=port)}/v1/proxy/status"
+        http_status, data, error = _http_json(legacy_url, timeout=timeout)
+        if isinstance(data, dict):
+            legacy_runtime_status = data
+        else:
+            runtime_error = runtime_error or {"http_status": http_status, "error": error, "source": legacy_url}
+    except Exception as exc:
+        runtime_error = runtime_error or {"error": f"{type(exc).__name__}: {exc}"}
+
     context_window = _merge_runtime_context_contract(
         dict(profile_status.get("context_window", {})),
-        runtime_status,
+        legacy_runtime_status,
     )
 
-    compaction_available = bool(runtime_status and isinstance(runtime_status.get("context"), dict))
-    runtime_context = runtime_status.get("context") if isinstance(runtime_status, dict) else None
+    compaction_available = bool(legacy_runtime_status and isinstance(legacy_runtime_status.get("context"), dict))
+    runtime_context = legacy_runtime_status.get("context") if isinstance(legacy_runtime_status, dict) else None
 
     return {
         "status": profile_status.get("status", "ok"),
@@ -1408,62 +1429,66 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         "effort": profile_status.get("effort", {}),
         "context_window": context_window,
         "runtime_status": {
-            "available": runtime_status is not None,
-            "source": "http://127.0.0.1:<route>/v1/proxy/status",
+            "available": legacy_runtime_status is not None,
+            "source": "http://127.0.0.1:<route>/v1/proxy/weclaw/status",
             "error": runtime_error,
         },
         "tokens": {
             "taxonomy": {
-                "version": 1,
+                "version": 2,
+                "unit": "tokens",
+                "source": "dsproxy_runtime_required",
                 "categories": [
-                    "user",
-                    "assistant_history",
-                    "tool",
-                    "environment",
-                    "runtime",
-                    "compaction_summary",
-                    "judge",
+                    "input",
                     "cached_input",
                     "output",
                     "reasoning",
+                    "primary_model_call",
+                    "auxiliary_model_call",
+                    "tool_bridge",
+                    "liveness_judge",
+                    "liveness_retry",
+                    "compaction",
+                    "semantic_audit",
                     "other",
-                ],
-                "notes": [
-                    "This contract is owned by dsproxy. Exact category attribution requires audited payload construction and provider usage data.",
                 ],
             },
             "last_turn": {
                 "available": False,
                 "is_estimated": False,
-                "missing": ["live_turn_usage_attribution"],
+                "missing": ["running_dsproxy_weclaw_status_endpoint"],
                 "source": "not_available_without_runtime_usage_snapshot",
             },
             "session_total": {
                 "available": False,
                 "is_estimated": False,
-                "missing": ["session_usage_attribution"],
+                "missing": ["running_dsproxy_weclaw_status_endpoint"],
             },
             "auxiliary_model_calls": {
                 "available": False,
                 "included_in_session_total": None,
-                "missing": ["auxiliary_model_call_ledger"],
+                "missing": ["running_dsproxy_weclaw_status_endpoint"],
             },
         },
         "pricing": {
             "available": False,
-            "source_kind": "not_configured_for_weclaw_contract_yet",
+            "source_kind": "runtime_required",
             "is_stale": None,
             "fallback_used": None,
-            "missing": ["dynamic_pricing_cache"],
+            "missing": ["running_dsproxy_weclaw_status_endpoint"],
         },
         "cost": {
             "available": False,
             "is_estimated": False,
-            "missing": ["dynamic_pricing_cache", "usage_attribution"],
+            "missing": ["running_dsproxy_weclaw_status_endpoint"],
             "balance": {
                 "available": False,
-                "reason": "not_queried_by_weclaw_status_contract",
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
             },
+        },
+        "balance": {
+            "available": False,
+            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
         },
         "compaction": {
             "available": compaction_available,

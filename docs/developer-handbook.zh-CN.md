@@ -26,7 +26,7 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a47-doc-weclaw-contract-sync`
+- 当前内部开发线：`p2.10a48-weclaw-full-telemetry-contract`
 - p2.10a46后的已验证仓库基线：`master = origin/master = 3e6b922`
 - 已完成的P0检查点：`p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`
 - 旧公开tag不能移动：
@@ -735,3 +735,16 @@ GET /v1/proxy/weclaw/status?profile=deepseek-thinking
 - 当usage ledger测试断言request-model attribution时，必须清理`DEEPSEEK_PROXY_MODEL`、`DEEPSEEK_PROXY_FORCE_MODEL`和`DEEPSEEK_MODEL`。
 - 开发shell中的full-suite结果必须先清理model、provider、image、web-search和API key环境变量后再判断。
 - 不能通过修改生产model选择语义来修复这类测试环境污染问题。
+
+## p2.10a48 WeClaw完整遥测契约
+
+p2.10a48在p2.10a46基础契约检查点之后重新打开P0，并实现面向WeClaw的第一版完整遥测契约表面。
+
+已实现的契约变化：
+
+- 运行时HTTP `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`现在会把usage ledger聚合为`tokens.last_turn`、`tokens.session_total`和`tokens.auxiliary_model_calls`。
+- 运行时HTTP WeClaw status现在提供pricing cache元数据、estimated cost字段和provider balance数据。
+- CLI `dsproxy status thinking --weclaw-json`在proxy可达时优先透传运行时WeClaw status端点，不可达时才返回结构化不可用字段。
+- token数量来自provider返回并写入dsproxy usage ledger，属于精确总量。
+- cost字段来自dsproxy pricing cache估算，不等同于provider账单。
+- user/tool/environment/history等prompt子类拆分在没有经过审计的tokenizer层之前，仍标记为provider不直接报告。

@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a47-doc-weclaw-contract-sync`
+- Current internal development line: `p2.10a48-weclaw-full-telemetry-contract`
 - Verified repository baseline after p2.10a46: `master = origin/master = 3e6b922`
 - Completed P0 checkpoint: `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`
 - Older public tags must not move:
@@ -760,3 +760,16 @@ Test isolation lesson:
 - Usage ledger model-attribution tests must clear `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, and `DEEPSEEK_MODEL` when they assert request-model attribution.
 - Full-suite results from a developer shell must not be trusted until model, provider, image, web-search, and API-key environment variables are sanitized.
 - Do not repair this class of failure by changing production model selection semantics.
+
+## p2.10a48 WeClaw full telemetry contract
+
+p2.10a48 reopens P0 after the p2.10a46 basic-contract checkpoint and implements the first full telemetry contract surface for WeClaw.
+
+Implemented contract changes:
+
+- Runtime HTTP `GET /v1/proxy/weclaw/status?profile=deepseek-thinking` now aggregates usage ledger data into `tokens.last_turn`, `tokens.session_total`, and `tokens.auxiliary_model_calls`.
+- Runtime HTTP WeClaw status now exposes pricing cache metadata, estimated cost fields, and provider balance data.
+- CLI `dsproxy status thinking --weclaw-json` prefers the runtime WeClaw status endpoint when the proxy is reachable and falls back to structured unavailable fields when it is not.
+- Token counts are provider-reported exact totals from the dsproxy usage ledger.
+- Cost fields are estimates from dsproxy pricing cache and are not provider invoice data.
+- Prompt subcategory split such as user/tool/environment/history remains marked as not provider-reported unless a future audited tokenizer layer is added.

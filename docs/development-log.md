@@ -1,5 +1,16 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a48-weclaw-full-telemetry-contract
+
+- Reopened P0 after the p2.10a46/p2.10a47 basic contract and documentation sync because the original WeClaw requirements were not fully closed by structured degraded fields.
+- Added runtime WeClaw telemetry aggregation from the dsproxy usage ledger for `tokens.last_turn`, `tokens.session_total`, and `tokens.auxiliary_model_calls`.
+- Added runtime WeClaw pricing and cost fields based on the existing dsproxy pricing cache and usage ledger `estimated_cost_usd` values.
+- Added provider balance integration into runtime WeClaw status.
+- Updated CLI `dsproxy status [thinking] --weclaw-json` to prefer the runtime `/v1/proxy/weclaw/status` endpoint when reachable.
+- Added tests for HTTP full telemetry contract and CLI runtime WeClaw status preference.
+- Token counts are exact provider-reported ledger totals. Cost is estimated from dsproxy pricing cache. Prompt subcategory splits remain explicitly not provider-reported without a future audited tokenizer layer.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a47-doc-weclaw-contract-sync
 
 - Synchronized the English and Chinese developer handbooks after the p2.10a46 WeClaw contract acceptance checkpoint.
