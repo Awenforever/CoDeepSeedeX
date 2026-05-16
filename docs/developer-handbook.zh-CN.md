@@ -26,8 +26,8 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a43-effort-json-refresh-control`
-- p2.10a41后的当前仓库基线：`master = origin/master = a1bd8eb`
+- 当前内部开发线：`p2.10a44-doc-marker-discipline-cleanup`
+- p2.10a43后的当前仓库基线：`master = origin/master = 9bf5fe9`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -621,7 +621,6 @@ P0 WeClaw验收清单：
 7. 为WeClaw集成对话输出交付报告，包含精确命令、端点名、JSON样例、字段来源、精确性标记、超时建议和失败fallback策略。
 
 ## p2.10a43 effort JSON和刷新控制
-Marker兼容说明：`config set-effort --json`指代`dsproxy config set-effort <effort> --json`所展示的parser契约；`profile set-effort <profile> <effort> --no-refresh`指代profile级no-refresh契约。
 
 
 本补丁继续保持P0 WeClaw验收主线。
@@ -638,3 +637,15 @@ WeClaw调用建议：
 - 集成测试或非交互流程中，如只修改一个profile，使用`profile set-effort <profile> <effort> --json --no-refresh`。
 - 如需保留legacy config命令路径，使用`config set-effort <effort> --profile <profile> --json --no-refresh`。
 - 只有用户明确希望配置变更后刷新运行中的proxy进程时，才省略`--no-refresh`。
+
+## p2.10a44 文档marker纪律清理
+
+本补丁清理p2.10a43遗留的文档债务。
+
+文档和补丁纪律：
+
+1. 不得为了满足marker而加入仅服务于验证字符串的兼容说明。
+2. 验证marker必须来自真实源码、真实测试和真实文档正文。
+3. 如果验证规则和真实内容不一致，应修正验证规则或修正目标内容，不得加入没有项目语义的文字来满足marker。
+4. 每次补丁前必须同时审计将修改的精确源码或文档片段、替换规则和验证规则。
+5. required markers应尽量使用真实命令契约。对p2.10a43而言，真实契约是`dsproxy config set-effort <effort> --json`、`dsproxy profile set-effort <profile> <effort> --no-refresh`和`post_config_apply.status = "skipped"`。

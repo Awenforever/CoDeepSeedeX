@@ -1,5 +1,14 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a44-doc-marker-discipline-cleanup
+
+- Removed marker-only compatibility text that had been added to the p2.10a43 internal handbook sections.
+- Reframed the p2.10a43 handbook content as normal command-contract documentation instead of validation-marker accommodation.
+- Added an internal patch-discipline rule: verification markers must be derived from real source, tests, and document text, and documentation must not be polluted to satisfy a validation string.
+- Updated developer runtime internal version metadata to `p2.10a44-doc-marker-discipline-cleanup`.
+- No user-facing README/TROUBLESHOOTING content was changed.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a43-effort-json-refresh-control
 
 - Added explicit refresh control for WeClaw/CI-safe effort configuration.

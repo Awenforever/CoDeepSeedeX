@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a43-effort-json-refresh-control`
-- Current repository baseline after p2.10a41: `master = origin/master = a1bd8eb`
+- Current internal development line: `p2.10a44-doc-marker-discipline-cleanup`
+- Current repository baseline after p2.10a43: `master = origin/master = 9bf5fe9`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -651,7 +651,6 @@ P0 WeClaw acceptance checklist:
 7. Produce a handoff report for the WeClaw integration conversation with exact commands, endpoint names, JSON samples, field sources, precision flags, timeout suggestions, and fallback behavior.
 
 ## p2.10a43-effort-json-refresh-control effort JSON and refresh control
-Marker compatibility note: `config set-effort --json` refers to the parser contract also shown by `dsproxy config set-effort <effort> --json`; `profile set-effort <profile> <effort> --no-refresh` refers to the profile-scoped no-refresh contract.
 
 
 This patch keeps the P0 WeClaw acceptance mainline active.
@@ -668,3 +667,15 @@ WeClaw guidance:
 - Use `profile set-effort <profile> <effort> --json --no-refresh` when changing one active profile from an integration test or non-interactive workflow.
 - Use `config set-effort <effort> --profile <profile> --json --no-refresh` when preserving the legacy config command path.
 - Omit `--no-refresh` only when the user intentionally wants running proxy processes refreshed after configuration changes.
+
+## p2.10a44-doc-marker-discipline-cleanup documentation marker discipline cleanup
+
+This patch cleans up documentation debt from p2.10a43.
+
+Documentation discipline:
+
+1. Do not add marker-only compatibility notes to make a validation string pass.
+2. Verification markers must be derived from real source, tests, and document text.
+3. If validation and real content differ, fix the validation rule or fix the intended content. Do not add non-semantic prose to satisfy a marker.
+4. Before each patch, audit the exact source or document fragment being changed, the replacement rule, and the validation rule together.
+5. Required markers should use real command contracts when possible. For p2.10a43, the real contracts are `dsproxy config set-effort <effort> --json`, `dsproxy profile set-effort <profile> <effort> --no-refresh`, and `post_config_apply.status = "skipped"`.
