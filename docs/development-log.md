@@ -1,5 +1,12 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a36-release-state-doc-sync
+
+- Synchronized documentation with the verified GitHub Release state: `v0.3.8-alpha` is the current non-draft, non-prerelease GitHub Release at `dfdc629`, while `master = origin/master = 659854a`.
+- Updated README and README.zh-CN behavior-change migration notes that still told users to install the pre-release or wait for Latest promotion.
+- Updated both developer handbooks so the current public line is described as a public alpha Release rather than a GitHub pre-release, while preserving the historical pre-release validation policy for future Release candidates.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a35-docs-handoff-and-replacement-discipline
 
 - Updated the current-state blocks in both developer handbooks after p2.10a34. The current internal line is `p2.10a35-docs-handoff-and-replacement-discipline`, while `v0.3.8-alpha` remains at `dfdc629`.

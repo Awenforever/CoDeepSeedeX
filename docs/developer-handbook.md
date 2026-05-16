@@ -27,20 +27,20 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
-- Current public pre-release: `v0.3.8-alpha`
+- Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
 - Current internal development line: `p2.10a35-docs-handoff-and-replacement-discipline`
+- Current repository baseline after p2.10a35: `master = origin/master = 659854a`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tag `v0.3.5` must not exist.
-- `v0.3.8-alpha` is still a GitHub pre-release unless the maintainer explicitly promotes it.
+- `v0.3.8-alpha` is the current GitHub Release and is not marked as a GitHub pre-release. It still uses the alpha tag naming scheme.
 - Public Release assets for `v0.3.8-alpha` are `bootstrap.sh` and `install.sh`.
 
 This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
-
 ## 3. Key file map
 
 - `deepseek_responses_proxy/app.py`: runtime core, Responses-compatible API, DeepSeek bridge, tool bridge, provider dispatch, version metadata, debug trace.
@@ -205,7 +205,7 @@ The handbook is an AI startup pack:
 
 ## 11. Current major-line summary: p2.10 / v0.3.8-alpha
 
-p2.10 covers the current `v0.3.8-alpha` pre-release line and the post-release internal hardening work:
+p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-release internal hardening work:
 
 - Installer provider surface cleanup for model API providers, including explicit Zhipu / BigModel, Z.AI, and Qwen / DashScope regional choices.
 - Installer UX hardening, including arrow-key menus, compact source logging, quoted heredocs, source archive fallback, version metadata preservation, and live image validation.
@@ -215,14 +215,15 @@ p2.10 covers the current `v0.3.8-alpha` pre-release line and the post-release in
 - Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
 - Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Current verified baseline after p2.10a34:
+Current verified baseline after p2.10a35:
 
-- `master = origin/master = 280f14b`.
+- `master = origin/master = 659854a`.
+- `p2.10a35-docs-handoff-and-replacement-discipline = 659854a`.
 - `p2.10a34-title-keeper-cleanup = 280f14b`.
-- `v0.3.8-alpha = dfdc629`, still a pre-release unless promoted by the maintainer.
+- `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
+- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a35 and p2.10a36 do not rebuild assets.
 - Real HOME wrapper refresh passed, with keeper PID cleanup and no `exec "$REAL_CODEX" "$@"`.
 - `deepseek-thinking` profile status is healthy with `model=deepseek-v4-flash`, DeepSeek effort `max`, and Codex profile effort `xhigh`.
-
 ## 12. New conversation startup checklist
 
 Start with a read-only audit before changing anything:
@@ -585,3 +586,9 @@ Lessons from this sequence:
 p2.10a35 is a documentation and handoff synchronization node after p2.10a34. It updates the current state, condenses superseded wrapper title experiments into the current effective p2.10a34 design, records the replacement-discipline rule, and prepares the next conversation handoff.
 
 Do not treat this as a public Release. It must not move `v0.3.8-alpha` or rebuild Release assets unless the maintainer explicitly starts a Release task.
+
+## p2.10a36 release-state documentation sync
+
+p2.10a36 synchronizes documentation with the verified GitHub Release state. `v0.3.8-alpha` remains the public alpha Release tag at `dfdc629`, but the GitHub Release is currently non-draft and non-prerelease. This update changes current-state wording and README migration notes only.
+
+Do not treat this as a Release rebuild. It must not move `v0.3.8-alpha`, recreate the GitHub Release, or upload new Release assets.
