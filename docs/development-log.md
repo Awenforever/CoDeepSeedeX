@@ -1,5 +1,13 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a35-docs-handoff-and-replacement-discipline
+
+- Updated the current-state blocks in both developer handbooks after p2.10a34. The current internal line is `p2.10a35-docs-handoff-and-replacement-discipline`, while `v0.3.8-alpha` remains at `dfdc629`.
+- Condensed p2.10a30 through p2.10a34 wrapper title experiments into the current effective p2.10a34 design: route preparation, bounded runtime keeper, foreground real Codex execution, PID cleanup, and preservation of the real Codex return status.
+- Recorded the replacement-discipline rule after repeated stale-anchor failures: prefer function-level, block-level, section-level, or AST-level whole replacement instead of fragile narrow string anchors.
+- Confirmed tab color was abandoned for this line. Windows Terminal `--tabColor` is not a verified current-tab wrapper control path.
+- No public Release tag was moved and no Release assets were rebuilt.
+
 ## p2.10a34-title-keeper-cleanup
 
 - Bound the finite tab-title keeper lifecycle to the real Codex command lifecycle.

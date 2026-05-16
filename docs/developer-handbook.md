@@ -28,9 +28,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public pre-release: `v0.3.8-alpha`
-- Public release commit: `54d81ab`
+- Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a34-title-keeper-cleanup`
+- Current internal development line: `p2.10a35-docs-handoff-and-replacement-discipline`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -108,13 +108,15 @@ These rules are mandatory development controls. They belong in the handbook beca
 ### 6.1 Avoidable failure classes
 
 1. **Script variable scope.** Shell variables such as `ts`, `out`, and `run_id` do not exist inside Python heredocs unless passed through environment variables. Use one canonical run identifier and read it from `os.environ`.
-2. **Source anchors.** Do not patch from memory. When anchors are uncertain or repeated, audit the real source and patch by function, section, or explicit boundary rather than a fragile single string.
-3. **Helper function semantics.** Read helper definitions before using them in tests or patch scripts. Do not assume a helper parameter accepts arbitrary text when it expects a function name or structured marker.
-4. **Regex boundaries.** Regex patching is acceptable only when the boundary is stable. For tests and functions, prefer whole-block replacement from `def name` to the next `def`, or parse structure where practical.
-5. **Pre-test marker checks.** Before pytest, assert that the intended source markers exist and old forbidden markers are gone. This catches half-applied patches before expensive test runs.
-6. **Two-phase heavy changes.** For broad installer, wrapper, profile, or Release changes, first patch and test locally. Only after focused and full tests pass should the script commit, tag, push, merge, or rebuild Release assets.
-7. **Acceptance criteria must match the user-visible defect.** Do not record a compatibility fallback as a fix when the defect is a visible UI or profile behavior. Example: Plan mode had to write `plan_mode_reasoning_effort = "high"`, not merely map `medium` to `high` inside the proxy.
-8. **Integration surfaces are part of every task.** Every development task must explicitly consider install, upgrade, uninstall, rollback, generated wrappers, user config files, Release assets, and VM/user-path validation when the changed behavior can affect them.
+2. **Source anchors.** Do not patch from memory. When anchors are uncertain, repeated, shifted by a half-applied patch, or embedded in generated shell templates, audit the real source first.
+3. **Replacement discipline.** Prefer function-level, section-level, block-level, or AST-based whole replacement. For Python tests and functions, replace the whole `def` by AST line range. For Markdown, replace a whole heading section. For shell templates, replace the whole generated function or heredoc body. Avoid single-line or narrow string anchors except for stable version constants.
+4. **Helper function semantics.** Read helper definitions before using them in tests or patch scripts. Do not assume a helper parameter accepts arbitrary text when it expects a function name or structured marker.
+5. **Regex boundaries.** Regex patching is acceptable only when the boundary is stable and verified. Tests and functions should normally be replaced as whole blocks.
+6. **Pre-test marker checks.** Before pytest, assert that the intended source markers exist and old forbidden markers are gone. This catches half-applied patches before expensive test runs.
+7. **Two-phase heavy changes.** For broad installer, wrapper, profile, or Release changes, first patch and test locally. Only after focused and full tests pass should the script commit, tag, push, merge, or rebuild Release assets.
+8. **Acceptance criteria must match the user-visible defect.** Do not record a compatibility fallback as a fix when the defect is a visible UI or profile behavior. Example: Plan mode had to write `plan_mode_reasoning_effort = "high"`, not merely map `medium` to `high` inside the proxy.
+9. **Integration surfaces are part of every task.** Every development task must explicitly consider install, upgrade, uninstall, rollback, generated wrappers, user config files, Release assets, and VM/user-path validation when the changed behavior can affect them.
+10. **Runtime observations outrank assumptions.** For terminal, wrapper, and Codex TUI behavior, validate with isolated runtime probes before patching. This prevented guessing around Windows Terminal title behavior and showed that tab color was not a current wrapper-path feature.
 
 ### 6.2 Release-specific guardrails
 
@@ -203,18 +205,23 @@ The handbook is an AI startup pack:
 
 ## 11. Current major-line summary: p2.10 / v0.3.8-alpha
 
-p2.10 covered the current `v0.3.8-alpha` pre-release line:
+p2.10 covers the current `v0.3.8-alpha` pre-release line and the post-release internal hardening work:
 
-- Model API setup surface repair: `set-model` is the primary provider/model/API-key entrypoint; `set-api-key` remains compatibility-only.
-- Explicit provider families and regions for Zhipu / BigModel, Z.AI, and Qwen / DashScope, including Coding Plan distinctions.
-- Installer UI compaction, arrow-key menu rendering, secret prompt semantics, source archive fallback, and quiet pip install logging.
-- Live image API validation in the guided installer, with explicit quota/credit warning and generated artifact saved under `/tmp`.
-- Version metadata repair for non-git source archive installs.
-- Codex wrapper fail-closed startup, automatic route verification, and native Plan mode pinning with `plan_mode_reasoning_effort = "high"`.
-- Manifest-backed uninstall rollback for the Codex wrapper.
-- VM user-path validation of `v0.3.8-alpha` after p2.10a26.
+- Installer provider surface cleanup for model API providers, including explicit Zhipu / BigModel, Z.AI, and Qwen / DashScope regional choices.
+- Installer UX hardening, including arrow-key menus, compact source logging, quoted heredocs, source archive fallback, version metadata preservation, and live image validation.
+- Config and profile UX hardening, including `set-model` as the primary model API configuration entrypoint, post-config proxy refresh, provider validation semantics, and DeepSeek-compatible effort surfaces.
+- Codex wrapper startup hardening, including fail-closed proxy route startup, `plan_mode_reasoning_effort = "high"`, manifest-backed uninstall rollback, and source/installer/user-path verification.
+- WeClaw-facing contract work, including `profile status --json`, `status --weclaw-json`, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, and context-window source separation.
+- Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
+- Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Older p2.9 details remain in `docs/development-log.md` and should not be duplicated here.
+Current verified baseline after p2.10a34:
+
+- `master = origin/master = 280f14b`.
+- `p2.10a34-title-keeper-cleanup = 280f14b`.
+- `v0.3.8-alpha = dfdc629`, still a pre-release unless promoted by the maintainer.
+- Real HOME wrapper refresh passed, with keeper PID cleanup and no `exec "$REAL_CODEX" "$@"`.
+- `deepseek-thinking` profile status is healthy with `model=deepseek-v4-flash`, DeepSeek effort `max`, and Codex profile effort `xhigh`.
 
 ## 12. New conversation startup checklist
 
@@ -548,38 +555,33 @@ Context fields must distinguish token-level Codex declarations from char-level d
 Installed Codex wrappers may be stale after source updates. `dsproxy profile refresh-wrapper --json` refreshes a CoDeepSeedeX-managed wrapper from the install manifest while preserving manifest-backed rollback metadata. Unknown user-owned wrappers must not be overwritten unless the operator explicitly passes `--force`.
 
 
-## p2.10a30 profile model sync and delayed title refresh
+## p2.10a30-p2.10a34 wrapper, profile, and WeClaw contract closure
 
-Managed Codex profile `model` values must match each profile's effective upstream model, not a hard-coded model name. `dsproxy profile repair --managed-only --json` repairs `deepseek` and `deepseek-thinking` by computing each profile's effective model through the same profile contract used by `profile status`.
+Managed Codex profile `model` values must match each profile's effective upstream model. `dsproxy profile repair --managed-only --json` repairs `deepseek` and `deepseek-thinking` by computing each profile's effective model through the same profile contract used by `profile status`. `codex_model`, `effective_model`, and `model_conflict` remain diagnostics. Normal managed state should have `model_conflict=false`.
 
-`codex_model`, `effective_model`, and `model_conflict` remain part of the diagnostic contract. Under normal managed state, `model_conflict` should be false. If it is true, run `dsproxy profile repair --managed-only --json`.
+The WeClaw-facing model and context contract is owned by dsproxy. WeClaw should use `effective_model`, inspect `model_conflict`, and consume context fields with their explicit source and unit. Codex profile context values such as `model_context_window` and `model_auto_compact_token_limit` are token-level declarations. Runtime compaction and trimming controls are char-level behavior and must not be merged without labeling.
 
-Historical note: p2.10a30 used a pre-start title update plus short delayed refreshes, but that design was superseded. The current wrapper keeps itself alive, runs the real Codex in the foreground, and uses the bounded runtime keeper described in p2.10a33.
+Installed Codex wrappers may be stale after source updates. `dsproxy profile refresh-wrapper --json` refreshes a CoDeepSeedeX-managed wrapper from the install manifest and preserves manifest-backed rollback metadata. Unknown user-owned wrappers must not be overwritten unless the operator explicitly passes `--force`.
 
+The current tab-title design is the p2.10a34 design. Do not resurrect earlier pre-start or three-shot delayed title strategies. The wrapper must:
+- avoid setting the title before Codex startup
+- start and verify the matching dsproxy route
+- schedule a bounded runtime title keeper after route preparation
+- allow `/dev/tty` title writes even when stdout is redirected
+- run the real Codex binary as a foreground command, not with `exec`
+- record the keeper PID
+- stop and wait for the keeper after Codex returns
+- return the original Codex status
 
-## p2.10a31 post-start tab-title refresh
+Lessons from this sequence:
+- Windows Terminal tab titles can be changed by OSC writes to the active TTY, but Codex may overwrite titles during startup.
+- A background job with stdout redirected to `/dev/null` must not use `[ -t 1 ]` as the only gate when it intends to write `/dev/tty`.
+- A fixed time limit is not a lifecycle boundary. Keeper processes must be tied to the real Codex command lifecycle with PID cleanup.
+- Do not add tab-color behavior to the wrapper without a verified current-tab runtime mechanism. `wt --tabColor` is a new-tab or split-pane launch parameter, not a proven current-tab wrapper control.
+- Future wrapper and installer patches should replace whole shell functions or generated wrapper templates, not narrow escaped fragments.
 
-Do not set the Codex tab title before launching Codex. Codex may set the title to the working directory during startup and overwrite the wrapper's pre-start OSC update. The wrapper should first prepare the matching dsproxy route, then schedule a finite delayed OSC 0/2 refresh sequence after startup. The current sequence is 8 seconds, then 4 seconds, then 8 seconds.
+## p2.10a35 documentation and replacement discipline
 
-The wrapper must keep the real Codex execution path quiet. Avoid undefined helper names in background jobs because interactive shells print job-exit messages such as `Exit 127`.
+p2.10a35 is a documentation and handoff synchronization node after p2.10a34. It updates the current state, condenses superseded wrapper title experiments into the current effective p2.10a34 design, records the replacement-discipline rule, and prepares the next conversation handoff.
 
-
-## p2.10a32 foreground Codex wrapper for delayed title refresh
-
-The wrapper must keep itself alive while the real Codex process starts. Replacing the wrapper process with the real Codex binary makes delayed OSC title refreshes unreliable in observed Windows Terminal + WSL sessions.
-
-The generated wrapper should prepare the matching dsproxy route, schedule the finite post-start OSC 0/2 refresh sequence, and then run the real Codex binary as the foreground command. Because that command is the final command in the wrapper, its return status naturally becomes the wrapper return status.
-
-
-## p2.10a33 finite runtime tab-title keeper
-
-The title function must not require stdout to be a TTY when `/dev/tty` is writable. The post-start title refresh runs in a background subshell with stdout redirected to `/dev/null`, so a pure `[ -t 1 ]` gate skips the actual `/dev/tty` OSC write.
-
-The generated wrapper now uses a finite runtime title keeper: by default it refreshes once per second for 60 seconds. This is intentionally bounded, not a permanent daemon. It covers Codex startup and early runtime title rewrites without leaving a long-lived process.
-
-
-## p2.10a34 tab-title keeper cleanup
-
-The finite title keeper must be tied to the real Codex command lifecycle. Record the keeper PID when scheduling the runtime refresh loop. After the real Codex command returns, stop and wait for the keeper, then return the original Codex status from a wrapper function.
-
-Do not rely on the 60-second upper bound alone, because Codex may return before the bound and the keeper would otherwise restore the CoDeepSeedeX title after the user has already left Codex.
+Do not treat this as a public Release. It must not move `v0.3.8-alpha` or rebuild Release assets unless the maintainer explicitly starts a Release task.
