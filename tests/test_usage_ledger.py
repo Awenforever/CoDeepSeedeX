@@ -384,7 +384,14 @@ class UsageSequenceDeepSeekClient(DeepSeekClient):
 
 
 @pytest.mark.asyncio
-async def test_usage_records_internal_tool_bridge_call_purposes(tmp_path):
+async def test_usage_records_internal_tool_bridge_call_purposes(tmp_path, monkeypatch):
+    for key in [
+        "DEEPSEEK_PROXY_MODEL",
+        "DEEPSEEK_PROXY_FORCE_MODEL",
+        "DEEPSEEK_MODEL",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     app = create_app(
         deepseek_client=UsageSequenceDeepSeekClient(
@@ -438,6 +445,7 @@ async def test_usage_records_internal_tool_bridge_call_purposes(tmp_path):
     assert {event["response_id"] for event in events} == {response_id}
     assert {event["request_id"] for event in events} == {response_id}
     assert [event["call_index"] for event in events] == [1, 0]
+    assert all(event["requested_model"] == "deepseek-v4-pro" for event in events)
     assert all(event["effective_model"] == "deepseek-v4-pro" for event in events)
     assert all(event["upstream_model"] == "deepseek-v4-pro" for event in events)
 
