@@ -24,22 +24,23 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开alpha Release：`v0.3.8-alpha`
-- 公开Release commit：`dfdc629`
-- Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a49-final-handoff-sync`
-- p2.10a48后的已验证仓库基线：`master = origin/master = 2e0edd0`
+- 下一个计划发布的公开pre-release：`v0.3.9-alpha`
+- v0.3.9-alpha发布前的当前公开Release commit：`dfdc629`
+- 当前内部开发线：`p2.10a50-v039-alpha-release-readiness-sync`
+- Release readiness前已验证仓库基线：`master = origin/master = e8ca586`
 - 已完成的P0检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- WeClaw状态：WeClaw侧已认可当前p2.10a48回报基线，并进入初步集成。第二轮WeClaw需求会在其审计后于新开发对话提出。
+- 已完成的最终移交同步：`p2.10a49-final-handoff-sync = e8ca586`
+- WeClaw状态：WeClaw侧已认可p2.10a48回报基线，并进入初步集成。第二轮WeClaw需求会在其审计后于后续开发对话提出。
+- 下一个公开pre-release的Release要求：如果使用WeClaw联动，`weclaw_dev`版本不得低于`v0.1.9-alpha`。
 - 旧公开tag不能移动：
+  - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
-- 错误普通tag `v0.3.5`必须不存在。
-- `v0.3.8-alpha`是当前GitHub Release，当前没有标记为GitHub pre-release。它仍沿用alpha tag命名。
-- `v0.3.8-alpha`公开Release资产为`bootstrap.sh`和`install.sh`。
-- p2.10a49是最终移交和文档同步节点。不得移动`v0.3.8-alpha`，不得创建GitHub Release，也不得重建Release资产。
+- 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
+- p2.10a50是Release readiness和手册主线同步节点。它准备`v0.3.9-alpha`，但只有在明确Release步骤中才创建GitHub Release。
 
-本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则和高价值经验。详细时间线进入`docs/development-log.md`。
+本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
 ## 3. 关键文件地图
 
@@ -107,6 +108,7 @@ push默认走HTTPS，不走SSH。所有网络步骤必须设置timeout。Release
 10. **运行期观察优先于猜测。** terminal、wrapper和Codex TUI行为必须先用隔离命令验证，再补丁。本轮通过普通命令验证了Windows Terminal标题OSC有效，也确认tab颜色不属于当前wrapper可控范围。
 11. **测试环境污染。** 脏的开发shell可能让full tests因为补丁无关原因失败。p2.10a36中，`DEEPSEEK_PROXY_MODEL`、`DEEPSEEK_PROXY_FORCE_MODEL`、`DEEPSEEK_PROXY_IMAGE_PROVIDER`、`DEEPSEEK_PROXY_IMAGE_DOWNLOAD`以及真实provider API key等环境变量改变了默认模型和provider行为，导致与文档补丁无关的full tests失败。在把full tests失败当作补丁证据前，必须记录相关环境覆盖，用sanitized环境重跑失败子集和full tests，然后再判断责任在补丁还是本机环境。
 12. **AnyCodeX未来命名边界。** CoDeepSeedeX仍是当前项目名和公开产品名。AnyCodeX是未来计划名和潜在未来品牌名，不是当前代码、命令、tag、branch、安装器、wrapper、公开路径或面向用户文档名称。在维护者明确批准重命名任务前，不要把AnyCodeX引入面向用户的表面。未来架构工作可以在仅面向开发者的规划文档中把目标描述为AnyCodeX级通用provider架构。
+13. **完整源码优先审计规则。** 涉及源码或文档修改时，优先要求维护者上传完整源码文件和源文档。如果直接上传不方便，只读审计命令应把相关源码和文档完整复制到`/tmp`文件，并列出这些文件让维护者上传。`grep`、`rg`和窄片段只能用于建立文件清单，不能作为补丁设计的主要依据。补丁设计必须基于真实已阅读的完整文件，或完整函数、模块、章节上下文。
 ### 6.2 Release专项规则
 
 - 不要猜运行时版本文件路径。运行时文件是`deepseek_responses_proxy/app.py`。
@@ -206,30 +208,32 @@ VM -> 192.168.231.1:7896 -> Windows portproxy -> 127.0.0.1:7892 -> 极连云
 - 新经验先判断是“长期规则”还是“流水记录”。长期规则进手册，流水记录进development log。
 - 文档结构变化必须同步测试契约。
 
-## 11. 当前大版本摘要：p2.10 / v0.3.8-alpha
+## 11. 当前大版本摘要：p2.10 / v0.3.9-alpha readiness
 
-p2.10对应当前`v0.3.8-alpha`公开alpha Release线，以及发布后的内部加固工作：
+p2.10现在覆盖`v0.3.8-alpha`发布线和`v0.3.9-alpha`pre-release准备线。
 
-- 安装器provider表面清理，包括显式区分Zhipu / BigModel、Z.AI和Qwen / DashScope区域入口。
-- 安装器体验加固，包括方向键菜单、紧凑来源日志、引用heredoc、source archive fallback、版本元数据保留和图像live验证。
-- 配置和profile体验加固，包括`set-model`成为model API主入口、post-config proxy刷新、provider验证语义和DeepSeek兼容effort表面。
-- Codex wrapper启动加固，包括fail-closed proxy route启动、`plan_mode_reasoning_effort = "high"`、manifest-backed uninstall rollback和用户路径验证。
-- WeClaw-facing契约，包括`profile status --json`、`profile set-effort --json`、`status --weclaw-json`、HTTP WeClaw端点、dsproxy统一维护profile effort、effective model字段、model conflict诊断、context窗口来源分离、运行时usage聚合、pricing cache元数据、estimated cost、provider balance和辅助模型调用统计。
-- Codex tab标题行为加固，最终有效设计为：wrapper准备对应route，在Codex启动后启动有限标题keeper，前台运行真实Codex，记录keeper PID，Codex返回后kill并wait keeper，同时保留真实Codex返回状态。
-- 文档纪律，包括移除幽灵文档、同步当前状态，以及后续补丁强制优先采用函数级、块级、章节级或AST级整体替换。
+自`v0.3.8-alpha`以来的用户可见变化：
 
-p2.10a48后的已验证基线：
+- WeClaw联动现在由dsproxy维护的完整telemetry契约支撑。WeClaw可以通过稳定CLI/HTTP表面消费profile、model、effort、context-window、usage聚合、pricing元数据、estimated cost、provider balance、辅助模型调用统计和compaction状态。
+- `dsproxy status [thinking] --weclaw-json`在proxy可达时优先使用运行时`/v1/proxy/weclaw/status`端点，不可达时返回结构化不可用字段。
+- `dsproxy profile status <profile> --json`和`dsproxy profile set-effort <profile> <effort> --json`为集成客户端提供机器可读profile和effort状态。
+- `dsproxy config set-effort`和`dsproxy profile set-effort`提供JSON和refresh控制，方便集成安全工作流。
+- usage/cost报告明确精确性边界：provider token总量和dsproxy调用目的归因可报告，cost来自dsproxy pricing cache估算，user/tool/environment/history等prompt子类token拆分在没有后续审计tokenizer层前保持not-reported。
+- `v0.3.8-alpha`之后继续加固wrapper和profile行为，包括profile model同步、runtime tab-title keeper清理，以及记录当前已接受wrapper行为。
+- 开发流程文档新增长期主线任务检查表和完整源码优先补丁纪律。
 
-- `master = origin/master = 2e0edd0`。
-- `p2.10a49-final-handoff-sync`是p2.10a48之后的最终文档和移交同步节点。
+`v0.3.9-alpha` Release要求：
+
+- 如果使用WeClaw联动，要求`weclaw_dev >= v0.1.9-alpha`。
+
+发布`v0.3.9-alpha`前的当前已验证基线：
+
+- `master = origin/master = e8ca586`。
+- `p2.10a49-final-handoff-sync = e8ca586`。
 - `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`。
-- `p2.10a47-doc-weclaw-contract-sync = 0a22063`。
-- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`。
-- `v0.3.8-alpha = dfdc629`，当前GitHub Release，非draft且非pre-release。
-- 公开Release资产仍为`bootstrap.sh`和`install.sh`；p2.10a48和p2.10a49不重建资产。
-- p2.10a48后的`dsproxy --version`输出`public version: v0.3.8-alpha | dfdc629`和`internal version: p2.10a48-weclaw-full-telemetry-contract | 2e0edd0`。
-- WeClaw侧已认可p2.10a48回报基线并进入初步集成。第二轮WeClaw需求会在其审计后于新对话继续。
-- p2.10a48保留的明确精确性边界是user/tool/environment/history等prompt子类token拆分。provider返回总量和dsproxy purpose归因可以报告，未审计tokenizer层的prompt子类拆分必须保持not-reported或unavailable。
+- `v0.3.8-alpha = dfdc629`，是`v0.3.9-alpha`发布前的当前公开Release。
+- Release步骤之前，`v0.3.9-alpha`尚不存在。
+- 不得创建普通`v0.3.9`。
 
 ## 12. 新对话启动检查
 
@@ -262,6 +266,25 @@ tag fallback：
 tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
+
+## 14. 长期主线任务检查表
+
+本表是防止跨对话和插入任务导致主线漂移的长期任务账本。每次规划决策、主要实现检查点、Release准备或handoff后都必须更新。
+
+| ID | 主线任务 | 预期指标 | 当前版本或锚点 | 当前状态 | 更新日期 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P0 | WeClaw full telemetry基线 | WeClaw可从dsproxy维护的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance和compaction。 | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | 已被WeClaw侧认可并进入初步集成 | 2026-05-16 | WeClaw第二轮需求会在其审计后提出。prompt子类token拆分仍保持not-reported，除非后续新增经过审计的tokenizer层。 |
+| P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | 尚未开始 | 等待 | 2026-05-16 | 不做 speculative second-round work。需求到达后先只读审计。 |
+| P1 | AnyCodeX级通用provider架构 | 形成基于证据的架构计划和渐进adapter/refactor顺序，同时保留现有CoDeepSeedeX公开表面。 | `p2.10a40-generalized-provider-architecture-audit-report` | 已规划，Release任务期间不激活 | 2026-05-16 | AnyCodeX只是未来方向，不是当前项目名。 |
+| P2 | `v0.3.9-alpha`公开pre-release | GitHub pre-release存在且`prerelease=true`，资产包含`bootstrap.sh`和`install.sh`，Release notes不重复标题，并写明WeClaw最低版本要求。 | `p2.10a50-v039-alpha-release-readiness-sync` | 进行中 | 2026-05-16 | Release notes必须包含`Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| Process | 完整源码优先补丁纪律 | 补丁设计基于上传的完整文件或完整复制的源码/文档文件，而不是grep/rg片段。 | 手册规则6.1.13 | 生效 | 2026-05-16 | `grep`/`rg`只能用于识别候选文件。 |
+
+检查表维护规则：
+
+1. 每次接受新计划、任务收口或Release/handoff改变活跃优先级时，都必须更新本表。
+2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
+3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
+4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
 
 ## p2.9a22运行时版本元数据规则
 

@@ -1,5 +1,18 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a50-v039-alpha-release-readiness-sync
+
+- Prepared the repository for the `v0.3.9-alpha` public pre-release.
+- Confirmed pre-patch baseline: `master = origin/master = e8ca586`, internal tag `p2.10a49-final-handoff-sync = e8ca586`, and public Release tag `v0.3.8-alpha = dfdc629`.
+- Confirmed `v0.3.9-alpha`, plain `v0.3.9`, and erroneous plain `v0.3.5` did not exist before this readiness node.
+- Updated the English and Chinese developer handbooks with a durable long-term mainline task checklist.
+- Added the full-source-first audit rule: source and documentation changes must be designed from uploaded complete files or complete copied source/document files, not from grep/rg snippets.
+- Updated README and README.zh-CN behavior-change tables for the upcoming `v0.3.9-alpha` release line.
+- Added the WeClaw integration requirement: `weclaw_dev >= v0.1.9-alpha` when WeClaw integration is used.
+- Prepared release notes for `v0.3.9-alpha` without a duplicate release-title line and without developer-only details.
+- Updated runtime public version metadata to `v0.3.9-alpha` and package version to `0.3.9a0`.
+- This node does not create the GitHub Release or push the public `v0.3.9-alpha` tag. The public pre-release must be created in a separate explicit release step.
+
 ## p2.10a49-final-handoff-sync
 
 - Finalized the handoff state after p2.10a48.

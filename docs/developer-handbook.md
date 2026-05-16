@@ -28,22 +28,23 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public alpha Release: `v0.3.8-alpha`
-- Public release commit: `dfdc629`
-- Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a49-final-handoff-sync`
-- Verified repository baseline after p2.10a48: `master = origin/master = 2e0edd0`
+- Next planned public pre-release: `v0.3.9-alpha`
+- Current public release commit before v0.3.9-alpha: `dfdc629`
+- Current internal development line: `p2.10a50-v039-alpha-release-readiness-sync`
+- Verified repository baseline before release readiness: `master = origin/master = e8ca586`
 - Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- WeClaw status: the WeClaw side accepted the current p2.10a48 reporting baseline and started initial integration. Second-round WeClaw requirements will be proposed in a new development conversation after their audit.
+- Completed final handoff sync: `p2.10a49-final-handoff-sync = e8ca586`
+- WeClaw status: the WeClaw side accepted the p2.10a48 reporting baseline and started initial integration. Second-round WeClaw requirements will be proposed in a later development conversation after their audit.
+- Release requirement for the next public pre-release: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Older public tags must not move:
+  - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
-- Erroneous plain tag `v0.3.5` must not exist.
-- `v0.3.8-alpha` is the current GitHub Release and is not marked as a GitHub pre-release. It still uses the alpha tag naming scheme.
-- Public Release assets for `v0.3.8-alpha` are `bootstrap.sh` and `install.sh`.
-- p2.10a49 is a final handoff and documentation synchronization node. It must not move `v0.3.8-alpha`, create a GitHub Release, or rebuild Release assets.
+- Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
+- p2.10a50 is a release-readiness and handbook-mainline synchronization node. It prepares `v0.3.9-alpha` but does not itself create the GitHub Release until the explicit release step.
 
-This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
+This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, current task bus, release rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
 
 ## 3. Key file map
 
@@ -123,6 +124,7 @@ These rules are mandatory development controls. They belong in the handbook beca
 10. **Runtime observations outrank assumptions.** For terminal, wrapper, and Codex TUI behavior, validate with isolated runtime probes before patching. This prevented guessing around Windows Terminal title behavior and showed that tab color was not a current wrapper-path feature.
 11. **Test environment contamination.** A dirty developer shell can make full tests fail for reasons unrelated to the patch. In p2.10a36, exported variables such as `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_PROXY_IMAGE_PROVIDER`, `DEEPSEEK_PROXY_IMAGE_DOWNLOAD`, and real provider API keys changed default model/provider behavior and caused unrelated full-suite failures. Before treating full-suite failures as patch evidence, record relevant environment overrides, rerun the failing subset and full suite under a sanitized environment, and only then decide whether the patch or the local environment is responsible.
 12. **AnyCodeX future-name boundary.** CoDeepSeedeX remains the current project and public product name. AnyCodeX is a future plan name and possible future brand, not a current code, command, tag, branch, installer, wrapper, public-path, or user-facing documentation name. Do not introduce AnyCodeX into user-facing surfaces before an explicit maintainer-approved rename task. Future architecture work may describe the target as AnyCodeX-level generalized provider architecture inside developer-only planning docs.
+13. **Full-source-first audit rule.** For source or documentation changes, prefer asking the maintainer to upload complete source files and source documents first. If direct upload is inconvenient, the read-only audit command should copy the full relevant source/document contents into `/tmp` files and list those files for upload. `grep`, `rg`, and narrow snippets may help build a file list, but they must not be the primary basis for patch design. Patch design must be based on actually inspected full files or complete function/module/section context.
 ### 6.2 Release-specific guardrails
 
 - Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`.
@@ -233,30 +235,32 @@ The handbook is an AI startup pack:
 - Do not reintroduce fragmented handoff, operations, install, usage, upgrade, security, troubleshooting, or release-note documents under `docs/`.
 - If a test still reads a retired path, update the test contract instead of preserving a ghost document.
 
-## 11. Current major-line summary: p2.10 / v0.3.8-alpha
+## 11. Current major-line summary: p2.10 / v0.3.9-alpha readiness
 
-p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-release internal hardening work:
+p2.10 now spans the `v0.3.8-alpha` release line and the `v0.3.9-alpha` pre-release preparation line.
 
-- Installer provider surface cleanup for model API providers, including explicit Zhipu / BigModel, Z.AI, and Qwen / DashScope regional choices.
-- Installer UX hardening, including arrow-key menus, compact source logging, quoted heredocs, source archive fallback, version metadata preservation, and live image validation.
-- Config and profile UX hardening, including `set-model` as the primary model API configuration entrypoint, post-config proxy refresh, provider validation semantics, and DeepSeek-compatible effort surfaces.
-- Codex wrapper startup hardening, including fail-closed proxy route startup, `plan_mode_reasoning_effort = "high"`, manifest-backed uninstall rollback, and source/installer/user-path verification.
-- WeClaw-facing contract work, including `profile status --json`, `profile set-effort --json`, `status --weclaw-json`, HTTP WeClaw endpoints, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, context-window source separation, runtime usage aggregation, pricing cache metadata, estimated cost, provider balance, and auxiliary-model-call accounting.
-- Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
-- Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
+User-visible changes since `v0.3.8-alpha`:
 
-Current verified baseline after p2.10a48:
+- WeClaw integration is now backed by a full dsproxy-owned telemetry contract. WeClaw can consume profile, model, effort, context-window, usage aggregation, pricing metadata, estimated cost, provider balance, auxiliary model-call accounting, and compaction status through stable CLI/HTTP surfaces.
+- `dsproxy status [thinking] --weclaw-json` prefers the runtime `/v1/proxy/weclaw/status` endpoint when the proxy is reachable, and falls back to structured unavailable fields when it is not.
+- `dsproxy profile status <profile> --json` and `dsproxy profile set-effort <profile> <effort> --json` provide machine-readable profile and effort state for integration clients.
+- `dsproxy config set-effort` and `dsproxy profile set-effort` include JSON/refresh controls for integration-safe workflows.
+- Usage/cost reporting is explicit about precision: provider token totals and dsproxy call-purpose attribution are reported, cost is estimated from dsproxy pricing cache, and prompt subcategory token splits such as user/tool/environment/history remain not-reported unless a future audited tokenizer layer is added.
+- Wrapper and profile behavior after `v0.3.8-alpha` was hardened through profile model sync, runtime tab-title keeper cleanup, and documentation of the accepted current wrapper behavior.
+- Development process documentation now includes a durable long-term mainline checklist and a full-source-first patch discipline rule.
 
-- `master = origin/master = 2e0edd0`.
-- `p2.10a49-final-handoff-sync` is the final documentation and handoff sync node after p2.10a48.
+Release requirement for `v0.3.9-alpha`:
+
+- Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
+
+Current verified baseline before publishing `v0.3.9-alpha`:
+
+- `master = origin/master = e8ca586`.
+- `p2.10a49-final-handoff-sync = e8ca586`.
 - `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`.
-- `p2.10a47-doc-weclaw-contract-sync = 0a22063`.
-- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`.
-- `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
-- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a48 and p2.10a49 do not rebuild assets.
-- `dsproxy --version` after p2.10a48 reports `public version: v0.3.8-alpha | dfdc629` and `internal version: p2.10a48-weclaw-full-telemetry-contract | 2e0edd0`.
-- WeClaw accepted the p2.10a48 reporting baseline and started initial integration. The second round of WeClaw requirements will continue in a new conversation after their audit.
-- The only explicit p2.10a48 precision boundary is prompt subcategory token splitting such as user/tool/environment/history. Provider-reported totals and dsproxy purpose attribution are reported, while unaudited tokenizer-layer prompt subcategory splits must stay not-reported/unavailable.
+- `v0.3.8-alpha = dfdc629`, current public Release before `v0.3.9-alpha`.
+- `v0.3.9-alpha` does not exist yet before the release step.
+- `v0.3.9` must not be created.
 
 ## 12. New conversation startup checklist
 
@@ -289,6 +293,25 @@ Resolved tag fallback:
 tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
+
+## 14. Long-term mainline task checklist
+
+This checklist is the durable anti-drift task ledger. It must be updated after every planning decision, major implementation checkpoint, release preparation, or handoff.
+
+| ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
+| P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
+| P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is active | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
+| P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `p2.10a50-v039-alpha-release-readiness-sync` | In progress | 2026-05-16 | Release notes must include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-16 | `grep`/`rg` may identify candidate files only. |
+
+Checklist maintenance rules:
+
+1. Update this table whenever a new plan is accepted, a task closes, or a release/handoff changes the active priority.
+2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
+3. Handoff content must include this table or an exact summary of its active rows.
+4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
 
 ## p2.9a22 runtime version metadata policy
 

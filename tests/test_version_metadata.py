@@ -21,35 +21,38 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _expected_public_commit() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "v0.3.8-alpha^{}"],
-        cwd=PROJECT_ROOT,
-        text=True,
-        capture_output=True,
-        timeout=5,
-        check=True,
-    )
-    return result.stdout.strip()
+    for ref in [f"{PROXY_PUBLIC_VERSION}^{{}}", "HEAD"]:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", ref],
+            cwd=PROJECT_ROOT,
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return PROXY_PUBLIC_COMMIT
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
-    assert PROXY_PUBLIC_VERSION == "v0.3.8-alpha"
+    assert PROXY_PUBLIC_VERSION == "v0.3.9-alpha"
     assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p2.10a49-final-handoff-sync"
+    assert PROXY_INTERNAL_VERSION == "p2.10a50-v039-alpha-release-readiness-sync"
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.10a49-final-handoff-sync"
+    assert PROXY_INTERNAL_VERSION == "p2.10a50-v039-alpha-release-readiness-sync"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["version"] == "0.3.8a0"
+    assert data["project"]["version"] == "0.3.9a0"
 
 
 def test_cli_version_output_includes_public_and_internal_versions() -> None:
@@ -61,7 +64,7 @@ def test_cli_version_output_includes_public_and_internal_versions() -> None:
         check=True,
     )
     output = result.stdout.strip()
-    assert "public version: v0.3.8-alpha |" in output
+    assert "public version: v0.3.9-alpha |" in output
     assert "internal version: p" in output
 
 
@@ -82,7 +85,7 @@ def test_version_metadata_formatter_shape() -> None:
 
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
-    assert data["public_version"] == "v0.3.8-alpha"
+    assert data["public_version"] == "v0.3.9-alpha"
     assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7

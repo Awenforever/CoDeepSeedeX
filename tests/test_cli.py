@@ -36,7 +36,7 @@ def _clear_provider_probe_test_env(monkeypatch):
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "public version: v0.3.8-alpha |" in out
+    assert "public version: v0.3.9-alpha |" in out
     assert "internal version: p" in out
 
 
@@ -2272,7 +2272,7 @@ def test_resolve_latest_prerelease_tag_selects_first_non_draft_prerelease(monkey
 
     payload = json.dumps([
         {"tag_name": "v0.3.9-alpha", "draft": True, "prerelease": True, "name": "draft"},
-        {"tag_name": "v0.3.8-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.8-alpha"},
+        {"tag_name": "v0.3.9-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.9-alpha"},
         {"tag_name": "v0.3.7-alpha", "draft": False, "prerelease": False, "name": "latest"},
     ]).encode("utf-8")
 
@@ -2286,8 +2286,8 @@ def test_resolve_latest_prerelease_tag_selects_first_non_draft_prerelease(monkey
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
     tag, release = cli._resolve_latest_prerelease_tag("https://example.test/releases", timeout=2.5)
 
-    assert tag == "v0.3.8-alpha"
-    assert release["tag_name"] == "v0.3.8-alpha"
+    assert tag == "v0.3.9-alpha"
+    assert release["tag_name"] == "v0.3.9-alpha"
     assert release["prerelease"] is True
     assert release["draft"] is False
     assert release["api_url"] == "https://example.test/releases"
@@ -2306,7 +2306,7 @@ def test_cli_upgrade_alpha_dry_run_uses_latest_prerelease(monkeypatch, tmp_path,
     subprocess.run(["git", "init"], cwd=repo, text=True, capture_output=True, timeout=30, check=True)
 
     payload = json.dumps([
-        {"tag_name": "v0.3.8-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.8-alpha"}
+        {"tag_name": "v0.3.9-alpha", "draft": False, "prerelease": True, "name": "alpha", "html_url": "https://example.test/releases/v0.3.9-alpha"}
     ]).encode("utf-8")
 
     def fake_urlopen(request, timeout=None):
@@ -2329,7 +2329,7 @@ def test_cli_upgrade_alpha_dry_run_uses_latest_prerelease(monkeypatch, tmp_path,
 
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["target_ref"] == "v0.3.8-alpha"
+    assert out["target_ref"] == "v0.3.9-alpha"
     assert out["target_source"] == "latest_prerelease"
     assert out["release_channel"] == "alpha"
     assert out["latest_release"]["prerelease"] is True
@@ -2340,7 +2340,7 @@ def test_cli_upgrade_alpha_rejects_explicit_tag(capsys) -> None:
     import json
     from deepseek_responses_proxy import cli
 
-    rc = cli.main(["upgrade", "--alpha", "--tag", "v0.3.8-alpha", "--dry-run"])
+    rc = cli.main(["upgrade", "--alpha", "--tag", "v0.3.9-alpha", "--dry-run"])
 
     assert rc == 2
     out = json.loads(capsys.readouterr().out)
