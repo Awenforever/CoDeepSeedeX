@@ -1181,6 +1181,24 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     }
 
 
+def _post_config_apply_for_args(args: argparse.Namespace) -> dict[str, object]:
+    if not bool(getattr(args, "no_refresh", False)):
+        return _post_config_apply()
+
+    env_names = ("DEEPSEEK_PROXY_POST_CONFIG_APPLY", "CODEEPSEEDEX_POST_CONFIG_APPLY")
+    previous = {name: os.environ.get(name) for name in env_names}
+    try:
+        for name in env_names:
+            os.environ[name] = "disabled"
+        return _post_config_apply()
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_profiles: list[str] | None = None) -> int:
     contract = _reasoning_effort_contract(args.effort)
     allowed = {"low", "medium", "high", "xhigh", "max", "minimal", "none"}
@@ -1234,7 +1252,7 @@ def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_p
         "profile_results": profile_results,
         "codex_config_loadable": health["codex_config_loadable"],
         "invalid_profile_fields": health["invalid_profile_fields"],
-        "post_config_apply": _post_config_apply(),
+        "post_config_apply": _post_config_apply_for_args(args),
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
@@ -4985,9 +5003,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for DeepSeek compatibility")
     config_set_effort.add_argument("effort")
+    config_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")
     config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek and deepseek-thinking")
+    config_set_effort.add_argument("--no-refresh", action="store_true", help="save configuration without refreshing running proxy processes")
     config_set_effort.set_defaults(func=_config)
 
     profile = sub.add_parser("profile", help="inspect and manage CoDeepSeedeX-owned Codex profiles")
@@ -5006,6 +5026,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     profile_set_effort.add_argument("--env-file")
     profile_set_effort.add_argument("--codex-config")
+    profile_set_effort.add_argument("--no-refresh", action="store_true", help="save configuration without refreshing running proxy processes")
     profile_set_effort.set_defaults(func=_profile)
 
     profile_repair = profile_sub.add_parser("repair", help="repair managed Codex profile model and effort fields")

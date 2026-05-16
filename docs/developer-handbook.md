@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a41-task-bus-weclaw-acceptance-audit`
-- Current repository baseline after p2.10a40: `master = origin/master = b98971a`
+- Current internal development line: `p2.10a43-effort-json-refresh-control`
+- Current repository baseline after p2.10a41: `master = origin/master = a1bd8eb`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -649,3 +649,22 @@ P0 WeClaw acceptance checklist:
 5. Verify pricing, cost, balance, token taxonomy, auxiliary token accounting, and compaction fields as implemented, partial, unavailable, or missing.
 6. Verify isolated HOME tests for `max`, `high`, and compatibility efforts.
 7. Produce a handoff report for the WeClaw integration conversation with exact commands, endpoint names, JSON samples, field sources, precision flags, timeout suggestions, and fallback behavior.
+
+## p2.10a43-effort-json-refresh-control effort JSON and refresh control
+Marker compatibility note: `config set-effort --json` refers to the parser contract also shown by `dsproxy config set-effort <effort> --json`; `profile set-effort <profile> <effort> --no-refresh` refers to the profile-scoped no-refresh contract.
+
+
+This patch keeps the P0 WeClaw acceptance mainline active.
+
+Contract changes:
+
+1. `dsproxy config set-effort <effort> --json` is accepted for CLI/help consistency. The command already prints JSON, so this is a parser-contract fix rather than an output-format change.
+2. `dsproxy config set-effort <effort> --no-refresh` and `dsproxy profile set-effort <profile> <effort> --no-refresh` save the env/profile changes without refreshing live proxy processes.
+3. The no-refresh path reuses the existing post-config apply disabled mode and returns `post_config_apply.status = "skipped"`.
+4. The core effort mapping remains unchanged: DeepSeek/env effort may be `max`, Codex profile effort must be `xhigh`, compatibility inputs normalize to DeepSeek `high`, and `plan_mode_reasoning_effort` stays `high`.
+
+WeClaw guidance:
+
+- Use `profile set-effort <profile> <effort> --json --no-refresh` when changing one active profile from an integration test or non-interactive workflow.
+- Use `config set-effort <effort> --profile <profile> --json --no-refresh` when preserving the legacy config command path.
+- Omit `--no-refresh` only when the user intentionally wants running proxy processes refreshed after configuration changes.

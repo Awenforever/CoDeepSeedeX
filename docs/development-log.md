@@ -1,5 +1,14 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a43-effort-json-refresh-control
+
+- Added explicit refresh control for WeClaw/CI-safe effort configuration.
+- `dsproxy config set-effort` now accepts `--json` for parser/help consistency with the always-JSON output contract.
+- `dsproxy config set-effort` and `dsproxy profile set-effort` now accept `--no-refresh`, which routes through the existing post-config apply disabled mode and returns `post_config_apply.status = "skipped"`.
+- Preserved effort semantics: DeepSeek/env effort may be `max`, Codex `model_reasoning_effort` stores `xhigh`, compatibility inputs `low`, `medium`, `minimal`, and `none` normalize to DeepSeek `high`, and `plan_mode_reasoning_effort` stays `high`.
+- Added isolated tests to ensure `--no-refresh` does not check or restart live proxy ports.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a41-task-bus-weclaw-acceptance-audit
 
 - Added a long-term task bus to the internal developer handbooks to prevent future mainline drift across inserted tasks and new conversations.

@@ -2456,6 +2456,97 @@ def test_cli_config_set_effort_high_repairs_previous_codex_max(tmp_path, capsys)
     assert 'model_reasoning_effort = "max"' not in text
 
 
+def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path, capsys, monkeypatch):
+    import deepseek_responses_proxy.cli as cli
+
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"high\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    def fail_if_live_port_checked(port):
+        raise AssertionError(f"live proxy port should not be checked when --no-refresh is used: {port}")
+
+    monkeypatch.delenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("CODEEPSEEDEX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.setattr(cli, "_port_status_looks_like_proxy", fail_if_live_port_checked)
+
+    assert main([
+        "config",
+        "set-effort",
+        "max",
+        "--json",
+        "--no-refresh",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = config_path.read_text(encoding="utf-8")
+    assert result["deepseek_reasoning_effort"] == "max"
+    assert result["codex_model_reasoning_effort"] == "xhigh"
+    assert result["post_config_apply"]["status"] == "skipped"
+    assert result["post_config_apply"]["mode"] == "disabled"
+    assert result["post_config_apply"]["message"] == "post-config apply disabled"
+    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'model_reasoning_effort = "max"' not in text
+
+
+def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, capsys, monkeypatch):
+    import deepseek_responses_proxy.cli as cli
+
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    def fail_if_live_port_checked(port):
+        raise AssertionError(f"live proxy port should not be checked when --no-refresh is used: {port}")
+
+    monkeypatch.delenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("CODEEPSEEDEX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.setattr(cli, "_port_status_looks_like_proxy", fail_if_live_port_checked)
+
+    assert main([
+        "profile",
+        "set-effort",
+        "deepseek-thinking",
+        "max",
+        "--json",
+        "--no-refresh",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    text = config_path.read_text(encoding="utf-8")
+    assert result["codex_profile"] == "deepseek-thinking"
+    assert result["target_profiles"] == ["deepseek-thinking"]
+    assert result["deepseek_reasoning_effort"] == "max"
+    assert result["codex_model_reasoning_effort"] == "xhigh"
+    assert result["post_config_apply"]["status"] == "skipped"
+    assert result["post_config_apply"]["mode"] == "disabled"
+    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'model_reasoning_effort = "max"' not in text
+
+
 def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
