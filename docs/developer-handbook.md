@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a38-version-metadata-name-boundary`
-- Current repository baseline after p2.10a37: `master = origin/master = 54a7897`
+- Current internal development line: `p2.10a39-name-boundary-cleanup`
+- Current repository baseline after p2.10a38: `master = origin/master = e572677`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -216,10 +216,10 @@ p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-r
 - Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
 - Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Current verified baseline after p2.10a37:
+Current verified baseline after p2.10a38:
 
-- `master = origin/master = 54a7897`.
-- `p2.10a37-sanitized-test-env-rule = 54a7897`.
+- `master = origin/master = e572677`.
+- `p2.10a38-version-metadata-name-boundary = e572677`.
 - `p2.10a34-title-keeper-cleanup = 280f14b`.
 - `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
 - Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a36 and later internal documentation/metadata tasks do not rebuild assets.

@@ -26,8 +26,8 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a38-version-metadata-name-boundary`
-- p2.10a37后的当前仓库基线：`master = origin/master = 54a7897`
+- 当前内部开发线：`p2.10a39-name-boundary-cleanup`
+- p2.10a38后的当前仓库基线：`master = origin/master = e572677`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -189,10 +189,10 @@ p2.10对应当前`v0.3.8-alpha`公开alpha Release线，以及发布后的内部
 - Codex tab标题行为加固，最终有效设计为：wrapper准备对应route，在Codex启动后启动有限标题keeper，前台运行真实Codex，记录keeper PID，Codex返回后kill并wait keeper，同时保留真实Codex返回状态。
 - 文档纪律，包括移除幽灵文档、同步当前状态，以及后续补丁强制优先采用函数级、块级、章节级或AST级整体替换。
 
-p2.10a37后的已验证基线：
+p2.10a38后的已验证基线：
 
-- `master = origin/master = 54a7897`。
-- `p2.10a37-sanitized-test-env-rule = 54a7897`。
+- `master = origin/master = e572677`。
+- `p2.10a38-version-metadata-name-boundary = e572677`。
 - `p2.10a34-title-keeper-cleanup = 280f14b`。
 - `v0.3.8-alpha = dfdc629`，当前GitHub Release，非draft且非pre-release。
 - 公开Release资产仍为`bootstrap.sh`和`install.sh`；p2.10a36及后续内部文档/元数据任务不重建资产。
@@ -327,7 +327,7 @@ p2.9a39-model-api-live-matrix-doc-sync记录当前model API验证矩阵。
 - `not script-tested`：由于官方用途约束或工作流约束，不适合普通脚本probe。
 - `abandoned`：明确从公开和引导配置面放弃。
 
-不要把未测试或认证失败的model provider写成unsupported。model API矩阵完成后，应进入专项架构分支，评估CoDeepSeedeX哪些层可复用，哪些层与DeepSeek强绑定。建议分支为`work/p2.10-anycodex-provider-architecture-audit`。该评估至少覆盖provider adapter、`reasoning_content`等reasoning/thinking字段、stream事件归一化、model catalog元数据、Codex `/model`展示，以及将CoDeepSeedeX升级为更通用AnyCodeX式provider架构的整体方案。
+不要把未测试或认证失败的model provider写成unsupported。model API矩阵完成后，应进入专项架构分支，评估CoDeepSeedeX哪些层可复用，哪些层与DeepSeek强绑定。建议分支为`work/p2.10-generalized-provider-architecture-audit`。该评估至少覆盖provider adapter、`reasoning_content`等reasoning/thinking字段、stream事件归一化、model catalog元数据、Codex `/model`展示，以及将CoDeepSeedeX升级为更通用AnyCodeX式provider架构的整体方案。
 
 ### p2.9a40配置引导provider表面修复
 
@@ -370,7 +370,7 @@ p2.9a40后的provider配置面状态：
 
 下一阶段开发方向：
 
-- 下一条主设计线建议从`work/p2.10-anycodex-provider-architecture-audit`开始。
+- 下一条主设计线建议从`work/p2.10-generalized-provider-architecture-audit`开始。
 - 审计必须先只读抓证据，不得凭记忆猜源码。第一步应审计`app.py`、`cli.py`、运行时配置加载、stream转换、model catalog、provider config、tool bridge、测试和文档。
 - 目标是评估CoDeepSeedeX是否应重构为AnyCodeX式通用provider架构。
 - 重点检查DeepSeek强绑定区域，包括`reasoning_content`、reasoning/thinking事件处理、thinking profile行为、Responses到chat转换、stream事件归一化、tool-call repair、model catalog假设、`/model` UI预期和Codex profile wrapper行为。

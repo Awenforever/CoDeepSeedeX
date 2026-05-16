@@ -1,5 +1,12 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a39-name-boundary-cleanup
+
+- Cleaned remaining legacy lowercase alternate-name branch-plan wording from internal documentation so future real branches use neutral names such as `work/p2.10-generalized-provider-architecture-audit`.
+- Kept AnyCodeX as a future plan name and possible future brand in developer-only planning text, while keeping code, commands, tags, branches, installers, wrappers, public paths, and user-facing documentation under the current CoDeepSeedeX name.
+- Updated developer runtime internal version metadata to `p2.10a39-name-boundary-cleanup`.
+- Fixed the p2.10a39 validation bug: the validation script incorrectly treated allowed internal AnyCodeX future-name planning text as forbidden, then introduced a self-conflicting lowercase legacy spelling in the development log.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
 ## p2.10a38-version-metadata-name-boundary
 
 - Updated runtime internal version metadata from the stale p2.10a35 tag to `p2.10a38-version-metadata-name-boundary`, while keeping public version metadata at `v0.3.8-alpha`.
@@ -426,7 +433,7 @@
   - Brave Search removed from public and guided web search configuration.
   - Model API public guidance now uses explicit Zhipu/Z.AI/Qwen site and plan providers rather than ambiguous `glm` and `qwen` shortcuts.
 - Next planned line:
-  - `work/p2.10-anycodex-provider-architecture-audit`.
+  - `work/p2.10-generalized-provider-architecture-audit`.
   - Start with read-only architecture evidence collection.
   - Assess DeepSeek-specific logic and the feasibility of an AnyCodeX-style provider abstraction.
   - Keep the broader third-party tool replacement objective separate from a single SerpAPI-style bridge.
