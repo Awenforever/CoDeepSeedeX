@@ -26,8 +26,9 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a45-handbook-section-structure-cleanup`
-- p2.10a44后的当前仓库基线：`master = origin/master = 3f87580`
+- 当前内部开发线：`p2.10a47-doc-weclaw-contract-sync`
+- p2.10a46后的已验证仓库基线：`master = origin/master = 3e6b922`
+- 已完成的P0检查点：`p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -37,6 +38,7 @@
 - `v0.3.8-alpha`公开Release资产为`bootstrap.sh`和`install.sh`。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则和高价值经验。详细时间线进入`docs/development-log.md`。
+
 ## 3. 关键文件地图
 
 - `deepseek_responses_proxy/app.py`：运行时核心、Responses兼容接口、DeepSeek桥接、工具桥接、provider分发、版本元数据、debug trace。
@@ -210,19 +212,20 @@ p2.10对应当前`v0.3.8-alpha`公开alpha Release线，以及发布后的内部
 - 安装器体验加固，包括方向键菜单、紧凑来源日志、引用heredoc、source archive fallback、版本元数据保留和图像live验证。
 - 配置和profile体验加固，包括`set-model`成为model API主入口、post-config proxy刷新、provider验证语义和DeepSeek兼容effort表面。
 - Codex wrapper启动加固，包括fail-closed proxy route启动、`plan_mode_reasoning_effort = "high"`、manifest-backed uninstall rollback和用户路径验证。
-- WeClaw-facing契约，包括`profile status --json`、`status --weclaw-json`、dsproxy统一维护profile effort、effective model字段、model conflict诊断和context窗口来源分离。
+- WeClaw-facing契约，包括`profile status --json`、`profile set-effort --json`、`status --weclaw-json`、HTTP WeClaw端点、dsproxy统一维护profile effort、effective model字段、model conflict诊断和context窗口来源分离。
 - Codex tab标题行为加固，最终有效设计为：wrapper准备对应route，在Codex启动后启动有限标题keeper，前台运行真实Codex，记录keeper PID，Codex返回后kill并wait keeper，同时保留真实Codex返回状态。
 - 文档纪律，包括移除幽灵文档、同步当前状态，以及后续补丁强制优先采用函数级、块级、章节级或AST级整体替换。
 
-p2.10a38后的已验证基线：
+p2.10a46后的已验证基线：
 
-- `master = origin/master = e572677`。
-- `p2.10a38-version-metadata-name-boundary = e572677`。
-- `p2.10a34-title-keeper-cleanup = 280f14b`。
+- `master = origin/master = 3e6b922`。
+- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`。
+- `p2.10a45-handbook-section-structure-cleanup = 5211830`。
 - `v0.3.8-alpha = dfdc629`，当前GitHub Release，非draft且非pre-release。
-- 公开Release资产仍为`bootstrap.sh`和`install.sh`；p2.10a36及后续内部文档/元数据任务不重建资产。
-- 真实HOME wrapper刷新已通过，包含keeper PID清理，且不再使用`exec "$REAL_CODEX" "$@"`。
-- `deepseek-thinking` profile状态健康，`model=deepseek-v4-flash`，DeepSeek侧effort为`max`，Codex profile侧effort为`xhigh`。
+- 公开Release资产仍为`bootstrap.sh`和`install.sh`；p2.10a46和p2.10a47不重建资产。
+- p2.10a46后的`dsproxy --version`输出`public version: v0.3.8-alpha | dfdc629`和`internal version: p2.10a46-weclaw-usage-test-env-isolation | 3e6b922`。
+- WeClaw P0契约验收已在p2.10a46通过。剩余token attribution、pricing、cost、auxiliary model calls和balance整合属于结构化降级字段，不允许猜测。
+
 ## 12. 新对话启动检查
 
 修改前先做只读审计：
@@ -613,27 +616,28 @@ DeepSeek强绑定运行时接缝：
 
 当前优先级：
 
-1. P0当前主线：WeClaw契约验收和缺口闭环。
-2. P1后续方向：AnyCodeX级通用provider架构。
-3. P2后续方向：只有当P0缺口已实现，或维护者明确延期后，才进入公开Release准备。
+1. P0状态：WeClaw契约验收已在p2.10a46通过。剩余token attribution、pricing、cost、auxiliary model calls和balance-in-status属于结构化降级字段，继续实现前需要维护者明确排优先级。
+2. P1下一默认方向：AnyCodeX级通用provider架构。
+3. P2后续方向：只有维护者明确要求Release时才进入公开Release准备。
 
 防偏移规则：
 
-1. `return_to_p0_after_inserted_tasks=true`。
-2. 文档同步、版本元数据更新、命名边界清理和Release状态修复等插入任务可以打断主线，但这些任务收口后，下一步必须回到最高优先级未完成任务。
-3. 未来架构审计或重构不得挤占WeClaw契约验收，除非维护者明确调整任务总线优先级。
-4. 每次handoff必须包含本任务总线、当前P0状态和未解决验收缺口。
-5. 完成声明必须有证据：精确CLI或HTTP命令、JSON输出形态、字段来源、精确性状态、测试记录和剩余缺口。
+1. 文档同步、版本元数据更新、命名边界清理和Release状态修复等插入任务可以打断主线，但这些任务收口后必须回到任务总线优先级。
+2. 未来架构审计或重构不得破坏已经验收的WeClaw契约表面。
+3. 每次handoff必须包含本任务总线、当前P0状态和未解决的降级字段。
+4. 完成声明必须有证据：精确CLI或HTTP命令、JSON输出形态、字段来源、精确性状态、测试记录和剩余缺口。
 
-P0 WeClaw验收清单：
+p2.10a46后的P0 WeClaw验收清单：
 
-1. 验证`config set-effort`和`profile set-effort`绝不向Codex profile写入`model_reasoning_effort = "max"`。
-2. 验证`profile status --json`向WeClaw提供权威profile、model、effort、thinking、context-window和health字段。
-3. 验证`status --weclaw-json`提供稳定的profile、model、context、token、pricing、cost和compaction健康字段，即使部分字段显式不可用。
-4. 验证HTTP WeClaw端点是否存在，并确认其与CLI JSON等价或记录差异。
-5. 验证pricing、cost、balance、token taxonomy、auxiliary token统计和compaction字段是已实现、部分实现、不可用还是缺失。
-6. 验证`max`、`high`和兼容effort输入的隔离HOME测试。
-7. 为WeClaw集成对话输出交付报告，包含精确命令、端点名、JSON样例、字段来源、精确性标记、超时建议和失败fallback策略。
+1. `config set-effort`和`profile set-effort`不会向Codex profile写入`model_reasoning_effort = "max"`。
+2. `profile status --json`向WeClaw提供权威profile、model、effort、thinking、context-window和health字段。
+3. `status --weclaw-json`提供稳定的profile、model、context、token taxonomy、pricing、cost和compaction健康字段，不可用字段必须显式标记。
+4. HTTP WeClaw端点已验收：
+   - `GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking`
+   - `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`
+5. 已可直接消费的字段包括`model.effective_model`、`model.codex_model`、`model.model_conflict`、`model.force_model_enabled`、`effort.user_facing`、`effort.deepseek_reasoning_effort`、`effort.codex_model_reasoning_effort`和`context_window.effective_safe_window_tokens`。
+6. 结构化降级字段包括`tokens.last_turn`、`tokens.session_total`、`tokens.auxiliary_model_calls`、`pricing`、`cost`和balance-in-status。
+7. 检查model attribution时必须使用隔离或sanitized测试环境，因为导出的`DEEPSEEK_PROXY_MODEL`和`DEEPSEEK_PROXY_FORCE_MODEL`会按设计改变effective model行为。
 
 ## p2.10a43 effort JSON和刷新控制
 
@@ -677,3 +681,57 @@ WeClaw调用建议：
 2. `模型配置命令契约`不是独立顶级章节，也应归入第8章，因为它定义provider和model配置命令契约示例。
 3. 稳定手册规则必须归入编号章节，按版本记录的实现说明继续保留在`p*`历史小节中。
 4. 后续若讨论文档结构，应优先读取全文。正则或grep片段不足以支撑章节层级判断。
+
+## p2.10a46 WeClaw契约最终验收
+
+p2.10a46完成P0 WeClaw契约验收检查点。
+
+最终状态：
+
+- `master = origin/master = 3e6b922`。
+- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`。
+- `v0.3.8-alpha = dfdc629`，未移动。
+- 合并后工作区干净。
+- 未移动公开Release tag，未创建GitHub Release，未重建Release资产。
+- WeClaw focused acceptance全部通过。
+- sanitized full tests通过，结果为`435 passed`。
+
+已验收的WeClaw契约表面：
+
+```text
+CLI:
+dsproxy profile status <profile> --json
+dsproxy profile set-effort <profile> <effort> --json
+dsproxy status [thinking] --weclaw-json
+
+HTTP:
+GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking
+GET /v1/proxy/weclaw/status?profile=deepseek-thinking
+```
+
+已可直接消费字段：
+
+- `model.effective_model`
+- `model.codex_model`
+- `model.model_conflict`
+- `model.force_model_enabled`
+- `effort.user_facing`
+- `effort.deepseek_reasoning_effort`
+- `effort.codex_model_reasoning_effort`
+- `context_window.effective_safe_window_tokens`
+- 明确标注`unit=chars`的runtime compaction和trimming字段
+
+结构化降级字段：
+
+- `tokens.last_turn`
+- `tokens.session_total`
+- `tokens.auxiliary_model_calls`
+- `pricing`
+- `cost`
+- balance-in-status
+
+测试隔离经验：
+
+- 当usage ledger测试断言request-model attribution时，必须清理`DEEPSEEK_PROXY_MODEL`、`DEEPSEEK_PROXY_FORCE_MODEL`和`DEEPSEEK_MODEL`。
+- 开发shell中的full-suite结果必须先清理model、provider、image、web-search和API key环境变量后再判断。
+- 不能通过修改生产model选择语义来修复这类测试环境污染问题。

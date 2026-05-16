@@ -1,5 +1,26 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a47-doc-weclaw-contract-sync
+
+- Synchronized the English and Chinese developer handbooks after the p2.10a46 WeClaw contract acceptance checkpoint.
+- Updated current-state sections to point to the p2.10a46 verified baseline: `master = origin/master = 3e6b922`, internal tag `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`, and public Release tag `v0.3.8-alpha = dfdc629`.
+- Updated the task bus so P0 is recorded as accepted with structured degraded fields, while P1 remains the future AnyCodeX-level generalized provider architecture direction.
+- Recorded the p2.10a46 delivery surfaces, ready fields, degraded fields, and sanitized test-environment lesson.
+- Updated developer runtime internal version metadata to `p2.10a47-doc-weclaw-contract-sync`.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
+## p2.10a46-weclaw-usage-test-env-isolation
+
+- Completed the P0 WeClaw contract acceptance checkpoint.
+- Final merged state: `master = origin/master = 3e6b922`, internal tag `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`, public Release tag `v0.3.8-alpha = dfdc629`.
+- Delivered accepted CLI surfaces: `dsproxy profile status <profile> --json`, `dsproxy profile set-effort <profile> <effort> --json`, and `dsproxy status [thinking] --weclaw-json`.
+- Delivered accepted HTTP surfaces: `GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking` and `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`.
+- Ready fields include effective model, Codex model, model conflict, force-model status, user-facing effort, DeepSeek effort, Codex effort, token-level context-window declarations, and char-level runtime compaction/trimming data.
+- Structured degraded fields remain for turn/session token attribution, auxiliary model calls, pricing, cost, and balance-in-status. They must remain explicit `available=false` or `missing=[...]` values until exact sources are audited.
+- Fixed the usage ledger test isolation gap by clearing model override environment variables before asserting request-model attribution.
+- Sanitized full tests passed with `435 passed`; focused WeClaw acceptance passed with all acceptance flags true.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a45-handbook-section-structure-cleanup
 
 - Cleaned handbook section structure after p2.10a44.

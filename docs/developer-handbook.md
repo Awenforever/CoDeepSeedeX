@@ -30,8 +30,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a45-handbook-section-structure-cleanup`
-- Current repository baseline after p2.10a44: `master = origin/master = 3f87580`
+- Current internal development line: `p2.10a47-doc-weclaw-contract-sync`
+- Verified repository baseline after p2.10a46: `master = origin/master = 3e6b922`
+- Completed P0 checkpoint: `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -41,6 +42,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Public Release assets for `v0.3.8-alpha` are `bootstrap.sh` and `install.sh`.
 
 This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
+
 ## 3. Key file map
 
 - `deepseek_responses_proxy/app.py`: runtime core, Responses-compatible API, DeepSeek bridge, tool bridge, provider dispatch, version metadata, debug trace.
@@ -237,19 +239,20 @@ p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-r
 - Installer UX hardening, including arrow-key menus, compact source logging, quoted heredocs, source archive fallback, version metadata preservation, and live image validation.
 - Config and profile UX hardening, including `set-model` as the primary model API configuration entrypoint, post-config proxy refresh, provider validation semantics, and DeepSeek-compatible effort surfaces.
 - Codex wrapper startup hardening, including fail-closed proxy route startup, `plan_mode_reasoning_effort = "high"`, manifest-backed uninstall rollback, and source/installer/user-path verification.
-- WeClaw-facing contract work, including `profile status --json`, `status --weclaw-json`, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, and context-window source separation.
+- WeClaw-facing contract work, including `profile status --json`, `profile set-effort --json`, `status --weclaw-json`, HTTP WeClaw endpoints, dsproxy-owned profile effort normalization, effective model fields, model conflict diagnostics, and context-window source separation.
 - Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
 - Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Current verified baseline after p2.10a38:
+Current verified baseline after p2.10a46:
 
-- `master = origin/master = e572677`.
-- `p2.10a38-version-metadata-name-boundary = e572677`.
-- `p2.10a34-title-keeper-cleanup = 280f14b`.
+- `master = origin/master = 3e6b922`.
+- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`.
+- `p2.10a45-handbook-section-structure-cleanup = 5211830`.
 - `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
-- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a36 and later internal documentation/metadata tasks do not rebuild assets.
-- Real HOME wrapper refresh passed, with keeper PID cleanup and no `exec "$REAL_CODEX" "$@"`.
-- `deepseek-thinking` profile status is healthy with `model=deepseek-v4-flash`, DeepSeek effort `max`, and Codex profile effort `xhigh`.
+- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a46 and p2.10a47 do not rebuild assets.
+- `dsproxy --version` after p2.10a46 reports `public version: v0.3.8-alpha | dfdc629` and `internal version: p2.10a46-weclaw-usage-test-env-isolation | 3e6b922`.
+- WeClaw P0 contract acceptance passed at p2.10a46. Remaining token attribution, pricing, cost, auxiliary model calls, and balance integration are structured degraded fields, not guessed values.
+
 ## 12. New conversation startup checklist
 
 Start with a read-only audit before changing anything:
@@ -638,27 +641,28 @@ This task bus is the durable mainline tracker for new conversations and inserted
 
 Active priority order:
 
-1. P0 active mainline: WeClaw contract acceptance and gap closure.
-2. P1 follow-up: AnyCodeX-level generalized provider architecture.
-3. P2 follow-up: public Release preparation only after P0 gaps are either implemented or explicitly deferred by the maintainer.
+1. P0 status: WeClaw contract acceptance passed at p2.10a46. Remaining token attribution, pricing, cost, auxiliary model calls, and balance-in-status work are structured degraded fields and require explicit maintainer prioritization before more implementation.
+2. P1 next default direction: AnyCodeX-level generalized provider architecture.
+3. P2 follow-up: public Release preparation only when the maintainer explicitly asks for a Release.
 
 Anti-drift rules:
 
-1. `return_to_p0_after_inserted_tasks=true`.
-2. Inserted tasks such as documentation sync, version metadata updates, naming-boundary cleanup, and release-state fixes may interrupt the mainline, but after they close the next step must return to the highest-priority unresolved task.
-3. A future architecture audit or refactor must not displace WeClaw contract acceptance unless the maintainer explicitly reprioritizes the task bus.
-4. Every handoff must include this task bus, current P0 status, and unresolved acceptance gaps.
-5. Completion claims require evidence: exact CLI or HTTP command, JSON output shape, field source, precision status, tests run, and remaining gaps.
+1. Inserted tasks such as documentation sync, version metadata updates, naming-boundary cleanup, and release-state fixes may interrupt the mainline, but they must return to the active task-bus priority after they close.
+2. A future architecture audit or refactor must not break the accepted WeClaw contract surfaces.
+3. Every handoff must include this task bus, current P0 status, and unresolved degraded fields.
+4. Completion claims require evidence: exact CLI or HTTP command, JSON output shape, field source, precision status, tests run, and remaining gaps.
 
-P0 WeClaw acceptance checklist:
+P0 WeClaw acceptance checklist after p2.10a46:
 
-1. Verify `config set-effort` and `profile set-effort` never write `model_reasoning_effort = "max"` into Codex profiles.
-2. Verify `profile status --json` gives WeClaw authoritative profile, model, effort, thinking, context-window, and health fields.
-3. Verify `status --weclaw-json` exposes stable profile/model/context/token/pricing/cost/compaction health fields, even when some fields are explicitly unavailable.
-4. Verify HTTP WeClaw endpoints if present, and confirm parity or intentional differences from CLI JSON.
-5. Verify pricing, cost, balance, token taxonomy, auxiliary token accounting, and compaction fields as implemented, partial, unavailable, or missing.
-6. Verify isolated HOME tests for `max`, `high`, and compatibility efforts.
-7. Produce a handoff report for the WeClaw integration conversation with exact commands, endpoint names, JSON samples, field sources, precision flags, timeout suggestions, and fallback behavior.
+1. `config set-effort` and `profile set-effort` do not write `model_reasoning_effort = "max"` into Codex profiles.
+2. `profile status --json` gives WeClaw authoritative profile, model, effort, thinking, context-window, and health fields.
+3. `status --weclaw-json` exposes stable profile, model, context, token taxonomy, pricing, cost, and compaction health fields, with unavailable fields explicitly marked.
+4. HTTP WeClaw endpoints exist and are accepted:
+   - `GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking`
+   - `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`
+5. Ready fields include `model.effective_model`, `model.codex_model`, `model.model_conflict`, `model.force_model_enabled`, `effort.user_facing`, `effort.deepseek_reasoning_effort`, `effort.codex_model_reasoning_effort`, and `context_window.effective_safe_window_tokens`.
+6. Structured degraded fields include `tokens.last_turn`, `tokens.session_total`, `tokens.auxiliary_model_calls`, `pricing`, `cost`, and balance-in-status.
+7. Isolated/sanitized tests are required when checking model attribution because exported `DEEPSEEK_PROXY_MODEL` and `DEEPSEEK_PROXY_FORCE_MODEL` can intentionally change effective model behavior.
 
 ## p2.10a43-effort-json-refresh-control effort JSON and refresh control
 
@@ -702,3 +706,57 @@ Structural decision:
 2. `Model configuration command contract` is not a standalone top-level chapter. It also belongs under section 8 because it defines provider/model configuration command contract examples.
 3. Stable handbook rules must be placed under numbered handbook chapters, while chronological implementation notes remain in versioned `p*` sections.
 4. Future documentation patches should prefer full-text review when the structure is under discussion. Regex or grep snippets are insufficient for chapter hierarchy decisions.
+
+## p2.10a46 WeClaw contract final acceptance
+
+p2.10a46 completed the P0 WeClaw contract acceptance checkpoint.
+
+Final state:
+
+- `master = origin/master = 3e6b922`.
+- `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`.
+- `v0.3.8-alpha = dfdc629`, unchanged.
+- Worktree clean after merge.
+- No public Release tag was moved, no GitHub Release was created, and no Release assets were rebuilt.
+- Focused WeClaw acceptance passed with all final acceptance flags true.
+- Sanitized full tests passed with `435 passed`.
+
+Accepted WeClaw contract surfaces:
+
+```text
+CLI:
+dsproxy profile status <profile> --json
+dsproxy profile set-effort <profile> <effort> --json
+dsproxy status [thinking] --weclaw-json
+
+HTTP:
+GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking
+GET /v1/proxy/weclaw/status?profile=deepseek-thinking
+```
+
+Ready fields:
+
+- `model.effective_model`
+- `model.codex_model`
+- `model.model_conflict`
+- `model.force_model_enabled`
+- `effort.user_facing`
+- `effort.deepseek_reasoning_effort`
+- `effort.codex_model_reasoning_effort`
+- `context_window.effective_safe_window_tokens`
+- runtime compaction and trimming fields with explicit `unit=chars`
+
+Structured degraded fields:
+
+- `tokens.last_turn`
+- `tokens.session_total`
+- `tokens.auxiliary_model_calls`
+- `pricing`
+- `cost`
+- balance-in-status
+
+Test isolation lesson:
+
+- Usage ledger model-attribution tests must clear `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, and `DEEPSEEK_MODEL` when they assert request-model attribution.
+- Full-suite results from a developer shell must not be trusted until model, provider, image, web-search, and API-key environment variables are sanitized.
+- Do not repair this class of failure by changing production model selection semantics.
