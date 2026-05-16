@@ -1817,6 +1817,8 @@ set_codeepseedex_terminal_title() {
   fi
 }
 
+CODEEPSEEDEX_TITLE_KEEPER_PID=""
+
 schedule_codeepseedex_terminal_title_refresh() {
   if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
@@ -1837,6 +1839,15 @@ schedule_codeepseedex_terminal_title_refresh() {
       i=\$((i + interval_seconds))
     done
   ) >/dev/null 2>&1 &
+  CODEEPSEEDEX_TITLE_KEEPER_PID="\$!"
+}
+
+stop_codeepseedex_terminal_title_keeper() {
+  if [ -n "\${CODEEPSEEDEX_TITLE_KEEPER_PID:-}" ]; then
+    kill "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    wait "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    CODEEPSEEDEX_TITLE_KEEPER_PID=""
+  fi
 }
 
 start_dsproxy_profile() {
@@ -1879,14 +1890,24 @@ start_dsproxy_profile() {
   fi
 }
 
-case "\$profile" in
-  deepseek|deepseek-thinking)
-    start_dsproxy_profile "\$profile"
-    schedule_codeepseedex_terminal_title_refresh
-    ;;
-esac
+run_codeepseedex_codex() {
+  case "\$profile" in
+    deepseek|deepseek-thinking)
+      start_dsproxy_profile "\$profile"
+      schedule_codeepseedex_terminal_title_refresh
+      ;;
+  esac
 
-"\$REAL_CODEX" "\$@"
+  set +e
+  "\$REAL_CODEX" "\$@"
+  local codex_rc=\$?
+  set -e
+  stop_codeepseedex_terminal_title_keeper
+  return "\$codex_rc"
+}
+
+trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP
+run_codeepseedex_codex "\$@"
 EOF
 
   chmod +x "$wrapper_path"

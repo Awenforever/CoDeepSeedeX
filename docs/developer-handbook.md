@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a33-title-runtime-keeper`
+- Current internal development line: `p2.10a34-title-keeper-cleanup`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -576,3 +576,10 @@ The generated wrapper should prepare the matching dsproxy route, schedule the fi
 The title function must not require stdout to be a TTY when `/dev/tty` is writable. The post-start title refresh runs in a background subshell with stdout redirected to `/dev/null`, so a pure `[ -t 1 ]` gate skips the actual `/dev/tty` OSC write.
 
 The generated wrapper now uses a finite runtime title keeper: by default it refreshes once per second for 60 seconds. This is intentionally bounded, not a permanent daemon. It covers Codex startup and early runtime title rewrites without leaving a long-lived process.
+
+
+## p2.10a34 tab-title keeper cleanup
+
+The finite title keeper must be tied to the real Codex command lifecycle. Record the keeper PID when scheduling the runtime refresh loop. After the real Codex command returns, stop and wait for the keeper, then return the original Codex status from a wrapper function.
+
+Do not rely on the 60-second upper bound alone, because Codex may return before the bound and the keeper would otherwise restore the CoDeepSeedeX title after the user has already left Codex.

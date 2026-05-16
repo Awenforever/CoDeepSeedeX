@@ -240,21 +240,32 @@ def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() 
 def test_codex_wrapper_prefers_public_dsproxy_and_fails_closed_on_unhealthy_proxy() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     body = _install_function_body("write_codex_wrapper", "uninstall")
+
     start_idx = body.index("start_dsproxy_profile() {")
-    end_idx = body.index('\n}\n\ncase "\\$profile" in', start_idx) + len("\n}")
-    start_fn = body[start_idx:end_idx]
-    assert 'DSPROXY="\\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"' in body
-    assert 'if [ ! -x "\\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then' in body
-    assert 'DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"' in body
+    run_idx = body.index("run_codeepseedex_codex() {", start_idx)
+    start_fn = body[start_idx:run_idx]
+    run_end_idx = body.index("\n}\n\ntrap", run_idx) + len("\n}")
+    run_fn = body[run_idx:run_end_idx]
+
+    assert "CODEEPSEEDEX_DSPROXY" in body
+    assert "DSPROXY=" in body
+    assert 'if [ ! -x "\\$DSPROXY" ]' in body
+    assert 'start_args=(start)' in start_fn
     assert 'start_args=(start thinking)' in start_fn
+    assert 'status_args=(status)' in start_fn
     assert 'status_args=(status thinking)' in start_fn
     assert '"\\$DSPROXY" "\\${start_args[@]}" >/dev/null 2>&1' in start_fn
     assert '"\\$DSPROXY" "\\${status_args[@]}" >/dev/null 2>&1' in start_fn
-    assert "CoDeepSeedeX error: failed to start dsproxy for profile %s." in start_fn
-    assert "CoDeepSeedeX error: dsproxy started but status check failed for profile %s." in start_fn
     assert "|| true" not in start_fn
-    assert 'exec "\\$REAL_CODEX" "\\$@"' not in body
-    assert '"\\$REAL_CODEX" "\\$@"' in body
+
+    assert r'case "\$profile" in' in run_fn
+    assert r'start_dsproxy_profile "\$profile"' in run_fn
+    assert "schedule_codeepseedex_terminal_title_refresh" in run_fn
+    assert r'"\$REAL_CODEX" "\$@"' in run_fn
+    assert r'exec "\$REAL_CODEX" "\$@"' not in body
+    assert "stop_codeepseedex_terminal_title_keeper" in run_fn
+    assert r'return "\$codex_rc"' in run_fn
+    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in body
 
 
 def test_installer_uninstall_restores_previous_codex_command_from_manifest_backup() -> None:
@@ -303,10 +314,20 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
 
 
 
+
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
     assert "set_codeepseedex_terminal_title()" in body
     assert "schedule_codeepseedex_terminal_title_refresh()" in body
+    assert "CODEEPSEEDEX_TITLE_KEEPER_PID" in body
+    assert "stop_codeepseedex_terminal_title_keeper()" in body
+    assert 'kill "\\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in body
+    assert 'wait "\\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in body
+    assert "run_codeepseedex_codex()" in body
+    assert "set +e" in body
+    assert "local codex_rc=\\$?" in body
+    assert 'return "\\$codex_rc"' in body
+    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in body
     assert body.count("🐦‍🔥") == 1
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
     assert r'local title="\${CODEEPSEEDEX_TERMINAL_TITLE:-}"' in body
@@ -318,16 +339,14 @@ def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profile
     assert "sleep 8" not in body
     assert "sleep 4" not in body
     assert "printf '\\033]0;%s\\007\\033]2;%s\\007' \"\\$title\" \"\\$title\" > /dev/tty 2>/dev/null || true" in body
-    title_function_idx = body.index("set_codeepseedex_terminal_title()")
-    schedule_function_idx = body.index("schedule_codeepseedex_terminal_title_refresh()")
-    start_function_idx = body.index("start_dsproxy_profile()")
+    assert r'exec "\$REAL_CODEX" "\$@"' not in body
     case_idx = body.index(r'case "\$profile" in')
     start_call_idx = body.index(r'start_dsproxy_profile "\$profile"', case_idx)
     schedule_call_idx = body.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = body.index(r'"\$REAL_CODEX" "\$@"', schedule_call_idx)
-    assert r'exec "\$REAL_CODEX" "\$@"' not in body
-    assert title_function_idx < schedule_function_idx < start_function_idx
-    assert start_call_idx < schedule_call_idx < real_codex_idx
+    cleanup_idx = body.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
+    return_idx = body.index(r'return "\$codex_rc"', cleanup_idx)
+    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
 
 
 def test_installer_guided_provider_menus_use_arrow_selector() -> None:

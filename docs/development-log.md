@@ -1,5 +1,11 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a34-title-keeper-cleanup
+
+- Bound the finite tab-title keeper lifecycle to the real Codex command lifecycle.
+- The generated wrapper now records the keeper PID, stops and waits for it after Codex returns, and preserves the original Codex return status through a wrapper function.
+- This prevents the title from being restored to CoDeepSeedeX after the user has already left Codex.
+
 ## p2.10a33-title-runtime-keeper
 
 - Fixed both wrapper TTY gates so background title refresh can write `/dev/tty` even when stdout is redirected to `/dev/null`.

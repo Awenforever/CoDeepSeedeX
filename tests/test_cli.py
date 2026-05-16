@@ -2558,6 +2558,7 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
 
 
 
+
 def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -2588,20 +2589,26 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     text = wrapper.read_text(encoding="utf-8")
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
-    assert "schedule_codeepseedex_terminal_title_refresh()" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_PID" in text
+    assert "stop_codeepseedex_terminal_title_keeper()" in text
+    assert 'kill "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert 'wait "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert "run_codeepseedex_codex()" in text
+    assert "set +e" in text
+    assert "local codex_rc=$?" in text
+    assert "return \"$codex_rc\"" in text
+    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in text
     assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
     assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
-    assert 'while [ "$i" -le "$max_seconds" ]; do' in text
     assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
-    assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
-    assert "sleep 8" not in text
-    assert "sleep 4" not in text
+    assert 'exec "$REAL_CODEX" "$@"' not in text
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    assert start_call_idx < schedule_call_idx < real_codex_idx
+    cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
+    return_idx = text.index('return "$codex_rc"', cleanup_idx)
+    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
 
 
 def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):
@@ -2736,6 +2743,7 @@ def test_cli_profile_repair_clears_model_conflict(tmp_path, capsys):
 
 
 
+
 def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -2766,17 +2774,23 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     text = wrapper.read_text(encoding="utf-8")
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
-    assert "schedule_codeepseedex_terminal_title_refresh()" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_PID" in text
+    assert "stop_codeepseedex_terminal_title_keeper()" in text
+    assert 'kill "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert 'wait "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert "run_codeepseedex_codex()" in text
+    assert "set +e" in text
+    assert "local codex_rc=$?" in text
+    assert "return \"$codex_rc\"" in text
+    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in text
     assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
     assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
-    assert 'while [ "$i" -le "$max_seconds" ]; do' in text
     assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
-    assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
-    assert "sleep 8" not in text
-    assert "sleep 4" not in text
+    assert 'exec "$REAL_CODEX" "$@"' not in text
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    assert start_call_idx < schedule_call_idx < real_codex_idx
+    cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
+    return_idx = text.index('return "$codex_rc"', cleanup_idx)
+    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx

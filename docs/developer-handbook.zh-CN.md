@@ -26,7 +26,7 @@
 - 当前公开pre-release：`v0.3.8-alpha`
 - 公开Release commit：`54d81ab`
 - Release内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a33-title-runtime-keeper`
+- 当前内部开发线：`p2.10a34-title-keeper-cleanup`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -544,3 +544,10 @@ wrapper必须在真实Codex进程启动期间保持自身存活。在Windows Ter
 标题函数不应在`/dev/tty`可写时仍强制要求stdout是TTY。启动后标题刷新运行在后台subshell中，stdout会被重定向到`/dev/null`，如果只用`[ -t 1 ]`作为门禁，就会跳过真正的`/dev/tty` OSC写入。
 
 生成的wrapper现在使用有限运行期标题keeper：默认每1秒刷新一次，持续60秒。它不是永久daemon，只覆盖Codex启动和早期运行阶段的标题改写，避免留下长期后台进程。
+
+
+## p2.10a34 tab标题keeper清理
+
+有限标题keeper必须绑定到真实Codex命令的生命周期。调度运行期刷新循环时记录keeper PID。真实Codex命令返回后，应停止并等待keeper结束，然后从wrapper函数返回原始Codex状态。
+
+不能只依赖60秒上限，因为Codex可能先返回。如果不清理，用户离开Codex后keeper仍可能把标题恢复为CoDeepSeedeX。

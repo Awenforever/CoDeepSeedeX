@@ -55,7 +55,7 @@ PROXY_PUBLIC_COMMIT = (
 )
 PROXY_INTERNAL_VERSION = (
     _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_VERSION")
-    or "p2.10a33-title-runtime-keeper"
+    or "p2.10a34-title-keeper-cleanup"
 )
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
