@@ -1,5 +1,11 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a33-title-runtime-keeper
+
+- Fixed both wrapper TTY gates so background title refresh can write `/dev/tty` even when stdout is redirected to `/dev/null`.
+- Replaced the three-shot delayed title sequence with a bounded runtime keeper. The default is 60 seconds with a 1 second interval.
+- Kept the wrapper foreground Codex execution model from p2.10a32 and did not change profile/model synchronization logic.
+
 ## p2.10a32-wrapper-foreground-codex
 
 - Changed generated Codex wrappers to keep the wrapper process alive while the real Codex binary starts.

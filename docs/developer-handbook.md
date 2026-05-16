@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public pre-release: `v0.3.8-alpha`
 - Public release commit: `54d81ab`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a32-wrapper-foreground-codex`
+- Current internal development line: `p2.10a33-title-runtime-keeper`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -554,7 +554,7 @@ Managed Codex profile `model` values must match each profile's effective upstrea
 
 `codex_model`, `effective_model`, and `model_conflict` remain part of the diagnostic contract. Under normal managed state, `model_conflict` should be false. If it is true, run `dsproxy profile repair --managed-only --json`.
 
-The Codex wrapper should not rely on a single pre-Codex OSC title update. Codex may set the tab title during startup. The wrapper therefore sets the title once before launching Codex and schedules short delayed OSC 0/2 refreshes, including a 5-second refresh, before `exec "$REAL_CODEX" "$@"`. Do not use a long-running keeper unless later evidence shows Codex continuously overwrites the title.
+Historical note: p2.10a30 used a pre-start title update plus short delayed refreshes, but that design was superseded. The current wrapper keeps itself alive, runs the real Codex in the foreground, and uses the bounded runtime keeper described in p2.10a33.
 
 
 ## p2.10a31 post-start tab-title refresh
@@ -569,3 +569,10 @@ The wrapper must keep the real Codex execution path quiet. Avoid undefined helpe
 The wrapper must keep itself alive while the real Codex process starts. Replacing the wrapper process with the real Codex binary makes delayed OSC title refreshes unreliable in observed Windows Terminal + WSL sessions.
 
 The generated wrapper should prepare the matching dsproxy route, schedule the finite post-start OSC 0/2 refresh sequence, and then run the real Codex binary as the foreground command. Because that command is the final command in the wrapper, its return status naturally becomes the wrapper return status.
+
+
+## p2.10a33 finite runtime tab-title keeper
+
+The title function must not require stdout to be a TTY when `/dev/tty` is writable. The post-start title refresh runs in a background subshell with stdout redirected to `/dev/null`, so a pure `[ -t 1 ]` gate skips the actual `/dev/tty` OSC write.
+
+The generated wrapper now uses a finite runtime title keeper: by default it refreshes once per second for 60 seconds. This is intentionally bounded, not a permanent daemon. It covers Codex startup and early runtime title rewrites without leaving a long-lived process.

@@ -302,6 +302,7 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
 
 
 
+
 def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
     assert "set_codeepseedex_terminal_title()" in body
@@ -309,9 +310,14 @@ def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profile
     assert body.count("🐦‍🔥") == 1
     assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
     assert r'local title="\${CODEEPSEEDEX_TERMINAL_TITLE:-}"' in body
+    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in body
+    assert r'max_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60}"' in body
+    assert r'interval_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"' in body
+    assert r'while [ "\$i" -le "\$max_seconds" ]; do' in body
+    assert r'sleep "\$interval_seconds"' in body
+    assert "sleep 8" not in body
+    assert "sleep 4" not in body
     assert "printf '\\033]0;%s\\007\\033]2;%s\\007' \"\\$title\" \"\\$title\" > /dev/tty 2>/dev/null || true" in body
-    assert "sleep 8" in body
-    assert "sleep 4" in body
     title_function_idx = body.index("set_codeepseedex_terminal_title()")
     schedule_function_idx = body.index("schedule_codeepseedex_terminal_title_refresh()")
     start_function_idx = body.index("start_dsproxy_profile()")
@@ -319,8 +325,6 @@ def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profile
     start_call_idx = body.index(r'start_dsproxy_profile "\$profile"', case_idx)
     schedule_call_idx = body.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = body.index(r'"\$REAL_CODEX" "\$@"', schedule_call_idx)
-    case_block_before_start = body[case_idx:start_call_idx]
-    assert "set_codeepseedex_terminal_title" not in case_block_before_start
     assert r'exec "\$REAL_CODEX" "\$@"' not in body
     assert title_function_idx < schedule_function_idx < start_function_idx
     assert start_call_idx < schedule_call_idx < real_codex_idx

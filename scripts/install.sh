@@ -1793,7 +1793,7 @@ for arg in "\$@"; do
 done
 
 set_codeepseedex_terminal_title() {
-  if [ ! -t 1 ]; then
+  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
   case "\${TERM:-}" in
@@ -1818,7 +1818,7 @@ set_codeepseedex_terminal_title() {
 }
 
 schedule_codeepseedex_terminal_title_refresh() {
-  if [ ! -t 1 ]; then
+  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
   case "\${TERM:-}" in
@@ -1828,12 +1828,14 @@ schedule_codeepseedex_terminal_title_refresh() {
   esac
 
   (
-    sleep 8
-    set_codeepseedex_terminal_title
-    sleep 4
-    set_codeepseedex_terminal_title
-    sleep 8
-    set_codeepseedex_terminal_title
+    i=1
+    max_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60}"
+    interval_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
+    while [ "\$i" -le "\$max_seconds" ]; do
+      sleep "\$interval_seconds"
+      set_codeepseedex_terminal_title
+      i=\$((i + interval_seconds))
+    done
   ) >/dev/null 2>&1 &
 }
 

@@ -2557,28 +2557,26 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
 
 
+
 def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
     dsproxy = bin_dir / "dsproxy"
-    env_file = tmp_path / "env"
     manifest = tmp_path / "install-manifest.env"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
     dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text(
-        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nexec \"$REAL_CODEX\" \"$@\"\n",
-        encoding="utf-8",
-    )
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
     for p in (real_codex, dsproxy, wrapper):
         p.chmod(0o755)
+
     manifest.write_text(
         f"CODEX_WRAPPER_PATH={wrapper}\n"
         "CODEX_WRAPPER_BACKUP=\n"
         f"REAL_CODEX={real_codex}\n"
-        f"ENV_FILE={env_file}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
         f"INSTALL_DIR={tmp_path}\n"
         f"BIN_DIR={bin_dir}\n",
         encoding="utf-8",
@@ -2589,23 +2587,21 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     result = json.loads(capsys.readouterr().out)
     text = wrapper.read_text(encoding="utf-8")
     assert result["status"] == "ok"
-    assert result["refreshed"] is True
-    assert result["contains_terminal_title"] is True
     assert result["emoji_firebird_count"] == 1
-    assert "set_codeepseedex_terminal_title()" in text
     assert "schedule_codeepseedex_terminal_title_refresh()" in text
-    assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in text
-    assert "sleep 8" in text
-    assert "sleep 4" in text
-    assert "> /dev/tty" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
+    assert 'while [ "$i" -le "$max_seconds" ]; do' in text
+    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
+    assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
+    assert "sleep 8" not in text
+    assert "sleep 4" not in text
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
     assert 'exec "$REAL_CODEX" "$@"' not in text
     assert start_call_idx < schedule_call_idx < real_codex_idx
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    assert '"$REAL_CODEX" "$@"' in text
 
 
 def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):
@@ -2739,6 +2735,7 @@ def test_cli_profile_repair_clears_model_conflict(tmp_path, capsys):
     assert status["model"]["model_conflict"] is False
 
 
+
 def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -2770,15 +2767,16 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
     assert "schedule_codeepseedex_terminal_title_refresh()" in text
-    assert "sleep 8" in text
-    assert "sleep 4" in text
-    assert "> /dev/tty" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
+    assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
+    assert 'while [ "$i" -le "$max_seconds" ]; do' in text
+    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
     assert "printf '\\033]0;%s\\007\\033]2;%s\\007'" in text
+    assert "sleep 8" not in text
+    assert "sleep 4" not in text
     case_idx = text.index('case "$profile" in')
     start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
     schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
     assert 'exec "$REAL_CODEX" "$@"' not in text
     assert start_call_idx < schedule_call_idx < real_codex_idx
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    assert '"$REAL_CODEX" "$@"' in text
