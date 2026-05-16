@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a44-doc-marker-discipline-cleanup`
-- Current repository baseline after p2.10a43: `master = origin/master = 9bf5fe9`
+- Current internal development line: `p2.10a45-handbook-section-structure-cleanup`
+- Current repository baseline after p2.10a44: `master = origin/master = 3f87580`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -180,6 +180,31 @@ Provider diagnostics must not treat a generic image API key as proof that every 
 
 Qwen/DashScope provider diagnostics must respect regional image endpoints. `DEEPSEEK_PROXY_IMAGE_BASE_URL` and `DASHSCOPE_IMAGE_ENDPOINT` must override the Beijing default during both non-generation validation and live image probe payload construction.
 
+### 8.1 Provider bridge terminology contract
+
+The provider handoff section must explicitly preserve these bridge terms because tests and future maintainers use them as stable anchors:
+
+- Web search tool bridge
+- Image generation tool bridge
+
+The Web search tool bridge may perform live provider checks and can consume quota.
+
+The Image generation tool bridge can perform non-generating validation by default. Real image generation must be explicitly requested through:
+
+```bash
+dsproxy doctor providers --live --allow-spend
+```
+
+### 8.2 Model configuration command contract
+
+Documentation and tests must preserve the current model configuration command example:
+
+```bash
+dsproxy config set-model deepseek-v4-pro
+```
+
+Do not restore old hyphenated configuration commands.
+
 ## 9. VM GitHub proxy playbook
 
 When a VMware NAT VM cannot reliably reach GitHub, do not guess. Audit the route, DNS, curl, git, proxy listener, and Windows host listener.
@@ -255,21 +280,6 @@ Resolved tag fallback:
 ```bash
 tag="v0.3.8-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
-```
-
-## Provider bridge terminology contract
-
-The provider handoff section must explicitly preserve these bridge terms because tests and future maintainers use them as stable anchors:
-
-- Web search tool bridge
-- Image generation tool bridge
-
-The Web search tool bridge may perform live provider checks and can consume quota.
-
-The Image generation tool bridge can perform non-generating validation by default. Real image generation must be explicitly requested through:
-
-```bash
-dsproxy doctor providers --live --allow-spend
 ```
 
 ## p2.9a22 runtime version metadata policy
@@ -679,3 +689,16 @@ Documentation discipline:
 3. If validation and real content differ, fix the validation rule or fix the intended content. Do not add non-semantic prose to satisfy a marker.
 4. Before each patch, audit the exact source or document fragment being changed, the replacement rule, and the validation rule together.
 5. Required markers should use real command contracts when possible. For p2.10a43, the real contracts are `dsproxy config set-effort <effort> --json`, `dsproxy profile set-effort <profile> <effort> --no-refresh`, and `post_config_apply.status = "skipped"`.
+
+6. Stable handbook rules must be placed under numbered handbook chapters or under explicitly versioned history sections. Do not leave unnumbered standalone islands between numbered chapters and historical sections.
+
+## p2.10a45-handbook-section-structure-cleanup handbook section structure cleanup
+
+This patch cleans up the handbook section hierarchy after reviewing the full English and Chinese handbook text.
+
+Structural decision:
+
+1. `Provider bridge terminology contract` is not a standalone top-level chapter. It belongs under section 8 because it defines provider/tool bridge terminology.
+2. `Model configuration command contract` is not a standalone top-level chapter. It also belongs under section 8 because it defines provider/model configuration command contract examples.
+3. Stable handbook rules must be placed under numbered handbook chapters, while chronological implementation notes remain in versioned `p*` sections.
+4. Future documentation patches should prefer full-text review when the structure is under discussion. Regex or grep snippets are insufficient for chapter hierarchy decisions.

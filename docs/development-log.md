@@ -1,5 +1,16 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a45-handbook-section-structure-cleanup
+
+- Cleaned handbook section structure after p2.10a44.
+- Moved the English `Provider bridge terminology contract` into numbered section 8 as `### 8.1 Provider bridge terminology contract`.
+- Added the English `### 8.2 Model configuration command contract` to mirror the Chinese command contract.
+- Moved the Chinese `模型配置命令契约` into numbered section 8 as `### 8.2 模型配置命令契约`.
+- Added the Chinese `### 8.1 工具桥接术语契约` so the English and Chinese handbooks remain structurally aligned.
+- Added a documentation structure discipline rule: stable handbook rules must live under numbered chapters or versioned history sections; do not leave unnumbered standalone islands.
+- No user-facing README/TROUBLESHOOTING content was changed.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a44-doc-marker-discipline-cleanup
 
 - Removed marker-only compatibility text that had been added to the p2.10a43 internal handbook sections.
