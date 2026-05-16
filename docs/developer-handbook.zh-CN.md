@@ -277,6 +277,9 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry基线 | WeClaw可从dsproxy维护的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance和compaction。 | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | 已被WeClaw侧认可并进入初步集成 | 2026-05-16 | WeClaw第二轮需求会在其审计后提出。prompt子类token拆分仍保持not-reported，除非后续新增经过审计的tokenizer层。 |
 | P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | 尚未开始 | 等待 | 2026-05-16 | 不做 speculative second-round work。需求到达后先只读审计。 |
+| P0.5 | semantic payload compaction强化 | 为semantic payload compaction建立dry-run、canary、有限启用、遥测、回退和展示规则，确保不破坏用户需求、补丁、错误、git状态、Release状态和WeClaw统计。 | 计划记录于`p2.10a52-semantic-payload-compaction-tui-plan` | 计划中，默认排在WeClaw第二轮之后和AnyCodeX之前 | 2026-05-16 | 实现前必须审计usage/cost、compact统计、WeClaw展示字段、debug budget、长会话观测和token-vs-char语义。 |
+| P0.6 | CodexTUI第三方profile命令兼容性 | 隔离验证`codex --profile deepseek`下TUI slash commands，确认哪些命令可用，哪些需要dsproxy兼容或接管，尤其是`/compact`、auto-compact、`/fork`和`/resume`。 | 等当前Codex会话停止后执行矩阵 | 等待审计 | 2026-05-16 | 如果发现`/compact`、auto-compact、`/fork`、`/resume`、`/model`或`/status`会损坏会话或中断工作流，则优先级提升到WeClaw第二轮之前。 |
+
 | P1 | AnyCodeX级通用provider架构 | 形成基于证据的架构计划和渐进adapter/refactor顺序，同时保留现有CoDeepSeedeX公开表面。 | `p2.10a40-generalized-provider-architecture-audit-report` | 已规划，Release任务已关闭时仍不自动激活 | 2026-05-16 | AnyCodeX只是未来方向，不是当前项目名。 |
 | P2 | `v0.3.9-alpha`公开pre-release | GitHub pre-release存在且`prerelease=true`，资产包含`bootstrap.sh`和`install.sh`，Release notes不重复标题，并写明WeClaw最低版本要求。 | `v0.3.9-alpha = 677d923` | 已完成 | 2026-05-16 | Release notes已包含`Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | 完整源码优先补丁纪律 | 补丁设计基于上传的完整文件或完整复制的源码/文档文件，而不是grep/rg片段。 | 手册规则6.1.13 | 生效 | 2026-05-16 | `grep`/`rg`只能用于识别候选文件。 |
@@ -287,6 +290,41 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a52 semantic payload compaction和TUI兼容性计划
+
+p2.10a52是计划和文档同步节点，不实现semantic payload compaction，不等同于TUI矩阵验证完成，不移动公开Release tag，也不重建Release资产。
+
+### 范围
+
+本节点记录两个插入任务，避免它们覆盖当前WeClaw任务总线：
+
+1. `P0.5 semantic payload compaction hardening`：默认排在WeClaw第二轮需求之后、AnyCodeX级架构工作之前。若TUI compact验证发现高风险，可提升优先级。
+2. `P0.6 Codex TUI third-party profile command compatibility`：对`codex --profile deepseek`执行隔离TUI命令矩阵，验证原生`/compact`、auto-compact、`/fork`、`/resume`、`/model`、`/status`、`/diff`、`/review`、approval、sandbox等命令。
+
+### 当前单位边界
+
+Codex profile中的context字段是token级声明。`model_context_window`和`model_auto_compact_token_limit`必须按tokens理解。dsproxy运行时compaction、trimming和semantic payload compaction是char级payload保护。WeClaw和CLI展示时不得把token窗口和char预算合并成一个进度条，除非明确标注单位和来源。
+
+### semantic payload compaction需求
+
+实现前必须确认：
+
+1. 可压缩对象：初始只允许低风险flattened tool transcript、重复长终端输出、长pytest输出和重复shell日志。
+2. 禁止压缩对象：用户需求、任务计划、补丁脚本、git状态、commit/tag/Release状态、根因结论、测试断言、关键错误栈、API key语义和近期高价值上下文。
+3. 可审计性：每个dry-run和applied事件必须记录message index、semantic type、risk level、retention markers、压缩前chars、压缩后chars、移除chars和原始payload是否保留。
+4. usage和cost影响：provider返回的token usage仍是事实来源。cost估算仍来自usage ledger和pricing cache。除非引入经审计的tokenizer或provider前后对照，否则不得声称精确节省tokens。
+5. WeClaw影响：可新增独立semantic payload compaction字段，必须标注`unit=chars`、mode、安全状态、候选数、应用数、移除chars和rollout blockers。该字段不得混入token级context window。
+6. debug和观测：`debug budget`、long-session observability、runtime status和WeClaw status必须暴露semantic dry-run和applied事件，同时不遮蔽现有persistent compaction和trimming字段。
+7. 回退：默认保持dry-run。启用必须有显式环境变量、canary检查和本地不变量检查。异常或无收益压缩必须返回原始messages。
+
+### CodexTUI兼容性需求
+
+TUI矩阵至少验证`/help`、`/status`、`/model`、`/compact`、auto-compact、`/fork`、`/resume`、`/diff`、`/review`、`/approval`、`/sandbox`和`/clear`。
+
+矩阵必须记录每个命令是本地命令、普通Responses请求、`/responses/compact`请求、OpenAI或ChatGPT私有能力、session store依赖、provider filtering依赖，还是需要dsproxy兼容接管。
+
+如果第三方profile下原生`/compact`或auto-compact失败，不能假设dsproxy的char级persistent compaction会自动接管。只有请求真实经过dsproxy兼容路径时，dsproxy才有机会接管。后续设计必须基于证据选择inline compact、实现`/responses/compact`兼容面，或增加wrapper/integration级保护和恢复路径。
 
 ## p2.9a22运行时版本元数据规则
 

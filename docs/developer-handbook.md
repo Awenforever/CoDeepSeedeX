@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a51-post-v039-alpha-release-doc-sync`
+- Current internal development line: `p2.10a52-semantic-payload-compaction-tui-plan`
 - Verified repository baseline before post-release doc sync: `master = origin/master = 677d923`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
@@ -304,6 +304,9 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
 | P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
+| P0.5 | Semantic payload compaction hardening | Dry-run, canary, limited-enable, telemetry, and rollback rules exist for semantic payload compaction without corrupting user intent, patches, errors, git state, Release state, or WeClaw accounting. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned after WeClaw second-round unless TUI compaction risk forces escalation | 2026-05-16 | This line must audit usage/cost, compaction statistics, WeClaw display fields, debug budget, long-session observability, and token-vs-char semantics before implementation. |
+| P0.6 | Codex TUI third-party profile command compatibility | An isolated Codex TUI matrix proves which slash commands work under `codex --profile deepseek`, which commands need dsproxy compatibility or interception, and whether native `/compact` or auto-compact can safely run through the third-party profile. | Matrix pending after current Codex session stops | Audit pending | 2026-05-16 | Escalate before WeClaw follow-up if `/compact`, auto-compact, `/fork`, `/resume`, or model/status commands can damage sessions or stop the workflow. |
+
 | P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is closed | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
 | P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 677d923` | Completed | 2026-05-16 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-16 | `grep`/`rg` may identify candidate files only. |
@@ -314,6 +317,60 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a52 semantic payload compaction and TUI compatibility plan
+
+p2.10a52 is a planning and documentation node. It does not implement semantic payload compaction, does not validate the Codex TUI matrix yet, and must not move public Release tags or rebuild Release assets.
+
+### Scope
+
+This plan records two inserted tasks that must not silently replace the active WeClaw task bus:
+
+1. `P0.5 semantic payload compaction hardening`: after WeClaw second-round requirements and before AnyCodeX-level architecture work, unless a high-risk TUI compaction failure forces escalation.
+2. `P0.6 Codex TUI third-party profile command compatibility`: run an isolated TUI command matrix for `codex --profile deepseek` and verify native `/compact`, auto-compact, `/fork`, `/resume`, `/model`, `/status`, `/diff`, `/review`, approval, sandbox, and related commands.
+
+### Current unit boundary
+
+Codex profile context fields are token-level declarations. `model_context_window` and `model_auto_compact_token_limit` must be treated as tokens. dsproxy runtime compaction, trimming, and semantic payload compaction are character-level payload guards. WeClaw and CLI displays must not merge token windows and character budgets into a single progress bar unless unit and source are explicit.
+
+### Semantic payload compaction requirements
+
+Before implementation, the maintainer must approve a concrete checklist covering:
+
+1. Eligible payload classes. Initial candidates are low-risk flattened tool transcripts, repeated long terminal output, long pytest output, and repetitive shell logs.
+2. Forbidden payload classes. Do not compact user requirements, task plans, patch scripts, git state, commit/tag/Release state, root-cause conclusions, test assertions, key error stack frames, API key semantics, or recent high-value conversation state.
+3. Auditability. Every dry-run and applied event must report message index, semantic type, risk level, retention markers, chars before, chars after, chars removed, and whether the original payload was preserved.
+4. Usage and cost impact. Provider token usage remains the source of truth. Cost estimation remains based on the usage ledger and pricing cache. Token savings must not be claimed as exact unless an audited tokenizer or provider-backed comparison exists.
+5. WeClaw impact. WeClaw may receive a separate semantic payload compaction section with `unit=chars`, mode, safety, eligible count, applied count, chars removed, and rollout blockers. It must remain separate from token-level context window fields.
+6. Debug and observability. `debug budget`, long-session observability, runtime status, and WeClaw status must expose semantic dry-run and applied events without hiding existing persistent compaction or trimming fields.
+7. Rollback. Default mode remains dry-run. Enabled mode requires explicit environment gates, canary checks, and local invariant checks. Any exception or non-beneficial compaction must return the original messages.
+
+### Mandatory implementation checklist
+
+Implementation must complete these items before it is considered done:
+
+1. Full-source audit of `deepseek_responses_proxy/app.py`, `deepseek_responses_proxy/cli.py`, `tests/test_context_trimming.py`, `tests/test_context_runtime_observability.py`, `tests/test_cli.py`, `tests/test_weclaw_full_telemetry_contract.py`, and `tests/test_usage_ledger.py`.
+2. Close the current dry-run event gap so semantic audit, policy dry-run, and payload dry-run events are present when candidates exist.
+3. Add structured status fields for semantic payload compaction without breaking existing `compaction`, `runtime_compaction`, `runtime_trimming`, `tokens`, `pricing`, `cost`, or `balance` fields.
+4. Add focused tests for low-risk compaction, forbidden-content preservation, recent-message preservation, dry-run-only default, canary-gated enabled mode, and exception fallback.
+5. Reassess token/cost/usage reporting after payload mutation and document that provider usage remains authoritative.
+6. Run sanitized focused tests and full tests before any merge.
+
+### Required implementation report
+
+When implemented, the report must include branch, commit, internal tag, public tag unchanged status, exact enabled mode, dry-run closure evidence, canary state, eligible and forbidden payload classes, chars before/after, chars removed, token/cost accounting impact, WeClaw field changes, focused tests, full tests, and remaining risks.
+
+### Codex TUI compatibility requirements
+
+The TUI matrix must verify at least `/help`, `/status`, `/model`, `/compact`, auto-compact, `/fork`, `/resume`, `/diff`, `/review`, `/approval`, `/sandbox`, and `/clear` under `codex --profile deepseek`.
+
+The matrix must record whether each command is local-only, uses ordinary Responses requests, uses `/responses/compact`, depends on OpenAI or ChatGPT private surfaces, depends on session store or provider filtering, or needs dsproxy compatibility work.
+
+If native `/compact` or auto-compact fails for the third-party profile, dsproxy must not rely on character-level persistent compaction as an automatic substitute unless the request actually reaches dsproxy through a compatible path. The follow-up design must choose one of these approaches with evidence:
+
+1. Force or guide inline compact through ordinary Responses requests.
+2. Implement a compatible `/responses/compact` surface after capturing the real request/response contract.
+3. Provide a wrapper or integration-level guard that prevents unsupported TUI commands from damaging the session and gives a clear recovery path.
 
 ## p2.9a22 runtime version metadata policy
 

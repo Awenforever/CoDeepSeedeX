@@ -1,5 +1,16 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a52-semantic-payload-compaction-tui-plan
+
+- Scope: record the inserted semantic payload compaction hardening plan and Codex TUI third-party profile compatibility plan after the `v0.3.9-alpha` pre-release and p2.10a51 post-release documentation sync.
+- Starting point: `master = origin/master = 9337fdc`, internal tag `p2.10a51-post-v039-alpha-release-doc-sync = 9337fdc`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Trigger: the maintainer identified that Codex profile context is token-based while dsproxy runtime compaction/trimming is char-based, and that native Codex `/compact` or auto-compact may still run under `codex --profile deepseek`.
+- Planning result: add `P0.5 semantic payload compaction hardening` after WeClaw second-round requirements and before AnyCodeX-level architecture work, unless a high-risk TUI compaction failure forces escalation.
+- Planning result: add `P0.6 Codex TUI third-party profile command compatibility` to verify `/compact`, auto-compact, `/fork`, `/resume`, `/model`, `/status`, `/diff`, `/review`, approval, sandbox, and related TUI commands under the third-party `deepseek` profile.
+- Risk recorded: dsproxy character-level persistent compaction cannot be assumed to automatically replace Codex native token-level compact unless the compact request actually reaches dsproxy through a compatible path.
+- Required future evidence: isolated TUI command matrix output, exact compact request path, whether `/responses/compact` is used, whether inline compact works, whether session store and provider filtering preserve `/fork` and `/resume`, and whether WeClaw display fields need token-window plus char-budget separation.
+- This node updates planning documentation and runtime internal version metadata only. It does not move `v0.3.9-alpha`, create a GitHub Release, or rebuild Release assets.
+
 ## p2.10a51-post-v0.3.9-alpha-release-doc-sync
 
 - Synchronized post-release documentation after the `v0.3.9-alpha` GitHub pre-release was created successfully.
