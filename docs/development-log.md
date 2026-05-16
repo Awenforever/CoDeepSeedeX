@@ -1,5 +1,13 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a41-task-bus-weclaw-acceptance-audit
+
+- Added a long-term task bus to the internal developer handbooks to prevent future mainline drift across inserted tasks and new conversations.
+- Set P0 as WeClaw contract acceptance and gap closure. The generalized provider architecture remains a P1 follow-up and must not displace the P0 acceptance task.
+- Recorded the drift cause: p2.10a40 continued into architecture planning after inserted documentation/version/naming tasks, instead of returning to the original WeClaw interface acceptance checklist.
+- Added a read-only acceptance audit plan for profile/effort interfaces, WeClaw status JSON, HTTP endpoint discovery, pricing/cost/token/compaction gaps, and isolated HOME effort behavior.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a40-generalized-provider-architecture-audit-report
 
 - Converted the read-only generalized provider architecture audit into an internal planning node.

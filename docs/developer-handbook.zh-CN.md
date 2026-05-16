@@ -26,8 +26,8 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a40-generalized-provider-architecture-audit-report`
-- p2.10a38后的当前仓库基线：`master = origin/master = e572677`
+- 当前内部开发线：`p2.10a41-task-bus-weclaw-acceptance-audit`
+- p2.10a40后的当前仓库基线：`master = origin/master = b98971a`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -591,3 +591,31 @@ DeepSeek强绑定运行时接缝：
 4. 将stream归一化从provider transport中分离。Responses stream事件应来自provider-neutral event model。
 5. 工具桥接替换是相关但独立的层。Web search、image generation和未来第三方工具替换不应混入model provider adapter。
 6. 每一步都必须运行sanitized focused tests和full tests。在审计环境变量覆盖前，不得把测试失败归因于补丁。
+
+## p2.10a41 长期任务总线和WeClaw验收审计
+
+本任务总线用于跨新对话和插入任务持续追踪主线。
+
+当前优先级：
+
+1. P0当前主线：WeClaw契约验收和缺口闭环。
+2. P1后续方向：AnyCodeX级通用provider架构。
+3. P2后续方向：只有当P0缺口已实现，或维护者明确延期后，才进入公开Release准备。
+
+防偏移规则：
+
+1. `return_to_p0_after_inserted_tasks=true`。
+2. 文档同步、版本元数据更新、命名边界清理和Release状态修复等插入任务可以打断主线，但这些任务收口后，下一步必须回到最高优先级未完成任务。
+3. 未来架构审计或重构不得挤占WeClaw契约验收，除非维护者明确调整任务总线优先级。
+4. 每次handoff必须包含本任务总线、当前P0状态和未解决验收缺口。
+5. 完成声明必须有证据：精确CLI或HTTP命令、JSON输出形态、字段来源、精确性状态、测试记录和剩余缺口。
+
+P0 WeClaw验收清单：
+
+1. 验证`config set-effort`和`profile set-effort`绝不向Codex profile写入`model_reasoning_effort = "max"`。
+2. 验证`profile status --json`向WeClaw提供权威profile、model、effort、thinking、context-window和health字段。
+3. 验证`status --weclaw-json`提供稳定的profile、model、context、token、pricing、cost和compaction健康字段，即使部分字段显式不可用。
+4. 验证HTTP WeClaw端点是否存在，并确认其与CLI JSON等价或记录差异。
+5. 验证pricing、cost、balance、token taxonomy、auxiliary token统计和compaction字段是已实现、部分实现、不可用还是缺失。
+6. 验证`max`、`high`和兼容effort输入的隔离HOME测试。
+7. 为WeClaw集成对话输出交付报告，包含精确命令、端点名、JSON样例、字段来源、精确性标记、超时建议和失败fallback策略。

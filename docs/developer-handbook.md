@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a40-generalized-provider-architecture-audit-report`
-- Current repository baseline after p2.10a38: `master = origin/master = e572677`
+- Current internal development line: `p2.10a41-task-bus-weclaw-acceptance-audit`
+- Current repository baseline after p2.10a40: `master = origin/master = b98971a`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -621,3 +621,31 @@ Implementation order:
 4. Separate stream normalization from provider transport. Responses stream events should be generated from a provider-neutral event model.
 5. Keep tool bridge replacement as a related but separate layer. Web search, image generation, and future third-party tool replacement should not be collapsed into the model-provider adapter.
 6. After each step, run sanitized focused tests and full tests. Do not attribute failures to the patch until environment overrides have been audited.
+
+## p2.10a41 long-term task bus and WeClaw acceptance audit
+
+This task bus is the durable mainline tracker for new conversations and inserted tasks.
+
+Active priority order:
+
+1. P0 active mainline: WeClaw contract acceptance and gap closure.
+2. P1 follow-up: AnyCodeX-level generalized provider architecture.
+3. P2 follow-up: public Release preparation only after P0 gaps are either implemented or explicitly deferred by the maintainer.
+
+Anti-drift rules:
+
+1. `return_to_p0_after_inserted_tasks=true`.
+2. Inserted tasks such as documentation sync, version metadata updates, naming-boundary cleanup, and release-state fixes may interrupt the mainline, but after they close the next step must return to the highest-priority unresolved task.
+3. A future architecture audit or refactor must not displace WeClaw contract acceptance unless the maintainer explicitly reprioritizes the task bus.
+4. Every handoff must include this task bus, current P0 status, and unresolved acceptance gaps.
+5. Completion claims require evidence: exact CLI or HTTP command, JSON output shape, field source, precision status, tests run, and remaining gaps.
+
+P0 WeClaw acceptance checklist:
+
+1. Verify `config set-effort` and `profile set-effort` never write `model_reasoning_effort = "max"` into Codex profiles.
+2. Verify `profile status --json` gives WeClaw authoritative profile, model, effort, thinking, context-window, and health fields.
+3. Verify `status --weclaw-json` exposes stable profile/model/context/token/pricing/cost/compaction health fields, even when some fields are explicitly unavailable.
+4. Verify HTTP WeClaw endpoints if present, and confirm parity or intentional differences from CLI JSON.
+5. Verify pricing, cost, balance, token taxonomy, auxiliary token accounting, and compaction fields as implemented, partial, unavailable, or missing.
+6. Verify isolated HOME tests for `max`, `high`, and compatibility efforts.
+7. Produce a handoff report for the WeClaw integration conversation with exact commands, endpoint names, JSON samples, field sources, precision flags, timeout suggestions, and fallback behavior.
