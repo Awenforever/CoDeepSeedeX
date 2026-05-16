@@ -26,7 +26,7 @@
 - 当前公开alpha Release：`v0.3.8-alpha`
 - 公开Release commit：`dfdc629`
 - Release对应内部tag：`p2.10a26-wrapper-start-plan-mode-hardening`
-- 当前内部开发线：`p2.10a39-name-boundary-cleanup`
+- 当前内部开发线：`p2.10a40-generalized-provider-architecture-audit-report`
 - p2.10a38后的当前仓库基线：`master = origin/master = e572677`
 - 旧公开tag不能移动：
   - `v0.3.7-alpha = 466706f`
@@ -567,3 +567,27 @@ p2.10a36用于把文档同步到已验证的GitHub Release状态。`v0.3.8-alpha
 p2.10a38把开发运行时internal version元数据更新为`p2.10a38-version-metadata-name-boundary`，并记录AnyCodeX未来命名边界。公开版本元数据仍保持`v0.3.8-alpha`。
 
 这不是Release重建任务。不得移动`v0.3.8-alpha`，不得重建GitHub Release，也不得上传新的Release资产。
+
+## p2.10a40 通用provider架构审计报告
+
+p2.10a40是内部规划检查点，不是大规模运行时重构。它把只读证据审计整理为后续实现顺序，用于未来AnyCodeX级通用provider架构，同时保持当前项目名仍为CoDeepSeedeX。
+
+基于证据的结论：
+
+DeepSeek强绑定运行时接缝：
+
+1. 运行时核心仍集中在大型`deepseek_responses_proxy/app.py`中。上游模型调用仍经过`DeepSeekClient`。
+2. 运行时配置仍使用DeepSeek命名：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_PROXY_MODEL`、`DEEPSEEK_PROXY_FORCE_MODEL`、`DEEPSEEK_THINKING`和`DEEPSEEK_REASONING_EFFORT`。
+3. thinking行为仍与DeepSeek强绑定。关键接缝包括`_deepseek_thinking_config`、`_repair_thinking_history_messages`、`_prepare_messages_for_deepseek`、`reasoning_content`以及DeepSeek ChatCompletions角色和tool-call修复。
+4. CLI和安装器provider catalog比运行时更通用。它们已经区分DeepSeek、Kimi、Zhipu / BigModel、Z.AI、Qwen / DashScope区域endpoint和custom OpenAI-compatible provider。
+5. Web search和image generation已有provider分发层，但它们是工具provider桥接，不是通用model provider抽象。
+6. WeClaw-facing契约在内部provider架构演进期间必须保持稳定。不得破坏`effective_model`、`codex_model`、`model_conflict`、context window单位和profile repair契约。
+
+实现顺序：
+
+1. 先增加provider能力元数据。它应描述请求形态、reasoning策略、stream事件映射、tool-call约束、usage字段和model catalog行为。
+2. 有元数据后再增加上游adapter接口。不要在一个补丁里全局重命名`DeepSeekClient`。应先引入adapter边界，再逐步迁移调用点。
+3. 将reasoning/thinking策略从model provider中分离。DeepSeek的`reasoning_content`修复应成为一种策略，而不是所有provider的默认假设。
+4. 将stream归一化从provider transport中分离。Responses stream事件应来自provider-neutral event model。
+5. 工具桥接替换是相关但独立的层。Web search、image generation和未来第三方工具替换不应混入model provider adapter。
+6. 每一步都必须运行sanitized focused tests和full tests。在审计环境变量覆盖前，不得把测试失败归因于补丁。

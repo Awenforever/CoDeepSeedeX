@@ -30,7 +30,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a39-name-boundary-cleanup`
+- Current internal development line: `p2.10a40-generalized-provider-architecture-audit-report`
 - Current repository baseline after p2.10a38: `master = origin/master = e572677`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
@@ -599,3 +599,25 @@ Do not treat this as a Release rebuild. It must not move `v0.3.8-alpha`, recreat
 p2.10a38 updates developer runtime internal version metadata to `p2.10a38-version-metadata-name-boundary` and records the AnyCodeX future-name boundary. Public version metadata remains `v0.3.8-alpha`.
 
 This is not a Release rebuild. It must not move `v0.3.8-alpha`, recreate the GitHub Release, or upload new Release assets.
+
+## p2.10a40 generalized provider architecture audit report
+
+The p2.10a40 audit is an internal planning checkpoint, not a broad runtime refactor. It converts the read-only evidence collection into an implementation order for a future AnyCodeX-level generalized provider architecture while keeping the current project name CoDeepSeedeX.
+
+Evidence-based findings:
+
+1. The runtime core remains a large monolith in `deepseek_responses_proxy/app.py`. Upstream model calls still pass through `DeepSeekClient`.
+2. Runtime configuration is still DeepSeek-named: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_THINKING`, and `DEEPSEEK_REASONING_EFFORT`.
+3. Thinking behavior is DeepSeek-specific. The active seams include `_deepseek_thinking_config`, `_repair_thinking_history_messages`, `_prepare_messages_for_deepseek`, `reasoning_content`, and DeepSeek ChatCompletions role/tool-call repair.
+4. CLI and installer provider catalogs are more generalized than the runtime core. They already distinguish DeepSeek, Kimi, Zhipu / BigModel, Z.AI, Qwen / DashScope regional endpoints, and custom OpenAI-compatible providers.
+5. Web search and image generation already have provider dispatch layers, but they are tool-provider bridges rather than a general model-provider abstraction.
+6. WeClaw-facing contracts should remain stable while the internal provider architecture evolves. `effective_model`, `codex_model`, `model_conflict`, context-window units, and profile repair contracts must not be broken.
+
+Implementation order:
+
+1. Add provider-capability metadata first. It should describe supported request shape, reasoning strategy, stream event mapping, tool-call constraints, usage fields, and model catalog behavior.
+2. Add an upstream adapter interface after metadata exists. Do not rename `DeepSeekClient` globally in one patch. Introduce an adapter boundary and migrate call sites incrementally.
+3. Separate reasoning/thinking strategy from the model provider. DeepSeek `reasoning_content` repair should become one strategy, not the default assumption for every provider.
+4. Separate stream normalization from provider transport. Responses stream events should be generated from a provider-neutral event model.
+5. Keep tool bridge replacement as a related but separate layer. Web search, image generation, and future third-party tool replacement should not be collapsed into the model-provider adapter.
+6. After each step, run sanitized focused tests and full tests. Do not attribute failures to the patch until environment overrides have been audited.
