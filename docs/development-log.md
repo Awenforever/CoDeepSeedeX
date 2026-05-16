@@ -1,5 +1,13 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a38-version-metadata-name-boundary
+
+- Updated runtime internal version metadata from the stale p2.10a35 tag to `p2.10a38-version-metadata-name-boundary`, while keeping public version metadata at `v0.3.8-alpha`.
+- Updated version metadata tests so `dsproxy --version` must report the declared current internal tag.
+- Clarified the naming boundary: CoDeepSeedeX remains the current project and public product name. AnyCodeX is a future plan name and possible future brand, not a current code, command, tag, branch, installer, wrapper, public-path, or user-facing documentation name.
+- Reframed future provider work as AnyCodeX-level generalized provider architecture in internal developer documentation only.
+- No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
+
 ## p2.10a37-sanitized-test-env-rule
 
 - Added a handbook rule for sanitized test environments after p2.10a36 showed that full-suite failures can be caused by local exported model/provider/API-key variables rather than by the patch under test.
@@ -393,7 +401,7 @@
 - Qwen Coding Plan and Token Plan were not script-tested because official usage constraints distinguish them from ordinary automation-style probes; they require guided config and tool-path validation.
 - Custom provider is validated as a mechanism because the GLM/Zhipu/Z.AI and Qwen matrices used `--provider custom` with explicit base URLs and models.
 - Future README, wizard, and config guidance must distinguish verified, endpoint reachable but auth failed, implemented but not yet verified, not script-tested, and abandoned states. Do not mark untested providers as unsupported.
-- After matrix testing, prepare a separate architecture audit branch for a potential AnyCodex-style refactor. The audit should identify DeepSeek-specific logic such as `reasoning_content`, reasoning/thinking event handling, model catalog assumptions, and which proxy layers can be generalized across providers.
+- After matrix testing, prepare a separate architecture audit branch for a potential AnyCodeX-level generalized provider-architecture refactor. The audit should identify DeepSeek-specific logic such as `reasoning_content`, reasoning/thinking event handling, model catalog assumptions, and which proxy layers can be generalized across providers.
 
 ## p2.9a40-config-guide-provider-surface-repair
 
@@ -420,7 +428,7 @@
 - Next planned line:
   - `work/p2.10-anycodex-provider-architecture-audit`.
   - Start with read-only architecture evidence collection.
-  - Assess DeepSeek-specific logic and the feasibility of an AnyCodex-style provider abstraction.
+  - Assess DeepSeek-specific logic and the feasibility of an AnyCodeX-style provider abstraction.
   - Keep the broader third-party tool replacement objective separate from a single SerpAPI-style bridge.
 
 ## p2.10a2-config-refresh-and-effort-ux

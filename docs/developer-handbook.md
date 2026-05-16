@@ -30,8 +30,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Current public alpha Release: `v0.3.8-alpha`
 - Public release commit: `dfdc629`
 - Release internal tag: `p2.10a26-wrapper-start-plan-mode-hardening`
-- Current internal development line: `p2.10a35-docs-handoff-and-replacement-discipline`
-- Current repository baseline after p2.10a35: `master = origin/master = 659854a`
+- Current internal development line: `p2.10a38-version-metadata-name-boundary`
+- Current repository baseline after p2.10a37: `master = origin/master = 54a7897`
 - Older public tags must not move:
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -118,6 +118,7 @@ These rules are mandatory development controls. They belong in the handbook beca
 9. **Integration surfaces are part of every task.** Every development task must explicitly consider install, upgrade, uninstall, rollback, generated wrappers, user config files, Release assets, and VM/user-path validation when the changed behavior can affect them.
 10. **Runtime observations outrank assumptions.** For terminal, wrapper, and Codex TUI behavior, validate with isolated runtime probes before patching. This prevented guessing around Windows Terminal title behavior and showed that tab color was not a current wrapper-path feature.
 11. **Test environment contamination.** A dirty developer shell can make full tests fail for reasons unrelated to the patch. In p2.10a36, exported variables such as `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_PROXY_IMAGE_PROVIDER`, `DEEPSEEK_PROXY_IMAGE_DOWNLOAD`, and real provider API keys changed default model/provider behavior and caused unrelated full-suite failures. Before treating full-suite failures as patch evidence, record relevant environment overrides, rerun the failing subset and full suite under a sanitized environment, and only then decide whether the patch or the local environment is responsible.
+12. **AnyCodeX future-name boundary.** CoDeepSeedeX remains the current project and public product name. AnyCodeX is a future plan name and possible future brand, not a current code, command, tag, branch, installer, wrapper, public-path, or user-facing documentation name. Do not introduce AnyCodeX into user-facing surfaces before an explicit maintainer-approved rename task. Future architecture work may describe the target as AnyCodeX-level generalized provider architecture inside developer-only planning docs.
 ### 6.2 Release-specific guardrails
 
 - Do not hard-code runtime version paths. The runtime file is `deepseek_responses_proxy/app.py`.
@@ -215,13 +216,13 @@ p2.10 covers the current `v0.3.8-alpha` public alpha Release line and the post-r
 - Codex tab-title behavior hardening, ending in the current effective design: the wrapper prepares the matching route, starts a bounded title keeper after Codex startup, runs real Codex in the foreground, records the keeper PID, kills and waits for the keeper when Codex returns, and preserves the real Codex return status.
 - Documentation discipline, including removal of ghost docs, current-state synchronization, and mandatory function-level, block-level, section-level, or AST-level replacement for future patches.
 
-Current verified baseline after p2.10a35:
+Current verified baseline after p2.10a37:
 
-- `master = origin/master = 659854a`.
-- `p2.10a35-docs-handoff-and-replacement-discipline = 659854a`.
+- `master = origin/master = 54a7897`.
+- `p2.10a37-sanitized-test-env-rule = 54a7897`.
 - `p2.10a34-title-keeper-cleanup = 280f14b`.
 - `v0.3.8-alpha = dfdc629`, current GitHub Release, non-draft and non-prerelease.
-- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a35 and p2.10a36 do not rebuild assets.
+- Public Release assets remain `bootstrap.sh` and `install.sh`; p2.10a36 and later internal documentation/metadata tasks do not rebuild assets.
 - Real HOME wrapper refresh passed, with keeper PID cleanup and no `exec "$REAL_CODEX" "$@"`.
 - `deepseek-thinking` profile status is healthy with `model=deepseek-v4-flash`, DeepSeek effort `max`, and Codex profile effort `xhigh`.
 ## 12. New conversation startup checklist
@@ -358,7 +359,7 @@ Provider documentation and setup wording must use these states instead of a bina
 - `not script-tested`: official usage constraints or workflow constraints prevent ordinary script probes.
 - `abandoned`: intentionally removed from public/guided surfaces.
 
-Do not label untested or auth-failed model providers as unsupported. After the model API matrix is complete, open a dedicated architecture branch to assess which CoDeepSeedeX layers are reusable and which are DeepSeek-specific. The likely branch is `work/p2.10-anycodex-provider-architecture-audit`. That assessment must cover provider adapters, reasoning/thinking fields such as `reasoning_content`, stream event normalization, model catalog metadata, Codex `/model` display, and the broader goal of evolving CoDeepSeedeX into a more general AnyCodex-style provider architecture.
+Do not label untested or auth-failed model providers as unsupported. After the model API matrix is complete, open a dedicated architecture branch to assess which CoDeepSeedeX layers are reusable and which are DeepSeek-specific. The likely branch is `work/p2.10-generalized-provider-architecture-audit`. That assessment must cover provider adapters, reasoning/thinking fields such as `reasoning_content`, stream event normalization, model catalog metadata, Codex `/model` display, and the broader goal of evolving CoDeepSeedeX into a more general AnyCodeX-level generalized provider architecture.
 
 ### p2.9a40 config guide provider surface repair
 
@@ -401,9 +402,9 @@ Provider-surface state after p2.9a40:
 
 Next development direction:
 
-- Start the next major design line as `work/p2.10-anycodex-provider-architecture-audit`.
+- Start the next major design line as `work/p2.10-generalized-provider-architecture-audit`.
 - The audit must not guess from memory. It should start with a read-only audit of `app.py`, `cli.py`, runtime config loading, stream conversion, model catalog, provider config, tool bridge, tests, and docs.
-- The goal is to assess whether CoDeepSeedeX should be generalized into an AnyCodex-style provider architecture.
+- The goal is to assess whether CoDeepSeedeX should be generalized into an AnyCodeX-level generalized provider architecture.
 - Key DeepSeek-specific areas to inspect include `reasoning_content`, reasoning or thinking event handling, thinking profile behavior, Responses-to-chat conversion, stream event normalization, tool-call repair, model catalog assumptions, `/model` UI expectations, and Codex profile wrapper behavior.
 - Tool replacement should be treated as a broader layer: web search, image generation, and future third-party tools should be able to transparently replace native Codex tools that are unreachable or unavailable, rather than being a SerpAPI-only bridge.
 
@@ -592,3 +593,9 @@ Do not treat this as a public Release. It must not move `v0.3.8-alpha` or rebuil
 p2.10a36 synchronizes documentation with the verified GitHub Release state. `v0.3.8-alpha` remains the public alpha Release tag at `dfdc629`, but the GitHub Release is currently non-draft and non-prerelease. This update changes current-state wording and README migration notes only.
 
 Do not treat this as a Release rebuild. It must not move `v0.3.8-alpha`, recreate the GitHub Release, or upload new Release assets.
+
+## p2.10a38 version metadata and name boundary
+
+p2.10a38 updates developer runtime internal version metadata to `p2.10a38-version-metadata-name-boundary` and records the AnyCodeX future-name boundary. Public version metadata remains `v0.3.8-alpha`.
+
+This is not a Release rebuild. It must not move `v0.3.8-alpha`, recreate the GitHub Release, or upload new Release assets.
