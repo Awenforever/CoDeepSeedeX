@@ -703,11 +703,12 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
 
     assert status_data["semantic_compaction"]["rollout"]["action"]
     assert status_data["semantic_compaction"]["rollout"]["missing_events"]
-    assert status_data["pricing"]["source_url"] is None
+    assert "source_url" in status_data["pricing"]
     assert "ttl_seconds" in status_data["pricing"]
+    assert status_data["pricing"]["refresh"]["available"] is True
     assert status_data["pricing"]["refresh"]["action"]
     assert status_data["diagnostics"]["available"] is True
     paths = {item["path"] for item in status_data["diagnostics"]["degraded_fields"]}
     assert "tokens.last_turn" in paths
-    assert "pricing.refresh" in paths
+    assert "pricing.refresh" not in paths
     assert "semantic_compaction.rollout" in paths

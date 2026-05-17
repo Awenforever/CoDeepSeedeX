@@ -32,9 +32,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a57-weclaw-round3-contract-foundation`
-- Current internal development baseline before p2.10a57 finalization: `master = origin/master = 7f88f27`
-- Latest completed internal checkpoint before this node: `p2.10a55-weclaw-runtime-status-contract = 7f88f27`
+- Current internal development line: `p2.10a58-weclaw-round3-pricing-refresh`
+- Current internal development baseline before p2.10a58 finalization: `master = origin/master = 861f260`
+- Latest completed internal checkpoint before this node: `p2.10a57-weclaw-round3-contract-foundation = 861f260`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
@@ -46,7 +46,7 @@ If documentation structure changes, tests must be updated to the new contract. D
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a57 is an internal WeClaw round3 contract foundation node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a58 is an internal guarded pricing refresh node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -321,6 +321,21 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a58 guarded official pricing refresh
+
+p2.10a58 implements a guarded pricing refresh path for WeClaw round3. The official V4 pricing source is the human DeepSeek documentation page at `https://api-docs.deepseek.com/quick_start/pricing`, not a stable pricing API. The older `pricing-details-usd` and `pricing-details-cny` pages still describe legacy `deepseek-chat` and `deepseek-reasoner` pricing and must not be used as the V4 source.
+
+Contract additions:
+
+1. `dsproxy pricing refresh --json` now fetches and validates the official DeepSeek pricing HTML, but it does not write cache data by default.
+2. `dsproxy pricing refresh --json --write-cache` atomically writes validated pricing to the user pricing cache, or to an explicit `--cache-path`.
+3. Refresh failures preserve any existing cache and return structured `reason`, `error_type`, `source_url`, `source_kind`, `writes_cache=false`, and `old_cache_preserved=true`.
+4. `pricing show --json` can report `source_url`, `source_kind`, `fetched_at`, `expires_at`, `ttl_seconds`, and `is_stale` when the selected pricing source contains metadata.
+5. The implementation labels the source as `official_docs_html`, not as a stable API.
+6. The project default `config/pricing.json` is not modified by default refresh behavior.
+
+This node does not implement a vendor-stable pricing API because no such V4 pricing API was evidenced during the p2.10a58 audit.
 
 ## p2.10a57 WeClaw round3 contract foundation
 

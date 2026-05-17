@@ -2949,7 +2949,10 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
 
 
 def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli_module
+
     pricing_path = tmp_path / "pricing.json"
+    cache_path = tmp_path / "pricing-cache.json"
     pricing_path.write_text(
         json.dumps(
             {
@@ -2971,12 +2974,43 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
     assert show["pricing"]["source_kind"] == "external_config"
     assert show["pricing"]["source_url"] is None
     assert "ttl_seconds" in show["pricing"]
-    assert show["pricing"]["refresh"]["available"] is False
-    assert show["pricing"]["refresh"]["action"]
+    assert show["pricing"]["refresh"]["available"] is True
+    assert show["pricing"]["refresh"]["write_cache_requires_flag"] == "--write-cache"
 
-    assert main(["pricing", "refresh", "--json", "--model", "deepseek-v4-flash"]) == 0
+    def fake_refresh(**kwargs):
+        return {
+            "status": "ok",
+            "available": True,
+            "reason": None,
+            "source_kind": "official_docs_html",
+            "source_url": kwargs["source_url"],
+            "writes_cache": bool(kwargs["write_cache"]),
+            "cache_path": str(kwargs["cache_path"]),
+            "pricing": {
+                "available": True,
+                "prices": {
+                    "input_cache_hit": 0.0028,
+                    "input_cache_miss": 0.14,
+                    "output": 0.28,
+                },
+            },
+        }
+
+    monkeypatch.setattr(cli_module, "_refresh_deepseek_pricing_from_official_docs", fake_refresh)
+
+    assert main([
+        "pricing",
+        "refresh",
+        "--json",
+        "--model",
+        "deepseek-v4-flash",
+        "--write-cache",
+        "--cache-path",
+        str(cache_path),
+    ]) == 0
     refresh = json.loads(capsys.readouterr().out)
-    assert refresh["status"] == "not_implemented"
-    assert refresh["available"] is False
-    assert refresh["writes_cache"] is False
-    assert refresh["refresh"]["reason"] == "official_live_pricing_refresh_not_implemented"
+    assert refresh["status"] == "ok"
+    assert refresh["available"] is True
+    assert refresh["writes_cache"] is True
+    assert refresh["source_kind"] == "official_docs_html"
+    assert refresh["cache_path"] == str(cache_path)

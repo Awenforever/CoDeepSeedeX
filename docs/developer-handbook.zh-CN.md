@@ -28,9 +28,9 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a57-weclaw-round3-contract-foundation`
-- p2.10a57 finalization前的当前内部开发基线：`master = origin/master = 7f88f27`
-- 本节点前最新已完成内部检查点：`p2.10a55-weclaw-runtime-status-contract = 7f88f27`
+- 当前内部开发线：`p2.10a58-weclaw-round3-pricing-refresh`
+- p2.10a58 finalization前的当前内部开发基线：`master = origin/master = 861f260`
+- 本节点前最新已完成内部检查点：`p2.10a57-weclaw-round3-contract-foundation = 861f260`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -42,7 +42,7 @@
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a57是内部WeClaw第三轮契约基础节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a58是内部受保护价格刷新节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,21 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a58受保护官方价格刷新
+
+p2.10a58为WeClaw第三轮实现受保护的价格刷新路径。当前V4价格来源是DeepSeek官方文档的人类HTML页面`https://api-docs.deepseek.com/quick_start/pricing`，不是稳定价格API。旧的`pricing-details-usd`和`pricing-details-cny`页面仍描述`deepseek-chat`和`deepseek-reasoner`旧价格，不能作为V4价格来源。
+
+契约新增内容：
+
+1. `dsproxy pricing refresh --json`现在会抓取并校验DeepSeek官方价格HTML，但默认不写缓存。
+2. `dsproxy pricing refresh --json --write-cache`会把校验通过的价格原子写入用户价格缓存，或写入显式`--cache-path`。
+3. refresh失败时保留旧缓存，并返回结构化`reason`、`error_type`、`source_url`、`source_kind`、`writes_cache=false`和`old_cache_preserved=true`。
+4. 当价格源包含metadata时，`pricing show --json`可报告`source_url`、`source_kind`、`fetched_at`、`expires_at`、`ttl_seconds`和`is_stale`。
+5. 实现明确标注来源为`official_docs_html`，不把它伪装成稳定API。
+6. 默认refresh行为不修改项目内`config/pricing.json`。
+
+本节点不实现vendor-stable pricing API，因为p2.10a58审计没有发现可用于V4价格的稳定官方价格API。
 
 ## p2.10a57 WeClaw第三轮契约基础补强
 

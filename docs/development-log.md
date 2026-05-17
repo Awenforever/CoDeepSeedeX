@@ -1,5 +1,17 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a58-weclaw-round3-pricing-refresh
+
+- Scope: guarded pricing refresh for WeClaw third-round status/cost display.
+- Starting point: `master = origin/master = 861f260`, internal tag `p2.10a57-weclaw-round3-contract-foundation = 861f260`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Audit conclusion: the current V4 pricing source is the human HTML page `https://api-docs.deepseek.com/quick_start/pricing`; `pricing-details-usd` and `pricing-details-cny` still describe legacy `deepseek-chat`/`deepseek-reasoner` pricing and must not be treated as V4 sources.
+- Implementation: `dsproxy pricing refresh --json` fetches and validates official pricing HTML without writing cache by default.
+- Implementation: `dsproxy pricing refresh --json --write-cache` writes validated pricing atomically to the user pricing cache or explicit `--cache-path`.
+- Contract: refresh failures preserve existing cache and return structured reason/error/source metadata.
+- Contract: `pricing show --json` reports metadata from official-docs cache files, including `source_url`, `source_kind`, `fetched_at`, `expires_at`, `ttl_seconds`, and `is_stale`.
+- Boundary: this node does not claim a stable official pricing API and does not modify project `config/pricing.json` by default.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a57-weclaw-round3-contract-foundation
 
 - Scope: low-risk WeClaw third-round contract foundation after p2.10a56 read-only audit.

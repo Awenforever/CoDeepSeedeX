@@ -109,6 +109,105 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert pricing["source_url"] is None
     assert pricing["source_kind"] == "external_config"
     assert "ttl_seconds" in pricing
-    assert pricing["refresh"]["available"] is False
+    assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
-    assert pricing["refresh"]["writes_cache"] is False
+    assert pricing["refresh"]["write_cache_requires_flag"] == "--write-cache"
+
+
+OFFICIAL_PRICING_HTML_SAMPLE = """
+<table>
+<tr><td colspan="2">MODEL</td><td>deepseek-v4-flash<sup>(1)</sup></td><td>deepseek-v4-pro</td></tr>
+<tr><td colspan="2">BASE URL (OpenAI Format)</td><td colspan="2">https://api.deepseek.com</td></tr>
+<tr><td>1M INPUT TOKENS (CACHE HIT)</td><td>$0.0028</td><td>$0.003625 (75% off)<del>$0.0145</del></td></tr>
+<tr><td>1M INPUT TOKENS (CACHE MISS)</td><td>$0.14</td><td>$0.435 (75% off)<del>$1.74</del></td></tr>
+<tr><td>1M OUTPUT TOKENS</td><td>$0.28</td><td>$0.87 (75% off)<del>$3.48</del></td></tr>
+</table>
+"""
+
+
+def test_parse_deepseek_official_pricing_html_v4_models():
+    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+
+    parsed = _parse_deepseek_official_pricing_html(OFFICIAL_PRICING_HTML_SAMPLE)
+
+    assert parsed == {
+        "deepseek-v4-flash": {
+            "input_cache_hit": 0.0028,
+            "input_cache_miss": 0.14,
+            "output": 0.28,
+        },
+        "deepseek-v4-pro": {
+            "input_cache_hit": 0.003625,
+            "input_cache_miss": 0.435,
+            "output": 0.87,
+        },
+    }
+
+
+def test_refresh_deepseek_pricing_validates_without_writing(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    cache_path = tmp_path / "pricing-cache.json"
+    monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
+
+    result = app_module._refresh_deepseek_pricing_from_official_docs(
+        model="deepseek-v4-flash",
+        write_cache=False,
+        cache_path=cache_path,
+    )
+
+    assert result["status"] == "ok"
+    assert result["available"] is True
+    assert result["writes_cache"] is False
+    assert result["source_kind"] == "official_docs_html"
+    assert result["pricing"]["prices"]["input_cache_miss"] == 0.14
+    assert not cache_path.exists()
+
+
+def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    cache_path = tmp_path / "pricing-cache.json"
+    monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
+
+    result = app_module._refresh_deepseek_pricing_from_official_docs(
+        model="deepseek-v4-pro",
+        write_cache=True,
+        cache_path=cache_path,
+    )
+
+    assert result["status"] == "ok"
+    assert result["writes_cache"] is True
+    saved = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert saved["__metadata__"]["source_kind"] == "official_docs_html"
+    assert saved["__metadata__"]["source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert saved["deepseek-v4-pro"]["output"] == 0.87
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(cache_path))
+    pricing = app_module._weclaw_pricing_contract("deepseek-v4-pro")
+    assert pricing["source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert pricing["prices"]["output"] == 0.87
+    assert pricing["refresh"]["available"] is True
+
+
+def test_refresh_deepseek_pricing_parse_failure_preserves_existing_cache(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    cache_path = tmp_path / "pricing-cache.json"
+    original = {"deepseek-v4-flash": {"input_cache_hit": 1.0, "input_cache_miss": 2.0, "output": 3.0}}
+    cache_path.write_text(json.dumps(original), encoding="utf-8")
+    monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: "<html>no v4 pricing table</html>")
+
+    result = app_module._refresh_deepseek_pricing_from_official_docs(
+        model="deepseek-v4-flash",
+        write_cache=True,
+        cache_path=cache_path,
+    )
+
+    assert result["status"] == "error"
+    assert result["reason"] == "official_pricing_parse_failed"
+    assert result["writes_cache"] is False
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == original

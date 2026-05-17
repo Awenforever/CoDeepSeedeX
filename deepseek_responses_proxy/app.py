@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import hashlib
 import os
@@ -7,9 +8,12 @@ import re
 import sqlite3
 import time
 import tomllib
+import urllib.error
+import urllib.request
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a57-weclaw-round3-contract-foundation"
+PROXY_INTERNAL_VERSION = "p2.10a58-weclaw-round3-pricing-refresh"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -226,13 +230,153 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     }
 
 
+DEEPSEEK_OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing"
+
+
+def _pricing_project_config_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "config" / "pricing.json"
+
+
+def _pricing_cache_path() -> Path:
+    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_CACHE_PATH", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".cache" / "deepseek-responses-proxy" / "pricing.json"
+
+
 def _pricing_config_path() -> Path:
-    return Path(
-        os.environ.get(
-            "DEEPSEEK_PROXY_PRICING_PATH",
-            str(Path(__file__).resolve().parent.parent / "config" / "pricing.json"),
-        )
-    ).expanduser()
+    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+
+    cache_path = _pricing_cache_path()
+    if cache_path.exists():
+        return cache_path
+
+    return _pricing_project_config_path()
+
+
+def _pricing_source_info(path: Path | None = None) -> dict[str, Any]:
+    pricing_path = path or _pricing_config_path()
+    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    cache_path = _pricing_cache_path()
+    project_path = _pricing_project_config_path()
+
+    if configured:
+        return {
+            "source": "DEEPSEEK_PROXY_PRICING_PATH",
+            "source_kind": "external_config",
+            "path": pricing_path,
+            "fallback_used": False,
+        }
+
+    try:
+        if pricing_path.resolve() == cache_path.resolve():
+            return {
+                "source": "DEEPSEEK_PROXY_PRICING_CACHE_PATH",
+                "source_kind": "official_docs_html_cache",
+                "path": pricing_path,
+                "fallback_used": False,
+            }
+    except Exception:
+        pass
+
+    try:
+        if pricing_path.resolve() == project_path.resolve():
+            return {
+                "source": "project_default_pricing_config",
+                "source_kind": "project_default_config",
+                "path": pricing_path,
+                "fallback_used": False,
+            }
+    except Exception:
+        pass
+
+    return {
+        "source": "pricing_config_path",
+        "source_kind": "external_config",
+        "path": pricing_path,
+        "fallback_used": False,
+    }
+
+
+def _pricing_metadata_from_path(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    metadata = data.get("__metadata__")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _pricing_parse_iso_timestamp(value: Any) -> float | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(raw).timestamp()
+    except Exception:
+        return None
+
+
+def _pricing_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _pricing_iso_from_timestamp(value: float) -> str:
+    return datetime.fromtimestamp(value, tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _pricing_ttl_seconds() -> int:
+    try:
+        value = int(os.environ.get("DEEPSEEK_PROXY_PRICING_TTL_SECONDS", "86400"))
+    except ValueError:
+        value = 86400
+    return max(60, value)
+
+
+def _pricing_is_stale(metadata: dict[str, Any]) -> bool | None:
+    expires_ts = _pricing_parse_iso_timestamp(metadata.get("expires_at"))
+    if expires_ts is None:
+        return None
+    return time.time() >= expires_ts
+
+
+def _validate_model_pricing_mapping(data: Any) -> dict[str, dict[str, float]]:
+    if not isinstance(data, dict):
+        raise ValueError("pricing root must be an object")
+
+    pricing: dict[str, dict[str, float]] = {}
+    required_keys = {"input_cache_hit", "input_cache_miss", "output"}
+
+    for model, raw_prices in data.items():
+        if str(model).startswith("__"):
+            continue
+        if not isinstance(model, str) or not isinstance(raw_prices, dict):
+            continue
+        if not required_keys.issubset(raw_prices):
+            continue
+        try:
+            item = {
+                "input_cache_hit": float(raw_prices["input_cache_hit"]),
+                "input_cache_miss": float(raw_prices["input_cache_miss"]),
+                "output": float(raw_prices["output"]),
+            }
+        except (TypeError, ValueError):
+            continue
+        if min(item.values()) < 0:
+            continue
+        pricing[model] = item
+
+    if not pricing:
+        raise ValueError("pricing root does not contain valid model pricing entries")
+    return pricing
 
 
 def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
@@ -240,41 +384,249 @@ def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        return _validate_model_pricing_mapping(data)
     except FileNotFoundError:
         return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
     except Exception as exc:
         print(f"[deepseek-responses-proxy] failed to load pricing config {path}: {exc}")
         return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
 
-    if not isinstance(data, dict):
-        print(f"[deepseek-responses-proxy] invalid pricing config root in {path}: expected object")
-        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
 
-    pricing: dict[str, dict[str, float]] = {}
+def _fetch_text_url(url: str, *, timeout: float = 20.0) -> str:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "CoDeepSeedeX-pricing-refresh/1.0",
+            "Accept": "text/html,text/plain,*/*",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body = response.read()
+    return body.decode("utf-8", errors="replace")
+
+
+def _clean_pricing_html_cell(value: str) -> str:
+    text = re.sub(r"<[^>]+>", "", value)
+    text = html.unescape(text)
+    text = text.replace("\xa0", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _parse_usd_price(value: str) -> float:
+    match = re.search(r"\$\s*([0-9]+(?:\.[0-9]+)?)", value)
+    if not match:
+        raise ValueError(f"missing USD price in cell: {value!r}")
+    return float(match.group(1))
+
+
+def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, float]]:
+    compact = re.sub(r"\s+", " ", text)
+    table_match = None
+    for match in re.finditer(r"<table\b.*?</table>", compact, flags=re.IGNORECASE | re.DOTALL):
+        table = match.group(0)
+        if "deepseek-v4-flash" in table and "deepseek-v4-pro" in table:
+            table_match = table
+            break
+
+    if table_match is None:
+        raise ValueError("official pricing table for deepseek-v4-flash/deepseek-v4-pro was not found")
+
+    rows: list[list[str]] = []
+    for row_html in re.findall(r"<tr\b.*?</tr>", table_match, flags=re.IGNORECASE | re.DOTALL):
+        cells = [
+            _clean_pricing_html_cell(cell)
+            for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
+        ]
+        if cells:
+            rows.append(cells)
+
+    model_row = next((row for row in rows if any(cell == "deepseek-v4-flash" or cell.startswith("deepseek-v4-flash") for cell in row)), None)
+    if not model_row:
+        raise ValueError("model row was not found in official pricing table")
+
+    def _model_index(model: str) -> int:
+        for index, cell in enumerate(model_row):
+            if cell == model or cell.startswith(model):
+                return index
+        raise ValueError(f"model {model!r} was not found in official pricing table")
+
+    flash_index = _model_index("deepseek-v4-flash")
+    pro_index = _model_index("deepseek-v4-pro")
+
+    prices: dict[str, dict[str, float]] = {
+        "deepseek-v4-flash": {},
+        "deepseek-v4-pro": {},
+    }
+
+    label_map = {
+        "1M INPUT TOKENS(CACHE HIT)": "input_cache_hit",
+        "1M INPUT TOKENS (CACHE HIT)": "input_cache_hit",
+        "1M INPUT TOKENS(CACHE MISS)": "input_cache_miss",
+        "1M INPUT TOKENS (CACHE MISS)": "input_cache_miss",
+        "1M OUTPUT TOKENS": "output",
+    }
+
+    for row in rows:
+        if not row:
+            continue
+        normalized_label = row[0].replace(" ", " ").strip().upper()
+        normalized_label = re.sub(r"\s+", " ", normalized_label)
+        key = None
+        for label, mapped_key in label_map.items():
+            if label in normalized_label:
+                key = mapped_key
+                break
+        if key is None:
+            continue
+
+        if flash_index >= len(row) or pro_index >= len(row):
+            raise ValueError(f"pricing row for {key} does not have both model columns")
+        prices["deepseek-v4-flash"][key] = _parse_usd_price(row[flash_index])
+        prices["deepseek-v4-pro"][key] = _parse_usd_price(row[pro_index])
+
     required_keys = {"input_cache_hit", "input_cache_miss", "output"}
+    for model, item in prices.items():
+        if not required_keys.issubset(item):
+            raise ValueError(f"official pricing table missing keys for {model}: {sorted(required_keys - set(item))}")
 
-    for model, raw_prices in data.items():
-        if not isinstance(model, str) or not isinstance(raw_prices, dict):
-            print(f"[deepseek-responses-proxy] ignored invalid pricing entry for model={model!r}")
-            continue
+    return prices
 
-        if not required_keys.issubset(raw_prices):
-            print(f"[deepseek-responses-proxy] ignored incomplete pricing entry for model={model!r}")
-            continue
 
+def _write_pricing_cache_atomic(
+    prices: dict[str, dict[str, float]],
+    *,
+    path: Path,
+    source_url: str,
+    fetched_at: str,
+    ttl_seconds: int,
+) -> None:
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    expires_ts = (_pricing_parse_iso_timestamp(fetched_at) or time.time()) + ttl_seconds
+    payload: dict[str, Any] = {
+        "__metadata__": {
+            "source_url": source_url,
+            "source_kind": "official_docs_html",
+            "fetched_at": fetched_at,
+            "expires_at": _pricing_iso_from_timestamp(expires_ts),
+            "ttl_seconds": ttl_seconds,
+            "unit": "per_1m_tokens",
+            "currency": "USD",
+            "parser": "deepseek_official_docs_html_v1",
+        },
+        **prices,
+    }
+    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
+def _refresh_deepseek_pricing_from_official_docs(
+    *,
+    model: str | None = None,
+    source_url: str = DEEPSEEK_OFFICIAL_PRICING_URL,
+    write_cache: bool = False,
+    cache_path: str | Path | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    fetched_at = _pricing_now_iso()
+    ttl_seconds = _pricing_ttl_seconds()
+    target_path = Path(cache_path).expanduser() if cache_path else _pricing_cache_path()
+
+    try:
+        text = _fetch_text_url(source_url, timeout=timeout)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "available": False,
+            "reason": "official_pricing_fetch_failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1000],
+            "source_url": source_url,
+            "source_kind": "official_docs_html",
+            "writes_cache": False,
+            "cache_path": str(target_path),
+            "old_cache_preserved": True,
+        }
+
+    try:
+        prices = _parse_deepseek_official_pricing_html(text)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "available": False,
+            "reason": "official_pricing_parse_failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1000],
+            "source_url": source_url,
+            "source_kind": "official_docs_html",
+            "writes_cache": False,
+            "cache_path": str(target_path),
+            "old_cache_preserved": True,
+        }
+
+    cache_written = False
+    if write_cache:
         try:
-            pricing[model] = {
-                "input_cache_hit": float(raw_prices["input_cache_hit"]),
-                "input_cache_miss": float(raw_prices["input_cache_miss"]),
-                "output": float(raw_prices["output"]),
+            _write_pricing_cache_atomic(
+                prices,
+                path=target_path,
+                source_url=source_url,
+                fetched_at=fetched_at,
+                ttl_seconds=ttl_seconds,
+            )
+            cache_written = True
+        except Exception as exc:
+            return {
+                "status": "error",
+                "available": False,
+                "reason": "official_pricing_cache_write_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:1000],
+                "source_url": source_url,
+                "source_kind": "official_docs_html",
+                "writes_cache": False,
+                "cache_path": str(target_path),
+                "old_cache_preserved": True,
+                "validated_prices": prices,
             }
-        except (TypeError, ValueError):
-            print(f"[deepseek-responses-proxy] ignored non-numeric pricing entry for model={model!r}")
 
-    if not pricing:
-        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+    model_key = str(model or DEFAULT_MODEL)
+    model_prices = prices.get(model_key)
+    expires_ts = (_pricing_parse_iso_timestamp(fetched_at) or time.time()) + ttl_seconds
 
-    return pricing
+    return {
+        "status": "ok",
+        "available": True,
+        "reason": None,
+        "action": "validated official DeepSeek pricing HTML; add --write-cache to persist the cache" if not cache_written else "validated and persisted official DeepSeek pricing cache",
+        "source_url": source_url,
+        "source_kind": "official_docs_html",
+        "fetched_at": fetched_at,
+        "expires_at": _pricing_iso_from_timestamp(expires_ts),
+        "ttl_seconds": ttl_seconds,
+        "currency": "USD",
+        "unit": "per_1m_tokens",
+        "parser": "deepseek_official_docs_html_v1",
+        "pricing": {
+            "available": bool(model_prices),
+            "provider": "deepseek",
+            "model": model_key,
+            "currency": "USD",
+            "unit": "per_1m_tokens",
+            "source": "official_deepseek_pricing_docs",
+            "source_url": source_url,
+            "source_kind": "official_docs_html",
+            "prices": model_prices,
+            "all_models": sorted(prices),
+            "missing": [] if model_prices else ["model_pricing_entry"],
+        },
+        "all_prices": prices,
+        "writes_cache": cache_written,
+        "cache_path": str(target_path),
+        "old_cache_preserved": True,
+    }
 
 
 def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
@@ -294,6 +646,7 @@ def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
     ) / 1_000_000
 
     return float(cost)
+
 
 
 def _debug_trace_enabled() -> bool:
@@ -11946,19 +12299,26 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
 def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
     pricing_path = _pricing_config_path()
     path_exists = pricing_path.exists()
+    source_info = _pricing_source_info(pricing_path)
+    metadata = _pricing_metadata_from_path(pricing_path) if path_exists else {}
     prices = _load_model_pricing_usd_per_1m()
     model_key = str(model or DEFAULT_MODEL)
     model_prices = prices.get(model_key)
 
-    source_kind = "external_config" if path_exists else "built_in_default"
-    source = "DEEPSEEK_PROXY_PRICING_PATH" if path_exists else "built_in_default_pricing_cache"
+    source_kind = str(metadata.get("source_kind") or source_info["source_kind"])
+    source_url = metadata.get("source_url")
+    ttl_seconds = metadata.get("ttl_seconds")
+    is_stale = _pricing_is_stale(metadata)
+
     refresh = {
-        "available": False,
-        "reason": "official_live_pricing_refresh_not_implemented",
-        "action": "use the static dsproxy pricing cache until official live refresh is implemented",
-        "source_kind": source_kind,
+        "available": True,
+        "reason": None,
+        "action": "run dsproxy pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
+        "source_kind": "official_docs_html",
+        "source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
         "requires_live_network": True,
         "writes_cache": False,
+        "write_cache_requires_flag": "--write-cache",
     }
 
     return {
@@ -11967,15 +12327,15 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
         "model": model_key,
         "currency": "USD",
         "unit": "per_1m_tokens",
-        "source": source,
+        "source": source_info["source"],
         "source_path": str(pricing_path),
-        "source_url": None,
+        "source_url": source_url,
         "source_kind": source_kind,
-        "fallback_used": not path_exists,
-        "is_stale": None,
-        "fetched_at": None,
-        "expires_at": None,
-        "ttl_seconds": None,
+        "fallback_used": bool(source_info.get("fallback_used")) or not path_exists,
+        "is_stale": is_stale,
+        "fetched_at": metadata.get("fetched_at"),
+        "expires_at": metadata.get("expires_at"),
+        "ttl_seconds": ttl_seconds,
         "prices": model_prices,
         "all_models": sorted(prices),
         "missing": [] if model_prices else ["model_pricing_entry"],

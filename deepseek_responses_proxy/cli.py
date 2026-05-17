@@ -17,7 +17,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract
+from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract
 
 
 APP_NAME = "deepseek-responses-proxy"
@@ -2063,9 +2063,9 @@ def _cli_pricing_contract(model: str | None = None) -> dict[str, object]:
 
 def _pricing(args: argparse.Namespace) -> int:
     model = getattr(args, "model", None)
-    pricing = _cli_pricing_contract(model)
     command = getattr(args, "pricing_command", "show")
     if command == "show":
+        pricing = _cli_pricing_contract(model)
         payload = {
             "status": "ok",
             "pricing": pricing,
@@ -2074,18 +2074,15 @@ def _pricing(args: argparse.Namespace) -> int:
         return 0
 
     if command == "refresh":
-        refresh = pricing.get("refresh") if isinstance(pricing, dict) else {}
-        payload = {
-            "status": "not_implemented",
-            "available": False,
-            "reason": "official_live_pricing_refresh_not_implemented",
-            "action": "use the static dsproxy pricing cache until official live refresh is implemented",
-            "pricing": pricing,
-            "refresh": refresh,
-            "writes_cache": False,
-        }
+        payload = _refresh_deepseek_pricing_from_official_docs(
+            model=model,
+            source_url=getattr(args, "source_url", None) or "https://api-docs.deepseek.com/quick_start/pricing",
+            write_cache=bool(getattr(args, "write_cache", False)),
+            cache_path=getattr(args, "cache_path", None),
+            timeout=float(getattr(args, "timeout", 20.0) or 20.0),
+        )
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return 0
+        return 0 if payload.get("status") == "ok" else 1
 
     print(json.dumps({"status": "error", "error": "unknown_pricing_command"}, ensure_ascii=False, indent=2))
     return 2
@@ -5078,7 +5075,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage.add_argument("--thinking-filter", choices=["true", "false"])
     usage.set_defaults(func=_usage)
 
-    pricing = sub.add_parser("pricing", help="inspect dsproxy pricing cache")
+    pricing = sub.add_parser("pricing", help="inspect or refresh dsproxy pricing cache")
     pricing_sub = pricing.add_subparsers(dest="pricing_command", required=True)
 
     pricing_show = pricing_sub.add_parser("show", help="show current pricing cache")
@@ -5086,9 +5083,13 @@ def build_parser() -> argparse.ArgumentParser:
     pricing_show.add_argument("--model", default=None)
     pricing_show.set_defaults(func=_pricing)
 
-    pricing_refresh = pricing_sub.add_parser("refresh", help="report official live pricing refresh status")
+    pricing_refresh = pricing_sub.add_parser("refresh", help="fetch and validate official DeepSeek pricing HTML")
     pricing_refresh.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     pricing_refresh.add_argument("--model", default=None)
+    pricing_refresh.add_argument("--write-cache", action="store_true", help="atomically write validated pricing to the user cache")
+    pricing_refresh.add_argument("--cache-path", default=None, help="optional explicit cache path for --write-cache")
+    pricing_refresh.add_argument("--source-url", default="https://api-docs.deepseek.com/quick_start/pricing")
+    pricing_refresh.add_argument("--timeout", type=float, default=20.0)
     pricing_refresh.set_defaults(func=_pricing)
 
     config = sub.add_parser("config", help="manage local config")
