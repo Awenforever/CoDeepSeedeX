@@ -669,3 +669,45 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
     assert data["compaction"]["available"] is True
     assert "tokens" in data
     assert data["tokens"]["last_turn"]["available"] is False
+
+def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_path):
+    catalog_path = tmp_path / "model-catalog.json"
+    catalog_path.write_text(
+        '{"models":[{"model":"deepseek-v4-flash","context_window_tokens":1000000}]}',
+        encoding="utf-8",
+    )
+    codex_config = tmp_path / "config.toml"
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        f"model_catalog_json = \"{catalog_path}\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+
+    client = TestClient(create_app())
+    profile_data = client.get("/v1/proxy/weclaw/profile-status?profile=deepseek-thinking").json()
+    status_data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking").json()
+
+    assert profile_data["context_window"]["model_catalog"]["available"] is True
+    assert profile_data["context_window"]["model_catalog"]["context_window_tokens"] == 1000000
+    assert profile_data["context_window"]["used_tokens_action"]
+    assert profile_data["context_window"]["used_tokens_precision"] == "unavailable"
+    assert profile_data["diagnostics"]["available"] is True
+    assert "context_window.used_tokens" in {
+        item["path"] for item in profile_data["diagnostics"]["degraded_fields"]
+    }
+
+    assert status_data["semantic_compaction"]["rollout"]["action"]
+    assert status_data["semantic_compaction"]["rollout"]["missing_events"]
+    assert status_data["pricing"]["source_url"] is None
+    assert "ttl_seconds" in status_data["pricing"]
+    assert status_data["pricing"]["refresh"]["action"]
+    assert status_data["diagnostics"]["available"] is True
+    paths = {item["path"] for item in status_data["diagnostics"]["degraded_fields"]}
+    assert "tokens.last_turn" in paths
+    assert "pricing.refresh" in paths
+    assert "semantic_compaction.rollout" in paths

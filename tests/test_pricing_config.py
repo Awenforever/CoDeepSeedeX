@@ -84,3 +84,31 @@ def test_estimate_cost_uses_external_pricing_config(monkeypatch, tmp_path):
 
     expected = (40 * 1.0 + 60 * 10.0 + 2 * 100.0) / 1_000_000
     assert abs(cost - expected) < 1e-12
+
+def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_path):
+    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 1.0,
+                    "input_cache_miss": 2.0,
+                    "output": 3.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+
+    pricing = _weclaw_pricing_contract("deepseek-v4-flash")
+
+    assert pricing["available"] is True
+    assert pricing["source_url"] is None
+    assert pricing["source_kind"] == "external_config"
+    assert "ttl_seconds" in pricing
+    assert pricing["refresh"]["available"] is False
+    assert pricing["refresh"]["action"]
+    assert pricing["refresh"]["writes_cache"] is False

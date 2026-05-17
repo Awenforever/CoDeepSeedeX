@@ -28,9 +28,9 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a55-weclaw-runtime-status-contract`
-- p2.10a55 finalization前的当前内部开发基线：`master = origin/master = f43a4c0`
-- 本节点前最新已完成内部检查点：`p2.10a54-token-shadow-accounting-plan = f43a4c0`
+- 当前内部开发线：`p2.10a57-weclaw-round3-contract-foundation`
+- p2.10a57 finalization前的当前内部开发基线：`master = origin/master = 7f88f27`
+- 本节点前最新已完成内部检查点：`p2.10a55-weclaw-runtime-status-contract = 7f88f27`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -42,7 +42,7 @@
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a55是内部运行时/status契约节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a57是内部WeClaw第三轮契约基础节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,22 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a57 WeClaw第三轮契约基础补强
+
+p2.10a57是WeClaw第三轮需求的低风险契约基础节点。它保持p2.10a55兼容性，优先补机器可读诊断，而不是直接实现高风险token估算、live pricing refresh或启用semantic payload compaction。
+
+契约新增内容：
+
+1. WeClaw-facing profile和runtime status新增`diagnostics`，包含`degraded_fields`、`warnings`和`actions`。
+2. `context_window.used_tokens`仍不可用，但新增稳定的`used_tokens_action`和`used_tokens_precision=unavailable`。
+3. `context_window.model_catalog`在managed Codex profile存在可读`model_catalog_json`时，可按effective model绑定模型上下文窗口。不可用时返回`reason`和`action`。
+4. pricing契约新增`source_url`、`ttl_seconds`，并稳定`refresh`对象，包含`action`、`source_kind`、`requires_live_network`和`writes_cache=false`。
+5. `dsproxy pricing show --json`返回当前静态价格缓存。`dsproxy pricing refresh --json`已存在，但只返回结构化`not_implemented`，不联网、不写缓存。
+6. runtime WeClaw status将`compaction.semantic_compaction`镜像到顶层`semantic_compaction`，并为rollout状态补充`action`和`missing_events`。
+7. 本节点不从session usage推断context used tokens，不在没有tokenizer时拆分prompt子类，不实现official live pricing refresh，也不启用semantic payload compaction。
+
+Release状态：不移动公开Release tag，不创建GitHub Release，不重建Release资产。
 
 ## p2.10a55 WeClaw运行时status契约闭环
 

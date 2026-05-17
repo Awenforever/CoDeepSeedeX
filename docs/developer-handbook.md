@@ -32,9 +32,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a55-weclaw-runtime-status-contract`
-- Current internal development baseline before p2.10a55 finalization: `master = origin/master = f43a4c0`
-- Latest completed internal checkpoint before this node: `p2.10a54-token-shadow-accounting-plan = f43a4c0`
+- Current internal development line: `p2.10a57-weclaw-round3-contract-foundation`
+- Current internal development baseline before p2.10a57 finalization: `master = origin/master = 7f88f27`
+- Latest completed internal checkpoint before this node: `p2.10a55-weclaw-runtime-status-contract = 7f88f27`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
@@ -46,7 +46,7 @@ If documentation structure changes, tests must be updated to the new contract. D
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a55 is an internal runtime/status contract node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a57 is an internal WeClaw round3 contract foundation node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -321,6 +321,22 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a57 WeClaw round3 contract foundation
+
+p2.10a57 is a low-risk contract foundation node for the WeClaw third-round requirements. It preserves p2.10a55 compatibility and adds machine-readable diagnostics rather than implementing high-risk token estimation, live pricing refresh, or semantic payload compaction enablement.
+
+Contract additions:
+
+1. WeClaw-facing profile and runtime status now expose `diagnostics` with `degraded_fields`, `warnings`, and `actions`.
+2. `context_window.used_tokens` remains unavailable, but now carries stable `used_tokens_action` and `used_tokens_precision=unavailable`.
+3. `context_window.model_catalog` can bind a managed Codex profile `model_catalog_json` entry to the effective model when a readable catalog is present. If unavailable, it reports `reason` and `action`.
+4. Pricing contract fields now include `source_url`, `ttl_seconds`, and a stable `refresh` object with `action`, `source_kind`, `requires_live_network`, and `writes_cache=false`.
+5. `dsproxy pricing show --json` returns the current static pricing cache. `dsproxy pricing refresh --json` exists but returns structured `not_implemented` without network access or cache writes.
+6. Runtime WeClaw status mirrors `compaction.semantic_compaction` to top-level `semantic_compaction` and enriches rollout state with `action` and `missing_events`.
+7. This node does not infer context used tokens from session usage, does not split prompt subcategories without a tokenizer, does not implement official live pricing refresh, and does not enable semantic payload compaction.
+
+Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
 
 ## p2.10a55 WeClaw runtime status contract closure
 

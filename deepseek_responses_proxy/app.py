@@ -53,7 +53,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a55-weclaw-runtime-status-contract"
+PROXY_INTERNAL_VERSION = "p2.10a57-weclaw-round3-contract-foundation"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11239,6 +11239,342 @@ def _runtime_int_or_zero(value: object) -> int:
         return 0
 
 
+
+
+def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
+    return {
+        "used_tokens": None,
+        "used_tokens_available": False,
+        "used_tokens_source": "not_reported",
+        "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
+        "used_tokens_action": "display an unavailable marker instead of deriving context usage from session totals",
+        "used_tokens_precision": "unavailable",
+    }
+
+
+def _weclaw_catalog_context_tokens(value: Any) -> int | None:
+    if isinstance(value, dict):
+        for key in (
+            "context_window_tokens",
+            "model_context_window_tokens",
+            "context_window",
+            "context_length",
+            "max_context_tokens",
+            "max_input_tokens",
+        ):
+            if key not in value:
+                continue
+            try:
+                parsed = int(value.get(key) or 0)
+            except (TypeError, ValueError):
+                parsed = 0
+            if parsed > 0:
+                return parsed
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _weclaw_catalog_model_name(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    for key in ("model", "id", "name"):
+        raw = value.get(key)
+        if raw:
+            return str(raw)
+    return None
+
+
+def _weclaw_load_model_catalog(profile_section: dict[str, str]) -> tuple[Any, str | None, str | None, str | None]:
+    raw = (profile_section.get("model_catalog_json") or "").strip()
+    if not raw:
+        return None, None, None, "model_catalog_json_not_configured"
+
+    candidate = raw
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, str):
+            candidate = parsed
+        else:
+            return parsed, "codex_profile.model_catalog_json", "inline_json", None
+    except Exception:
+        candidate = raw
+
+    path = Path(candidate).expanduser()
+    if not path.exists():
+        return None, "codex_profile.model_catalog_json", "file", "model_catalog_file_not_found"
+
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, "codex_profile.model_catalog_json", "file", "model_catalog_file_invalid_json"
+
+    return parsed, str(path), "file", None
+
+
+def _weclaw_find_model_catalog_entry(catalog: Any, model: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    model_key = str(model or "").strip()
+    if not model_key:
+        return None, "effective_model_unavailable"
+
+    if isinstance(catalog, dict):
+        if model_key in catalog:
+            value = catalog.get(model_key)
+            if isinstance(value, dict):
+                return {"model": model_key, **value}, None
+            return {"model": model_key, "context_window_tokens": value}, None
+
+        models = catalog.get("models")
+        if isinstance(models, dict):
+            if model_key in models:
+                value = models.get(model_key)
+                if isinstance(value, dict):
+                    return {"model": model_key, **value}, None
+                return {"model": model_key, "context_window_tokens": value}, None
+            iterable = models.values()
+        elif isinstance(models, list):
+            iterable = models
+        else:
+            iterable = catalog.values()
+
+        for item in iterable:
+            if not isinstance(item, dict):
+                continue
+            name = _weclaw_catalog_model_name(item)
+            if name == model_key:
+                return item, None
+
+    if isinstance(catalog, list):
+        for item in catalog:
+            if not isinstance(item, dict):
+                continue
+            name = _weclaw_catalog_model_name(item)
+            if name == model_key:
+                return item, None
+
+    return None, "model_catalog_entry_not_found"
+
+
+def _weclaw_model_catalog_contract(profile_section: dict[str, str], model: str | None) -> dict[str, Any]:
+    catalog, source, source_kind, load_reason = _weclaw_load_model_catalog(profile_section)
+    if load_reason is not None:
+        return {
+            "available": False,
+            "model": str(model or "") or None,
+            "context_window_tokens": None,
+            "source": source or "codex_profile.model_catalog_json",
+            "source_kind": source_kind,
+            "reason": load_reason,
+            "action": "install or repair the managed Codex profile so model_catalog_json points to a readable model catalog",
+        }
+
+    entry, match_reason = _weclaw_find_model_catalog_entry(catalog, model)
+    if entry is None:
+        return {
+            "available": False,
+            "model": str(model or "") or None,
+            "context_window_tokens": None,
+            "source": source or "codex_profile.model_catalog_json",
+            "source_kind": source_kind,
+            "reason": match_reason or "model_catalog_entry_not_found",
+            "action": "add the effective model to the model catalog or repair the managed Codex profile",
+        }
+
+    context_tokens = _weclaw_catalog_context_tokens(entry)
+    if context_tokens is None:
+        return {
+            "available": False,
+            "model": str(model or "") or None,
+            "context_window_tokens": None,
+            "source": source or "codex_profile.model_catalog_json",
+            "source_kind": source_kind,
+            "reason": "model_catalog_entry_missing_context_window",
+            "action": "add context_window_tokens for the effective model in the model catalog",
+        }
+
+    return {
+        "available": True,
+        "model": str(model or _weclaw_catalog_model_name(entry) or ""),
+        "context_window_tokens": context_tokens,
+        "source": source or "codex_profile.model_catalog_json",
+        "source_kind": source_kind,
+        "reason": None,
+        "action": None,
+    }
+
+
+def _weclaw_enrich_semantic_compaction_status(status: Any) -> dict[str, Any]:
+    result = deepcopy(status) if isinstance(status, dict) else {}
+    latest = result.get("latest")
+    if not isinstance(latest, dict):
+        latest = {}
+    for key in ("semantic_audit", "semantic_policy_dry_run", "semantic_payload_compaction"):
+        item = latest.get(key)
+        if not isinstance(item, dict):
+            item = {"present": False}
+        if not bool(item.get("present")):
+            item.setdefault("reason", f"{key}_event_missing")
+            item.setdefault("action", "run a request with debug trace enabled and keep semantic compaction in dry-run before enabling payload compaction")
+        latest[key] = item
+    result["latest"] = latest
+
+    rollout = result.get("rollout")
+    if not isinstance(rollout, dict):
+        rollout = {}
+    blockers = [str(item) for item in (rollout.get("blockers") or [])]
+    missing_events = [
+        item.removesuffix("_event_missing")
+        for item in blockers
+        if item.endswith("_event_missing")
+    ]
+    rollout.setdefault("missing_events", missing_events)
+    rollout.setdefault(
+        "action",
+        "keep semantic payload compaction disabled until blockers clear; use debug semantic selftest and canary checks for validation",
+    )
+    result["rollout"] = rollout
+    return result
+
+
+def _weclaw_degraded_field(path: str, value: Any, *, default_reason: str, default_action: str) -> dict[str, Any]:
+    reason = default_reason
+    action = default_action
+    missing: list[Any] = []
+    if isinstance(value, dict):
+        reason = str(value.get("reason") or value.get("status") or default_reason)
+        action = str(value.get("action") or default_action)
+        raw_missing = value.get("missing")
+        if isinstance(raw_missing, list):
+            missing = raw_missing
+    return {
+        "path": path,
+        "reason": reason,
+        "action": action,
+        "missing": missing,
+        "user_visible": False,
+    }
+
+
+def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    degraded_fields: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    actions: list[str] = []
+
+    model = payload.get("model")
+    if isinstance(model, dict) and bool(model.get("model_conflict")):
+        warnings.append("model_conflict_hidden_from_normal_status")
+        if model.get("diagnostic_hint"):
+            actions.append(str(model.get("diagnostic_hint")))
+
+    context_window = payload.get("context_window")
+    if isinstance(context_window, dict):
+        if context_window.get("used_tokens_available") is False:
+            degraded_fields.append(
+                _weclaw_degraded_field(
+                    "context_window.used_tokens",
+                    context_window,
+                    default_reason="context_used_tokens_not_reported_by_codex_or_provider",
+                    default_action="display an unavailable marker instead of deriving context usage from session totals",
+                )
+            )
+        catalog = context_window.get("model_catalog")
+        if isinstance(catalog, dict) and catalog.get("available") is False:
+            degraded_fields.append(
+                _weclaw_degraded_field(
+                    "context_window.model_catalog",
+                    catalog,
+                    default_reason="model_catalog_unavailable",
+                    default_action="repair the managed Codex profile model catalog binding",
+                )
+            )
+
+    tokens = payload.get("tokens")
+    if isinstance(tokens, dict):
+        for key in ("last_turn", "session_total", "auxiliary_model_calls"):
+            section = tokens.get(key)
+            if isinstance(section, dict) and section.get("available") is False:
+                degraded_fields.append(
+                    _weclaw_degraded_field(
+                        f"tokens.{key}",
+                        section,
+                        default_reason="usage_unavailable",
+                        default_action="send a model request through this dsproxy route, then re-check status",
+                    )
+                )
+
+    pricing = payload.get("pricing")
+    if isinstance(pricing, dict):
+        if pricing.get("available") is False:
+            degraded_fields.append(
+                _weclaw_degraded_field(
+                    "pricing",
+                    pricing,
+                    default_reason="pricing_unavailable",
+                    default_action="check the dsproxy pricing cache with dsproxy pricing show --json",
+                )
+            )
+        refresh = pricing.get("refresh")
+        if isinstance(refresh, dict) and refresh.get("available") is False:
+            degraded_fields.append(
+                _weclaw_degraded_field(
+                    "pricing.refresh",
+                    refresh,
+                    default_reason="official_live_pricing_refresh_not_implemented",
+                    default_action="use the static dsproxy pricing cache until official live refresh is implemented",
+                )
+            )
+
+    cost = payload.get("cost")
+    if isinstance(cost, dict) and cost.get("available") is False:
+        degraded_fields.append(
+            _weclaw_degraded_field(
+                "cost",
+                cost,
+                default_reason="cost_unavailable",
+                default_action="check usage and pricing availability",
+            )
+        )
+
+    balance = payload.get("balance")
+    if isinstance(balance, dict) and balance.get("available") is False:
+        degraded_fields.append(
+            _weclaw_degraded_field(
+                "balance",
+                balance,
+                default_reason="balance_unavailable",
+                default_action="check provider balance API configuration",
+            )
+        )
+
+    semantic = payload.get("semantic_compaction")
+    if isinstance(semantic, dict):
+        rollout = semantic.get("rollout")
+        if isinstance(rollout, dict) and rollout.get("safe_to_enable_payload_compaction") is False:
+            degraded_fields.append(
+                _weclaw_degraded_field(
+                    "semantic_compaction.rollout",
+                    rollout,
+                    default_reason="semantic_payload_compaction_not_safe_to_enable",
+                    default_action="keep semantic payload compaction disabled until blockers clear",
+                )
+            )
+
+    for item in degraded_fields:
+        action = item.get("action")
+        if action and action not in actions:
+            actions.append(str(action))
+
+    return {
+        "available": True,
+        "user_visible": False,
+        "degraded_fields": degraded_fields,
+        "warnings": warnings,
+        "actions": actions,
+    }
+
+
 def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[str, Any]:
     allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
     invalid: list[dict[str, Any]] = []
@@ -11260,19 +11596,34 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
     }
 
 
-def _runtime_profile_context_contract(profile_section: dict[str, str]) -> dict[str, Any]:
+def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
     model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
     effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
+    conflicts: list[dict[str, Any]] = []
+    catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
+    if (
+        isinstance(catalog_context, int)
+        and catalog_context > 0
+        and model_context_window > 0
+        and catalog_context != model_context_window
+    ):
+        conflicts.append(
+            {
+                "field": "model_context_window_tokens",
+                "codex_profile_value": model_context_window,
+                "model_catalog_value": catalog_context,
+                "resolution": "codex_profile_model_auto_compact_token_limit_remains_display_source",
+                "user_visible": False,
+            }
+        )
     return {
         "display_limit_tokens": effective_safe_window,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "effective_safe_window_tokens": effective_safe_window,
-        "used_tokens": None,
-        "used_tokens_available": False,
-        "used_tokens_source": "not_reported",
-        "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
+        **_weclaw_context_used_tokens_unavailable_contract(),
         "source": "codex_profile.model_auto_compact_token_limit",
         "is_estimated": False,
         "codex_profile": {
@@ -11281,10 +11632,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str]) -> dict[s
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
-        "model_catalog": {
-            "available": False,
-            "source": "not_bound_to_weclaw_contract_yet",
-        },
+        "model_catalog": model_catalog,
         "effective_display": {
             "limit_tokens": effective_safe_window,
             "source": "codex_profile.model_auto_compact_token_limit",
@@ -11293,7 +11641,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str]) -> dict[s
         "notes": [
             "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
         ],
-        "conflicts": [],
+        "conflicts": conflicts,
     }
 
 
@@ -11373,7 +11721,7 @@ def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
     if bool(model.get("model_conflict")):
         warnings.append("codex_profile_model_differs_from_effective_upstream_model")
 
-    return {
+    payload = {
         "status": "ok" if not invalid else "error",
         "profile": profile,
         "profile_source": "codex_config",
@@ -11384,13 +11732,18 @@ def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
             "enabled": profile.endswith("thinking"),
             "source": "profile_route",
         },
-        "context_window": _runtime_profile_context_contract(profile_section),
+        "context_window": _runtime_profile_context_contract(
+            profile_section,
+            effective_model=str(model.get("effective_model") or model.get("upstream_model") or model.get("codex_model") or ""),
+        ),
         "health": {
             "codex_config_loadable": bool(health["codex_config_loadable"]),
             "invalid_profile_fields": invalid,
             "warnings": warnings,
         },
     }
+    payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
+    return payload
 
 
 _WECLAW_PRIMARY_USAGE_PURPOSES = {"primary", "final"}
@@ -11597,26 +11950,36 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
     model_key = str(model or DEFAULT_MODEL)
     model_prices = prices.get(model_key)
 
+    source_kind = "external_config" if path_exists else "built_in_default"
+    source = "DEEPSEEK_PROXY_PRICING_PATH" if path_exists else "built_in_default_pricing_cache"
+    refresh = {
+        "available": False,
+        "reason": "official_live_pricing_refresh_not_implemented",
+        "action": "use the static dsproxy pricing cache until official live refresh is implemented",
+        "source_kind": source_kind,
+        "requires_live_network": True,
+        "writes_cache": False,
+    }
+
     return {
         "available": bool(model_prices),
         "provider": "deepseek",
         "model": model_key,
         "currency": "USD",
         "unit": "per_1m_tokens",
-        "source": "DEEPSEEK_PROXY_PRICING_PATH" if path_exists else "built_in_default_pricing_cache",
+        "source": source,
         "source_path": str(pricing_path),
-        "source_kind": "external_config" if path_exists else "built_in_default",
+        "source_url": None,
+        "source_kind": source_kind,
         "fallback_used": not path_exists,
         "is_stale": None,
         "fetched_at": None,
         "expires_at": None,
+        "ttl_seconds": None,
         "prices": model_prices,
         "all_models": sorted(prices),
         "missing": [] if model_prices else ["model_pricing_entry"],
-        "refresh": {
-            "available": False,
-            "reason": "official_live_pricing_refresh_not_implemented",
-        },
+        "refresh": refresh,
     }
 
 
@@ -11810,7 +12173,7 @@ def _runtime_weclaw_status(
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
     context_status = _proxy_context_status()
-    semantic_status = _semantic_compaction_runtime_status()
+    semantic_status = _weclaw_enrich_semantic_compaction_status(_semantic_compaction_runtime_status())
     context_window = dict(profile_status.get("context_window", {}))
     context_window["runtime"] = {
         "available": True,
@@ -11834,7 +12197,7 @@ def _runtime_weclaw_status(
 
     cost["balance"] = balance_contract
 
-    return {
+    payload = {
         "status": profile_status.get("status", "ok"),
         "version": {
             "public_version": PROXY_PUBLIC_VERSION,
@@ -11857,8 +12220,11 @@ def _runtime_weclaw_status(
             "semantic_compaction": semantic_status,
             "missing": [],
         },
+        "semantic_compaction": semantic_status,
         "health": profile_status.get("health", {}),
     }
+    payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
+    return payload
 
 def create_app(
     *,

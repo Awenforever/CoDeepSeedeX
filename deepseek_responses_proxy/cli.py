@@ -17,7 +17,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from .app import PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION
+from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract
 
 
 APP_NAME = "deepseek-responses-proxy"
@@ -795,20 +795,35 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
     }
 
 
-def _profile_context_contract(profile_section: dict[str, str]) -> dict[str, object]:
+def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, object]:
     model_context_window = _int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
     effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
+    conflicts: list[dict[str, object]] = []
+    catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
+    if (
+        isinstance(catalog_context, int)
+        and catalog_context > 0
+        and model_context_window > 0
+        and catalog_context != model_context_window
+    ):
+        conflicts.append(
+            {
+                "field": "model_context_window_tokens",
+                "codex_profile_value": model_context_window,
+                "model_catalog_value": catalog_context,
+                "resolution": "codex_profile_model_auto_compact_token_limit_remains_display_source",
+                "user_visible": False,
+            }
+        )
 
     return {
         "display_limit_tokens": effective_safe_window,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "effective_safe_window_tokens": effective_safe_window,
-        "used_tokens": None,
-        "used_tokens_available": False,
-        "used_tokens_source": "not_reported",
-        "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
+        **_weclaw_context_used_tokens_unavailable_contract(),
         "source": "codex_profile.model_auto_compact_token_limit",
         "is_estimated": False,
         "codex_profile": {
@@ -817,10 +832,7 @@ def _profile_context_contract(profile_section: dict[str, str]) -> dict[str, obje
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
-        "model_catalog": {
-            "available": False,
-            "source": "not_bound_to_weclaw_contract_yet",
-        },
+        "model_catalog": model_catalog,
         "runtime": {
             "available": False,
             "unit": "chars",
@@ -831,7 +843,7 @@ def _profile_context_contract(profile_section: dict[str, str]) -> dict[str, obje
             "source": "codex_profile.model_auto_compact_token_limit",
             "is_estimated": False,
         },
-        "conflicts": [],
+        "conflicts": conflicts,
         "notes": [
             "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
         ],
@@ -1158,13 +1170,16 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     model_contract = _profile_model_contract(profile_section, env_values)
     model_contract["model_provider"] = provider_name
     model_contract["base_url"] = provider_section.get("base_url")
-    context_contract = _profile_context_contract(profile_section)
+    context_contract = _profile_context_contract(
+        profile_section,
+        effective_model=str(model_contract.get("effective_model") or model_contract.get("upstream_model") or model_contract.get("codex_model") or ""),
+    )
 
     warnings = list(health["warnings"])
     if bool(model_contract.get("model_conflict")):
         warnings.append("codex_profile_model_differs_from_effective_upstream_model")
 
-    return {
+    payload = {
         "status": "ok" if not profile_invalid else "error",
         "profile": profile_name,
         "profile_source": "codex_config",
@@ -1191,6 +1206,8 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "warnings": warnings,
         },
     }
+    payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
+    return payload
 
 
 def _post_config_apply_for_args(args: argparse.Namespace) -> dict[str, object]:
@@ -1378,7 +1395,6 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
     env_file = Path(getattr(args, "env_file", "")).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     profile_status = _profile_status_payload(profile_name, env_file=env_file, codex_config=default_codex_config_path())
 
-    runtime_status: dict[str, object] | None = None
     runtime_error: dict[str, object] | None = None
     try:
         thinking = bool(getattr(args, "thinking", False))
@@ -1394,6 +1410,8 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
                 "source": weclaw_url,
                 "error": None,
             }
+            if "diagnostics" not in data:
+                data["diagnostics"] = _weclaw_diagnostics_contract(data)
             return data
         runtime_error = {"http_status": http_status, "error": error, "source": weclaw_url}
     except Exception as exc:
@@ -1420,8 +1438,39 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
 
     compaction_available = bool(legacy_runtime_status and isinstance(legacy_runtime_status.get("context"), dict))
     runtime_context = legacy_runtime_status.get("context") if isinstance(legacy_runtime_status, dict) else None
+    semantic_compaction = None
+    if isinstance(legacy_runtime_status, dict) and isinstance(legacy_runtime_status.get("semantic_compaction"), dict):
+        semantic_compaction = legacy_runtime_status.get("semantic_compaction")
 
-    return {
+    fallback_pricing = {
+        "available": False,
+        "provider": "deepseek",
+        "model": str(dict(profile_status.get("model", {})).get("effective_model") or DEFAULT_MODEL),
+        "currency": "USD",
+        "unit": "per_1m_tokens",
+        "source": "runtime_required",
+        "source_path": None,
+        "source_url": None,
+        "source_kind": "runtime_required",
+        "fallback_used": None,
+        "is_stale": None,
+        "fetched_at": None,
+        "expires_at": None,
+        "ttl_seconds": None,
+        "prices": None,
+        "all_models": [],
+        "missing": ["running_dsproxy_weclaw_status_endpoint"],
+        "refresh": {
+            "available": False,
+            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "source_kind": "runtime_required",
+            "requires_live_network": None,
+            "writes_cache": False,
+        },
+    }
+
+    payload = {
         "status": profile_status.get("status", "ok"),
         "version": {
             "public_version": globals().get("PROXY_PUBLIC_VERSION", "unknown"),
@@ -1464,38 +1513,51 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
                     "semantic_audit",
                     "other",
                 ],
+                "precision": {
+                    "provider_usage_totals": "runtime_required",
+                    "purpose_attribution": "runtime_required",
+                    "prompt_subcategory_split": "not_reported_by_provider_without_tokenizer",
+                },
             },
             "last_turn": {
                 "available": False,
+                "unit": "tokens",
                 "is_estimated": False,
                 "missing": ["running_dsproxy_weclaw_status_endpoint"],
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
                 "source": "not_available_without_runtime_usage_snapshot",
             },
             "session_total": {
                 "available": False,
+                "unit": "tokens",
                 "is_estimated": False,
                 "missing": ["running_dsproxy_weclaw_status_endpoint"],
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
             },
             "auxiliary_model_calls": {
                 "available": False,
+                "unit": "tokens",
                 "included_in_session_total": None,
                 "missing": ["running_dsproxy_weclaw_status_endpoint"],
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
             },
         },
-        "pricing": {
-            "available": False,
-            "source_kind": "runtime_required",
-            "is_stale": None,
-            "fallback_used": None,
-            "missing": ["running_dsproxy_weclaw_status_endpoint"],
-        },
+        "pricing": fallback_pricing,
         "cost": {
             "available": False,
             "is_estimated": False,
+            "usage_available": False,
+            "pricing_available": False,
+            "pricing_stale": False,
+            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
             "missing": ["running_dsproxy_weclaw_status_endpoint"],
             "balance": {
                 "available": False,
                 "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
             },
         },
         "balance": {
@@ -1513,11 +1575,16 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "available": compaction_available,
             "is_estimated": False,
             "source": "dsproxy_runtime./v1/proxy/status.context",
+            "unit": "chars",
             "runtime_context": runtime_context if isinstance(runtime_context, dict) else None,
+            "semantic_compaction": semantic_compaction,
             "missing": [] if compaction_available else ["context_compaction_report_binding"],
         },
+        "semantic_compaction": semantic_compaction,
         "health": profile_status.get("health", {}),
     }
+    payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
+    return payload
 
 
 def _uninstall_codex_profile(args: argparse.Namespace) -> int:
@@ -1986,6 +2053,42 @@ def _status(args: argparse.Namespace) -> int:
 
     print(json.dumps({"status": "error", "url": url, "http_status": status, "error": error}, ensure_ascii=False, indent=2))
     return 1
+
+
+
+
+def _cli_pricing_contract(model: str | None = None) -> dict[str, object]:
+    return dict(_weclaw_pricing_contract(model))
+
+
+def _pricing(args: argparse.Namespace) -> int:
+    model = getattr(args, "model", None)
+    pricing = _cli_pricing_contract(model)
+    command = getattr(args, "pricing_command", "show")
+    if command == "show":
+        payload = {
+            "status": "ok",
+            "pricing": pricing,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    if command == "refresh":
+        refresh = pricing.get("refresh") if isinstance(pricing, dict) else {}
+        payload = {
+            "status": "not_implemented",
+            "available": False,
+            "reason": "official_live_pricing_refresh_not_implemented",
+            "action": "use the static dsproxy pricing cache until official live refresh is implemented",
+            "pricing": pricing,
+            "refresh": refresh,
+            "writes_cache": False,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print(json.dumps({"status": "error", "error": "unknown_pricing_command"}, ensure_ascii=False, indent=2))
+    return 2
 
 
 def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str, object]:
@@ -4974,6 +5077,19 @@ def build_parser() -> argparse.ArgumentParser:
     usage.add_argument("--model")
     usage.add_argument("--thinking-filter", choices=["true", "false"])
     usage.set_defaults(func=_usage)
+
+    pricing = sub.add_parser("pricing", help="inspect dsproxy pricing cache")
+    pricing_sub = pricing.add_subparsers(dest="pricing_command", required=True)
+
+    pricing_show = pricing_sub.add_parser("show", help="show current pricing cache")
+    pricing_show.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    pricing_show.add_argument("--model", default=None)
+    pricing_show.set_defaults(func=_pricing)
+
+    pricing_refresh = pricing_sub.add_parser("refresh", help="report official live pricing refresh status")
+    pricing_refresh.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    pricing_refresh.add_argument("--model", default=None)
+    pricing_refresh.set_defaults(func=_pricing)
 
     config = sub.add_parser("config", help="manage local config")
     config_sub = config.add_subparsers(dest="config_command", required=True)

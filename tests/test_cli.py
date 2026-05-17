@@ -2909,3 +2909,74 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
     return_idx = text.index('return "$codex_rc"', cleanup_idx)
     assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
+
+def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_path, capsys):
+    catalog_path = tmp_path / "models.json"
+    catalog_path.write_text(
+        json.dumps({"models": {"deepseek-v4-flash": {"context_window_tokens": 1000000}}}),
+        encoding="utf-8",
+    )
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        f"model_catalog_json = \"{catalog_path}\"\n"
+        "\n[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n",
+        encoding="utf-8",
+    )
+
+    assert main([
+        "profile",
+        "status",
+        "deepseek-thinking",
+        "--json",
+        "--codex-config",
+        str(codex_config),
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["context_window"]["model_catalog"]["available"] is True
+    assert result["context_window"]["model_catalog"]["context_window_tokens"] == 1000000
+    assert result["context_window"]["used_tokens_action"]
+    assert result["context_window"]["used_tokens_precision"] == "unavailable"
+    paths = {item["path"] for item in result["diagnostics"]["degraded_fields"]}
+    assert "context_window.used_tokens" in paths
+
+
+def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, capsys):
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 1.0,
+                    "input_cache_miss": 2.0,
+                    "output": 3.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+
+    assert main(["pricing", "show", "--json", "--model", "deepseek-v4-flash"]) == 0
+    show = json.loads(capsys.readouterr().out)
+    assert show["status"] == "ok"
+    assert show["pricing"]["available"] is True
+    assert show["pricing"]["source_kind"] == "external_config"
+    assert show["pricing"]["source_url"] is None
+    assert "ttl_seconds" in show["pricing"]
+    assert show["pricing"]["refresh"]["available"] is False
+    assert show["pricing"]["refresh"]["action"]
+
+    assert main(["pricing", "refresh", "--json", "--model", "deepseek-v4-flash"]) == 0
+    refresh = json.loads(capsys.readouterr().out)
+    assert refresh["status"] == "not_implemented"
+    assert refresh["available"] is False
+    assert refresh["writes_cache"] is False
+    assert refresh["refresh"]["reason"] == "official_live_pricing_refresh_not_implemented"

@@ -1,5 +1,18 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a57-weclaw-round3-contract-foundation
+
+- Scope: low-risk WeClaw third-round contract foundation after p2.10a56 read-only audit.
+- Starting point: `master = origin/master = 7f88f27`, internal tag `p2.10a55-weclaw-runtime-status-contract = 7f88f27`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Contract: add top-level `diagnostics` with `degraded_fields`, `warnings`, and `actions` for profile and runtime WeClaw status.
+- Contract: keep `context_window.used_tokens` unavailable while adding `used_tokens_action` and `used_tokens_precision=unavailable`.
+- Contract: bind `context_window.model_catalog` to a readable managed Codex `model_catalog_json` entry when available, otherwise return stable reason/action fields.
+- Contract: add stable pricing fields `source_url`, `ttl_seconds`, and refresh action metadata.
+- CLI: add `dsproxy pricing show --json` and structured `dsproxy pricing refresh --json` not-implemented output without live network or cache writes.
+- Contract: mirror runtime semantic compaction status to top-level `semantic_compaction` and add rollout `action` and `missing_events`.
+- Boundary: this node does not implement context used-token estimation, prompt subcategory attribution, official live pricing refresh, or semantic payload compaction enablement.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a55-weclaw-runtime-status-contract
 
 - Scope: runtime and contract fix for WeClaw second-round full telemetry integration gaps.
