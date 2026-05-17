@@ -24,13 +24,13 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开pre-release：`v0.3.9-alpha`
-- 公开pre-release commit：`4a96283`
+- 公开pre-release commit：`ac63043`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a62-weclaw-runtime-payload-guard`
-- p2.10a62前的当前内部开发基线：`master = origin/master = 2172dfe`
-- 本节点前最新已完成内部检查点：`p2.10a61-readme-structure-cleanup = 2172dfe`
+- 当前内部开发线：`p2.10a63-p0-release-state-doc-sync`
+- p2.10a63前的当前内部开发基线：`master = origin/master = ac63043`
+- 本节点前最新已完成内部检查点：`p2.10a62-weclaw-runtime-payload-guard = ac63043`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -42,7 +42,7 @@
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a62是WeClaw运行时payload guard节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a63是P0发布状态文档同步节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,24 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a63 P0发布状态文档同步
+
+p2.10a63是`v0.3.9-alpha`发布到`p2.10a62`之后的docs/version-metadata-only收口节点。
+
+公开pre-release更新后的当前可信状态：
+- `master = origin/master = ac63043`
+- `p2.10a62-weclaw-runtime-payload-guard = ac63043`
+- `v0.3.9-alpha = ac63043`，这是公开annotated pre-release tag，peeled commit为`ac63043`
+- `v0.3.8-alpha = dfdc629`，未移动
+- 禁止出现的普通tag `v0.3.9`和`v0.3.5`仍不存在
+- GitHub Release `CoDeepSeedeX v0.3.9-alpha`为非draft、pre-release，并包含`bootstrap.sh`和`install.sh`资产
+
+P0闭环判断：
+- CoDeepSeedeX侧P0实现已闭环。
+- CoDeepSeedeX侧P0公开pre-release交付已闭环。
+- 面向WeClaw的CoDeepSeedeX交付已闭环，现在等待WeClaw侧验证。
+- WeClaw侧验证若发现新问题，应进入下一轮明确需求，默认不重新打开本轮P0范围。
 
 ## p2.10a62 WeClaw运行时payload guard
 

@@ -1,3 +1,13 @@
+## p2.10a63 P0 release-state documentation sync
+
+- Synchronized repository docs after updating public pre-release `v0.3.9-alpha` to `p2.10a62-weclaw-runtime-payload-guard`.
+- Current trusted state: `master = origin/master = ac63043`, `p2.10a62-weclaw-runtime-payload-guard = ac63043`, and `v0.3.9-alpha` peeled commit `ac63043`.
+- `v0.3.8-alpha` remains `dfdc629`; forbidden plain tags `v0.3.9` and `v0.3.5` remain absent.
+- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, pre-release, and includes `bootstrap.sh` and `install.sh` assets.
+- P0 is closed from the CoDeepSeedeX implementation and pre-release delivery side; the mainline is now waiting for WeClaw-side validation.
+- If WeClaw reports new issues, treat them as the next explicit requirement round rather than reopening this P0 scope by default.
+
+
 ## p2.10a62 WeClaw runtime payload guard
 
 - Added `runtime_payload_guard` to WeClaw-facing status.
