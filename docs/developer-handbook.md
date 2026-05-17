@@ -32,9 +32,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a59-weclaw-round3-token-attribution-plan`
-- Current internal development baseline before p2.10a59 finalization: `master = origin/master = d5bdd0b`
-- Latest completed internal checkpoint before this node: `p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`
+- Current internal development line: `p2.10a60-weclaw-status-context-pricing-contract`
+- Current internal development baseline before p2.10a60: `master = origin/master = 4a96283`
+- Latest completed internal checkpoint before this node: `p2.10a59-weclaw-round3-token-attribution-plan = 4a96283`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
@@ -321,6 +321,14 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a60 WeClaw status context and pricing contract
+
+p2.10a60 addresses WeClaw fourth-round status requirements on the CoDeepSeedeX side. Runtime WeClaw status now exposes a usable context numerator without fabricating Codex internal context-window usage: `context_window.used_tokens` is populated from the latest primary upstream provider `prompt_tokens` when available, and is explicitly labelled as `estimated_current_context_from_latest_upstream_prompt_tokens`. It must not be replaced with `session_total` prompt tokens.
+
+Pricing status now separates the current price values, their source trust, the official reference URL, and the official-cache refresh state. Bundled fallback prices are labelled as `bundled_official_docs_snapshot`; only a persisted `dsproxy pricing refresh --write-cache --json` cache is treated as a freshly fetched `official_docs_html` source. Cost estimates expose the pricing source kind, source URL, source trust, and official-pricing availability so WeClaw can avoid presenting default estimates as live official prices.
+
+Context limit reporting now includes `context_window.limit_explanation`, covering `display_limit_tokens`, `model_context_window_tokens`, `auto_compact_token_limit`, and model-catalog context values. This is the dsproxy-owned explanation for 750k vs 1M style differences: WeClaw should use `display_limit_tokens` as the displayed denominator and keep `model_context_window_tokens` as the full declared profile window. If another denominator such as 950k appears, it must map to one of these explicit fields or be treated as external to the current dsproxy contract.
 
 ## p2.10a59 WeClaw token attribution boundary contract
 

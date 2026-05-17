@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a59-weclaw-round3-token-attribution-plan"
+PROXY_INTERNAL_VERSION = "p2.10a60-weclaw-status-context-pricing-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11600,8 +11600,55 @@ def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
         "used_tokens_available": False,
         "used_tokens_source": "not_reported",
         "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
-        "used_tokens_action": "display an unavailable marker instead of deriving context usage from session totals",
+        "used_tokens_action": "use latest_upstream_prompt_tokens when available; otherwise display an unavailable marker instead of deriving context usage from session totals",
         "used_tokens_precision": "unavailable",
+        "used_tokens_is_estimated": False,
+        "used_tokens_semantic_scope": "codex_internal_context_window_usage_unavailable",
+        "latest_upstream_prompt_tokens": None,
+    }
+
+
+def _weclaw_context_limit_explanation(
+    *,
+    model_context_window: int,
+    auto_compact_token_limit: int,
+    effective_safe_window: int,
+    model_catalog: Any,
+) -> dict[str, Any]:
+    catalog_tokens = None
+    catalog_source = None
+    if isinstance(model_catalog, dict):
+        catalog_tokens = model_catalog.get("context_window_tokens")
+        catalog_source = model_catalog.get("source")
+
+    display_reason = "model_context_window"
+    if auto_compact_token_limit > 0:
+        display_reason = "codex_profile_auto_compact_token_limit"
+    elif effective_safe_window <= 0:
+        display_reason = "unavailable"
+
+    return {
+        "unit": "tokens",
+        "display_limit_tokens": effective_safe_window,
+        "display_limit_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else "codex_profile.model_context_window",
+        "display_limit_reason": display_reason,
+        "model_context_window_tokens": model_context_window or None,
+        "model_context_window_source": "codex_profile.model_context_window" if model_context_window > 0 else None,
+        "auto_compact_token_limit": auto_compact_token_limit or None,
+        "auto_compact_token_limit_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else None,
+        "model_catalog_context_window_tokens": catalog_tokens,
+        "model_catalog_source": catalog_source,
+        "value_explanations": {
+            "display_limit_tokens": "The denominator WeClaw should display for the active profile. It prefers Codex model_auto_compact_token_limit when configured, because that is the practical profile limit before Codex auto-compaction.",
+            "model_context_window_tokens": "The declared model context window in the managed Codex profile. This can be larger than the display limit.",
+            "auto_compact_token_limit": "The Codex profile threshold where Codex may compact before the full model context window is reached.",
+            "model_catalog_context_window_tokens": "The dsproxy model-catalog context-window declaration, used for consistency diagnostics and not automatically used as the WeClaw denominator.",
+        },
+        "notes": [
+            "Different values such as 750k and 1M are expected when Codex profile auto-compaction is set below the full model context window.",
+            "If a UI displays another denominator such as 950k, it should map that value to one of these explicit fields or treat it as external to the current dsproxy contract.",
+            "dsproxy runtime compaction and trimming values are char-level safety controls and are not token denominators.",
+        ],
     }
 
 
@@ -11971,13 +12018,19 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "user_visible": False,
             }
         )
+    limit_explanation = _weclaw_context_limit_explanation(
+        model_context_window=model_context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
+        effective_safe_window=effective_safe_window,
+        model_catalog=model_catalog,
+    )
     return {
         "display_limit_tokens": effective_safe_window,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "effective_safe_window_tokens": effective_safe_window,
         **_weclaw_context_used_tokens_unavailable_contract(),
-        "source": "codex_profile.model_auto_compact_token_limit",
+        "source": limit_explanation["display_limit_source"],
         "is_estimated": False,
         "codex_profile": {
             "model_context_window_tokens": model_context_window,
@@ -11988,9 +12041,10 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
         "model_catalog": model_catalog,
         "effective_display": {
             "limit_tokens": effective_safe_window,
-            "source": "codex_profile.model_auto_compact_token_limit",
+            "source": limit_explanation["display_limit_source"],
             "is_estimated": False,
         },
+        "limit_explanation": limit_explanation,
         "notes": [
             "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
         ],
@@ -12156,6 +12210,79 @@ def _weclaw_usage_by_purpose(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _weclaw_section_prompt_tokens(section: Any, *, purpose: str | None = None) -> int | None:
+    if not isinstance(section, dict) or not section.get("available"):
+        return None
+    target: Any = section
+    if purpose:
+        by_purpose = section.get("by_purpose")
+        if not isinstance(by_purpose, dict):
+            return None
+        target = by_purpose.get(purpose)
+    if not isinstance(target, dict):
+        return None
+    summary = target.get("summary") if "summary" in target else target
+    if not isinstance(summary, dict):
+        return None
+    try:
+        value = int(summary.get("prompt_tokens") or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _weclaw_context_window_with_usage_estimate(context_window: dict[str, Any], tokens: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(context_window)
+    last_turn = tokens.get("last_turn") if isinstance(tokens, dict) else None
+    latest_primary_prompt_tokens = _weclaw_section_prompt_tokens(last_turn, purpose="primary")
+    latest_prompt_tokens = latest_primary_prompt_tokens or _weclaw_section_prompt_tokens(last_turn)
+
+    if latest_prompt_tokens is None:
+        return enriched
+
+    semantic_scope = (
+        "latest_primary_upstream_prompt_tokens_after_dsproxy_payload_assembly"
+        if latest_primary_prompt_tokens is not None
+        else "latest_turn_aggregate_upstream_prompt_tokens_after_dsproxy_payload_assembly"
+    )
+    source = (
+        "dsproxy_usage_ledger.latest_turn.by_purpose.primary.prompt_tokens"
+        if latest_primary_prompt_tokens is not None
+        else "dsproxy_usage_ledger.latest_turn.summary.prompt_tokens"
+    )
+    enriched.update(
+        {
+            "used_tokens": latest_prompt_tokens,
+            "used_tokens_available": True,
+            "used_tokens_source": source,
+            "used_tokens_reason": None,
+            "used_tokens_action": None,
+            "used_tokens_precision": "estimated_current_context_from_latest_upstream_prompt_tokens",
+            "used_tokens_is_estimated": True,
+            "used_tokens_semantic_scope": semantic_scope,
+            "latest_upstream_prompt_tokens": {
+                "available": True,
+                "value": latest_prompt_tokens,
+                "unit": "tokens",
+                "source": source,
+                "precision": "provider_reported_prompt_tokens_for_latest_upstream_model_call",
+                "is_estimated_for_context_window": True,
+                "semantic_scope": semantic_scope,
+                "notes": [
+                    "This is the latest upstream prompt_tokens value recorded by the provider usage ledger.",
+                    "It is the best available numerator for WeClaw context display, but it is not Codex internal context-window usage.",
+                    "It must not be replaced with session_total prompt tokens, because session_total is cumulative spend rather than current context occupancy.",
+                ],
+            },
+        }
+    )
+    display_limit = _weclaw_usage_int(enriched.get("display_limit_tokens"))
+    if display_limit > 0:
+        enriched["used_ratio"] = min(1.0, latest_prompt_tokens / display_limit)
+        enriched["remaining_tokens_estimate"] = max(0, display_limit - latest_prompt_tokens)
+    return enriched
+
+
 def _weclaw_usage_events_for_profile(
     store: Any | None,
     *,
@@ -12275,11 +12402,14 @@ def _weclaw_token_attribution_contract() -> dict[str, Any]:
             "precision": "unavailable",
             "source": "not_reported_by_codex_or_provider",
             "reason": "context_used_tokens_not_reported_by_codex_or_provider",
-            "action": "use context_window.used_tokens unavailable marker; do not derive context usage from session totals",
+            "action": "use context_window.used_tokens when context_window.used_tokens_available is true; otherwise display an unavailable marker; never derive current context usage from session totals",
+            "estimated_context_numerator_available_when_latest_upstream_prompt_tokens_exist": True,
+            "estimate_field": "context_window.latest_upstream_prompt_tokens",
+            "estimate_precision": "estimated_current_context_from_latest_upstream_prompt_tokens",
             "missing": [
                 "codex_context_used_tokens",
                 "provider_context_window_used_tokens",
-                "audited_context_token_estimator",
+                "audited_tokenizer_or_segment_ledger",
             ],
         },
     }
@@ -12408,19 +12538,50 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
     model_prices = prices.get(model_key)
 
     source_kind = str(metadata.get("source_kind") or source_info["source_kind"])
-    source_url = metadata.get("source_url")
+    source_url = metadata.get("source_url") or None
+    official_reference_url = DEEPSEEK_OFFICIAL_PRICING_URL
     ttl_seconds = metadata.get("ttl_seconds")
     is_stale = _pricing_is_stale(metadata)
+    fetched_at = metadata.get("fetched_at")
+    snapshot_created_at = metadata.get("snapshot_created_at")
+    updated_at = fetched_at or snapshot_created_at or metadata.get("updated_at")
+    official_cache = source_kind == "official_docs_html"
+    bundled_snapshot = source_kind == "bundled_official_docs_snapshot"
+    externally_configured = source_info["source_kind"] == "external_config"
+    source_trust = (
+        "official_docs_html_cache"
+        if official_cache
+        else "bundled_official_docs_snapshot"
+        if bundled_snapshot
+        else "external_config"
+        if externally_configured
+        else "project_default_config"
+    )
+    official_price_available = bool(official_cache and fetched_at)
 
     refresh = {
         "available": True,
         "reason": None,
         "action": "run dsproxy pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
         "source_kind": "official_docs_html",
-        "source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
+        "source_url": official_reference_url,
         "requires_live_network": True,
         "writes_cache": False,
         "write_cache_requires_flag": "--write-cache",
+    }
+
+    official_source = {
+        "available": official_price_available,
+        "source_url": official_reference_url,
+        "source_kind": "official_docs_html",
+        "fetched_at": fetched_at,
+        "updated_at": fetched_at,
+        "expires_at": metadata.get("expires_at"),
+        "ttl_seconds": ttl_seconds,
+        "is_stale": is_stale if official_cache else None,
+        "requires_refresh": not official_price_available,
+        "reason": None if official_price_available else "official_pricing_cache_not_available_for_active_status",
+        "action": None if official_price_available else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
     }
 
     return {
@@ -12432,15 +12593,27 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
         "source": source_info["source"],
         "source_path": str(pricing_path),
         "source_url": source_url,
+        "official_reference_url": official_reference_url,
         "source_kind": source_kind,
+        "source_trust": source_trust,
         "fallback_used": bool(source_info.get("fallback_used")) or not path_exists,
         "is_stale": is_stale,
-        "fetched_at": metadata.get("fetched_at"),
+        "fetched_at": fetched_at,
+        "snapshot_created_at": snapshot_created_at,
+        "updated_at": updated_at,
         "expires_at": metadata.get("expires_at"),
         "ttl_seconds": ttl_seconds,
         "prices": model_prices,
         "all_models": sorted(prices),
         "missing": [] if model_prices else ["model_pricing_entry"],
+        "official_source": official_source,
+        "pricing_source_state": {
+            "current_prices_are_official_live_cache": official_price_available,
+            "current_prices_are_bundled_official_snapshot": bundled_snapshot,
+            "current_prices_are_external_config": externally_configured,
+            "cost_uses_current_prices": bool(model_prices),
+            "must_display_source_label": True,
+        },
         "refresh": refresh,
     }
 
@@ -12492,6 +12665,10 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
         "is_estimated": True,
         "source": "dsproxy_usage_ledger.estimated_cost_usd",
         "pricing_source": pricing.get("source"),
+        "pricing_source_kind": pricing.get("source_kind"),
+        "pricing_source_trust": pricing.get("source_trust"),
+        "pricing_source_url": pricing.get("source_url") or pricing.get("official_reference_url"),
+        "official_pricing_available": bool((pricing.get("official_source") or {}).get("available")) if isinstance(pricing.get("official_source"), dict) else False,
         "pricing_updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "last_turn_estimated_cost": _cost_from_summary(last_turn),
@@ -12634,9 +12811,13 @@ def _runtime_weclaw_status(
     balance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
+    tokens = _weclaw_tokens_contract(store, profile=profile)
     context_status = _proxy_context_status()
     semantic_status = _weclaw_enrich_semantic_compaction_status(_semantic_compaction_runtime_status())
-    context_window = dict(profile_status.get("context_window", {}))
+    context_window = _weclaw_context_window_with_usage_estimate(
+        dict(profile_status.get("context_window", {})),
+        tokens,
+    )
     context_window["runtime"] = {
         "available": True,
         "unit": "chars",
@@ -12652,7 +12833,6 @@ def _runtime_weclaw_status(
     if isinstance(model_contract, dict):
         effective_model = model_contract.get("effective_model") or model_contract.get("upstream_model") or model_contract.get("codex_model")
 
-    tokens = _weclaw_tokens_contract(store, profile=profile)
     pricing = _weclaw_pricing_contract(str(effective_model or DEFAULT_MODEL))
     cost = _weclaw_cost_contract(tokens, pricing)
     balance_contract = balance if isinstance(balance, dict) else _weclaw_balance_unavailable("not_queried")

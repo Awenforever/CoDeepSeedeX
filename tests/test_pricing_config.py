@@ -112,6 +112,8 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
     assert pricing["refresh"]["write_cache_requires_flag"] == "--write-cache"
+    assert pricing["official_reference_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert pricing["pricing_source_state"]["must_display_source_label"] is True
 
 
 OFFICIAL_PRICING_HTML_SAMPLE = """

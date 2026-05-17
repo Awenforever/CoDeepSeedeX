@@ -1,6 +1,14 @@
+## p2.10a60 WeClaw status context and pricing contract
+
+- Updated runtime WeClaw status to expose a usable context numerator from the latest primary upstream provider `prompt_tokens` when available, with explicit estimated precision and source labels.
+- Added context limit explanations for display limit, full model context window, auto-compact token limit, and model-catalog context values.
+- Added pricing source trust, official reference URL, official-cache availability, and cost pricing-source metadata so WeClaw can distinguish bundled fallback estimates from official refreshed pricing.
+- Kept the boundary that session totals are cumulative spend and must not be used as current context-window occupancy.
+
+
 # CoDeepSeedeX详尽开发日志
 
-## p2.10a59-weclaw-round3-token-attribution-plan
+## p2.10a60-weclaw-status-context-pricing-contract
 
 - Scope: token attribution boundary contract for WeClaw third-round status display.
 - Starting point: `master = origin/master = d5bdd0b`, internal tag `p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`, public pre-release tag `v0.3.9-alpha = 677d923`.

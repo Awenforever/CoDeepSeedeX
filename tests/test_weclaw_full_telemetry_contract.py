@@ -159,6 +159,18 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["status"] == "ok"
     assert data["profile"] == "deepseek-thinking"
 
+    context_window = data["context_window"]
+    assert context_window["used_tokens_available"] is True
+    assert context_window["used_tokens"] == 1000
+    assert context_window["used_tokens_is_estimated"] is True
+    assert context_window["used_tokens_source"] == "dsproxy_usage_ledger.latest_turn.by_purpose.primary.prompt_tokens"
+    assert context_window["latest_upstream_prompt_tokens"]["value"] == 1000
+    assert context_window["latest_upstream_prompt_tokens"]["is_estimated_for_context_window"] is True
+    assert context_window["remaining_tokens_estimate"] == 749000
+    assert context_window["limit_explanation"]["display_limit_tokens"] == 750000
+    assert context_window["limit_explanation"]["model_context_window_tokens"] == 1000000
+    assert context_window["limit_explanation"]["auto_compact_token_limit"] == 750000
+
     last_turn = data["tokens"]["last_turn"]
     assert last_turn["available"] is True
     assert last_turn["unit"] == "tokens"
@@ -191,12 +203,17 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["pricing"]["currency"] == "USD"
     assert data["pricing"]["unit"] == "per_1m_tokens"
     assert data["pricing"]["prices"]["input_cache_miss"] > 0
+    assert data["pricing"]["official_reference_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert data["pricing"]["source_trust"] in {"bundled_official_docs_snapshot", "official_docs_html_cache", "external_config"}
+    assert data["pricing"]["pricing_source_state"]["must_display_source_label"] is True
 
     assert data["cost"]["available"] is True
     assert data["cost"]["is_estimated"] is True
     assert data["cost"]["last_turn_estimated_cost"] == pytest.approx(0.015)
     assert data["cost"]["session_estimated_cost"] == pytest.approx(0.016)
     assert data["cost"]["auxiliary_estimated_cost"] == pytest.approx(0.005)
+    assert data["cost"]["pricing_source_kind"]
+    assert data["cost"]["pricing_source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
 
     assert data["balance"]["available"] is True
     assert data["balance"]["provider"] == "deepseek"

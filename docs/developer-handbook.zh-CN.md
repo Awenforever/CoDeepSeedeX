@@ -28,9 +28,9 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a59-weclaw-round3-token-attribution-plan`
-- p2.10a59 finalization前的当前内部开发基线：`master = origin/master = d5bdd0b`
-- 本节点前最新已完成内部检查点：`p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`
+- 当前内部开发线：`p2.10a60-weclaw-status-context-pricing-contract`
+- p2.10a60前的当前内部开发基线：`master = origin/master = 4a96283`
+- 本节点前最新已完成内部检查点：`p2.10a59-weclaw-round3-token-attribution-plan = 4a96283`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -294,6 +294,14 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a60 WeClaw status上下文和价格契约
+
+p2.10a60处理WeClaw第四轮status需求，修改位置在CoDeepSeedeX侧。运行时WeClaw status现在会提供可用的context numerator，但不伪造Codex内部context-window占用：当usage ledger存在最新primary上游调用时，`context_window.used_tokens`取该调用的provider `prompt_tokens`，并明确标注为`estimated_current_context_from_latest_upstream_prompt_tokens`。不得用`session_total` prompt tokens替代，因为那是累计消耗，不是当前上下文占用。
+
+pricing status现在区分当前价格值、价格来源可信度、官方参考URL和官方cache刷新状态。内置兜底价格标注为`bundled_official_docs_snapshot`；只有通过`dsproxy pricing refresh --write-cache --json`持久化的cache才视为新抓取的`official_docs_html`来源。cost估算会暴露pricing source kind、source URL、source trust和official pricing availability，避免WeClaw把默认估算展示为实时官方价格。
+
+context limit现在增加`context_window.limit_explanation`，覆盖`display_limit_tokens`、`model_context_window_tokens`、`auto_compact_token_limit`和model catalog context值。这是dsproxy维护的750k与1M等差异解释：WeClaw应使用`display_limit_tokens`作为展示分母，把`model_context_window_tokens`作为完整profile窗口。如果出现950k这类其他分母，必须映射到这些显式字段之一，否则应视为当前dsproxy契约外部来源。
 
 ## p2.10a59 WeClaw token归因边界契约
 

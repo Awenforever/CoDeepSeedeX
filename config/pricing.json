@@ -1,4 +1,16 @@
 {
+  "__metadata__": {
+    "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+    "source_kind": "bundled_official_docs_snapshot",
+    "snapshot_created_at": "2026-05-17T00:00:00Z",
+    "unit": "per_1m_tokens",
+    "currency": "USD",
+    "parser": "deepseek_official_docs_html_v1",
+    "notes": [
+      "Bundled fallback snapshot. Run dsproxy pricing refresh --write-cache --json to replace it with a locally fetched official_docs_html cache.",
+      "Cost estimates must display this source label and must not present bundled snapshot prices as freshly fetched official prices."
+    ]
+  },
   "deepseek-v4-flash": {
     "input_cache_hit": 0.0028,
     "input_cache_miss": 0.14,
