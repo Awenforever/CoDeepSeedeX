@@ -1,5 +1,19 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a55-weclaw-runtime-status-contract
+
+- Scope: runtime and contract fix for WeClaw second-round full telemetry integration gaps.
+- Starting point: `master = origin/master = f43a4c0`, internal tag `p2.10a54-token-shadow-accounting-plan = f43a4c0`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Root cause: runtime `GET /v1/proxy/weclaw/status` used `create_app()` closure parameters for `store` and `deepseek_client`; default runtime creation leaves those closure values as `None`, while the real objects live in `app.state.store` and `app.state.deepseek_client`.
+- Fix: bind runtime WeClaw status aggregation to `app.state.store` and `app.state.deepseek_client`.
+- Contract: add explicit context `used_tokens` display semantics without inferring context usage from session totals.
+- Contract: add actionable balance unavailable fields and balance display fields when available.
+- Contract: add cost availability reason fields and pricing timestamp fields.
+- Contract: add model conflict `display_hint`, `diagnostic_hint`, and `user_visible=false`.
+- Tests: cover app.state store/client binding, actionable balance degradation, context used-token fields, model-conflict diagnostic fields, CLI fallback fields, and effort max to Codex xhigh safety.
+- Recovery note: the first focused test run used the unsanitized developer shell and image-provider tests picked up local image-model/provider overrides. The final validation must use a sanitized environment before commit.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a54-token-shadow-accounting-plan
 
 - Scope: docs-only plan for token shadow accounting and token-vs-char drift observability before semantic payload compaction implementation.

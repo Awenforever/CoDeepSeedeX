@@ -32,21 +32,23 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a54-token-shadow-accounting-plan`
-- Verified repository baseline before post-release doc sync: `master = origin/master = 677d923`
+- Current internal development line: `p2.10a55-weclaw-runtime-status-contract`
+- Current internal development baseline before p2.10a55 finalization: `master = origin/master = f43a4c0`
+- Latest completed internal checkpoint before this node: `p2.10a54-token-shadow-accounting-plan = f43a4c0`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
-- Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- WeClaw status: the WeClaw side accepted the p2.10a48 reporting baseline and started initial integration. Second-round WeClaw requirements will be proposed in a later development conversation after their audit.
+- Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
+- WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
-- Older public tags must not move:
+- Public tags that must not move:
+  - `v0.3.9-alpha = 677d923`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a51 is a post-release documentation synchronization node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a55 is an internal runtime/status contract node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
-This handbook is the startup context for new AI development conversations. It should describe current state, stable rules, current task bus, release rules, and compact high-value lessons. Detailed chronology belongs in `docs/development-log.md`.
+This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
 ## 3. Key file map
 
@@ -303,7 +305,7 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
-| P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
+| P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | `p2.10a55-weclaw-runtime-status-contract` | Implemented runtime status binding and contract actionability | 2026-05-17 | Runtime WeClaw status now uses app.state store/client, preserves explicit unavailable reasons, adds context used-token display semantics, and adds model-conflict diagnostic display hints. |
 | P0.4 | Token shadow accounting and token-vs-char drift observability | Add audited token-level shadow accounting and drift reporting before semantic payload compaction implementation. Existing char-based dsproxy compaction and trim remain the runtime safety valve. | Plan captured at `p2.10a54-token-shadow-accounting-plan` | Planned after WeClaw second-round requirements and before P0.5 implementation | 2026-05-17 | This is not a direct switch from char triggering to token triggering. First observe provider usage, Codex status tokens, local estimates, and drift before any trigger change. |
 
 | P0.5 | Semantic payload compaction hardening | Dry-run, canary, limited-enable, telemetry, and rollback rules exist for semantic payload compaction without corrupting user intent, patches, errors, git state, Release state, or WeClaw accounting. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned after WeClaw second-round unless TUI compaction risk forces escalation | 2026-05-16 | This line must audit usage/cost, compaction statistics, WeClaw display fields, debug budget, long-session observability, and token-vs-char semantics before implementation. |
@@ -319,6 +321,22 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a55 WeClaw runtime status contract closure
+
+p2.10a55 fixes the second-round WeClaw full telemetry gap found after real WeClaw integration. The key runtime bug was that `GET /v1/proxy/weclaw/status` used `create_app()` closure parameters for `store` and `deepseek_client`, while the actual running objects are held in `app.state.store` and `app.state.deepseek_client`.
+
+Implemented contract changes:
+
+1. Runtime WeClaw status now aggregates usage from `app.state.store`, so Codex/ACP requests recorded in the running SQLite usage ledger can surface through `tokens.last_turn`, `tokens.session_total`, and `tokens.auxiliary_model_calls`.
+2. Runtime WeClaw status now queries balance through `app.state.deepseek_client`, with no API-key status downgraded to actionable `not_configured` instead of a generic client-unavailable reason.
+3. Balance unavailable responses now include `status`, `provider`, `reason`, `action`, `updated_at`, `currency`, `amount`, and `display`.
+4. Cost responses now distinguish usage, pricing, and stale-pricing availability through `usage_available`, `pricing_available`, `pricing_stale`, `reason`, `missing`, and pricing timestamp fields.
+5. Context-window responses now include `used_tokens=null`, `used_tokens_available=false`, and `used_tokens_source=not_reported` so WeClaw does not infer context usage from session totals.
+6. Model-conflict responses now include `display_hint`, `diagnostic_hint`, and `user_visible=false`, allowing normal WeClaw status to hide internal model-drift diagnostics while verbose status can show them.
+7. CLI fallback status mirrors the new context and balance unavailable fields when the runtime WeClaw endpoint is unreachable.
+
+The patch does not move the public `v0.3.9-alpha` Release tag and does not rebuild Release assets.
 
 ## p2.10a54 token shadow accounting plan
 

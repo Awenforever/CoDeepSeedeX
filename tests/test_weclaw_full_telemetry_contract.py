@@ -201,7 +201,73 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["balance"]["available"] is True
     assert data["balance"]["provider"] == "deepseek"
     assert data["balance"]["balance"]["balance_infos"][0]["total_balance"] == "12.34"
+    assert data["balance"]["currency"] == "USD"
+    assert data["balance"]["amount"] == pytest.approx(12.34)
+    assert data["balance"]["display"] == "12.34 USD"
     assert data["cost"]["balance"]["available"] is True
+
+
+@pytest.mark.asyncio
+async def test_weclaw_http_status_uses_app_state_store_and_client_for_runtime_contract(tmp_path, monkeypatch):
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_DB_PATH", str(tmp_path / "runtime.sqlite3"))
+
+    app = create_app(deepseek_client=WeClawBalanceClient())
+    _record_usage(
+        app.state.store,
+        response_id="resp_runtime_primary",
+        request_id="resp_runtime",
+        created_at=300,
+        purpose="primary",
+        call_index=0,
+        prompt_tokens=42,
+        completion_tokens=8,
+        total_tokens=50,
+        cached_tokens=2,
+        reasoning_tokens=1,
+        cost=0.004,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tokens"]["last_turn"]["available"] is True
+    assert data["tokens"]["last_turn"]["summary"]["total_tokens"] == 50
+    assert data["tokens"]["session_total"]["available"] is True
+    assert data["cost"]["available"] is True
+    assert data["balance"]["available"] is True
+    assert data["balance"]["display"] == "12.34 USD"
+
+
+@pytest.mark.asyncio
+async def test_weclaw_http_status_balance_unavailable_is_actionable(tmp_path, monkeypatch):
+    class NoBalanceClient:
+        pass
+
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    app = create_app(deepseek_client=NoBalanceClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["balance"]["available"] is False
+    assert data["balance"]["status"] == "provider_unsupported"
+    assert data["balance"]["provider"] == "deepseek"
+    assert data["balance"]["reason"] == "balance_client_unavailable"
+    assert data["balance"]["action"] == "provider does not expose balance API through this client"
 
 
 def test_cli_status_weclaw_json_prefers_runtime_weclaw_status(monkeypatch, tmp_path, capsys):

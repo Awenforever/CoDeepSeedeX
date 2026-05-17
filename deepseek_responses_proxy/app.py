@@ -53,7 +53,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a54-token-shadow-accounting-plan"
+PROXY_INTERNAL_VERSION = "p2.10a55-weclaw-runtime-status-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11269,6 +11269,10 @@ def _runtime_profile_context_contract(profile_section: dict[str, str]) -> dict[s
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "effective_safe_window_tokens": effective_safe_window,
+        "used_tokens": None,
+        "used_tokens_available": False,
+        "used_tokens_source": "not_reported",
+        "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
         "source": "codex_profile.model_auto_compact_token_limit",
         "is_estimated": False,
         "codex_profile": {
@@ -11299,6 +11303,11 @@ def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str
     force_model_enabled = _force_proxy_model_enabled()
     effective_model = _select_upstream_model(codex_model)
     model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
+    diagnostic_hint = (
+        "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+        if model_conflict
+        else None
+    )
     return {
         "provider": os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
         "model": effective_model,
@@ -11311,6 +11320,9 @@ def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str
         "env_model": env_model,
         "force_model_enabled": force_model_enabled,
         "model_conflict": model_conflict,
+        "display_hint": None,
+        "diagnostic_hint": diagnostic_hint,
+        "user_visible": False,
         "source": "dsproxy_runtime._select_upstream_model",
         "notes": (
             [
@@ -11443,17 +11455,22 @@ def _weclaw_usage_events_for_profile(
     *,
     profile: str,
     limit: int = 1000,
-) -> list[dict[str, Any]]:
-    if store is None or not hasattr(store, "usage_events"):
-        return []
+) -> tuple[list[dict[str, Any]], str | None]:
+    if store is None:
+        return [], "runtime_store_unavailable"
+    if not hasattr(store, "usage_events"):
+        return [], "usage_ledger_unsupported"
     thinking = profile.endswith("thinking")
     try:
         events = store.usage_events(limit=limit, thinking=thinking)
     except TypeError:
-        events = store.usage_events(limit=limit)
+        try:
+            events = store.usage_events(limit=limit)
+        except Exception:
+            return [], "usage_ledger_query_failed"
     except Exception:
-        return []
-    return [dict(event) for event in events if isinstance(event, dict)]
+        return [], "usage_ledger_query_failed"
+    return [dict(event) for event in events if isinstance(event, dict)], None
 
 
 def _weclaw_latest_turn_events(events: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
@@ -11473,7 +11490,7 @@ def _weclaw_latest_turn_events(events: list[dict[str, Any]]) -> tuple[str | None
 
 
 def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any]:
-    events = _weclaw_usage_events_for_profile(store, profile=profile)
+    events, unavailable_reason = _weclaw_usage_events_for_profile(store, profile=profile)
     request_id, latest_events = _weclaw_latest_turn_events(events)
     auxiliary_events = [
         event
@@ -11507,11 +11524,16 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
     }
 
     if not events:
+        reason = unavailable_reason or "ledger_empty"
+        missing = [reason] if reason != "ledger_empty" else ["usage_ledger_events"]
         unavailable = {
             "available": False,
             "unit": "tokens",
             "is_estimated": False,
-            "missing": ["usage_ledger_events"],
+            "missing": missing,
+            "reason": reason,
+            "status": reason,
+            "action": "send a model request through this dsproxy route, then re-check status; if it still stays empty, verify the running proxy uses the expected SQLite usage ledger",
             "source": "dsproxy_usage_ledger",
         }
         return {
@@ -11603,12 +11625,15 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
     session_total = tokens.get("session_total") if isinstance(tokens, dict) else {}
     auxiliary = tokens.get("auxiliary_model_calls") if isinstance(tokens, dict) else {}
 
+    usage_available = bool(isinstance(session_total, dict) and session_total.get("available"))
+    pricing_available = bool(isinstance(pricing, dict) and pricing.get("available"))
+    pricing_stale = bool(pricing.get("is_stale")) if isinstance(pricing, dict) else False
     available = bool(
         isinstance(last_turn, dict)
         and last_turn.get("available")
-        and isinstance(session_total, dict)
-        and session_total.get("available")
-        and pricing.get("available")
+        and usage_available
+        and pricing_available
+        and not pricing_stale
     )
 
     def _cost_from_summary(section: Any) -> float:
@@ -11619,23 +11644,39 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
             return 0.0
         return _weclaw_usage_float(summary.get("estimated_cost_usd"))
 
+    missing = []
+    if not usage_available:
+        missing.append("usage_attribution")
+    if not pricing_available:
+        missing.append("pricing")
+    if pricing_stale:
+        missing.append("pricing_stale")
+
+    if not usage_available:
+        reason = "usage_unavailable"
+    elif not pricing_available:
+        reason = "pricing_unavailable"
+    elif pricing_stale:
+        reason = "pricing_stale"
+    else:
+        reason = None
+
     return {
         "available": available,
         "currency": str(pricing.get("currency") or "USD"),
         "is_estimated": True,
         "source": "dsproxy_usage_ledger.estimated_cost_usd",
         "pricing_source": pricing.get("source"),
+        "pricing_updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
+        "updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "last_turn_estimated_cost": _cost_from_summary(last_turn),
         "session_estimated_cost": _cost_from_summary(session_total),
         "auxiliary_estimated_cost": _cost_from_summary(auxiliary),
-        "missing": [] if available else [
-            item
-            for item, present in {
-                "usage_attribution": bool(isinstance(session_total, dict) and session_total.get("available")),
-                "pricing": bool(pricing.get("available")),
-            }.items()
-            if not present
-        ],
+        "usage_available": usage_available,
+        "pricing_available": pricing_available,
+        "pricing_stale": pricing_stale,
+        "reason": reason,
+        "missing": missing,
         "notes": [
             "Token counts are provider-reported exact usage totals.",
             "Cost is estimated from dsproxy pricing cache, not provider invoice data.",
@@ -11643,14 +11684,84 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
     }
 
 
-def _weclaw_balance_unavailable(reason: str) -> dict[str, Any]:
+def _weclaw_balance_unavailable(reason: str, *, provider: str = "deepseek") -> dict[str, Any]:
+    status_action = {
+        "disabled_by_request": ("not_configured", "enable balance query when requesting WeClaw verbose status"),
+        "not_queried": ("not_configured", "query the runtime WeClaw status endpoint with include_balance=true"),
+        "api_key_not_configured": ("not_configured", "configure provider balance API key"),
+        "balance_client_unavailable": ("provider_unsupported", "provider does not expose balance API through this client"),
+        "balance_request_auth_failed": ("auth_failed", "check auth"),
+        "balance_request_network_error": ("network_error", "check network"),
+        "balance_request_failed": ("api_error", "check provider balance API response"),
+        "balance_response_unrecognized": ("api_error", "check provider balance API response"),
+    }
+    status, action = status_action.get(reason, ("not_implemented", "provider balance integration not implemented"))
     return {
         "available": False,
+        "status": status,
+        "provider": provider,
         "source": "provider_balance_api",
         "reason": reason,
+        "action": action,
+        "updated_at": None,
         "fetched_at": None,
+        "currency": None,
+        "amount": None,
+        "display": None,
         "balance": None,
     }
+
+
+def _weclaw_balance_display_fields(balance: Any) -> dict[str, Any]:
+    if not isinstance(balance, dict):
+        return {
+            "currency": None,
+            "amount": None,
+            "display": None,
+        }
+
+    balance_infos = balance.get("balance_infos")
+    first_info = balance_infos[0] if isinstance(balance_infos, list) and balance_infos else None
+    if not isinstance(first_info, dict):
+        return {
+            "currency": None,
+            "amount": None,
+            "display": None,
+        }
+
+    currency = first_info.get("currency")
+    raw_amount = first_info.get("total_balance")
+    amount = None
+    try:
+        amount = float(raw_amount) if raw_amount is not None else None
+    except (TypeError, ValueError):
+        amount = None
+
+    display = None
+    if raw_amount is not None and currency:
+        display = f"{raw_amount} {currency}"
+    elif raw_amount is not None:
+        display = str(raw_amount)
+
+    return {
+        "currency": currency,
+        "amount": amount,
+        "display": display,
+    }
+
+
+def _weclaw_balance_exception_reason(exc: Exception) -> str:
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        upstream_status = None
+        if isinstance(detail, dict):
+            upstream_status = detail.get("status_code")
+        if upstream_status in {401, 403}:
+            return "balance_request_auth_failed"
+        return "balance_request_failed"
+    if isinstance(exc, httpx.TransportError):
+        return "balance_request_network_error"
+    return "balance_request_failed"
 
 
 async def _weclaw_balance_contract(
@@ -11662,21 +11773,33 @@ async def _weclaw_balance_contract(
         return _weclaw_balance_unavailable("disabled_by_request")
     if deepseek_client is None or not hasattr(deepseek_client, "user_balance"):
         return _weclaw_balance_unavailable("balance_client_unavailable")
+
+    api_key = getattr(deepseek_client, "api_key", None)
+    if deepseek_client.__class__ is DeepSeekClient and api_key is not None and not str(api_key).strip():
+        return _weclaw_balance_unavailable("api_key_not_configured")
+
     try:
         balance = await deepseek_client.user_balance()
     except Exception as exc:
+        reason = _weclaw_balance_exception_reason(exc)
         return {
-            **_weclaw_balance_unavailable("balance_request_failed"),
+            **_weclaw_balance_unavailable(reason),
             "error_type": type(exc).__name__,
             "message": str(exc)[:1000],
         }
+
+    display_fields = _weclaw_balance_display_fields(balance)
     return {
         "available": True,
+        "status": "ok",
         "source": "provider_balance_api",
         "provider": "deepseek",
+        "updated_at": _now(),
         "fetched_at": _now(),
         "balance": balance,
         "reason": None,
+        "action": None,
+        **display_fields,
     }
 
 def _runtime_weclaw_status(
@@ -11784,12 +11907,12 @@ def create_app(
     @app.get("/v1/proxy/weclaw/status")
     async def proxy_weclaw_status(profile: str = "deepseek-thinking", include_balance: bool = True) -> dict[str, Any]:
         balance = await _weclaw_balance_contract(
-            deepseek_client=deepseek_client,
+            deepseek_client=app.state.deepseek_client,
             include_balance=include_balance,
         )
         return _runtime_weclaw_status(
             profile,
-            store=store,
+            store=app.state.store,
             balance=balance,
         )
 

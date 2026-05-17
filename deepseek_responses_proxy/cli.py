@@ -764,6 +764,11 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
 
     upstream_model = effective_model if effective_model != "unknown" else env_model
     model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
+    diagnostic_hint = (
+        "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+        if model_conflict
+        else None
+    )
 
     return {
         "provider": env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek",
@@ -776,6 +781,9 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
         "effective_model": effective_model,
         "force_model_enabled": force_model_enabled,
         "model_conflict": model_conflict,
+        "display_hint": None,
+        "diagnostic_hint": diagnostic_hint,
+        "user_visible": False,
         "source": source,
         "notes": (
             [
@@ -797,6 +805,10 @@ def _profile_context_contract(profile_section: dict[str, str]) -> dict[str, obje
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "effective_safe_window_tokens": effective_safe_window,
+        "used_tokens": None,
+        "used_tokens_available": False,
+        "used_tokens_source": "not_reported",
+        "used_tokens_reason": "context_used_tokens_not_reported_by_codex_or_provider",
         "source": "codex_profile.model_auto_compact_token_limit",
         "is_estimated": False,
         "codex_profile": {
@@ -1488,7 +1500,14 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         },
         "balance": {
             "available": False,
+            "status": "not_configured",
+            "provider": "deepseek",
             "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "updated_at": None,
+            "currency": None,
+            "amount": None,
+            "display": None,
         },
         "compaction": {
             "available": compaction_available,

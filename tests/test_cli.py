@@ -2574,6 +2574,9 @@ def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
     assert result["health"]["codex_config_loadable"] is True
     assert result["context_window"]["effective_safe_window_tokens"] == 750000
+    assert result["context_window"]["used_tokens"] is None
+    assert result["context_window"]["used_tokens_available"] is False
+    assert result["context_window"]["used_tokens_source"] == "not_reported"
 
 
 def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
@@ -2626,6 +2629,9 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     assert result["pricing"]["missing"] == ["running_dsproxy_weclaw_status_endpoint"]
     assert result["cost"]["available"] is False
     assert result["balance"]["available"] is False
+    assert result["balance"]["status"] == "not_configured"
+    assert result["balance"]["reason"] == "running_dsproxy_weclaw_status_endpoint_unavailable"
+    assert result["balance"]["action"] == "start the selected dsproxy route and re-run dsproxy status --weclaw-json"
     assert result["runtime_status"]["available"] is False
 
 
@@ -2657,6 +2663,9 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     assert model["upstream_model"] == "deepseek-v4-flash"
     assert model["force_model_enabled"] is True
     assert model["model_conflict"] is True
+    assert model["display_hint"] is None
+    assert model["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+    assert model["user_visible"] is False
     assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
 
 
@@ -2777,6 +2786,9 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
     assert result["model"]["effective_model"] == "deepseek-v4-flash"
     assert result["model"]["model_conflict"] is True
     assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 750000
+    assert result["context_window"]["used_tokens"] is None
+    assert result["context_window"]["used_tokens_available"] is False
+    assert result["context_window"]["used_tokens_source"] == "not_reported"
     assert result["context_window"]["runtime"]["available"] is False
     assert result["runtime_status"]["available"] is False
 

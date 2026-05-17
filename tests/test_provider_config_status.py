@@ -627,7 +627,13 @@ def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch
     assert data["model"]["effective_model"] == "deepseek-v4-flash"
     assert data["model"]["force_model_enabled"] is True
     assert data["model"]["model_conflict"] is True
+    assert data["model"]["display_hint"] is None
+    assert data["model"]["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+    assert data["model"]["user_visible"] is False
     assert data["context_window"]["effective_safe_window_tokens"] == 750000
+    assert data["context_window"]["used_tokens"] is None
+    assert data["context_window"]["used_tokens_available"] is False
+    assert data["context_window"]["used_tokens_source"] == "not_reported"
     assert "codex_profile_model_differs_from_effective_upstream_model" in data["health"]["warnings"]
 
 
@@ -655,6 +661,9 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
     assert data["status"] == "ok"
     assert data["profile"] == "deepseek-thinking"
     assert data["context_window"]["codex_profile"]["unit"] == "tokens"
+    assert data["context_window"]["used_tokens"] is None
+    assert data["context_window"]["used_tokens_available"] is False
+    assert data["context_window"]["used_tokens_source"] == "not_reported"
     assert data["context_window"]["runtime"]["unit"] == "chars"
     assert data["context_window"]["runtime"]["available"] is True
     assert data["compaction"]["available"] is True

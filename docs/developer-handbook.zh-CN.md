@@ -28,19 +28,21 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a51-post-v039-alpha-release-doc-sync`
-- 发布后文档同步前已验证仓库基线：`master = origin/master = 677d923`
+- 当前内部开发线：`p2.10a55-weclaw-runtime-status-contract`
+- p2.10a55 finalization前的当前内部开发基线：`master = origin/master = f43a4c0`
+- 本节点前最新已完成内部检查点：`p2.10a54-token-shadow-accounting-plan = f43a4c0`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
-- 已完成的P0检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- WeClaw状态：WeClaw侧已认可p2.10a48回报基线，并进入初步集成。第二轮WeClaw需求会在其审计后于后续开发对话提出。
+- 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
+- WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
 - Release要求：如果使用WeClaw联动，`weclaw_dev`版本不得低于`v0.1.9-alpha`。
-- 旧公开tag不能移动：
+- 不能移动的公开tag：
+  - `v0.3.9-alpha = 677d923`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a51是发布后文档同步节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a55是内部运行时/status契约节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -276,7 +278,7 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 | ID | 主线任务 | 预期指标 | 当前版本或锚点 | 当前状态 | 更新日期 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry基线 | WeClaw可从dsproxy维护的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance和compaction。 | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | 已被WeClaw侧认可并进入初步集成 | 2026-05-16 | WeClaw第二轮需求会在其审计后提出。prompt子类token拆分仍保持not-reported，除非后续新增经过审计的tokenizer层。 |
-| P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | 尚未开始 | 等待 | 2026-05-16 | 不做 speculative second-round work。需求到达后先只读审计。 |
+| P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | `p2.10a55-weclaw-runtime-status-contract` | 已完成运行时status绑定和契约可操作性修复 | 2026-05-17 | 运行时WeClaw status现在使用app.state store/client，保留明确不可用原因，新增context used-token展示语义，并为model conflict提供诊断展示提示。 |
 | P0.4 | token shadow accounting和token-vs-char漂移观测 | 在semantic payload compaction实现前，新增经过审计的token级影子统计和漂移报告。现有char级dsproxy compaction和trim仍作为运行时安全阀。 | 计划记录于`p2.10a54-token-shadow-accounting-plan` | 计划中，排在WeClaw第二轮需求之后和P0.5实现之前 | 2026-05-17 | 这不是把char触发直接切成token触发。必须先观测provider usage、Codex status tokens、本地估算和漂移，再决定是否改触发策略。 |
 
 | P0.5 | semantic payload compaction强化 | 为semantic payload compaction建立dry-run、canary、有限启用、遥测、回退和展示规则，确保不破坏用户需求、补丁、错误、git状态、Release状态和WeClaw统计。 | 计划记录于`p2.10a52-semantic-payload-compaction-tui-plan` | 计划中，默认排在WeClaw第二轮之后和AnyCodeX之前 | 2026-05-16 | 实现前必须审计usage/cost、compact统计、WeClaw展示字段、debug budget、长会话观测和token-vs-char语义。 |
@@ -292,6 +294,22 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a55 WeClaw运行时status契约闭环
+
+p2.10a55修复WeClaw真实接入后的第二轮full telemetry缺口。核心运行时错误是`GET /v1/proxy/weclaw/status`使用`create_app()`闭包参数里的`store`和`deepseek_client`，但真实运行对象位于`app.state.store`和`app.state.deepseek_client`。
+
+本次契约变化：
+
+1. 运行时WeClaw status改为从`app.state.store`聚合usage，因此Codex/ACP请求写入运行中SQLite usage ledger后，可以通过`tokens.last_turn`、`tokens.session_total`和`tokens.auxiliary_model_calls`展示。
+2. 运行时WeClaw status改为通过`app.state.deepseek_client`查询balance。没有API key时返回可操作的`not_configured`，而不是泛化的client unavailable。
+3. balance不可用响应新增`status`、`provider`、`reason`、`action`、`updated_at`、`currency`、`amount`和`display`。
+4. cost响应通过`usage_available`、`pricing_available`、`pricing_stale`、`reason`、`missing`和pricing时间字段区分usage、pricing和stale pricing问题。
+5. context-window响应新增`used_tokens=null`、`used_tokens_available=false`和`used_tokens_source=not_reported`，避免WeClaw从session totals推断context usage。
+6. model-conflict响应新增`display_hint`、`diagnostic_hint`和`user_visible=false`，普通WeClaw status可以隐藏内部模型差异诊断，verbose status后续可展示。
+7. runtime WeClaw端点不可达时，CLI fallback status也同步返回新的context和balance不可用字段。
+
+本补丁不移动公开`v0.3.9-alpha` Release tag，也不重建Release资产。
 
 ## p2.10a54 token shadow accounting计划
 
