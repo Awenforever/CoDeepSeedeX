@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a58-weclaw-round3-pricing-refresh"
+PROXY_INTERNAL_VERSION = "p2.10a59-weclaw-round3-token-attribution-plan"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -12195,6 +12195,95 @@ def _weclaw_latest_turn_events(events: list[dict[str, Any]]) -> tuple[str | None
     return key, grouped
 
 
+def _weclaw_prompt_subcategory_split_contract() -> dict[str, Any]:
+    return {
+        "available": False,
+        "unit": "tokens",
+        "is_estimated": False,
+        "precision": "unavailable",
+        "source": "not_reported_by_provider_without_audited_tokenizer_or_segment_ledger",
+        "reason": "provider_usage_is_aggregate_without_prompt_subcategory_breakdown",
+        "action": "display prompt subcategory splits as unavailable until dsproxy adds an audited tokenizer or a provider-backed per-segment ledger",
+        "requested_categories": [
+            "user",
+            "assistant_history",
+            "tool_output",
+            "environment",
+            "system",
+            "developer",
+            "compaction_summary",
+            "runtime_injected",
+            "other_prompt",
+        ],
+        "missing": [
+            "audited_tokenizer_or_segment_ledger",
+            "per_message_prompt_segment_boundaries",
+            "provider_reported_prompt_subcategory_usage",
+        ],
+        "notes": [
+            "Provider usage totals are exact for aggregate prompt/completion/cache/reasoning fields.",
+            "dsproxy purpose attribution is exact for model-call purposes such as primary, tool_bridge, liveness_judge, liveness_retry, compaction, and semantic_audit.",
+            "Prompt subcategory splits must not be inferred from aggregate provider prompt_tokens.",
+        ],
+    }
+
+
+def _weclaw_token_attribution_contract() -> dict[str, Any]:
+    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract()
+    return {
+        "provider_usage_totals": {
+            "available": True,
+            "unit": "tokens",
+            "precision": "exact_provider_reported",
+            "source": "provider_usage_fields_persisted_in_dsproxy_usage_ledger",
+            "fields": [
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "cached_tokens",
+                "reasoning_tokens",
+            ],
+        },
+        "purpose_attribution": {
+            "available": True,
+            "unit": "tokens",
+            "precision": "exact_dsproxy_call_purpose",
+            "source": "dsproxy_usage_ledger.purpose_and_call_index",
+            "fields": [
+                "purpose",
+                "call_index",
+                "request_id",
+                "response_id",
+                "requested_model",
+                "effective_model",
+                "upstream_model",
+            ],
+            "known_purposes": [
+                "primary",
+                "final",
+                "tool_bridge",
+                "liveness_judge",
+                "liveness_retry",
+                "compaction",
+                "semantic_audit",
+            ],
+        },
+        "prompt_subcategory_split": prompt_subcategory_split,
+        "context_window_used_tokens": {
+            "available": False,
+            "unit": "tokens",
+            "precision": "unavailable",
+            "source": "not_reported_by_codex_or_provider",
+            "reason": "context_used_tokens_not_reported_by_codex_or_provider",
+            "action": "use context_window.used_tokens unavailable marker; do not derive context usage from session totals",
+            "missing": [
+                "codex_context_used_tokens",
+                "provider_context_window_used_tokens",
+                "audited_context_token_estimator",
+            ],
+        },
+    }
+
 def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any]:
     events, unavailable_reason = _weclaw_usage_events_for_profile(store, profile=profile)
     request_id, latest_events = _weclaw_latest_turn_events(events)
@@ -12204,8 +12293,10 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
         if str(event.get("purpose") or "final") not in _WECLAW_PRIMARY_USAGE_PURPOSES
     ]
 
+    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract()
+    attribution = _weclaw_token_attribution_contract()
     taxonomy = {
-        "version": 2,
+        "version": 3,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage",
         "categories": [
@@ -12226,6 +12317,13 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
             "provider_usage_totals": "exact_provider_reported",
             "purpose_attribution": "exact_dsproxy_call_purpose",
             "prompt_subcategory_split": "not_reported_by_provider_without_tokenizer",
+            "context_window_used_tokens": "unavailable",
+        },
+        "attribution_schema": {
+            "version": 1,
+            "provider_usage_totals": "exact aggregate provider fields",
+            "purpose_attribution": "exact dsproxy model-call purpose fields",
+            "prompt_subcategory_split": "explicitly unavailable until an audited tokenizer or per-segment ledger exists",
         },
     }
 
@@ -12244,6 +12342,8 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
         }
         return {
             "taxonomy": taxonomy,
+            "attribution": attribution,
+            "prompt_subcategory_split": prompt_subcategory_split,
             "last_turn": dict(unavailable),
             "session_total": dict(unavailable),
             "auxiliary_model_calls": {
@@ -12258,6 +12358,8 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
 
     return {
         "taxonomy": taxonomy,
+        "attribution": attribution,
+        "prompt_subcategory_split": prompt_subcategory_split,
         "last_turn": {
             "available": True,
             "unit": "tokens",

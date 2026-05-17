@@ -712,3 +712,44 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
     assert "tokens.last_turn" in paths
     assert "pricing.refresh" not in paths
     assert "semantic_compaction.rollout" in paths
+
+
+def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from deepseek_responses_proxy.app import create_app
+
+    codex_config = tmp_path / "config.toml"
+    codex_config.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+
+    client = TestClient(create_app())
+    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false").json()
+
+    assert data["status"] == "ok"
+    tokens = data["tokens"]
+    assert tokens["taxonomy"]["version"] == 3
+    assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
+    assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
+    assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "not_reported_by_provider_without_tokenizer"
+    assert tokens["taxonomy"]["precision"]["context_window_used_tokens"] == "unavailable"
+
+    attribution = tokens["attribution"]
+    assert attribution["provider_usage_totals"]["available"] is True
+    assert attribution["provider_usage_totals"]["precision"] == "exact_provider_reported"
+    assert attribution["purpose_attribution"]["available"] is True
+    assert attribution["purpose_attribution"]["precision"] == "exact_dsproxy_call_purpose"
+    assert attribution["prompt_subcategory_split"]["available"] is False
+    assert attribution["prompt_subcategory_split"]["precision"] == "unavailable"
+    assert attribution["prompt_subcategory_split"]["reason"] == "provider_usage_is_aggregate_without_prompt_subcategory_breakdown"
+    assert "audited_tokenizer_or_segment_ledger" in attribution["prompt_subcategory_split"]["missing"]
+    assert attribution["context_window_used_tokens"]["available"] is False
+    assert attribution["context_window_used_tokens"]["precision"] == "unavailable"
+
+    assert tokens["prompt_subcategory_split"] == attribution["prompt_subcategory_split"]

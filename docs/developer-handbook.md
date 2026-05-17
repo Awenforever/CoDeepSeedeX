@@ -32,9 +32,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a58-weclaw-round3-pricing-refresh`
-- Current internal development baseline before p2.10a58 finalization: `master = origin/master = 861f260`
-- Latest completed internal checkpoint before this node: `p2.10a57-weclaw-round3-contract-foundation = 861f260`
+- Current internal development line: `p2.10a59-weclaw-round3-token-attribution-plan`
+- Current internal development baseline before p2.10a59 finalization: `master = origin/master = d5bdd0b`
+- Latest completed internal checkpoint before this node: `p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
@@ -46,7 +46,7 @@ If documentation structure changes, tests must be updated to the new contract. D
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a58 is an internal guarded pricing refresh node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a59 is an internal token attribution boundary contract node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -321,6 +321,22 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a59 WeClaw token attribution boundary contract
+
+p2.10a59 records the audited token attribution boundary for WeClaw third-round status display. The audit found that dsproxy can report exact provider usage totals and exact dsproxy model-call purpose attribution, but it does not yet have an audited tokenizer or per-prompt-segment ledger for user/tool/environment/history splits.
+
+Contract changes:
+
+1. `tokens.taxonomy.version` is now `3`.
+2. `tokens.attribution.provider_usage_totals` marks aggregate provider fields as exact.
+3. `tokens.attribution.purpose_attribution` marks dsproxy `purpose`, `call_index`, `request_id`, and model attribution as exact.
+4. `tokens.attribution.prompt_subcategory_split` explicitly reports `available=false`, `precision=unavailable`, and `reason=provider_usage_is_aggregate_without_prompt_subcategory_breakdown`.
+5. `tokens.prompt_subcategory_split` mirrors the same unavailable contract for simpler WeClaw consumption.
+6. `tokens.attribution.context_window_used_tokens` explicitly remains unavailable and points WeClaw back to `context_window.used_tokens`.
+7. This node does not introduce a tokenizer, does not estimate user/tool/env/history tokens, and does not derive context-window used tokens from session totals.
+
+Boundary: WeClaw may show exact aggregate provider totals and exact purpose-level totals. It must not display fabricated prompt subcategory token splits.
 
 ## p2.10a58 guarded official pricing refresh
 

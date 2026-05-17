@@ -28,9 +28,9 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a58-weclaw-round3-pricing-refresh`
-- p2.10a58 finalization前的当前内部开发基线：`master = origin/master = 861f260`
-- 本节点前最新已完成内部检查点：`p2.10a57-weclaw-round3-contract-foundation = 861f260`
+- 当前内部开发线：`p2.10a59-weclaw-round3-token-attribution-plan`
+- p2.10a59 finalization前的当前内部开发基线：`master = origin/master = d5bdd0b`
+- 本节点前最新已完成内部检查点：`p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -42,7 +42,7 @@
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a58是内部受保护价格刷新节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a59是内部token归因边界契约节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,22 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a59 WeClaw token归因边界契约
+
+p2.10a59记录WeClaw第三轮status展示所需的token归因边界。审计结论是，dsproxy可以报告provider返回的聚合usage总量，也可以报告dsproxy模型调用purpose的精确归因。但当前没有经过审计的tokenizer，也没有per-prompt-segment ledger，因此不能拆分user、tool、environment、history等prompt子类token。
+
+契约变更：
+
+1. `tokens.taxonomy.version`更新为`3`。
+2. `tokens.attribution.provider_usage_totals`标记聚合provider字段为精确。
+3. `tokens.attribution.purpose_attribution`标记dsproxy的`purpose`、`call_index`、`request_id`和model归因为精确。
+4. `tokens.attribution.prompt_subcategory_split`明确返回`available=false`、`precision=unavailable`和`reason=provider_usage_is_aggregate_without_prompt_subcategory_breakdown`。
+5. `tokens.prompt_subcategory_split`镜像同一不可用契约，方便WeClaw消费。
+6. `tokens.attribution.context_window_used_tokens`明确保持不可用，并指向`context_window.used_tokens`。
+7. 本节点不引入tokenizer，不估算user/tool/env/history tokens，也不从session totals推导context-window used tokens。
+
+边界：WeClaw可以展示精确聚合provider totals和精确purpose级totals。不得展示伪造的prompt子类token拆分。
 
 ## p2.10a58受保护官方价格刷新
 

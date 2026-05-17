@@ -1,5 +1,18 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a59-weclaw-round3-token-attribution-plan
+
+- Scope: token attribution boundary contract for WeClaw third-round status display.
+- Starting point: `master = origin/master = d5bdd0b`, internal tag `p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Audit conclusion: dsproxy usage ledger records provider aggregate usage fields and dsproxy purpose/call-index/model attribution, but it does not store prompt subcategory token splits.
+- Audit conclusion: no audited tokenizer or local token estimator was present. `tiktoken` and `token_estimate` were not found in the p2.10a59 audit.
+- Contract: `tokens.taxonomy.version` is now `3`.
+- Contract: `tokens.attribution.provider_usage_totals` is exact provider-reported aggregate usage.
+- Contract: `tokens.attribution.purpose_attribution` is exact dsproxy model-call purpose attribution.
+- Contract: `tokens.attribution.prompt_subcategory_split` and `tokens.prompt_subcategory_split` are explicitly unavailable with reason/action/missing fields.
+- Boundary: this node does not estimate user/tool/environment/history tokens and does not derive context-window used tokens from session totals.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a58-weclaw-round3-pricing-refresh
 
 - Scope: guarded pricing refresh for WeClaw third-round status/cost display.
