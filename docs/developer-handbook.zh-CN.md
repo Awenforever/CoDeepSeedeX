@@ -28,7 +28,7 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a64-prerelease-upgrade-uninstall-docs`
+- 当前内部开发线：`p2.10a65-profile-tokenizer-accounting`
 - p2.10a64前的当前内部开发基线：`master = origin/master = 98cf535`
 - 本节点前最新已完成内部检查点：`p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
@@ -1076,3 +1076,16 @@ p2.10a49是p2.10a48 WeClaw full telemetry contract开发线完成后的最终移
 - 优先读取`docs/developer-handbook.md`。
 - 把p2.10a48视为WeClaw full telemetry第一版已认可基线。
 - 只有拿到WeClaw第二轮明确审计需求后，才继续开发。
+
+
+## p2.10a65 Profile tokenizer accounting
+
+p2.10a65启动profile感知的tokenizer统计主线。该节点为DeepSeek profile增加dsproxy自有的本地tokenizer层，使用官方DeepSeek V3 tokenizer JSON资源和Python `tokenizers`包。
+
+契约边界：
+
+- Provider返回的`usage`仍然是计费和聚合prompt、completion、cache、reasoning token总量的权威来源。
+- `tokens.profile_tokenizer`和`tokens.prompt_subcategory_split`是本地profile tokenizer估算，适合WeClaw展示和drift分析，但不能当作账单数据。
+- prompt子类统计基于dsproxy组装payload后的message边界，统计message text、reasoning content和tool-call名称或参数。chat-template开销不分摊到子类。
+- 不声称替换Codex TUI内部token统计。当前`codex --profile deepseek debug models`证据没有显示DeepSeek model catalog条目，因此dsproxy先为集成客户端提供并行的正确统计。
+- char级`runtime_payload_guard`、Compact和Trim继续与token级profile统计保持分离。

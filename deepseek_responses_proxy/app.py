@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a64-prerelease-upgrade-uninstall-docs"
+PROXY_INTERNAL_VERSION = "p2.10a65-profile-tokenizer-accounting"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11828,6 +11828,331 @@ def _runtime_int_or_zero(value: object) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+_PROFILE_TOKENIZER_CACHE: dict[str, Any] = {}
+
+
+def _profile_tokenizer_requested_categories() -> list[str]:
+    return [
+        "user",
+        "assistant_history",
+        "tool_output",
+        "environment",
+        "system",
+        "developer",
+        "compaction_summary",
+        "runtime_injected",
+        "other_prompt",
+    ]
+
+
+def _profile_tokenizer_kind_for_model(model: str | None, provider: str | None = None) -> str | None:
+    provider_key = str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek").strip().lower()
+    model_key = str(model or "").strip().lower()
+    if provider_key == "deepseek" or model_key.startswith("deepseek-"):
+        return "deepseek_v3"
+    return None
+
+
+def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
+    candidates: list[tuple[Path, str]] = []
+    for name in ["DEEPSEEK_PROXY_PROFILE_TOKENIZER_JSON", "DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON"]:
+        raw = os.environ.get(name)
+        if raw:
+            candidates.append((Path(raw).expanduser(), f"env.{name}"))
+
+    candidates.append(
+        (
+            Path(__file__).resolve().parent / "resources" / "tokenizers" / kind / "tokenizer.json",
+            "packaged_resource",
+        )
+    )
+
+    install_root_raw = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
+    if install_root_raw:
+        install_root = Path(install_root_raw).expanduser()
+        candidates.append((install_root / "resources" / "tokenizers" / kind / "tokenizer.json", "install_dir_resource"))
+
+    return candidates
+
+
+def _profile_tokenizer_contract(model: str | None, provider: str | None = None) -> dict[str, Any]:
+    provider_value = str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    kind = _profile_tokenizer_kind_for_model(model, provider_value)
+    if kind is None:
+        return {
+            "available": False,
+            "unit": "tokens",
+            "model": str(model or "") or None,
+            "provider": provider_value,
+            "tokenizer_kind": None,
+            "source": "unsupported_profile_provider",
+            "source_kind": "unsupported",
+            "reason": "profile_tokenizer_not_configured_for_provider",
+            "action": "add an audited tokenizer binding for this profile provider before displaying local token estimates",
+        }
+
+    checked: list[dict[str, Any]] = []
+    selected_path: Path | None = None
+    selected_source = None
+    for path, source_kind in _profile_tokenizer_json_candidates(kind):
+        checked.append({"path": str(path), "source_kind": source_kind, "exists": path.is_file()})
+        if path.is_file() and selected_path is None:
+            selected_path = path
+            selected_source = source_kind
+
+    if selected_path is None:
+        return {
+            "available": False,
+            "unit": "tokens",
+            "model": str(model or "") or None,
+            "provider": provider_value,
+            "tokenizer_kind": kind,
+            "source": None,
+            "source_kind": None,
+            "reason": "profile_tokenizer_json_not_found",
+            "action": "install the official DeepSeek tokenizer resource or set DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON",
+            "checked": checked,
+        }
+
+    try:
+        import tokenizers  # type: ignore  # noqa: F401
+    except Exception as exc:
+        return {
+            "available": False,
+            "unit": "tokens",
+            "model": str(model or "") or None,
+            "provider": provider_value,
+            "tokenizer_kind": kind,
+            "source": str(selected_path),
+            "source_kind": selected_source,
+            "reason": "python_tokenizers_package_unavailable",
+            "error": f"{type(exc).__name__}: {exc}",
+            "action": "install the tokenizers Python package from the project dependencies",
+            "checked": checked,
+        }
+
+    return {
+        "available": True,
+        "unit": "tokens",
+        "model": str(model or "") or None,
+        "provider": provider_value,
+        "tokenizer_kind": kind,
+        "source": str(selected_path),
+        "source_kind": selected_source,
+        "reason": None,
+        "action": None,
+        "checked": checked,
+    }
+
+
+def _load_profile_tokenizer(contract: dict[str, Any]) -> Any | None:
+    if not isinstance(contract, dict) or not contract.get("available"):
+        return None
+
+    source = str(contract.get("source") or "")
+    if not source:
+        return None
+
+    cached = _PROFILE_TOKENIZER_CACHE.get(source)
+    if cached is not None:
+        return cached
+
+    from tokenizers import Tokenizer  # type: ignore
+
+    tokenizer = Tokenizer.from_file(source)
+    _PROFILE_TOKENIZER_CACHE[source] = tokenizer
+    return tokenizer
+
+
+def _profile_tokenizer_message_category(message: dict[str, Any]) -> str:
+    role = str(message.get("role") or "").strip().lower()
+    content = _plain_text_from_content(message.get("content", ""))
+    if "[deepseek-proxy persistent compaction summary]" in content:
+        return "compaction_summary"
+    if role == "tool":
+        return "tool_output"
+    if role == "assistant":
+        return "assistant_history"
+    if role == "system":
+        return "system"
+    if role == "developer":
+        return "developer"
+    if role == "user":
+        return "user"
+    return "other_prompt"
+
+
+def _profile_tokenizer_message_text(message: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    content = _plain_text_from_content(message.get("content", ""))
+    if content:
+        chunks.append(content)
+
+    reasoning_content = message.get("reasoning_content")
+    if isinstance(reasoning_content, str) and reasoning_content:
+        chunks.append(reasoning_content)
+
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            function = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+            name = function.get("name") if isinstance(function, dict) else None
+            arguments = function.get("arguments") if isinstance(function, dict) else None
+            if name:
+                chunks.append(str(name))
+            if arguments:
+                chunks.append(arguments if isinstance(arguments, str) else json.dumps(arguments, ensure_ascii=False))
+
+    return "\n".join(chunks)
+
+
+def _profile_tokenizer_count_text(tokenizer: Any, text: str) -> int:
+    if not text:
+        return 0
+    encoded = tokenizer.encode(text)
+    ids = getattr(encoded, "ids", None)
+    if isinstance(ids, list):
+        return len(ids)
+    try:
+        return len(encoded)
+    except TypeError:
+        return 0
+
+
+def _profile_tokenizer_unavailable_report(
+    *,
+    profile: str,
+    model: str | None,
+    provider: str | None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    contract = _profile_tokenizer_contract(model, provider)
+    if reason:
+        contract = {**contract, "reason": reason}
+    return {
+        "available": False,
+        "unit": "tokens",
+        "profile": profile,
+        "model": str(model or "") or None,
+        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "tokenizer": contract,
+        "summary": {
+            "available": False,
+            "total_content_tokens": None,
+            "message_count": 0,
+        },
+        "prompt_subcategory_split": _weclaw_prompt_subcategory_split_contract(),
+    }
+
+
+def _profile_tokenizer_report_for_messages(
+    messages: list[dict[str, Any]],
+    *,
+    profile: str,
+    model: str | None,
+    provider: str | None = None,
+) -> dict[str, Any]:
+    contract = _profile_tokenizer_contract(model, provider)
+    if not contract.get("available"):
+        return _profile_tokenizer_unavailable_report(profile=profile, model=model, provider=provider)
+
+    try:
+        tokenizer = _load_profile_tokenizer(contract)
+    except Exception as exc:
+        contract = {
+            **contract,
+            "available": False,
+            "reason": "profile_tokenizer_load_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+            "action": "verify the packaged official DeepSeek tokenizer.json and tokenizers package",
+        }
+        return {
+            "available": False,
+            "unit": "tokens",
+            "profile": profile,
+            "model": str(model or "") or None,
+            "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+            "tokenizer": contract,
+            "summary": {"available": False, "total_content_tokens": None, "message_count": len(messages)},
+            "prompt_subcategory_split": _weclaw_prompt_subcategory_split_contract(),
+        }
+
+    categories = {
+        category: {
+            "tokens": 0,
+            "message_count": 0,
+            "source": "dsproxy_deepseek_messages_after_payload_assembly",
+        }
+        for category in _profile_tokenizer_requested_categories()
+    }
+    message_reports: list[dict[str, Any]] = []
+    total_tokens = 0
+
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        category = _profile_tokenizer_message_category(message)
+        text = _profile_tokenizer_message_text(message)
+        token_count = _profile_tokenizer_count_text(tokenizer, text)
+        categories.setdefault(
+            category,
+            {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"},
+        )
+        categories[category]["tokens"] += token_count
+        categories[category]["message_count"] += 1
+        total_tokens += token_count
+        message_reports.append(
+            {
+                "index": index,
+                "role": str(message.get("role") or ""),
+                "category": category,
+                "tokens": token_count,
+                "content_chars": len(text),
+            }
+        )
+
+    split = {
+        "available": True,
+        "unit": "tokens",
+        "is_estimated": True,
+        "precision": "local_profile_tokenizer_content_estimate",
+        "source": "dsproxy_profile_tokenizer.deepseek_v3.tokenizer_json",
+        "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "tokenizer_kind": contract.get("tokenizer_kind"),
+        "tokenizer_source": contract.get("source"),
+        "categories": categories,
+        "total_tokens": total_tokens,
+        "message_count": len(message_reports),
+        "missing": [],
+        "notes": [
+            "Provider usage totals remain authoritative for billing and aggregate prompt/completion/cache/reasoning fields.",
+            "This split uses the active profile tokenizer and dsproxy message boundaries, but it is a local estimate because providers do not report prompt subcategory usage.",
+            "The split counts message text, reasoning_content, and tool-call names/arguments after dsproxy payload assembly. Chat-template overhead is not assigned to a subcategory.",
+        ],
+    }
+
+    return {
+        "available": True,
+        "unit": "tokens",
+        "profile": profile,
+        "model": str(model or "") or None,
+        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "tokenizer": contract,
+        "summary": {
+            "available": True,
+            "total_content_tokens": total_tokens,
+            "message_count": len(message_reports),
+            "categories_with_tokens": [
+                category for category, item in categories.items() if int(item.get("tokens") or 0) > 0
+            ],
+            "precision": "local_profile_tokenizer_content_estimate",
+            "is_estimated": True,
+        },
+        "prompt_subcategory_split": split,
+        "messages_tail": message_reports[-20:],
+    }
 
 
 
@@ -12560,7 +12885,11 @@ def _weclaw_latest_turn_events(events: list[dict[str, Any]]) -> tuple[str | None
     return key, grouped
 
 
-def _weclaw_prompt_subcategory_split_contract() -> dict[str, Any]:
+def _weclaw_prompt_subcategory_split_contract(profile_tokenizer_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    if isinstance(profile_tokenizer_report, dict):
+        split = profile_tokenizer_report.get("prompt_subcategory_split")
+        if isinstance(split, dict) and split.get("available"):
+            return split
     return {
         "available": False,
         "unit": "tokens",
@@ -12568,18 +12897,8 @@ def _weclaw_prompt_subcategory_split_contract() -> dict[str, Any]:
         "precision": "unavailable",
         "source": "not_reported_by_provider_without_audited_tokenizer_or_segment_ledger",
         "reason": "provider_usage_is_aggregate_without_prompt_subcategory_breakdown",
-        "action": "display prompt subcategory splits as unavailable until dsproxy adds an audited tokenizer or a provider-backed per-segment ledger",
-        "requested_categories": [
-            "user",
-            "assistant_history",
-            "tool_output",
-            "environment",
-            "system",
-            "developer",
-            "compaction_summary",
-            "runtime_injected",
-            "other_prompt",
-        ],
+        "action": "display prompt subcategory splits as unavailable until dsproxy observes a prompt through an audited profile tokenizer or a provider-backed per-segment ledger",
+        "requested_categories": _profile_tokenizer_requested_categories(),
         "missing": [
             "audited_tokenizer_or_segment_ledger",
             "per_message_prompt_segment_boundaries",
@@ -12593,8 +12912,9 @@ def _weclaw_prompt_subcategory_split_contract() -> dict[str, Any]:
     }
 
 
-def _weclaw_token_attribution_contract() -> dict[str, Any]:
-    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract()
+def _weclaw_token_attribution_contract(profile_tokenizer_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract(profile_tokenizer_report)
+    prompt_split_available = bool(prompt_subcategory_split.get("available"))
     return {
         "provider_usage_totals": {
             "available": True,
@@ -12633,6 +12953,22 @@ def _weclaw_token_attribution_contract() -> dict[str, Any]:
                 "semantic_audit",
             ],
         },
+        "profile_tokenizer": {
+            "available": bool(isinstance(profile_tokenizer_report, dict) and profile_tokenizer_report.get("available")),
+            "unit": "tokens",
+            "precision": (
+                str(prompt_subcategory_split.get("precision") or "local_profile_tokenizer_content_estimate")
+                if prompt_split_available
+                else "unavailable"
+            ),
+            "source": (
+                str(prompt_subcategory_split.get("source") or "dsproxy_profile_tokenizer")
+                if prompt_split_available
+                else "unavailable"
+            ),
+            "is_estimated": True if prompt_split_available else None,
+            "billing_authoritative": False,
+        },
         "prompt_subcategory_split": prompt_subcategory_split,
         "context_window_used_tokens": {
             "available": False,
@@ -12647,12 +12983,17 @@ def _weclaw_token_attribution_contract() -> dict[str, Any]:
             "missing": [
                 "codex_context_used_tokens",
                 "provider_context_window_used_tokens",
-                "audited_tokenizer_or_segment_ledger",
+                "audited_tokenizer_or_segment_ledger" if not prompt_split_available else "codex_context_used_tokens",
             ],
         },
     }
 
-def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any]:
+def _weclaw_tokens_contract(
+    store: Any | None,
+    *,
+    profile: str,
+    profile_tokenizer_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     events, unavailable_reason = _weclaw_usage_events_for_profile(store, profile=profile)
     request_id, latest_events = _weclaw_latest_turn_events(events)
     auxiliary_events = [
@@ -12661,12 +13002,27 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
         if str(event.get("purpose") or "final") not in _WECLAW_PRIMARY_USAGE_PURPOSES
     ]
 
-    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract()
-    attribution = _weclaw_token_attribution_contract()
+    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract(profile_tokenizer_report)
+    attribution = _weclaw_token_attribution_contract(profile_tokenizer_report)
+    profile_tokenizer_section = (
+        profile_tokenizer_report
+        if isinstance(profile_tokenizer_report, dict)
+        else _profile_tokenizer_unavailable_report(
+            profile=profile,
+            model=None,
+            provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+            reason="no_profile_tokenizer_report_observed_for_route",
+        )
+    )
+    prompt_split_precision = (
+        str(prompt_subcategory_split.get("precision") or "local_profile_tokenizer_content_estimate")
+        if prompt_subcategory_split.get("available")
+        else "not_reported_by_provider_without_tokenizer"
+    )
     taxonomy = {
-        "version": 3,
+        "version": 4,
         "unit": "tokens",
-        "source": "dsproxy_usage_ledger.provider_reported_usage",
+        "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
             "input",
             "cached_input",
@@ -12679,19 +13035,27 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
             "liveness_retry",
             "compaction",
             "semantic_audit",
+            "user",
+            "assistant_history",
+            "tool_output",
+            "environment",
+            "system",
+            "developer",
+            "compaction_summary",
+            "runtime_injected",
             "other",
         ],
         "precision": {
             "provider_usage_totals": "exact_provider_reported",
             "purpose_attribution": "exact_dsproxy_call_purpose",
-            "prompt_subcategory_split": "not_reported_by_provider_without_tokenizer",
+            "prompt_subcategory_split": prompt_split_precision,
             "context_window_used_tokens": "unavailable",
         },
         "attribution_schema": {
-            "version": 1,
+            "version": 2,
             "provider_usage_totals": "exact aggregate provider fields",
             "purpose_attribution": "exact dsproxy model-call purpose fields",
-            "prompt_subcategory_split": "explicitly unavailable until an audited tokenizer or per-segment ledger exists",
+            "prompt_subcategory_split": "local profile tokenizer estimate when a route has observed an assembled prompt; otherwise explicitly unavailable",
         },
     }
 
@@ -12711,6 +13075,7 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
         return {
             "taxonomy": taxonomy,
             "attribution": attribution,
+            "profile_tokenizer": profile_tokenizer_section,
             "prompt_subcategory_split": prompt_subcategory_split,
             "last_turn": dict(unavailable),
             "session_total": dict(unavailable),
@@ -12727,6 +13092,7 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
     return {
         "taxonomy": taxonomy,
         "attribution": attribution,
+        "profile_tokenizer": profile_tokenizer_section,
         "prompt_subcategory_split": prompt_subcategory_split,
         "last_turn": {
             "available": True,
@@ -12760,7 +13126,7 @@ def _weclaw_tokens_contract(store: Any | None, *, profile: str) -> dict[str, Any
             "model_call_count": len(auxiliary_events),
             "summary": auxiliary_summary,
             "by_purpose": _weclaw_usage_by_purpose(auxiliary_events),
-            "events_tail": auxiliary_events[:20],
+            "events_tail": events[:20],
             "missing": [],
         },
     }
@@ -13049,9 +13415,10 @@ def _runtime_weclaw_status(
     balance: dict[str, Any] | None = None,
     deepseek_client: Any | None = None,
     last_context_compaction_report: dict[str, Any] | None = None,
+    profile_tokenizer_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
-    tokens = _weclaw_tokens_contract(store, profile=profile)
+    tokens = _weclaw_tokens_contract(store, profile=profile, profile_tokenizer_report=profile_tokenizer_report)
     context_status = _proxy_context_status()
     runtime_payload_guard = _runtime_payload_guard_contract(
         context_status,
@@ -13127,6 +13494,7 @@ def create_app(
     app.state.started_at = _now()
     app.state.repair_count = 0
     app.state.last_context_compaction_report = None
+    app.state.last_profile_tokenizer_report_by_profile = {}
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -13173,6 +13541,7 @@ def create_app(
             balance=balance,
             deepseek_client=app.state.deepseek_client,
             last_context_compaction_report=getattr(app.state, "last_context_compaction_report", None),
+            profile_tokenizer_report=getattr(app.state, "last_profile_tokenizer_report_by_profile", {}).get(profile),
         )
 
     @app.get("/v1/proxy/tool-bridge/status")
@@ -13577,6 +13946,23 @@ def create_app(
             tools=deepseek_tools,
             reasoning_effort=reasoning_effort,
             request_payload=payload,
+        )
+        profile_name = "deepseek-thinking" if _thinking_enabled() else "deepseek"
+        profile_tokenizer_report = _profile_tokenizer_report_for_messages(
+            messages_for_deepseek,
+            profile=profile_name,
+            model=model,
+            provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+        )
+        app.state.last_profile_tokenizer_report_by_profile[profile_name] = profile_tokenizer_report
+        _debug_trace_event(
+            response_id,
+            "profile_tokenizer_accounting",
+            available=profile_tokenizer_report.get("available"),
+            profile=profile_name,
+            model=model,
+            summary=profile_tokenizer_report.get("summary"),
+            tokenizer=profile_tokenizer_report.get("tokenizer"),
         )
         _debug_trace_event(
             response_id,

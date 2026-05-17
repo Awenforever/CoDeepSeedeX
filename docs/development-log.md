@@ -729,3 +729,8 @@
 - Kept proxy-side compatibility normalization for legacy or Codex-originated `low` and `medium` inputs, which still map to DeepSeek `high`.
 - Added explicit uninstall rollback coverage to ensure a previous Codex command backup is restored after the CoDeepSeedeX wrapper is removed.
 - Rebuilt `v0.3.8-alpha` pre-release assets after merge.
+
+
+## p2.10a65-profile-tokenizer-accounting
+
+Added profile-aware DeepSeek tokenizer accounting for WeClaw-facing status. The node bundles the official DeepSeek V3 tokenizer JSON resource, adds the `tokenizers` runtime dependency, records local prompt subcategory estimates under `tokens.profile_tokenizer` and `tokens.prompt_subcategory_split`, and keeps provider `usage` as the authoritative billing source. Codex TUI tokenizer behavior remains separate because the current `codex --profile deepseek debug models` evidence did not expose DeepSeek catalog entries.

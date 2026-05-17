@@ -738,22 +738,19 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
 
     assert data["status"] == "ok"
     tokens = data["tokens"]
-    assert tokens["taxonomy"]["version"] == 3
+    assert tokens["taxonomy"]["version"] == 4
     assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
     assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
     assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "not_reported_by_provider_without_tokenizer"
-    assert tokens["taxonomy"]["precision"]["context_window_used_tokens"] == "unavailable"
 
-    attribution = tokens["attribution"]
-    assert attribution["provider_usage_totals"]["available"] is True
-    assert attribution["provider_usage_totals"]["precision"] == "exact_provider_reported"
-    assert attribution["purpose_attribution"]["available"] is True
-    assert attribution["purpose_attribution"]["precision"] == "exact_dsproxy_call_purpose"
-    assert attribution["prompt_subcategory_split"]["available"] is False
-    assert attribution["prompt_subcategory_split"]["precision"] == "unavailable"
-    assert attribution["prompt_subcategory_split"]["reason"] == "provider_usage_is_aggregate_without_prompt_subcategory_breakdown"
-    assert "audited_tokenizer_or_segment_ledger" in attribution["prompt_subcategory_split"]["missing"]
-    assert attribution["context_window_used_tokens"]["available"] is False
-    assert attribution["context_window_used_tokens"]["precision"] == "unavailable"
+    assert tokens["attribution"]["provider_usage_totals"]["precision"] == "exact_provider_reported"
+    assert tokens["attribution"]["purpose_attribution"]["precision"] == "exact_dsproxy_call_purpose"
+    assert tokens["attribution"]["profile_tokenizer"]["available"] is False
+    assert tokens["attribution"]["profile_tokenizer"]["billing_authoritative"] is False
 
-    assert tokens["prompt_subcategory_split"] == attribution["prompt_subcategory_split"]
+    assert tokens["profile_tokenizer"]["available"] is False
+    assert tokens["profile_tokenizer"]["summary"]["available"] is False
+    assert tokens["prompt_subcategory_split"]["available"] is False
+    assert tokens["prompt_subcategory_split"]["precision"] == "unavailable"
+    assert tokens["prompt_subcategory_split"]["reason"] == "provider_usage_is_aggregate_without_prompt_subcategory_breakdown"
+    assert "audited_tokenizer_or_segment_ledger" in tokens["prompt_subcategory_split"]["missing"]
