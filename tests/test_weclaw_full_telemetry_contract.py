@@ -149,6 +149,38 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     )
 
     app = create_app(deepseek_client=WeClawBalanceClient(), store=store)
+    app.state.last_context_compaction_report = {
+        "version": "v0.3.9-alpha",
+        "enabled": True,
+        "compacted": False,
+        "reason": "not_triggered_yet",
+        "policy": "adaptive",
+        "before_chars": 12345,
+        "after_chars": 12345,
+        "message_count_before": 5,
+        "message_count_after": 5,
+        "policy_decision": {
+            "effective_trigger_chars": 900000,
+            "effective_target_chars": 280000,
+        },
+        "observed_at": "2026-05-17T10:00:00Z",
+        "source": "runtime_context_builder",
+    }
+    app.state.deepseek_client.last_context_trimming_report = {
+        "version": "v0.3.9-alpha",
+        "enabled": True,
+        "trimmed": False,
+        "reason": "not_triggered_yet",
+        "max_context_chars": 1500000,
+        "max_tool_output_chars": 60000,
+        "keep_recent_messages": 24,
+        "before_chars": 12345,
+        "after_chars": 12345,
+        "message_count_before": 5,
+        "message_count_after": 5,
+        "observed_at": "2026-05-17T10:00:00Z",
+        "source": "live_request_payload",
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
@@ -170,6 +202,31 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert context_window["limit_explanation"]["display_limit_tokens"] == 750000
     assert context_window["limit_explanation"]["model_context_window_tokens"] == 1000000
     assert context_window["limit_explanation"]["auto_compact_token_limit"] == 750000
+
+    guard = data["runtime_payload_guard"]
+    assert guard["available"] is True
+    assert guard["unit"] == "chars"
+    assert guard["current_chars"] == 12345
+    assert guard["current_chars_available"] is True
+    assert guard["current_chars_source"] == "live_request_payload"
+    assert guard["current_chars_precision"] == "exact"
+    assert guard["compaction"]["available"] is True
+    assert guard["compaction"]["trigger_chars"] == 900000
+    assert guard["compaction"]["target_chars"] == 280000
+    assert guard["compaction"]["current_chars"] == 12345
+    assert guard["compaction"]["usage_ratio"] == pytest.approx(12345 / 900000)
+    assert guard["compaction"]["remaining_chars"] == 887655
+    assert guard["compaction"]["status"] == "not_triggered"
+    assert guard["compaction"]["last_report"]["exists"] is True
+    assert guard["trimming"]["available"] is True
+    assert guard["trimming"]["max_context_chars"] == 1500000
+    assert guard["trimming"]["current_chars"] == 12345
+    assert guard["trimming"]["usage_ratio"] == pytest.approx(12345 / 1500000)
+    assert guard["trimming"]["remaining_chars"] == 1487655
+    assert guard["trimming"]["status"] == "not_triggered"
+    assert guard["trimming"]["last_report"]["exists"] is True
+    assert data["context_window"]["runtime"]["payload_guard"]["current_chars"] == 12345
+    assert data["compaction"]["runtime_payload_guard"]["current_chars"] == 12345
 
     last_turn = data["tokens"]["last_turn"]
     assert last_turn["available"] is True

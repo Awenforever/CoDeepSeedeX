@@ -28,9 +28,9 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a61-readme-structure-cleanup`
-- p2.10a61前的当前内部开发基线：`master = origin/master = 033f1ec`
-- 本节点前最新已完成内部检查点：`p2.10a60-weclaw-status-context-pricing-contract = 033f1ec`
+- 当前内部开发线：`p2.10a62-weclaw-runtime-payload-guard`
+- p2.10a62前的当前内部开发基线：`master = origin/master = 2172dfe`
+- 本节点前最新已完成内部检查点：`p2.10a61-readme-structure-cleanup = 2172dfe`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
@@ -42,7 +42,7 @@
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a61是README结构清理节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a62是WeClaw运行时payload guard节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,14 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a62 WeClaw运行时payload guard
+
+p2.10a62新增面向WeClaw的char级运行时payload guard契约。`runtime_payload_guard`提供可直接展示的Compact和Trim进度，来源是运行时内存快照，不依赖debug文件，也不使用token totals。
+
+Compact numerator来自`_compact_chat_history_for_codex_like_persistence()`生成的最新进程内context compaction report，使用`after_chars`作为精确`runtime_context_builder`字符数。Trim numerator来自`DeepSeekClient.chat_completions()`中`_compact_deepseek_payload_context()`生成的最新进程内trimming report，使用`after_chars`作为精确`live_request_payload`字符数。如果当前运行route还没有观察到模型请求，契约会返回机器可读的unavailable原因和action。
+
+不得从provider token totals、session totals、debug文件、SQLite或Codex私有profile数据推导Compact/Trim进度。
 
 ## p2.10a61 README结构清理
 

@@ -1,3 +1,12 @@
+## p2.10a62 WeClaw runtime payload guard
+
+- Added `runtime_payload_guard` to WeClaw-facing status.
+- Compact progress uses the latest in-memory context compaction report `after_chars` as exact `runtime_context_builder` chars.
+- Trim progress uses the latest in-memory DeepSeek payload trimming report `after_chars` as exact `live_request_payload` chars.
+- The contract exposes denominators, usage ratios, remaining chars, status, source, precision, observed timestamp, and unavailable actions.
+- Public `v0.3.9-alpha` is not moved in this internal node.
+
+
 ## p2.10a61 README structure cleanup
 
 - Rewrote `README.md` and `README.zh-CN.md` as concise user-facing entry points.

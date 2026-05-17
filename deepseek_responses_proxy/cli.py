@@ -1571,6 +1571,27 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "amount": None,
             "display": None,
         },
+        "runtime_payload_guard": {
+            "available": False,
+            "unit": "chars",
+            "current_chars": None,
+            "current_chars_available": False,
+            "current_chars_source": "runtime_weclaw_status_endpoint_unavailable",
+            "current_chars_precision": "unavailable",
+            "current_chars_observed_at": None,
+            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "compaction": {
+                "available": False,
+                "status": "unavailable",
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+            },
+            "trimming": {
+                "available": False,
+                "status": "unavailable",
+                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+            },
+        },
         "compaction": {
             "available": compaction_available,
             "is_estimated": False,

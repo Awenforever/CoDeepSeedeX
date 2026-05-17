@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a61-readme-structure-cleanup"
+PROXY_INTERNAL_VERSION = "p2.10a62-weclaw-runtime-payload-guard"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5844,6 +5844,7 @@ class DeepSeekClient:
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = (base_url or os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
         timeout_seconds = _env_float("DEEPSEEK_PROXY_UPSTREAM_TIMEOUT_SECONDS", 180.0)
+        self.last_context_trimming_report: dict[str, Any] | None = None
         self._client = http_client or httpx.AsyncClient(timeout=timeout_seconds)
 
     async def user_balance(self) -> dict[str, Any]:
@@ -5888,6 +5889,10 @@ class DeepSeekClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload, context_trimming_report = _compact_deepseek_payload_context(payload)
+        context_trimming_report["observed_at"] = _runtime_payload_guard_observed_at()
+        context_trimming_report["source"] = "live_request_payload"
+        context_trimming_report["current_chars_source"] = "live_request_payload"
+        context_trimming_report["current_chars_precision"] = "exact"
         self.last_context_trimming_report = context_trimming_report
 
         # Debug aid: keep the last upstream payload without secrets.
@@ -11443,6 +11448,239 @@ def _proxy_context_status() -> dict[str, Any]:
     }
 
 
+def _runtime_payload_guard_observed_at() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _runtime_payload_guard_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _runtime_payload_guard_ratio(current_chars: int | None, limit_chars: int | None) -> float | None:
+    if current_chars is None or limit_chars is None or limit_chars <= 0:
+        return None
+    return min(1.0, max(0.0, current_chars / limit_chars))
+
+
+def _runtime_payload_guard_status(
+    *,
+    current_chars: int | None,
+    limit_chars: int | None,
+    terminal: bool,
+    terminal_status: str,
+) -> str:
+    if current_chars is None or limit_chars is None or limit_chars <= 0:
+        return "unavailable"
+    if terminal:
+        return terminal_status
+    if current_chars >= limit_chars:
+        return "triggered"
+    ratio = current_chars / limit_chars
+    if ratio >= 0.85:
+        return "near_threshold"
+    return "not_triggered"
+
+
+def _runtime_payload_guard_report_snapshot(
+    report: Any,
+    *,
+    kind: str,
+    fallback_last_report: Any = None,
+) -> dict[str, Any]:
+    if isinstance(report, dict):
+        flag_name = "compacted" if kind == "compaction" else "trimmed"
+        keys = [
+            "version",
+            "enabled",
+            flag_name,
+            "reason",
+            "before_chars",
+            "after_chars",
+            "chars_removed",
+            "message_count_before",
+            "message_count_after",
+            "policy",
+            "trigger_chars",
+            "target_chars",
+            "effective_trigger_chars",
+            "effective_target_chars",
+            "max_context_chars",
+            "max_tool_output_chars",
+            "keep_recent_messages",
+            "observed_at",
+            "source",
+        ]
+        snapshot = {
+            "exists": True,
+            "source": f"in_memory_runtime_{kind}_report",
+            "reason": report.get("reason") or ("not_triggered_yet" if not report.get(flag_name) else flag_name),
+        }
+        for key in keys:
+            if key in report:
+                snapshot[key] = report.get(key)
+        return snapshot
+
+    if isinstance(fallback_last_report, dict) and fallback_last_report.get("exists"):
+        snapshot = dict(fallback_last_report)
+        snapshot["source"] = "debug_last_report_summary"
+        snapshot.setdefault("reason", "debug_last_report_available_but_not_used_for_realtime_current_chars")
+        return snapshot
+
+    return {
+        "exists": False,
+        "reason": "no_runtime_payload_guard_observation_yet",
+        "action": "send a model request through this dsproxy route, then re-check dsproxy status --weclaw-json",
+    }
+
+
+def _runtime_payload_guard_contract(
+    context_status: dict[str, Any],
+    *,
+    compaction_report: Any = None,
+    trimming_report: Any = None,
+) -> dict[str, Any]:
+    compaction_status = context_status.get("compaction") if isinstance(context_status, dict) else {}
+    trimming_status = context_status.get("trimming") if isinstance(context_status, dict) else {}
+    if not isinstance(compaction_status, dict):
+        compaction_status = {}
+    if not isinstance(trimming_status, dict):
+        trimming_status = {}
+
+    compaction_config = compaction_status.get("config") if isinstance(compaction_status.get("config"), dict) else {}
+    trimming_config = trimming_status.get("config") if isinstance(trimming_status.get("config"), dict) else {}
+    compaction_last_report = compaction_status.get("last_report") if isinstance(compaction_status.get("last_report"), dict) else {}
+    trimming_last_report = trimming_status.get("last_report") if isinstance(trimming_status.get("last_report"), dict) else {}
+
+    compaction_report_dict = compaction_report if isinstance(compaction_report, dict) else None
+    trimming_report_dict = trimming_report if isinstance(trimming_report, dict) else None
+
+    compaction_current = _runtime_payload_guard_int(
+        compaction_report_dict.get("after_chars") if compaction_report_dict else None
+    )
+    trimming_current = _runtime_payload_guard_int(
+        trimming_report_dict.get("after_chars") if trimming_report_dict else None
+    )
+    current_chars = trimming_current if trimming_current is not None else compaction_current
+
+    current_source = "unavailable"
+    current_precision = "unavailable"
+    observed_at = None
+    if trimming_current is not None:
+        current_source = "live_request_payload"
+        current_precision = "exact"
+        observed_at = trimming_report_dict.get("observed_at") if trimming_report_dict else None
+    elif compaction_current is not None:
+        current_source = "runtime_context_builder"
+        current_precision = "exact"
+        observed_at = compaction_report_dict.get("observed_at") if compaction_report_dict else None
+
+    policy_decision = compaction_report_dict.get("policy_decision") if compaction_report_dict else None
+    if not isinstance(policy_decision, dict):
+        policy_decision = {}
+
+    trigger_chars = _runtime_payload_guard_int(
+        policy_decision.get("effective_trigger_chars")
+        or (compaction_report_dict or {}).get("effective_trigger_chars")
+        or (compaction_report_dict or {}).get("trigger_chars")
+        or compaction_config.get("trigger_chars")
+    )
+    target_chars = _runtime_payload_guard_int(
+        policy_decision.get("effective_target_chars")
+        or (compaction_report_dict or {}).get("effective_target_chars")
+        or (compaction_report_dict or {}).get("target_chars")
+        or compaction_config.get("target_chars")
+    )
+    max_context_chars = _runtime_payload_guard_int(
+        (trimming_report_dict or {}).get("max_context_chars")
+        or trimming_config.get("max_context_chars")
+    )
+
+    compaction_ratio = _runtime_payload_guard_ratio(compaction_current, trigger_chars)
+    trimming_ratio = _runtime_payload_guard_ratio(trimming_current, max_context_chars)
+
+    compaction_available = bool(compaction_config.get("enabled", True)) and compaction_current is not None and trigger_chars is not None
+    trimming_available = trimming_current is not None and max_context_chars is not None
+
+    compaction_section = {
+        "available": compaction_available,
+        "policy": compaction_config.get("policy"),
+        "trigger_chars": trigger_chars,
+        "trigger_chars_source": "context_compaction_config.effective_trigger_chars_or_config_trigger_chars",
+        "target_chars": target_chars,
+        "target_chars_source": "context_compaction_config.effective_target_chars_or_config_target_chars",
+        "keep_recent_messages": _runtime_payload_guard_int(compaction_config.get("keep_recent_messages")),
+        "current_chars": compaction_current,
+        "current_chars_available": compaction_current is not None,
+        "current_chars_source": "runtime_context_builder" if compaction_current is not None else "unavailable",
+        "current_chars_precision": "exact" if compaction_current is not None else "unavailable",
+        "current_chars_observed_at": (compaction_report_dict or {}).get("observed_at") if compaction_report_dict else None,
+        "usage_ratio": compaction_ratio,
+        "remaining_chars": max(0, trigger_chars - compaction_current) if compaction_current is not None and trigger_chars is not None else None,
+        "status": _runtime_payload_guard_status(
+            current_chars=compaction_current,
+            limit_chars=trigger_chars,
+            terminal=bool((compaction_report_dict or {}).get("compacted")),
+            terminal_status="compacted",
+        ),
+        "last_report": _runtime_payload_guard_report_snapshot(
+            compaction_report_dict,
+            kind="compaction",
+            fallback_last_report=compaction_last_report,
+        ),
+        "reason": None if compaction_available else "current_compaction_chars_unavailable",
+        "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
+    }
+
+    trimming_section = {
+        "available": trimming_available,
+        "max_context_chars": max_context_chars,
+        "max_context_chars_source": "context_trimming_config.max_context_chars",
+        "max_tool_output_chars": _runtime_payload_guard_int(trimming_config.get("max_tool_output_chars")),
+        "keep_recent_messages": _runtime_payload_guard_int(trimming_config.get("keep_recent_messages")),
+        "current_chars": trimming_current,
+        "current_chars_available": trimming_current is not None,
+        "current_chars_source": "live_request_payload" if trimming_current is not None else "unavailable",
+        "current_chars_precision": "exact" if trimming_current is not None else "unavailable",
+        "current_chars_observed_at": (trimming_report_dict or {}).get("observed_at") if trimming_report_dict else None,
+        "usage_ratio": trimming_ratio,
+        "remaining_chars": max(0, max_context_chars - trimming_current) if trimming_current is not None and max_context_chars is not None else None,
+        "status": _runtime_payload_guard_status(
+            current_chars=trimming_current,
+            limit_chars=max_context_chars,
+            terminal=bool((trimming_report_dict or {}).get("trimmed")),
+            terminal_status="trimmed",
+        ),
+        "last_report": _runtime_payload_guard_report_snapshot(
+            trimming_report_dict,
+            kind="trimming",
+            fallback_last_report=trimming_last_report,
+        ),
+        "reason": None if trimming_available else "current_trimming_chars_unavailable",
+        "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
+    }
+
+    available = bool(compaction_available or trimming_available)
+    return {
+        "available": available,
+        "unit": "chars",
+        "current_chars": current_chars,
+        "current_chars_available": current_chars is not None,
+        "current_chars_source": current_source,
+        "current_chars_precision": current_precision,
+        "current_chars_observed_at": observed_at,
+        "source": "in_memory_runtime_payload_guard_snapshot",
+        "precision": current_precision,
+        "reason": None if available else "no_live_runtime_payload_guard_observation_yet",
+        "action": None if available else "send a model request through this dsproxy route, then re-check status",
+        "compaction": compaction_section,
+        "trimming": trimming_section,
+    }
+
+
 def _tool_bridge_status() -> dict[str, Any]:
     web_provider = _web_search_provider()
     image_provider = _image_provider()
@@ -12809,10 +13047,17 @@ def _runtime_weclaw_status(
     *,
     store: Any | None = None,
     balance: dict[str, Any] | None = None,
+    deepseek_client: Any | None = None,
+    last_context_compaction_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
     tokens = _weclaw_tokens_contract(store, profile=profile)
     context_status = _proxy_context_status()
+    runtime_payload_guard = _runtime_payload_guard_contract(
+        context_status,
+        compaction_report=last_context_compaction_report,
+        trimming_report=getattr(deepseek_client, "last_context_trimming_report", None),
+    )
     semantic_status = _weclaw_enrich_semantic_compaction_status(_semantic_compaction_runtime_status())
     context_window = _weclaw_context_window_with_usage_estimate(
         dict(profile_status.get("context_window", {})),
@@ -12823,6 +13068,7 @@ def _runtime_weclaw_status(
         "unit": "chars",
         "source": "dsproxy_runtime._proxy_context_status",
         "context": context_status,
+        "payload_guard": runtime_payload_guard,
         "semantic_compaction": semantic_status,
     }
     context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
@@ -12853,12 +13099,14 @@ def _runtime_weclaw_status(
         "pricing": pricing,
         "cost": cost,
         "balance": balance_contract,
+        "runtime_payload_guard": runtime_payload_guard,
         "compaction": {
             "available": True,
             "is_estimated": False,
             "source": "dsproxy_runtime._proxy_context_status",
             "unit": "chars",
             "runtime_context": context_status,
+            "runtime_payload_guard": runtime_payload_guard,
             "semantic_compaction": semantic_status,
             "missing": [],
         },
@@ -12878,6 +13126,7 @@ def create_app(
     app.state.store = store or SQLiteResponseStore()
     app.state.started_at = _now()
     app.state.repair_count = 0
+    app.state.last_context_compaction_report = None
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -12922,6 +13171,8 @@ def create_app(
             profile,
             store=app.state.store,
             balance=balance,
+            deepseek_client=app.state.deepseek_client,
+            last_context_compaction_report=getattr(app.state, "last_context_compaction_report", None),
         )
 
     @app.get("/v1/proxy/tool-bridge/status")
@@ -13278,6 +13529,11 @@ def create_app(
             response_id=response_id,
             usage_call_counter=usage_call_counter,
         )
+        context_compaction_report["observed_at"] = _runtime_payload_guard_observed_at()
+        context_compaction_report["source"] = "runtime_context_builder"
+        context_compaction_report["current_chars_source"] = "runtime_context_builder"
+        context_compaction_report["current_chars_precision"] = "exact"
+        app.state.last_context_compaction_report = context_compaction_report
         _write_context_compaction_report(context_compaction_report)
         _debug_trace_event(
             response_id,
