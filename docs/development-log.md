@@ -1,3 +1,14 @@
+## p2.10a64 Pre-release upgrade and uninstall documentation closure
+
+- Closed the post-P0 audit gap for uninstall documentation.
+- Pre-release upgrade was already covered by `dsproxy upgrade --alpha`, explicit `--tag`, and `--dry-run`.
+- Product-level uninstall remains installer-owned and is documented as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall`.
+- Full removal is documented as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files`.
+- README.md and README.zh-CN.md now document uninstall scope, including managed Codex profiles, the CoDeepSeedeX codex wrapper, the dsproxy wrapper, optional install directory/env/manifest removal, and the boundary against deleting unrelated user files.
+- Added a README regression test for uninstall documentation.
+- Public `v0.3.9-alpha` remains at `ac63043`; this node does not update Release assets or Release notes.
+
+
 ## p2.10a63 P0 release-state documentation sync
 
 - Synchronized repository docs after updating public pre-release `v0.3.9-alpha` to `p2.10a62-weclaw-runtime-payload-guard`.

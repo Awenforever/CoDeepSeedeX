@@ -15,6 +15,31 @@ def test_install_output_uses_absolute_uninstall_command() -> None:
     assert '"$INSTALL_DIR/scripts/install.sh"' in text
 
 
+
+
+def test_readmes_document_product_uninstall_entrypoint_and_scope() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme_zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    combined = readme + "\n" + readme_zh
+
+    assert "## Uninstall" in readme
+    assert "## 卸载" in readme_zh
+    assert "installer, not `dsproxy uninstall`" in readme
+    assert "安装器，不是`dsproxy uninstall`" in readme_zh
+    assert "bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall" in combined
+    assert "bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files" in combined
+    assert "deepseek-thinking" in combined
+    assert "restores the previous `codex` command backup" in readme
+    assert "恢复旧`codex`命令" in readme_zh
+    assert "removes the `dsproxy` wrapper" in readme
+    assert "移除CoDeepSeedeX安装的`dsproxy` wrapper" in readme_zh
+    assert "~/.local/share/deepseek-responses-proxy" in combined
+    assert "env file" in readme
+    assert "env文件" in readme_zh
+    assert "must not delete unrelated user files" in readme
+    assert "不得删除无关用户文件" in readme_zh
+
+
 def test_install_repairs_codex_model_catalog_before_final_output() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     marker = "codeepseedex_repair_codex_model_catalog_json_v2746a1"

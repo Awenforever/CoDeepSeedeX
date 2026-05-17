@@ -28,21 +28,21 @@
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a63-p0-release-state-doc-sync`
-- p2.10a63前的当前内部开发基线：`master = origin/master = ac63043`
-- 本节点前最新已完成内部检查点：`p2.10a62-weclaw-runtime-payload-guard = ac63043`
+- 当前内部开发线：`p2.10a64-prerelease-upgrade-uninstall-docs`
+- p2.10a64前的当前内部开发基线：`master = origin/master = 98cf535`
+- 本节点前最新已完成内部检查点：`p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
 - Release要求：如果使用WeClaw联动，`weclaw_dev`版本不得低于`v0.1.9-alpha`。
 - 不能移动的公开tag：
-  - `v0.3.9-alpha = 4a96283`
+  - `v0.3.9-alpha = ac63043`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a63是P0发布状态文档同步节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a64是pre-release升级与卸载文档收口节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,24 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a64 pre-release升级与卸载文档收口
+
+p2.10a64关闭P0后的审计缺口：pre-release升级已经由`dsproxy upgrade --alpha`、`--tag`和`--dry-run`覆盖，但完整产品卸载路径只存在于`scripts/install.sh --uninstall`，README中不够清晰。
+
+当前决策：
+- 保持产品级卸载入口在安装器中。
+- 本节点不新增单独的`dsproxy uninstall`命令。
+- 普通卸载文档化为`bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall`。
+- 彻底移除文档化为`bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files`。
+- 明确卸载会移除受管Codex profiles、CoDeepSeedeX codex wrapper、dsproxy wrapper，并可选删除安装目录、env文件和安装manifest。
+- 明确不得删除无关用户文件和非CoDeepSeedeX配置。
+
+p2.10a64测试通过后，下一步进入VM验证以下组合用户路径：
+- 通过`dsproxy upgrade --alpha`进行pre-release升级
+- 通过`dsproxy upgrade --tag v0.3.9-alpha`进行显式pre-release升级
+- 普通卸载
+- 带`--remove-files`的完整卸载
 
 ## p2.10a63 P0发布状态文档同步
 

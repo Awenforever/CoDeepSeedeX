@@ -232,6 +232,33 @@ dsproxy upgrade --tag v0.3.9-alpha
 
 如果旧安装还没有`dsproxy upgrade`，重新运行安装命令。
 
+## 卸载
+
+完整产品卸载入口是安装器，不是`dsproxy uninstall`。
+
+移除CoDeepSeedeX集成，但保留配置文件和安装目录：
+
+```bash
+bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall
+```
+
+移除集成，同时删除CoDeepSeedeX安装目录、env文件和安装manifest：
+
+```bash
+bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files
+```
+
+卸载范围：
+
+```text
+- 移除CoDeepSeedeX管理的Codex profiles：`deepseek`和`deepseek-thinking`
+- 移除CoDeepSeedeX管理的`codex` wrapper，并在存在备份时恢复旧`codex`命令
+- 移除CoDeepSeedeX安装的`dsproxy` wrapper
+- 使用`--remove-files`时，额外删除`~/.local/share/deepseek-responses-proxy`、CoDeepSeedeX env文件和安装manifest
+```
+
+卸载器不得删除无关用户文件或非CoDeepSeedeX配置。
+
 ## WeClaw联动
 
 CoDeepSeedeX可以作为`weclaw_dev`的DeepSeek/Codex运行后端。

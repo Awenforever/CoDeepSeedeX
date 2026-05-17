@@ -32,21 +32,21 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a63-p0-release-state-doc-sync`
-- Current internal development baseline before p2.10a63: `master = origin/master = ac63043`
-- Latest completed internal checkpoint before this node: `p2.10a62-weclaw-runtime-payload-guard = ac63043`
+- Current internal development line: `p2.10a64-prerelease-upgrade-uninstall-docs`
+- Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
+- Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move:
-  - `v0.3.9-alpha = 4a96283`
+  - `v0.3.9-alpha = ac63043`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a63 is a P0 release-state documentation sync node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a64 is a pre-release upgrade and uninstall documentation closure node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -321,6 +321,24 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a64 Pre-release upgrade and uninstall documentation closure
+
+p2.10a64 closes the audit gap found after P0: pre-release upgrade was already covered by `dsproxy upgrade --alpha`, `--tag`, and `--dry-run`, but the full product uninstall path was only exposed by `scripts/install.sh --uninstall` and was not clear enough in README.
+
+Current decision:
+- Keep the product-level uninstall entrypoint in the installer.
+- Do not add a separate `dsproxy uninstall` command in this node.
+- Document ordinary uninstall as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall`.
+- Document full removal as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files`.
+- Explicitly document that uninstall removes managed Codex profiles, the CoDeepSeedeX codex wrapper, the dsproxy wrapper, and optionally the install directory, env file, and install manifest.
+- Explicitly document that unrelated user files and non-CoDeepSeedeX configuration must not be deleted.
+
+After p2.10a64 passes tests, the next step is VM validation for the combined user paths:
+- pre-release upgrade through `dsproxy upgrade --alpha`
+- explicit pre-release upgrade through `dsproxy upgrade --tag v0.3.9-alpha`
+- ordinary uninstall
+- full `--remove-files` uninstall
 
 ## p2.10a63 P0 release-state documentation sync
 

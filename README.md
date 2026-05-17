@@ -232,6 +232,33 @@ Do not combine `--alpha` and `--tag`.
 
 Older installations that do not have `dsproxy upgrade` should rerun the installer.
 
+## Uninstall
+
+The product-level uninstall entrypoint is the installer, not `dsproxy uninstall`.
+
+Remove CoDeepSeedeX integration while preserving configuration files and the install directory:
+
+```bash
+bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall
+```
+
+Remove the integration and also remove the CoDeepSeedeX install directory, env file, and install manifest:
+
+```bash
+bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files
+```
+
+Uninstall scope:
+
+```text
+- removes the managed Codex profiles `deepseek` and `deepseek-thinking`
+- removes the CoDeepSeedeX-managed `codex` wrapper and restores the previous `codex` command backup when available
+- removes the `dsproxy` wrapper installed by CoDeepSeedeX
+- with `--remove-files`, also removes `~/.local/share/deepseek-responses-proxy`, the CoDeepSeedeX env file, and the install manifest
+```
+
+The uninstaller must not delete unrelated user files or non-CoDeepSeedeX configuration.
+
 ## WeClaw integration
 
 CoDeepSeedeX can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
