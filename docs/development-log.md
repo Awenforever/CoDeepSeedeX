@@ -1,3 +1,11 @@
+## p2.10a61 README structure cleanup
+
+- Rewrote `README.md` and `README.zh-CN.md` as concise user-facing entry points.
+- Removed long historical change tables, developer-only context, Brave setup references, and Markdown heading pollution caused by shell comments.
+- Kept install, verification, model provider setup, optional tool providers, pricing cache, upgrade, WeClaw compatibility, security boundaries, and documentation entry points.
+- Synchronized developer-handbook current state after `p2.10a60`; public pre-release `v0.3.9-alpha` remains at `4a96283` and was not moved.
+
+
 ## p2.10a60 WeClaw status context and pricing contract
 
 - Updated runtime WeClaw status to expose a usable context numerator from the latest primary upstream provider `prompt_tokens` when available, with explicit estimated precision and source labels.

@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a60-weclaw-status-context-pricing-contract"
+PROXY_INTERNAL_VERSION = "p2.10a61-readme-structure-cleanup"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 

@@ -28,25 +28,25 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public pre-release: `v0.3.9-alpha`
-- Public pre-release commit: `677d923`
+- Public pre-release commit: `4a96283`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a60-weclaw-status-context-pricing-contract`
-- Current internal development baseline before p2.10a60: `master = origin/master = 4a96283`
-- Latest completed internal checkpoint before this node: `p2.10a59-weclaw-round3-token-attribution-plan = 4a96283`
+- Current internal development line: `p2.10a61-readme-structure-cleanup`
+- Current internal development baseline before p2.10a61: `master = origin/master = 033f1ec`
+- Latest completed internal checkpoint before this node: `p2.10a60-weclaw-status-context-pricing-contract = 033f1ec`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move:
-  - `v0.3.9-alpha = 677d923`
+  - `v0.3.9-alpha = 4a96283`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a59 is an internal token attribution boundary contract node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
+- p2.10a61 is a README structure cleanup node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -321,6 +321,12 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a61 README structure cleanup
+
+p2.10a61 cleans the user-facing README files by separating user workflows from developer history. README files should cover install, verification, configuration, providers, pricing, upgrades, WeClaw compatibility, and documentation entry points. Long release histories, internal contract debates, and development lessons belong in `docs/development-log.md` or this handbook, not in README.
+
+The cleanup also removes Markdown structure pollution caused by shell comments rendered as headings, removes Brave as a user-facing provider setup path, and keeps public pre-release `v0.3.9-alpha` unmoved at `4a96283`.
 
 ## p2.10a60 WeClaw status context and pricing contract
 

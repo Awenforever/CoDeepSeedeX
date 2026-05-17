@@ -8,126 +8,92 @@
 </p>
 <!-- CODEEPSEEDEX_LOGO_END -->
 
-Local OpenAI Responses-compatible proxy for running Codex with DeepSeek models.
+CoDeepSeedeX is a local OpenAI Responses-compatible proxy for running Codex with DeepSeek-compatible model providers. It keeps the normal `codex` CLI, adds managed `deepseek` and `deepseek-thinking` profiles, and exposes `dsproxy` for setup, status, upgrade, provider diagnostics, pricing, and WeClaw integration.
 
-## ✅ Prerequisites
+## Requirements
 
-Before installing CoDeepSeedeX, make sure the OpenAI Codex CLI is already installed and the `codex` command is available on your `PATH`.
-
-    codex --version
-
-If Codex CLI is not installed yet, install it first:
-
-    npm install -g @openai/codex
-
-Then run the CoDeepSeedeX installer.
-
-## ⚡ One-line install
-
-    curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
-
-### Fallback install command
-
-If the GitHub Release asset, `raw.githubusercontent.com`, or a CDN mirror is unstable or blocked, use the fallback downloader:
+Install OpenAI Codex CLI first and make sure `codex` is on your `PATH`.
 
 ```bash
-tmp="$(mktemp -d)"
-bs="$tmp/bootstrap.sh"
-(
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh -o "$bs"
-) && bash "$bs"
+codex --version
 ```
 
-The installer will:
-
-- install CoDeepSeedeX into `~/.local/share/deepseek-responses-proxy`
-- create the `dsproxy` command
-- create two Codex profiles: `deepseek` and `deepseek-thinking`
-- optionally install a safe `codex` wrapper for these two profiles only
-- ask for non-thinking/thinking ports
-- open a guided API configuration menu for the model API, optional web search providers, and optional image generation providers
-- ask you to paste each API key at the corresponding hidden prompt
-- validate configured API keys before saving them, unless you skip validation or skip that provider
-- save validated API keys in a local `chmod 600` env file
-
-- modify user-level Codex/profile files only in your current user account
-
-When the installer or `dsproxy config wizard` asks for an API key, paste the key directly at that prompt and press Enter. Hidden input means the key will not appear on screen while you type or paste it. This is local permission-based storage, not cryptographic encryption. Failed validation does not save the key, and the guided menu can be skipped so keys can be configured later.
-
-The bootstrap script installs missing apt-based prerequisites when needed, including `git`, `curl`, `ca-certificates`, and a Python 3.11+ interpreter for the installer.
-
-## ⬆️ Upgrade
-
-**Users on versions earlier than `v0.3.3-alpha` are strongly encouraged to run the `curl` installer command once. After that, `dsproxy upgrade` can handle seamless updates.**
-
-CoDeepSeedeX supports two compatible upgrade paths.
-
-### Path A: `dsproxy upgrade`
-
-Use this when your installed version already includes the `upgrade` command:
+If Codex CLI is not installed yet:
 
 ```bash
-dsproxy upgrade
+npm install -g @openai/codex
 ```
 
-Preview first:
+## Install
 
-```bash
-dsproxy upgrade --dry-run
-```
-
-By default, `dsproxy upgrade` resolves the GitHub Latest Release tag and checks out that controlled release, reinstalls the package, refreshes the `deepseek` and `deepseek-thinking` Codex profiles, restarts the local proxies, and opens the guided API configuration wizard when model, web search, or image generation API keys are still missing. The wizard can be skipped.
-
-If you intentionally need a fixed release or branch, pass an explicit ref:
-
-```bash
-dsproxy upgrade --tag <tag-or-branch>
-```
-
-### Path B: rerun the one-line installer
-
-Use this when upgrading from older releases such as `v0.1.0-alpha`, or when `dsproxy upgrade` is not available:
+Default channel, using the GitHub Latest Release asset:
 
 ```bash
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-This path is intentionally compatible with Path A. The bootstrap entrypoint fetches the current Release installer, refreshes the installation and profiles, and preserves local env and Codex configuration by default.
+Explicit pre-release channel, currently `v0.3.9-alpha`:
 
-Verify after either path:
+```bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.9-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.9-alpha
+```
+
+Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
+
+```bash
+tag="v0.3.9-alpha"
+tmp="$(mktemp -d)"
+bs="$tmp/bootstrap.sh"
+(
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/releases/download/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs"
+) && bash "$bs" --install-ref "$tag"
+```
+
+The installer places CoDeepSeedeX under `~/.local/share/deepseek-responses-proxy`, creates the `dsproxy` command, creates Codex profiles named `deepseek` and `deepseek-thinking`, and can install a narrow `codex` wrapper that only intercepts those two profiles.
+
+## Verify
 
 ```bash
 dsproxy --version
-dsproxy doctor --thinking
-curl -sS http://127.0.0.1:8000/healthz
-curl -sS http://127.0.0.1:8001/healthz
+dsproxy status
+dsproxy status thinking
 ```
 
+Expected version output has two lines:
 
-### API key and model metadata
+```text
+public version: v0.3.x-alpha | <public-release-commit>
+internal version: p2.x-topic | <internal-commit>
+```
 
-There are three different configuration layers:
-
-1. The model API key is required for Codex to talk to the upstream model provider through CoDeepSeedeX.
-2. Web search API keys are optional. Configure one only if you want Codex tool calls to use web search.
-3. Image generation API keys are optional. Configure one only if you want Codex tool calls to generate images.
-
-The installer and `dsproxy config wizard` validate API keys before saving them in the local env file, by default `~/.config/deepseek-responses-proxy/env`, with restricted file permissions. When a command asks for a key, paste it at the hidden `API key:` prompt and press Enter. The key is not printed back to the terminal.
-
-Common commands:
+Start Codex through the managed profiles:
 
 ```bash
-# Show saved provider settings. Secret values remain hidden.
-dsproxy config show
+codex --profile deepseek
+codex --profile deepseek-thinking
+```
 
-# Open the guided menu. Use this if you are not sure which provider to configure.
+## Configure model API
+
+Use the guided menu when you are not sure which provider or option to configure:
+
+```bash
 dsproxy config wizard
+```
 
-# Configure the model API provider used by Codex itself.
+Show saved settings without printing secret values:
+
+```bash
+dsproxy config show
+```
+
+Configure the model provider used by Codex itself:
+
+```bash
 dsproxy config set-model --provider deepseek
 dsproxy config set-model --provider kimi
 dsproxy config set-model --provider zhipu
@@ -137,20 +103,44 @@ dsproxy config set-model --provider zai-coding
 dsproxy config set-model --provider qwen-beijing
 dsproxy config set-model --provider qwen-singapore
 dsproxy config set-model --provider qwen-us
+```
+
+Non-interactive form, using a fake key for documentation only:
+
+```bash
+dsproxy config set-model --provider deepseek --value sk-fake-deepseek-api-key
+```
+
+Custom provider examples:
+
+```bash
 dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
+dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation
+dsproxy config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation
+```
 
-# Test the currently configured model API key.
-dsproxy config test-api-key
+API keys are stored locally in the CoDeepSeedeX env file with restrictive file permissions. Interactive commands use a hidden prompt for secret input; the hidden prompt only prevents the key from being printed on screen and is not cryptographic encryption. API keys are passed with `--value` or hidden prompt input, not as a positional argument.
 
-# Configure optional web search tool providers.
+## Optional tool providers
+
+Supported web search providers in the guided flow are SerpAPI, Tavily, Exa, and Firecrawl.
+
+```bash
 dsproxy config set-web-search-api-key --provider serpapi
 dsproxy config set-web-search-api-key --provider tavily
 dsproxy config set-web-search-api-key --provider exa
 dsproxy config set-web-search-api-key --provider firecrawl
+```
 
-Brave Search is no longer shown in the guided configuration flow because API key creation requires a paid subscription and there is no free live-probe path.
+Non-interactive web search example, using a fake key for documentation only:
 
-# Configure optional image generation tool providers.
+```bash
+dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key --skip-validation
+```
+
+Supported image generation providers include ZhipuAI/BigModel, Z.AI, Qwen Image/DashScope, Stability AI, and fal.ai.
+
+```bash
 dsproxy config set-image-api-key --provider zhipu
 dsproxy config set-image-api-key --provider zai
 dsproxy config set-image-api-key --provider qwen_image
@@ -158,389 +148,145 @@ dsproxy config set-image-api-key --provider stability
 dsproxy config set-image-api-key --provider fal
 ```
 
-Add `--skip-validation` only when you intentionally want to save the key without a live provider check, for example when you are offline, the provider validation endpoint is temporarily unavailable, or you are configuring a custom provider that cannot be validated automatically:
+Non-interactive image provider example, using a fake key for documentation only:
 
 ```bash
-dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
-dsproxy config set-web-search-api-key --provider serpapi --skip-validation
-dsproxy config set-image-api-key --provider zhipu --skip-validation
+dsproxy config set-image-api-key --provider zhipu --value fake-zhipu-api-key --skip-validation
 ```
 
-API key input examples with fake values:
+Qwen Image regional provider names are documented explicitly for validation and troubleshooting:
 
-```bash
-# Recommended interactive form. Paste the real key into the hidden prompt after running the command.
-dsproxy config set-model --provider deepseek
-# Prompt shown by the command:
-# DeepSeek API key: <paste-your-real-key-here; input is hidden>
-
-# Non-interactive examples. The key must be passed with --value, not as a positional argument.
-# Prefer fake values in documentation and avoid putting real keys in shell history.
-dsproxy config set-model --provider deepseek --value sk-fake-deepseek-api-key
-dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key
-dsproxy config set-image-api-key --provider zhipu --value fake-zhipu-api-key
-
-# Custom model provider example.
-dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation
+```text
+qwen_image_beijing    # Beijing
+qwen_image_singapore  # Singapore
+qwen_image_us         # US Virginia
+Germany Frankfurt     # documented unsupported region reference
 ```
-
-The installer also connects that env file and the `dsproxy` wrapper directory to your shell profile so new terminals can find `dsproxy` and Codex can see the configured model API key. If the current shell still cannot find `dsproxy`, open a new terminal or source the shell profile printed by the installer.
-
-
-### Provider access quick reference
-
-CoDeepSeedeX keeps provider setup lightweight. Free quotas, trial credits, and rate limits change often, so check each provider's official pricing or credits page before using it. Web search and image generation are separate from the model API: the model API powers Codex answers, while these optional providers power tool calls when Codex needs current web results or generated images. Web search key validation uses a fixed low-result query and may consume a minimal search quota. Image key validation avoids image generation where possible: Stability uses an account-balance probe, fal.ai uses a model-metadata probe, and Zhipu/Z.AI plus Qwen/DashScope use a non-generation authentication probe. If validation fails, the key is not saved unless you explicitly pass `--skip-validation`.
-
-#### Model API provider quick reference
-
-Use explicit site and plan names for model API setup. Do not use the old `glm` or `qwen` shortcut in documentation because it hides the endpoint choice.
-
-| Model API path | Current status | Configure |
-| --- | --- | --- |
-| DeepSeek | Existing primary path | `dsproxy config set-model --provider deepseek` |
-| Kimi / Moonshot | Endpoint reachable, supplied key returned HTTP 401 during live validation | `dsproxy config set-model --provider kimi` |
-| Zhipu / BigModel domestic general | `/models` verified | `dsproxy config set-model --provider zhipu` |
-| Zhipu / BigModel domestic Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-model --provider zhipu-coding` |
-| Z.AI international general | `/models` verified | `dsproxy config set-model --provider zai` |
-| Z.AI international Coding Plan | `/models` verified, keep it separate from the general endpoint | `dsproxy config set-model --provider zai-coding` |
-| Qwen / DashScope Beijing pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-beijing` |
-| Qwen / DashScope Singapore pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-singapore` |
-| Qwen / DashScope US Virginia pay-as-you-go | `/models` verified | `dsproxy config set-model --provider qwen-us` |
-| Qwen Coding Plan / Token Plan | Not script-tested because these are plan-specific tool paths | Configure as `custom` only when validating the corresponding tool path, for example `dsproxy config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation` |
-
-| Tool | Supported provider | Configure | Apply / quota page |
-| --- | --- | --- | --- |
-| Web search | SerpAPI | `dsproxy config set-web-search-api-key --provider serpapi` | https://serpapi.com/pricing |
-| Web search | Tavily | `dsproxy config set-web-search-api-key --provider tavily` | https://docs.tavily.com/documentation/api-credits |
-| Web search | Exa | `dsproxy config set-web-search-api-key --provider exa` | https://exa.ai/ |
-| Web search | Firecrawl | `dsproxy config set-web-search-api-key --provider firecrawl` | https://www.firecrawl.dev/ |
-| Image generation | ZhipuAI / BigModel (domestic CogView) | `dsproxy config set-image-api-key --provider zhipu` | https://www.bigmodel.cn/ |
-| Image generation | Z.AI / CogView (international) | `dsproxy config set-image-api-key --provider zai` | https://docs.z.ai/ |
-| Image generation | Qwen Image / DashScope | `dsproxy config set-image-api-key --provider qwen_image` | https://help.aliyun.com/zh/model-studio/qwen-image-api |
-
-For regional DashScope endpoints, set `DEEPSEEK_PROXY_IMAGE_BASE_URL` to the target region's multimodal generation endpoint before running `dsproxy doctor providers --kind image --provider qwen_image --live --allow-spend`. This is required because DashScope API keys and service domains are region-scoped.
-| Image generation | Stability AI | `dsproxy config set-image-api-key --provider stability` | https://platform.stability.ai/ |
-| Image generation | fal.ai | `dsproxy config set-image-api-key --provider fal` | https://fal.ai/ |
-
-For custom tool servers, choose `Other` in the guided menu and ask your agent to read `docs/developer-handbook.zh-CN.md`. See `docs/developer-handbook.zh-CN.md` for the handoff checklist.
 
 Provider diagnostics:
 
 ```bash
-# Check whether provider keys are configured without calling external APIs.
-dsproxy doctor providers
-
-# Run a real low-result web search probe. This may consume provider search quota.
-dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend
-
-# Run a real image generation probe. This creates a test image and may consume credits.
-dsproxy doctor providers --kind image --provider zhipu --live --allow-spend
+dsproxy doctor providers --json
+dsproxy doctor providers --live --allow-spend --json
 ```
 
+Live provider diagnostics may call external APIs and may consume quota or credits.
 
-## Behavior changes
-
-Release notes must mention milestone behavior changes, but the README also keeps this compact behavior-change table for changes that permanently alter CLI behavior or user workflow.
-
-| Version | Area | Previous behavior | New behavior | Migration note |
-|---|---|---|---|---|
-| v0.3.9-alpha / p2.10a50 | WeClaw full telemetry and release-readiness | WeClaw integration previously had to treat usage, pricing, cost, balance, and auxiliary-call details as unavailable or incomplete. | dsproxy now exposes a full WeClaw telemetry baseline with usage aggregation, pricing metadata, estimated cost, provider balance, auxiliary model-call accounting, and explicit precision boundaries. | If using WeClaw integration, use `weclaw_dev >= v0.1.9-alpha`. Install this pre-release with `dsproxy upgrade --alpha`. |
-| v0.3.9-alpha / p2.10a43-p2.10a49 | Integration-safe profile and documentation controls | Profile/effort automation and cross-conversation planning could drift after inserted tasks. | Adds JSON/refresh controls for effort workflows, finalizes the accepted WeClaw contract baseline, and records durable mainline and full-source-first development rules. | Existing users can keep normal configuration. Integration clients should prefer the documented `profile` and `status --weclaw-json` contracts. |
-| unreleased / p2.10a36 | Release state documentation sync | The docs still described `v0.3.8-alpha` as a GitHub pre-release or as waiting for Latest promotion after the GitHub Release had already become the current non-prerelease Release. | Synchronized README and handbook wording with the verified GitHub Release state while preserving the alpha tag naming policy and historical pre-release validation rules. | Use the normal install or upgrade path for the current `v0.3.8-alpha` GitHub Release. |
-| unreleased / p2.10a35 | Documentation handoff and replacement discipline | The handbook still carried stale p2.10a26 state and detailed superseded title-refresh experiments. Repeated narrow string anchors also caused avoidable test-patch failures. | Updated the handbooks and development log, condensed the p2.10a30-p2.10a34 wrapper lessons into the current p2.10a34 design, and recorded the function/block/section/AST replacement rule. | Use the handbook as the next conversation startup context. |
-| unreleased / p2.10a34 | Cleanup finite tab-title keeper on Codex return | The finite title keeper could continue until its 60-second limit after Codex returned, briefly restoring the CoDeepSeedeX tab title after the user had left Codex. | The wrapper now records the keeper PID, stops and waits for it after the real Codex command returns, and preserves the real Codex return status. | Refresh the local wrapper with `dsproxy profile refresh-wrapper --json`. |
-| unreleased / p2.10a33 | Finite runtime tab-title keeper | Delayed title refresh skipped itself when stdout was redirected to `/dev/null`, because the title function checked stdout TTY before writing `/dev/tty`. Codex can also rewrite the title after a single delayed OSC. | The wrapper now allows `/dev/tty` writes even when stdout is not a TTY and runs a finite runtime keeper for 60 seconds by default, refreshing the title once per second. | Refresh the local wrapper with `dsproxy profile refresh-wrapper --json`. |
-| unreleased / p2.10a32 | Foreground Codex wrapper for reliable delayed titles | Delayed OSC title refreshes were still unreliable when the wrapper replaced itself with the real Codex process. | The wrapper now keeps itself alive and runs the real Codex as the foreground command, so the finite delayed OSC refresh sequence can run during Codex startup while preserving the real Codex return status naturally. | Refresh the local wrapper with `dsproxy profile refresh-wrapper --json`. |
-| unreleased / p2.10a31 | Post-start Codex tab-title refresh | The wrapper set the tab title before Codex startup, so Codex could still overwrite it with the working-directory title. | The wrapper now waits until the matching dsproxy route is ready, then schedules delayed OSC 0/2 refreshes only after startup. It no longer changes the title before Codex begins launching. | Refresh the local wrapper with `dsproxy profile refresh-wrapper --json`. |
-| unreleased / p2.10a30 | Profile model sync and delayed tab title | Codex TUI could display a stale Codex profile model even when dsproxy routed to a different effective upstream model, and Codex startup could overwrite the wrapper-set tab title. | Added `dsproxy profile repair --managed-only --json` to sync managed profile `model` fields to each profile's effective upstream model. The Codex wrapper now applies short delayed OSC title refreshes after startup so Codex's initial title update is overwritten. | Run `dsproxy profile repair --managed-only --json` and `dsproxy profile refresh-wrapper --json` after installing this internal build. |
-| unreleased / p2.10a29 | WeClaw runtime contract unification | WeClaw-facing status exposed only a CLI skeleton, HTTP WeClaw endpoints were missing, installed Codex wrappers could remain stale, and model/context fields could mix Codex profile declarations with dsproxy runtime behavior. | dsproxy now exposes explicit effective model fields, wrapper refresh, HTTP WeClaw status/profile endpoints, and a context contract that separates token-level Codex profile windows from char-level runtime compaction/trimming. | WeClaw should prefer `effective_model`, inspect `model_conflict`, and read context from the WeClaw contract instead of parsing private files. |
-| unreleased / p2.10a28 | CoDeepSeedeX / WeClaw profile contract | WeClaw had to infer or repair profile-bound state, and `set-effort max` could write a Codex-invalid `model_reasoning_effort = "max"`. | dsproxy owns the profile contract: DeepSeek env effort stores `max`, Codex profiles store `xhigh`, `profile status --json` exposes profile health, and `status --weclaw-json` exposes a stable WeClaw-facing skeleton. | Re-run `dsproxy config set-effort max` or `dsproxy profile set-effort deepseek-thinking max --json` after installing this internal build. |
-| v0.3.8-alpha / p2.10a26 | Codex wrapper startup and Plan mode hardening | Codex could enter TUI even when the local proxy route was unavailable, and native Plan mode could still surface `medium`. | The wrapper now starts and verifies the selected proxy route before entering Codex. Generated DeepSeek profiles include `plan_mode_reasoning_effort = "high"`, and uninstall restores a previous Codex command backup when present. | Install or upgrade normally to `v0.3.8-alpha`; it is the current GitHub Release. |
-| v0.3.8-alpha / p2.10a25 | Installer version and non-git fallback polish | Source archive installs could lose the target commit in version output, existing non-git install dirs printed noisy git clone errors, and pip output leaked into the TTY. | The installer persists target commit metadata, routes existing non-git installs directly to source archive fallback, and captures pip output in the install log. | Install or upgrade normally to `v0.3.8-alpha`; it is the current GitHub Release. |
-
-
-| v0.3.8-alpha / p2.10a24 | Installer output polish and live image validation | Bootstrap printed a separate top-level log line before the installer UI, and image API validation still used a fragile non-generating probe. | Bootstrap log and install log are shown together under `Install logs`. Image API setup now warns that validation creates one safe test image and may consume credits, then performs live image generation and saves the test image under `/tmp`. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-
-
-| v0.3.8-alpha / p2.10a23 | Installer image validation and moved pre-release tag fetch | The guided image API flow called an undefined `test_image_api_key` function, so real VM installs failed at runtime. Rebuilt pre-release tags could also make `git fetch --tags` fail with `would clobber existing tag`. | Added the missing non-generating image API validation function, added installer tests that verify project-like shell calls are defined before use, and changed installer tag fetches to `git fetch --tags --force origin` for pre-release retest loops. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-
-
-| v0.3.8-alpha / p2.10a22 | Installer port label and effort surface | The installer used `Stable proxy port`, and the CLI upgrade profile reinstall path could still write `medium` for the non-thinking Codex profile. | The installer now says `Non-Thinking proxy port`. CoDeepSeedeX-owned profile install and upgrade surfaces use `high` or `xhigh`, while the proxy still accepts old `low` and `medium` compatibility inputs and normalizes them to DeepSeek `high`. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a21 | Installer wrapper help placement | The Codex wrapper explanation appeared above the wrapper question, visually separated from the relevant prompt. | Wrapper help is now printed by the menu renderer directly under the question and before the global arrow-key hint. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a20 | Installer secret prompt and wrapper help | Pressing Enter on an existing model API key reused the hidden default and reported it as newly entered characters. Secret prompt helper text and wrapper usage guidance were not visually clear. | Secret prompt helper text is dimmed. Empty input with an existing key keeps the key without re-counting or re-validating it. The installer now explains that the Codex wrapper enables `codex --profile deepseek` and `codex --profile deepseek-thinking` with automatic local dsproxy backend handling. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a19 | Installer menu selected-row column alignment | Selected menu rows used `▶ ` while unselected rows used a wider blank prefix, making the selected option visually shift left. | Align selected and unselected value columns by using a two-space blank prefix for unselected rows. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a18 | Minimal arrow-only installer UI | The p2.10a17 installer accidentally kept a duplicate old menu function, so the old numeric/text fallback renderer still overrode the polished renderer in VM runs. | Duplicate menu definitions are removed. Menus now use only ↑/↓ or j/k, Enter, and Backspace. Helper text is dim and shown once. Port default hints are dim. Bootstrap no longer prints duplicate Python/installer-ready lines. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a17 | Installer menu rendering and layout polish | Arrow-key menus could leave duplicated lines when long options wrapped, numeric shortcut `0` was not direct, and adjacent configuration messages were visually crowded. | Menu rows now truncate to terminal width, selected rows use full-row reverse-video highlight, listed numbers select immediately, the help hint is shown once, and guided sections are separated by blank lines. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a16 | Installer logo heredoc runtime fix | p2.10a15 put the ASCII logo in an unquoted heredoc. The backtick in the logo triggered shell command substitution at runtime. | The logo art now uses quoted heredocs and prints the version line separately. A runtime logo smoke test prevents `bash -n` from missing this class of bug. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a15 | Installer provider flow and source archive fallback | Provider menus were too flat, Yes/No entries inherited provider status labels, logo version was missing, and Git fetch failures could abort VM installs even after release assets downloaded. | Installer menus now use provider-family then endpoint/region submenus, Yes/No entries are plain, logo shows the install ref, key entry reports character count, and git setup can fall back to a tagged source archive. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a14 | Installer source logging variable fix | p2.10a13 moved source details from the UI to logs but wrote them to `LOG_FILE`, which is not defined in the installer. | Source details now write to `INSTALL_LOG`, and tests assert the installer has no `LOG_FILE` reference. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a13 | Installer UI compaction and TTY menu routing | Bootstrap/install screens printed full source URLs and arrow menus fell back when stdout was captured by logs. | Interactive screens now keep only the compact version label near the logo, write source details to logs, and render arrow menus through `/dev/tty`. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a12 | Bootstrap install-ref release asset resolution | `bootstrap.sh --install-ref v0.3.8-alpha` still downloaded the Latest `install.sh` first, so pre-release fresh VM tests could enter an older installer. | Bootstrap now consumes `--install-ref`, prefers the matching release-asset `install.sh`, and prints bootstrap/installer source information under the banner. | Included in `v0.3.8-alpha`; install or upgrade normally to the current GitHub Release. |
-| v0.3.8-alpha / p2.10a11 | Model provider support labels | Non-DeepSeek model providers were labeled Supported even though only API connectivity had been verified. | Only DeepSeek remains Supported. Kimi, Zhipu / BigModel, Z.AI, and Qwen / DashScope model providers are now labeled Experimental until full Codex workflow validation passes. | This is a classification and UX correction only. |
-| v0.3.8-alpha / p2.10a10 | Installer provider selection UI | Installer provider menus relied on number input and some image-provider hints still used generic Qwen names. | Guided installer menus now prefer arrow-key selection with numeric/text fallback, and image-provider hints use explicit Qwen region names. | This changes installer UX only; no Release tag is moved. |
-| v0.3.8-alpha / p2.10a8 | Alpha upgrade channel and Codex tab title | `dsproxy upgrade` only followed GitHub Latest Release, and the Codex wrapper did not set the terminal tab title. | `dsproxy upgrade --alpha` now follows the newest non-draft GitHub pre-release, while default `dsproxy upgrade` still follows Latest Release. The Codex wrapper randomizes the tab title as `[emoji]CoDeepSeedeX` for `deepseek` and `deepseek-thinking` profiles. | Historical note: `dsproxy upgrade --alpha` was the VM validation path before this Release was promoted. Use normal install or upgrade for the current Release. |
-| v0.3.8-alpha / p2.10a6 | Installer model API guided setup | The installer grouped model providers under ambiguous choices such as `GLM / Z.AI` or generic `Qwen / DashScope`, and still exposed custom-endpoint-only options such as Mimo and Baichuan as guided choices. | The installer now mirrors the explicit model provider surface: Zhipu / BigModel domestic general, Zhipu / BigModel domestic Coding Plan, Z.AI international general, Z.AI international Coding Plan, and Qwen / DashScope Beijing, Singapore, and US Virginia pay-as-you-go. | Re-run the installer only if you rely on guided model API setup. Existing CLI configuration remains compatible. Legacy `glm` and `qwen` shortcuts remain backward aliases but are not public recommendations. |
-| v0.3.8-alpha / p2.10a4 | Model API configuration commands | `set-api-key` was the primary model API setup command, while `set-model` only changed the current upstream model. | `set-model` is now the primary model provider, model, and optional API key setup command. `set-api-key` remains as a compatibility alias with a deprecation note. | Prefer `dsproxy config set-model --provider <provider>` for model API setup. Existing `set-api-key` scripts can continue to run during the compatibility period. |
-| v0.3.8-alpha / p2.10a3 | Provider validation and Qwen Image regions | Non-generation image validation could classify HTTP 200 provider error bodies as generic validation failures. Qwen Image appeared as one generic DashScope option. | HTTP 200 provider error bodies are accepted as non-generation auth/account probes when no auth error is present. Qwen Image now lists Beijing and Singapore as supported choices and US Virginia/Germany Frankfurt as model-unavailable choices. | Re-run `dsproxy config set-image-api-key` with `qwen_image_beijing` or `qwen_image_singapore` when using Qwen Image. |
-| v0.3.8-alpha / p2.10a2 | Config apply and reasoning effort | API key/model/effort changes were saved, but users had to infer whether running proxies needed a restart. `medium` could appear in user-facing effort examples even though the DeepSeek proxy path normalizes it to `high`. | Successful config writes refresh already-running local stable/thinking proxies and report `all updates applied`. User-facing effort guidance uses `high`, while `low`/`medium` remain accepted compatibility inputs and are stored as `high`. | Rerun the installer or run `dsproxy config set-effort high` to refresh installed Codex profile wording. |
-## 🚀 Quick start
-
-After installation:
-
-    codex --profile deepseek
-    codex --profile deepseek-thinking
-
-If you accepted the recommended codex wrapper, these commands automatically start the matching local proxy before launching Codex.
-
-Continue a previous Codex conversation:
-
-    codex --profile deepseek-thinking resume
-
-## 🔌 MCP behavior in v2.6a+
-
-CoDeepSeedeX treats Codex MCP configuration as the default trust boundary.
-
-- Default MCP policy: `codex`
-- Default MCP backend: `stdio`
-- Proxy-side MCP allowlists are not required by default
-- Write-capable MCP tools are not rejected by default
-- The target server must exist in `~/.codex/config.toml`
-- The target tool must be exposed by the server's runtime `tools/list`
-- Currently supported MCP transport: stdio `command` + `args`
-- Not yet supported: HTTP/SSE/remote MCP transports
-
-## 🧠 Long session compaction behavior in v2.7a+
-
-CoDeepSeedeX v2.7a+ reduces repeated context growth in long `deepseek-thinking` sessions by trimming oversized tool outputs before they are sent back into the model context.
-
-Behavior summary:
-
-- `deepseek-thinking` enables tool-output trimming by default.
-- `deepseek` stable mode remains unchanged.
-- Oversized `shell_command` and `interactive_shell` outputs are trimmed with head/tail retention.
-- Large structured tool outputs are serialized compactly before trimming when possible.
-- Large `image_payload` outputs are preserved as local JSON artifacts and replaced in the model context with lightweight `image_payload_artifact_ref` metadata, including path/URI/hash recovery fields.
-- Trimming runs before previous-response function-call filtering, so outputs can still be classified while duplicate assistant tool-call replay remains avoided.
-
-Latest real validation snapshot:
-
-| Metric | Value |
-| --- | --- |
-| Trimmed categories | `shell_command`, `interactive_shell` |
-| Characters removed by applied trimming | `44822` |
-| Latest observed context size | `270012` chars |
-| Max observed context size | `405107` chars |
-| Removed chars vs latest context | about `16.6%` |
-| Removed chars vs max context | about `11.1%` |
-
-These numbers are a latest aggregate-trace snapshot, not a fixed compression ratio and not the total lifetime saving. Because previous tool outputs are replayed across later turns, removing oversized historical output reduces repeated context growth in subsequent requests. The cumulative prompt-budget effect can be larger than the one-time removed-char count.
-
-Trade-off: the middle of very large outputs may be omitted. The retained head and tail usually preserve command setup, summaries, exits and recent error context. If exact full output matters, save it to a file and inspect or attach that file explicitly.
-
-Inspect current long-session state:
+## Run and stop proxy
 
 ```bash
-dsproxy debug behavioral --thinking --limit 200 --timeout 5
+dsproxy start
+dsproxy start thinking
+dsproxy status
+dsproxy status thinking
+dsproxy stop
+dsproxy stop thinking
 ```
 
-## 🧩 Current compaction strategy
+`deepseek` uses the non-thinking proxy route. `deepseek-thinking` uses the thinking proxy route. The wrapper starts or refreshes the matching proxy automatically before launching Codex for these managed profiles.
 
-Tool outputs are classified before trimming. Only oversized outputs are rewritten.
+## Pricing and cost metadata
 
-| Category | Typical source | Current behavior |
-| --- | --- | --- |
-| `shell_command` | Non-interactive shell commands, tests, logs | Trim oversized outputs with head/tail retention. The middle may be omitted. |
-| `interactive_shell` | Long-running or PTY-style command sessions | Trim oversized outputs with head/tail retention, preserving recent interaction context where possible. |
-| `image_payload` | Image-view or image-returning tools with large structured payloads | Preserve the full oversized payload in a local JSON artifact and pass only a lightweight `image_payload_artifact_ref` through model context, so Codex can recover the complete image payload without destructive truncation. |
-| `search` | Web/search style tool outputs | Classified separately so future policies do not treat search results as raw shell logs. Oversized output follows conservative trimming. |
-| `file_read` | File inspection or file-read tools | Classified separately to preserve file-reading semantics. Oversized output follows conservative trimming. |
-| `user_interaction` | Prompts, approvals or user-facing interaction tool outputs | Classified separately and handled conservatively because it may contain interaction state. |
-| `unknown` | Tools without a known category | Uses conservative fallback trimming only when oversized, so the proxy can run without a fixed local tool list. |
+Show the current local pricing table and metadata:
 
-Structured list/dict tool outputs are serialized to compact JSON before trimming. This helps large structured payloads enter the same budget path as plain text output.
+```bash
+dsproxy pricing show --json
+```
 
-For controlled maintainer validation, see `docs/developer-handbook.zh-CN.md`.
+Fetch and validate DeepSeek official pricing HTML without writing cache:
 
-## 🧠 deepseek vs deepseek-thinking
+```bash
+dsproxy pricing refresh --json
+```
 
-The difference is simple:
+Fetch and persist the validated official pricing cache:
 
-- `deepseek` sends Codex requests to DeepSeek with thinking disabled.
-- `deepseek-thinking` sends Codex requests to DeepSeek with thinking enabled.
+```bash
+dsproxy pricing refresh --write-cache --json
+```
 
-They are two Codex profiles that point to two local CoDeepSeedeX proxy modes.
+Cost estimates must keep their pricing source visible. Bundled fallback prices are labelled separately from a freshly fetched `official_docs_html` cache.
 
-| Profile | Local port | DeepSeek mode | Recommended use |
-|---|---:|---|---|
-| `deepseek` | 8000 | non-thinking | quick edits, lightweight tasks, lower-cost use |
-| `deepseek-thinking` | 8001 | thinking | long tasks, multi-step coding, tool-heavy agent loops |
+## Upgrade
 
-In other words, `deepseek-thinking` does not mean a different Codex. It means CoDeepSeedeX asks the upstream DeepSeek model to run in thinking mode.
+Default upgrade path follows the GitHub Latest Release:
 
-## 🤖 Supported DeepSeek models
+```bash
+dsproxy upgrade
+dsproxy upgrade --dry-run
+```
 
-CoDeepSeedeX currently targets the official DeepSeek V4 API model names.
+Pre-release upgrade path follows the newest non-draft GitHub pre-release:
 
-The same DeepSeek V4 model can be used in two modes:
+```bash
+dsproxy upgrade --alpha
+```
 
-- non-thinking mode: DeepSeek returns the answer directly.
-- thinking mode: DeepSeek performs an explicit reasoning phase before returning the answer.
+Explicit tag or ref:
 
-| Upstream model | non-thinking mode | thinking mode | Recommended CoDeepSeedeX use |
-|---|---|---|---|
-| `deepseek-v4-pro` | Supported | Supported | Best default for `deepseek-thinking`, long coding tasks, stronger reasoning |
-| `deepseek-v4-flash` | Supported | Supported | Best default for `deepseek`, faster and lower-cost tasks |
+```bash
+dsproxy upgrade --tag v0.3.9-alpha
+```
 
-Legacy compatibility names:
+Do not combine `--alpha` and `--tag`.
 
-| Legacy name | Meaning in practice | Status |
-|---|---|---|
-| `deepseek-chat` | `deepseek-v4-flash` with thinking disabled | compatibility name |
-| `deepseek-reasoner` | `deepseek-v4-flash` with thinking enabled | compatibility name |
+Older installations that do not have `dsproxy upgrade` should rerun the installer.
 
-CoDeepSeedeX defaults:
+## WeClaw integration
 
-| Codex profile | Default upstream model | DeepSeek mode |
-|---|---|---|
-| `deepseek` | `deepseek-v4-flash` | non-thinking |
-| `deepseek-thinking` | `deepseek-v4-pro` | thinking |
+CoDeepSeedeX can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
 
-Use `dsproxy config set-model deepseek-v4-pro` or `dsproxy config set-model deepseek-v4-flash` to switch the upstream model. Use `/model` inside Codex TUI to change Codex-side model or reasoning settings when available.
+If WeClaw integration is used with CoDeepSeedeX `v0.3.9-alpha`, WeClaw must be at least:
 
-## 🧭 Codex TUI commands
+```text
+weclaw_dev >= v0.1.9-alpha
+```
 
-Inside Codex TUI:
+Machine-readable status contract:
 
-    /status
+```bash
+dsproxy status thinking --weclaw-json
+```
 
-Show current session and runtime status.
+Important fields exposed for WeClaw include:
 
-    /model
+```text
+context_window.used_tokens
+context_window.latest_upstream_prompt_tokens
+context_window.limit_explanation
+tokens.attribution
+pricing.source_trust
+pricing.official_reference_url
+pricing.official_source
+cost.pricing_source_kind
+cost.official_pricing_available
+diagnostics.degraded_fields
+semantic_compaction
+```
 
-Switch model or reasoning effort inside Codex.
+`context_window.used_tokens` is an explicitly labelled estimate from the latest upstream provider `prompt_tokens` when available. It is not Codex internal context-window usage, and it must not be replaced with cumulative session totals.
 
-    /plan
+## Security and data boundaries
 
-Use planning mode before implementation work.
+CoDeepSeedeX stores local configuration under your user account and modifies user-level Codex profile files only when installing, upgrading, refreshing profiles, or changing configuration.
 
-You can also type natural-language requests such as:
-
-    check balance
-
-Codex will usually call local tools to run `dsproxy balance`. The most deterministic shell command is still:
-
-    dsproxy balance
-
-## 🔧 Shell operations
-
-Check the thinking proxy health and configuration:
-
-    dsproxy doctor --thinking
-
-Show the current model-provider balance when the provider supports it:
-
-    dsproxy balance
-
-Show local provider, model, tool, and validation settings without printing saved secrets:
-
-    dsproxy config show
-
-Switch the upstream model used by CoDeepSeedeX:
-
-    dsproxy config set-model deepseek-v4-pro
-    dsproxy config set-model deepseek-v4-flash
-
-Change Codex-side reasoning effort for the installed profiles:
-
-    dsproxy config set-effort high
-    dsproxy config set-effort xhigh
-    dsproxy config set-effort max
-
-View local usage totals for the thinking proxy:
-
-    dsproxy usage --thinking --summary
-
-Show full CLI help:
-
-    dsproxy -H
-### 🤝 WeClaw integration
-
-<!-- CODEEPSEEDEX_WECLAW_DEV_INTEGRATION_START -->
-
-CoDeepSeedeX can be used together with [weclaw_dev](https://github.com/Awenforever/weclaw_dev) as the DeepSeek/Codex runtime backend for WeClaw-style chat and automation workflows.
-
-Current integration boundary:
-
-- WeClaw can route user messages to Codex profiles backed by CoDeepSeedeX.
-- CoDeepSeedeX provides the local DeepSeek Responses-compatible proxy, runtime model controls, MCP tool bridging, and upgrade path.
-- WeClaw remains responsible for the messaging surface, session routing, command UX, and user-facing bot behavior.
-- CoDeepSeedeX does not replace WeClaw, and WeClaw does not change CoDeepSeedeX proxy internals.
-
-<!-- CODEEPSEEDEX_WECLAW_DEV_INTEGRATION_END -->
-
-## 🧹 Uninstall and restore
-
-Remove CoDeepSeedeX Codex profiles and wrappers:
-
-    bash scripts/install.sh --uninstall
-
-If the installer replaced an existing `codex` command in the install bin directory, it records a backup path and restores it during uninstall when possible.
-
-By default, uninstall removes the integration wrappers and Codex profiles. It does not delete the installed source directory or the local env file. To remove those as well:
-
-    bash scripts/install.sh --uninstall --remove-files
-
-## 📦 Install from source
-
-    git clone https://github.com/Awenforever/CoDeepSeedeX.git ~/deepseek-responses-proxy
-    cd ~/deepseek-responses-proxy
-    python3 -m venv .venv
-    .venv/bin/python -m pip install -e .
-
-Initialize:
-
-    .venv/bin/dsproxy config init
-    .venv/bin/dsproxy install-codex-profile --name deepseek --base-url http://127.0.0.1:8000/v1
-    .venv/bin/dsproxy install-codex-profile --name deepseek-thinking --base-url http://127.0.0.1:8001/v1
-
-## 🔐 Security
-
-CoDeepSeedeX is designed for localhost use. Do not expose it to a public network.
-
-Codex may call tools, modify files, execute commands and access MCP servers depending on your Codex configuration.
-
-Read:
-
-- TROUBLESHOOTING.md
-- TROUBLESHOOTING.md
-
-### C4 command-risk gate visibility
-
-The proxy exposes command-risk policy status through `proxy_status` as `command_risk_policy`.
-
-`DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE` supports:
-
-- `off`: disables command-risk policy reporting and gating.
-- `dry_run`: records risk reports without changing tool execution.
-- `enabled`: enables the C4 suppress-only gate.
-
-The gate is intentionally Codex-aligned. Normal development operations such as project-local `apply_patch`, project file writes, cache cleanup, `/tmp` cleanup, dependency installation, and project-local destructive operations remain Codex-governed. The proxy suppresses only `C4_catastrophic_or_out_of_sandbox` operations, such as root/home/drive deletion, disk formatting, block-device overwrite, production database drop, or force-push to protected branches.
-
-C4 suppression is suppress-only. It returns an assistant explanation and does not support automatic resume through “continue”.
+Do not put real API keys directly in shell history unless you intentionally accept that risk. Prefer hidden prompts or a secure secret workflow.
 
 ## Documentation
 
-- Troubleshooting: `TROUBLESHOOTING.md`
-- Developer handbook, English primary: `docs/developer-handbook.md`
-- Developer handbook, Chinese mirror: `docs/developer-handbook.zh-CN.md`
-- Detailed development log: `docs/development-log.md`
+User entry points:
 
-### Qwen Image regional provider status
+```text
+README.md
+README.zh-CN.md
+```
 
-| Provider | Region | Status | Command |
-|---|---|---|---|
-| `qwen_image` | Beijing | legacy/default alias for Beijing | `dsproxy config set-image-api-key --provider qwen_image` |
-| `qwen_image_beijing` | Beijing | supported | `dsproxy config set-image-api-key --provider qwen_image_beijing` |
-| `qwen_image_singapore` | Singapore | supported | `dsproxy config set-image-api-key --provider qwen_image_singapore` |
-| `qwen_image_us` | US Virginia | qwen-image-2.0-pro model unavailable | listed for clarity; choose Beijing or Singapore |
-| `qwen_image_germany` | Germany Frankfurt | qwen-image-2.0-pro model unavailable | listed for clarity; choose Beijing or Singapore |
+Maintainer entry points:
+
+```text
+docs/developer-handbook.md
+docs/developer-handbook.zh-CN.md
+docs/development-log.md
+```
+
+Historical release notes and long development records belong in `docs/development-log.md`, not in this README.

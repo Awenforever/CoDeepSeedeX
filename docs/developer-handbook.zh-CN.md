@@ -24,25 +24,25 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开pre-release：`v0.3.9-alpha`
-- 公开pre-release commit：`677d923`
+- 公开pre-release commit：`4a96283`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，pre-release
 - 公开Release资产：`bootstrap.sh`、`install.sh`
-- 当前内部开发线：`p2.10a60-weclaw-status-context-pricing-contract`
-- p2.10a60前的当前内部开发基线：`master = origin/master = 4a96283`
-- 本节点前最新已完成内部检查点：`p2.10a59-weclaw-round3-token-attribution-plan = 4a96283`
+- 当前内部开发线：`p2.10a61-readme-structure-cleanup`
+- p2.10a61前的当前内部开发基线：`master = origin/master = 033f1ec`
+- 本节点前最新已完成内部检查点：`p2.10a60-weclaw-status-context-pricing-contract = 033f1ec`
 - Release readiness检查点：`p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - 已完成的P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：WeClaw侧已认可p2.10a48回报基线并进入初步集成。p2.10a55用于关闭第二轮运行时status绑定和契约可操作性缺口。
 - Release要求：如果使用WeClaw联动，`weclaw_dev`版本不得低于`v0.1.9-alpha`。
 - 不能移动的公开tag：
-  - `v0.3.9-alpha = 677d923`
+  - `v0.3.9-alpha = 4a96283`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
-- p2.10a59是内部token归因边界契约节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
+- p2.10a61是README结构清理节点。不得移动公开tag，不得创建新的GitHub Release，也不得重建Release资产。
 
 本手册是新AI开发对话的启动上下文。它应记录当前状态、稳定规则、当前任务总线、Release规范和高价值经验。详细时间线进入`docs/development-log.md`。
 
@@ -294,6 +294,12 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a61 README结构清理
+
+p2.10a61清理用户面向README，把用户工作流和开发历史分离。README只保留安装、验证、配置、provider、pricing、升级、WeClaw兼容性和文档入口。长Release历史、内部契约讨论和开发经验应进入`docs/development-log.md`或开发手册，不继续堆在README里。
+
+本次清理还移除了shell注释被Markdown误解析成标题造成的结构污染，移除Brave作为用户面向provider设置入口，并保持公开pre-release `v0.3.9-alpha`仍指向`4a96283`，不移动公开tag。
 
 ## p2.10a60 WeClaw status上下文和价格契约
 
