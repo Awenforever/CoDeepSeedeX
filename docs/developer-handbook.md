@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a53-tui-compact-path-evidence-sync`
+- Current internal development line: `p2.10a54-token-shadow-accounting-plan`
 - Verified repository baseline before post-release doc sync: `master = origin/master = 677d923`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
 - Completed P0 checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
@@ -304,6 +304,8 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
 | P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | Not started | Waiting | 2026-05-16 | Do not implement speculative second-round work. Start from a read-only state audit when requirements arrive. |
+| P0.4 | Token shadow accounting and token-vs-char drift observability | Add audited token-level shadow accounting and drift reporting before semantic payload compaction implementation. Existing char-based dsproxy compaction and trim remain the runtime safety valve. | Plan captured at `p2.10a54-token-shadow-accounting-plan` | Planned after WeClaw second-round requirements and before P0.5 implementation | 2026-05-17 | This is not a direct switch from char triggering to token triggering. First observe provider usage, Codex status tokens, local estimates, and drift before any trigger change. |
+
 | P0.5 | Semantic payload compaction hardening | Dry-run, canary, limited-enable, telemetry, and rollback rules exist for semantic payload compaction without corrupting user intent, patches, errors, git state, Release state, or WeClaw accounting. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned after WeClaw second-round unless TUI compaction risk forces escalation | 2026-05-16 | This line must audit usage/cost, compaction statistics, WeClaw display fields, debug budget, long-session observability, and token-vs-char semantics before implementation. |
 | P0.6 | Codex TUI third-party profile command compatibility | Manual TUI matrix and compact path capture show `codex --profile deepseek` can start, normal requests work, `/status`, `/fork`, and manual `/compact` work, and manual `/compact` uses ordinary `/v1/responses` rather than `/responses/compact`. | Evidence captured before `p2.10a53-tui-compact-path-evidence-sync` | Partially closed; auto-compact near the token threshold remains unverified | 2026-05-17 | Do not implement `/responses/compact` compatibility based on the current evidence. If auto-compact later fails or uses a different route, reopen this as a compatibility task before AnyCodeX. |
 
@@ -317,6 +319,84 @@ Checklist maintenance rules:
 2. Do not let inserted tasks silently replace the mainline. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of its active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, release state, or accepted downstream feedback.
+
+## p2.10a54 token shadow accounting plan
+
+p2.10a54 is a documentation and version-metadata sync node. It records the decision that dsproxy should not directly replace existing character-based runtime compaction with token-based triggering. Instead, it should add a token shadow accounting and drift-observability layer before semantic payload compaction implementation.
+
+### Decision
+
+Keep the current dsproxy runtime payload guard as character-based:
+
+1. persistent compaction remains a proxy-side payload safety valve,
+2. trimming remains a proxy-side hard guard,
+3. `runtime_compaction` and `runtime_trimming` continue to report `unit=chars`,
+4. existing char guards continue to protect serialized payloads, tool outputs, JSON, reasoning content, and function arguments even when token estimates are unavailable.
+
+Add token shadow accounting before implementing semantic payload compaction:
+
+1. expose token-level context window values from Codex profile and Codex status as token fields,
+2. keep provider-returned usage as the authoritative cost and token source when available,
+3. add local token estimates only as estimates with explicit confidence and source,
+4. report token-vs-char drift so maintainers can see whether char guards are early, late, or aligned,
+5. keep WeClaw display fields separated into token-level context window and char-level proxy payload guard.
+
+### Required contract boundary
+
+Future status and WeClaw contracts should keep these concepts separate:
+
+```json
+{
+  "context_window": {
+    "unit": "tokens",
+    "limit_tokens": 750000,
+    "used_tokens_reported": null,
+    "source": "codex_profile|codex_status|provider_usage"
+  },
+  "runtime_payload_guard": {
+    "unit": "chars",
+    "effective_trigger_chars": null,
+    "max_context_chars": null,
+    "source": "dsproxy_runtime"
+  },
+  "token_shadow": {
+    "available": false,
+    "estimated": true,
+    "input_tokens_estimated": null,
+    "confidence": "low|medium|high",
+    "source": "local_estimator|provider_usage|codex_status"
+  },
+  "drift": {
+    "token_to_char_ratio": null,
+    "risk": "unknown|early_char_compaction|late_char_compaction|aligned"
+  }
+}
+```
+
+The exact schema can change during implementation, but the unit separation must not be weakened. Token context windows, character payload guards, provider usage, and cost attribution must stay distinct.
+
+### Implementation prerequisites
+
+Before semantic payload compaction is implemented, the maintainer must audit and define:
+
+1. which token source is available for each route: Codex status, provider usage, local estimator, or none,
+2. whether local estimation is model-specific or generic,
+3. how estimates are labelled so they are never confused with provider usage,
+4. how compact turns are attributed in usage and cost summaries,
+5. how WeClaw displays token context, char payload guard, compact events, and costs,
+6. how drift warnings should behave when token estimates and char guards disagree.
+
+### Future trigger policy
+
+Do not switch runtime compaction to token triggering in one step. The safe sequence is:
+
+1. observe only,
+2. report token shadow values and drift,
+3. add warnings when token risk and char risk diverge,
+4. evaluate real traces,
+5. only then consider dual-threshold triggering based on chars or token-risk evidence.
+
+This keeps existing safety behavior while addressing the semantic drift between Codex token windows and dsproxy character guards.
 
 ## p2.10a53 TUI compact path evidence sync
 

@@ -1,5 +1,17 @@
 # CoDeepSeedeX详尽开发日志
 
+## p2.10a54-token-shadow-accounting-plan
+
+- Scope: docs-only plan for token shadow accounting and token-vs-char drift observability before semantic payload compaction implementation.
+- Starting point: `master = origin/master = 2781892`, internal tag `p2.10a53-tui-compact-path-evidence-sync = 2781892`, public pre-release tag `v0.3.9-alpha = 677d923`.
+- Decision: keep current dsproxy runtime compaction and trimming as character-based payload guards.
+- Decision: do not directly switch runtime compaction to token-based triggering.
+- Decision: add token shadow accounting before semantic payload compaction implementation.
+- Required boundary: Codex profile context and Codex status are token-level surfaces, dsproxy runtime payload guard is char-level, provider usage remains authoritative for token/cost accounting, and local token estimates must be labelled as estimates.
+- Required future work: report token-vs-char drift, warn when token risk and char risk diverge, and only then consider dual-threshold triggering.
+- WeClaw implication: WeClaw display should separate token context window from char proxy payload guard and should not merge them into one unitless progress bar.
+- Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
+
 ## p2.10a53-tui-compact-path-evidence-sync
 
 - Scope: docs-only evidence sync for the Codex TUI compact path after p2.10a52.

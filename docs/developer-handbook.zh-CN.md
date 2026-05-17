@@ -277,6 +277,8 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | WeClaw full telemetry基线 | WeClaw可从dsproxy维护的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance和compaction。 | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | 已被WeClaw侧认可并进入初步集成 | 2026-05-16 | WeClaw第二轮需求会在其审计后提出。prompt子类token拆分仍保持not-reported，除非后续新增经过审计的tokenizer层。 |
 | P0-follow-up | WeClaw第二轮需求 | WeClaw侧给出具体审计需求清单，包含精确字段、命令和UX要求。 | 尚未开始 | 等待 | 2026-05-16 | 不做 speculative second-round work。需求到达后先只读审计。 |
+| P0.4 | token shadow accounting和token-vs-char漂移观测 | 在semantic payload compaction实现前，新增经过审计的token级影子统计和漂移报告。现有char级dsproxy compaction和trim仍作为运行时安全阀。 | 计划记录于`p2.10a54-token-shadow-accounting-plan` | 计划中，排在WeClaw第二轮需求之后和P0.5实现之前 | 2026-05-17 | 这不是把char触发直接切成token触发。必须先观测provider usage、Codex status tokens、本地估算和漂移，再决定是否改触发策略。 |
+
 | P0.5 | semantic payload compaction强化 | 为semantic payload compaction建立dry-run、canary、有限启用、遥测、回退和展示规则，确保不破坏用户需求、补丁、错误、git状态、Release状态和WeClaw统计。 | 计划记录于`p2.10a52-semantic-payload-compaction-tui-plan` | 计划中，默认排在WeClaw第二轮之后和AnyCodeX之前 | 2026-05-16 | 实现前必须审计usage/cost、compact统计、WeClaw展示字段、debug budget、长会话观测和token-vs-char语义。 |
 | P0.6 | CodexTUI第三方profile命令兼容性 | 人工TUI矩阵和compact路径抓取显示`codex --profile deepseek`可以启动，普通请求可用，`/status`、`/fork`和手动`/compact`可用，并且手动`/compact`走普通`/v1/responses`，不是`/responses/compact`。 | 证据已在`p2.10a53-tui-compact-path-evidence-sync`前捕获 | 部分闭环，接近token阈值的auto-compact仍未验证 | 2026-05-17 | 基于当前证据，不应实现`/responses/compact`兼容端点。若后续auto-compact失败或使用不同路径，再在AnyCodeX前重新打开兼容任务。 |
 
@@ -290,6 +292,84 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 2. 插入任务不得静默替代主线。插入任务收口后必须回到本检查表。
 3. handoff内容必须包含本表，或包含其活跃行的精确摘要。
 4. 任务是否完成必须以日志、测试、tag、Release状态或下游认可为证据。
+
+## p2.10a54 token shadow accounting计划
+
+p2.10a54是文档和版本元数据同步节点，用于记录一个关键决策：dsproxy不应直接把现有char级运行时compaction替换为token级触发。更稳妥的做法是在semantic payload compaction实现前，先增加token shadow accounting和token-vs-char漂移观测层。
+
+### 决策
+
+保留当前dsproxy运行时payload保护的char口径：
+
+1. persistent compaction继续作为proxy侧payload安全阀。
+2. trimming继续作为proxy侧硬保护。
+3. `runtime_compaction`和`runtime_trimming`继续报告`unit=chars`。
+4. 现有char保护继续覆盖序列化payload、tool output、JSON、reasoning content和function arguments，即使token估算不可用也不能失效。
+
+在semantic payload compaction之前新增token shadow accounting：
+
+1. 从Codex profile和Codex status暴露token级context window值。
+2. provider返回的usage仍作为token和cost事实来源。
+3. 本地token估算只能作为estimate，必须明确confidence和source。
+4. 报告token-vs-char漂移，判断char保护是过早、过晚还是基本对齐。
+5. WeClaw展示必须拆分为token级context window和char级proxy payload guard，不得混成一个进度条。
+
+### 契约边界
+
+未来status和WeClaw契约必须区分：
+
+```json
+{
+  "context_window": {
+    "unit": "tokens",
+    "limit_tokens": 750000,
+    "used_tokens_reported": null,
+    "source": "codex_profile|codex_status|provider_usage"
+  },
+  "runtime_payload_guard": {
+    "unit": "chars",
+    "effective_trigger_chars": null,
+    "max_context_chars": null,
+    "source": "dsproxy_runtime"
+  },
+  "token_shadow": {
+    "available": false,
+    "estimated": true,
+    "input_tokens_estimated": null,
+    "confidence": "low|medium|high",
+    "source": "local_estimator|provider_usage|codex_status"
+  },
+  "drift": {
+    "token_to_char_ratio": null,
+    "risk": "unknown|early_char_compaction|late_char_compaction|aligned"
+  }
+}
+```
+
+具体字段可在实现时调整，但单位边界不能弱化。token级context window、char级payload guard、provider usage和cost attribution必须保持分离。
+
+### 实现前置审计
+
+实现semantic payload compaction之前，必须先审计并定义：
+
+1. 每条route可获得哪些token来源：Codex status、provider usage、本地估算或无。
+2. 本地估算是模型相关还是通用近似。
+3. 如何标注估算值，避免被误认为provider usage。
+4. compact turn如何归入usage和cost。
+5. WeClaw如何展示token context、char payload guard、compact events和cost。
+6. token估算和char保护分歧时，漂移预警如何显示。
+
+### 后续触发策略
+
+不要一步切换到token触发。安全顺序应为：
+
+1. 只观测。
+2. 报告token shadow值和drift。
+3. 当token风险和char风险分歧时增加warning。
+4. 基于真实trace评估。
+5. 最后才考虑chars或token-risk任一触发的双阈值策略。
+
+这样既保留现有安全保护，又修正Codex token窗口和dsproxy char保护之间的语义漂移。
 
 ## p2.10a53 TUI compact路径证据同步
 
