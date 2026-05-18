@@ -1137,3 +1137,24 @@ The p2.10a69 FX fields remain in the contract, but they are not the default Deep
 
 Primary pricing URL: https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
 Fallback/i18n pricing URL: https://api-docs.deepseek.com/quick_start/pricing/
+
+## p2.10a71 Pre-release Release Notes Closeout
+
+当前收口目标：在p2.10a71验证完成后，将当前master更新到`v0.3.9-alpha`。Release note必须累计覆盖自`v0.3.8-alpha`以来到当前预发布状态的功能变化，但保持面向用户，不写开发流水账。
+
+应写入功能性变化：
+- WeClaw上下文、runtime payload guard、Compact/Trim进度和context-window估算字段。
+- DeepSeekprofile tokenizer统计，以及用户机tokenizer同步/状态命令。
+- WeClaw Details的prompt分段语义，包括最新`user`、`user_history`、`tool_output`和`environment`。
+- CNY优先的Pricing/Cost契约、DeepSeek中文官方价格源、cash估算和逐turn账本费用语义。
+- provider未提供独立reasoning费用拆分时的显式不可用语义。
+
+不写入开发过程细节：
+- 内部p-tag列表，
+- 测试数量，
+- 文档维护本身，
+- 命令脚本恢复过程，
+- 实现过程中的中间错误，
+- release note编辑过程。
+
+`v0.3.9-alpha`Release note应在现有正文上累计更新，不能用一个短delta覆盖已有功能项。已有的`runtime_payload_guard`、Compact/Trim、context-window limit explanation、pricing refresh和WeClaw status contract等内容必须保留。

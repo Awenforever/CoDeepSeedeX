@@ -1181,3 +1181,24 @@ The p2.10a69 FX fields remain in the contract, but they are not the default Deep
 
 Primary pricing URL: https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
 Fallback/i18n pricing URL: https://api-docs.deepseek.com/quick_start/pricing/
+
+## p2.10a71 Pre-release Release Notes Closeout
+
+Current closeout target: update `v0.3.9-alpha` from the current master after p2.10a71 validation. The Release note must be cumulative from `v0.3.8-alpha` to the current pre-release state, but it must remain user-facing and feature-focused.
+
+Do include functional changes:
+- WeClaw context, runtime payload guard, Compact/Trim progress, and context-window estimate fields.
+- DeepSeek profile-tokenizer accounting and user-machine tokenizer sync/status commands.
+- WeClaw Details prompt segmentation semantics, including latest `user`, `user_history`, `tool_output`, and `environment`.
+- CNY-first Pricing/Cost contracts, DeepSeek Chinese official price source, cash estimate, and per-turn ledger cost semantics.
+- Reasoning-cost unavailable semantics when providers do not expose separately priced reasoning output.
+
+Do not include development-only details:
+- internal p-tags,
+- test counts,
+- documentation maintenance work,
+- command-script recovery details,
+- implementation churn,
+- release-note editing process.
+
+The `v0.3.9-alpha` Release note must be updated cumulatively on top of the existing Release body. Do not replace it with a short delta that loses earlier v0.3.9-alpha features such as `runtime_payload_guard`, Compact/Trim, context-window limit explanation, pricing refresh, and WeClaw status contract fields.

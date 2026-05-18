@@ -317,3 +317,17 @@ docs/development-log.md
 ```
 
 历史Release说明和长期开发记录应放在`docs/development-log.md`，不要继续堆进README。
+
+## WeClaw状态遥测
+
+CoDeepSeedeX通过`dsproxy status thinking --weclaw-json`向WeClaw提供结构化状态遥测。
+
+当前面向WeClaw的字段包括：
+- 来自provider usage的token用量；
+- 基于本地DeepSeekprofile tokenizer的Details估算；
+- 面向`user`、`user_history`、`tool_output`、`environment`等桶的脱敏prompt分段；
+- 基于DeepSeek中文官方价格页的CNY优先Pricing/Cost字段；
+- 逐turn费用账本，避免混合模型或route的session被当前active model价格重新计算；
+- 通过`runtime_payload_guard`暴露的char级Compact和Trim进度。
+
+WeClaw应消费dsproxy提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。

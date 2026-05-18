@@ -317,3 +317,17 @@ docs/development-log.md
 ```
 
 Historical release notes and long development records belong in `docs/development-log.md`, not in this README.
+
+## WeClaw status telemetry
+
+CoDeepSeedeX exposes structured WeClaw status telemetry through `dsproxy status thinking --weclaw-json`.
+
+Current WeClaw-facing fields include:
+- token usage from provider-reported usage totals,
+- local DeepSeek profile-tokenizer estimates for Details,
+- sanitized prompt segmentation for `user`, `user_history`, `tool_output`, `environment`, and related buckets,
+- CNY-first Pricing/Cost fields based on DeepSeek's Chinese official pricing page,
+- per-turn cost ledger semantics so mixed model or route sessions are not recalculated using the current active model price,
+- char-level Compact and Trim progress through `runtime_payload_guard`.
+
+WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.

@@ -759,3 +759,8 @@ Added structured Pricing/Cost currency metadata for WeClaw, CNY display conversi
 ## p2.10a70-pricing-cny-primary-source
 
 Changed DeepSeek pricing priority so the Chinese official CNY pricing page is the default source for V4 Flash/Pro. The English USD pricing page remains available as fallback/i18n. Bundled pricing now uses CNY prices from https://api-docs.deepseek.com/zh-cn/quick_start/pricing/; FX metadata from p2.10a69 remains but is not the default path when CNY pricing is available.
+
+
+## p2.10a71-docs-prerelease-notes
+
+Prepared the cumulative `v0.3.9-alpha` Release note update. The note preserves the existing v0.3.9-alpha feature body and adds user-facing functional changes from the tokenizer/Details/Pricing-Cost closeout line: profile tokenizer sync/status, prompt segmentation, CNY-first Pricing/Cost, cash estimate, per-turn cost ledger semantics, and explicit reasoning-cost unavailable semantics. Development-only details are intentionally excluded from the Release note.
