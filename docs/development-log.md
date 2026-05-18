@@ -764,3 +764,21 @@ Changed DeepSeek pricing priority so the Chinese official CNY pricing page is th
 ## p2.10a71-docs-prerelease-notes
 
 Prepared the cumulative `v0.3.9-alpha` Release note update. The note preserves the existing v0.3.9-alpha feature body and adds user-facing functional changes from the tokenizer/Details/Pricing-Cost closeout line: profile tokenizer sync/status, prompt segmentation, CNY-first Pricing/Cost, cash estimate, per-turn cost ledger semantics, and explicit reasoning-cost unavailable semantics. Development-only details are intentionally excluded from the Release note.
+
+## p2.10a72 Handbook Latest-state sync
+
+Date: 2026-05-18
+
+Purpose:
+
+- Synchronize the English and Chinese developer handbooks after the `v0.3.9-alpha` Latest Release closeout and VM validation.
+- Correct stale current-state references to earlier pre-release commits such as `ac63043` and `677d923`.
+- Record the trusted current state: `master = origin/master = 6ea67b2`, `v0.3.9-alpha = 6ea67b2`, `p2.10a71-docs-prerelease-notes = 6ea67b2`, GitHub Latest Release `v0.3.9-alpha`, `isPrerelease=false`, assets `bootstrap.sh` and `install.sh`.
+- Preserve the rule that `v0.3.9` and `v0.3.5` must not exist.
+
+Scope:
+
+- Documentation-only.
+- No public Release tag movement.
+- No GitHub Release rebuild.
+- No Release asset upload.

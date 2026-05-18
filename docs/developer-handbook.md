@@ -27,26 +27,25 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
-- Current public pre-release: `v0.3.9-alpha`
-- Public pre-release commit: `ac63043`
+- Current public Release: `v0.3.9-alpha`
+- Current public Release commit: `6ea67b2`
+- GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
-- GitHub Release state: non-draft, pre-release
+- GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
+- GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a70-pricing-cny-primary-source`
-- Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
-- Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
-- Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
+- Current internal development checkpoint: `p2.10a71-docs-prerelease-notes = 6ea67b2`
+- Latest closed documentation sync checkpoint: `p2.10a72-handbook-latest-state-sync`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- WeClaw status: the p2.10a48 reporting baseline was accepted for initial WeClaw integration. p2.10a55 closes the second-round runtime status binding and contract actionability gap.
+- WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
-- Public tags that must not move:
-  - `v0.3.9-alpha = ac63043`
+- Public tags that must not move without an explicit Release-update task:
+  - `v0.3.9-alpha = 6ea67b2`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
-- p2.10a64 is a pre-release upgrade and uninstall documentation closure node. It must not move public tags, create a new GitHub Release, or rebuild Release assets.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
 
@@ -241,30 +240,35 @@ The handbook is an AI startup pack:
 
 ## 11. Current major-line summary: p2.10 / v0.3.9-alpha
 
-p2.10 now spans the `v0.3.8-alpha` release line and the published `v0.3.9-alpha` public pre-release.
+p2.10 spans the `v0.3.8-alpha` line through the closed `v0.3.9-alpha` Latest Release.
+
+Current verified Release state:
+
+- `master = origin/master = 6ea67b2`
+- `v0.3.9-alpha = 6ea67b2`
+- `p2.10a71-docs-prerelease-notes = 6ea67b2`
+- GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
+- GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
+- Release assets: `bootstrap.sh`, `install.sh`
+- Erroneous plain tags `v0.3.9` and `v0.3.5` are absent.
+- VM installation and runtime validation passed after the Release was promoted to Latest.
 
 User-visible changes since `v0.3.8-alpha`:
 
-- WeClaw integration is now backed by a full dsproxy-owned telemetry contract. WeClaw can consume profile, model, effort, context-window, usage aggregation, pricing metadata, estimated cost, provider balance, auxiliary model-call accounting, and compaction status through stable CLI/HTTP surfaces.
+- WeClaw integration is backed by a dsproxy-owned telemetry contract. WeClaw can consume profile, model, effort, context-window, usage aggregation, pricing metadata, estimated cost, provider balance, auxiliary model-call accounting, and compaction status through stable CLI and HTTP surfaces.
 - `dsproxy status [thinking] --weclaw-json` prefers the runtime `/v1/proxy/weclaw/status` endpoint when the proxy is reachable, and falls back to structured unavailable fields when it is not.
 - `dsproxy profile status <profile> --json` and `dsproxy profile set-effort <profile> <effort> --json` provide machine-readable profile and effort state for integration clients.
-- `dsproxy config set-effort` and `dsproxy profile set-effort` include JSON/refresh controls for integration-safe workflows.
-- Usage/cost reporting is explicit about precision: provider token totals and dsproxy call-purpose attribution are reported, cost is estimated from dsproxy pricing cache, and prompt subcategory token splits such as user/tool/environment/history remain not-reported unless a future audited tokenizer layer is added.
-- Wrapper and profile behavior after `v0.3.8-alpha` was hardened through profile model sync, runtime tab-title keeper cleanup, and documentation of the accepted current wrapper behavior.
-- Development process documentation now includes a durable long-term mainline checklist and a full-source-first patch discipline rule.
+- Runtime payload guard fields expose Compact and Trim progress as character-level dsproxy runtime behavior. They must not be merged with token-level context-window fields.
+- DeepSeek profile-tokenizer accounting is available as local display and drift-analysis data. Provider usage remains billing-authoritative.
+- `dsproxy tokenizer sync deepseek --json` and `dsproxy tokenizer status deepseek --json` manage user-machine tokenizer resources.
+- Prompt segmentation semantics distinguish latest ordinary `user`, `user_history`, `tool_output`, `environment`, `system`, `developer`, and compaction summary categories.
+- Pricing and cost contracts are CNY-first for DeepSeek V4. The Chinese official pricing page is the primary source, with English USD pricing kept as fallback and future internationalization support.
+- Session cost uses the per-turn ledger and must not be recomputed from the currently active model price.
+- Reasoning output cost is explicitly unavailable when the provider does not expose separately priced reasoning output.
 
 Release requirement for `v0.3.9-alpha`:
 
 - Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
-
-Current verified release state:
-
-- `v0.3.9-alpha = 677d923`, GitHub Release title `CoDeepSeedeX v0.3.9-alpha`, non-draft and pre-release.
-- Release assets are `bootstrap.sh` and `install.sh`.
-- `master = origin/master = 677d923` before p2.10a51.
-- `p2.10a50-v039-alpha-release-readiness-sync = 677d923`.
-- `v0.3.8-alpha = dfdc629`, unchanged.
-- `v0.3.9` must not be created.
 
 ## 12. New conversation startup checklist
 
@@ -275,10 +279,28 @@ git branch --show-current
 git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
-git rev-parse --short v0.3.8-alpha^{}
-git rev-parse --short p2.10a26-wrapper-start-plan-mode-hardening^{}
+git rev-parse --short v0.3.9-alpha^{}
+git rev-parse --short p2.10a71-docs-prerelease-notes^{}
+git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
-gh release view v0.3.8-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets
+gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
+gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
+dsproxy --version
+```
+
+Expected current state:
+
+```text
+master=origin/master=6ea67b2
+worktree clean
+v0.3.9-alpha=6ea67b2
+p2.10a71-docs-prerelease-notes=6ea67b2
+GitHub Latest Release=v0.3.9-alpha
+isDraft=false
+isPrerelease=false
+assets=[bootstrap.sh, install.sh]
+public version: v0.3.9-alpha | 6ea67b2
+internal version: p2.10a71-docs-prerelease-notes | 6ea67b2
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -294,8 +316,14 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 Resolved tag fallback:
 
 ```bash
-tag="v0.3.8-alpha"
+tag="v0.3.9-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
+```
+
+Pinned Release-asset bootstrap:
+
+```bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.9-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.9-alpha
 ```
 
 ## 14. Long-term mainline task checklist
@@ -304,16 +332,13 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, and compaction from dsproxy-owned CLI/HTTP contracts. | `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0` | Accepted for initial WeClaw integration | 2026-05-16 | WeClaw second-round requirements will be proposed after their own audit. Prompt subcategory token splits remain not-reported unless a future audited tokenizer layer is added. |
-| P0-follow-up | WeClaw second-round requirements | A concrete audited requirement list from the WeClaw side exists, with exact requested fields/commands/UX. | `p2.10a55-weclaw-runtime-status-contract` | Implemented runtime status binding and contract actionability | 2026-05-17 | Runtime WeClaw status now uses app.state store/client, preserves explicit unavailable reasons, adds context used-token display semantics, and adds model-conflict diagnostic display hints. |
-| P0.4 | Token shadow accounting and token-vs-char drift observability | Add audited token-level shadow accounting and drift reporting before semantic payload compaction implementation. Existing char-based dsproxy compaction and trim remain the runtime safety valve. | Plan captured at `p2.10a54-token-shadow-accounting-plan` | Planned after WeClaw second-round requirements and before P0.5 implementation | 2026-05-17 | This is not a direct switch from char triggering to token triggering. First observe provider usage, Codex status tokens, local estimates, and drift before any trigger change. |
-
-| P0.5 | Semantic payload compaction hardening | Dry-run, canary, limited-enable, telemetry, and rollback rules exist for semantic payload compaction without corrupting user intent, patches, errors, git state, Release state, or WeClaw accounting. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned after WeClaw second-round unless TUI compaction risk forces escalation | 2026-05-16 | This line must audit usage/cost, compaction statistics, WeClaw display fields, debug budget, long-session observability, and token-vs-char semantics before implementation. |
-| P0.6 | Codex TUI third-party profile command compatibility | Manual TUI matrix and compact path capture show `codex --profile deepseek` can start, normal requests work, `/status`, `/fork`, and manual `/compact` work, and manual `/compact` uses ordinary `/v1/responses` rather than `/responses/compact`. | Evidence captured before `p2.10a53-tui-compact-path-evidence-sync` | Partially closed; auto-compact near the token threshold remains unverified | 2026-05-17 | Do not implement `/responses/compact` compatibility based on the current evidence. If auto-compact later fails or uses a different route, reopen this as a compatibility task before AnyCodeX. |
-
-| P1 | AnyCodeX-level generalized provider architecture | Evidence-based architecture plan and incremental adapter/refactor sequence that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active while release task is closed | 2026-05-16 | AnyCodeX is a future direction only, not the current project name. |
-| P2 | `v0.3.9-alpha` public pre-release | GitHub pre-release exists with `prerelease=true`, assets `bootstrap.sh` and `install.sh`, release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 677d923` | Completed | 2026-05-16 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
-| Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-16 | `grep`/`rg` may identify candidate files only. |
+| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, Details, tokenizer status, and compaction from dsproxy-owned CLI/HTTP contracts. | `v0.3.9-alpha = 6ea67b2` | Closed | 2026-05-18 | WeClaw side reported no blocking issue. VM installation and runtime validation passed after v0.3.9-alpha was promoted to Latest. |
+| P0.4 | Token shadow accounting and token-vs-char drift observability | Token-level status, local tokenizer estimates, provider usage, and char-level payload guards remain explicitly separated. | `p2.10a65` to `p2.10a68` | Implemented for DeepSeek profile-tokenizer accounting and prompt segmentation | 2026-05-18 | Provider usage remains billing-authoritative. Local tokenizer accounting is for display and drift analysis. |
+| P0.5 | Semantic payload compaction hardening | Dry-run, canary, telemetry, rollback, and forbidden-content rules exist before any mutation of user intent or patch-critical payloads. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned, not active | 2026-05-18 | Do not implement until a concrete requirement reopens this line. |
+| P0.6 | Codex TUI third-party profile command compatibility | Manual compact path evidence remains compatible with ordinary Responses traffic unless future auto-compact evidence proves otherwise. | Evidence captured at `p2.10a53-tui-compact-path-evidence-sync` | Partially closed | 2026-05-18 | Do not add `/responses/compact` without fresh evidence. |
+| P1 | AnyCodeX-level generalized provider architecture | Evidence-based adapter and capability plan that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active | 2026-05-18 | AnyCodeX remains a future direction only. |
+| P2 | `v0.3.9-alpha` public Latest Release | GitHub Latest Release exists with `prerelease=false`, assets `bootstrap.sh` and `install.sh`, Release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 6ea67b2` | Completed | 2026-05-18 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-18 | `grep` and `rg` may identify candidate files only. |
 
 Checklist maintenance rules:
 
@@ -1202,3 +1227,20 @@ Do not include development-only details:
 - release-note editing process.
 
 The `v0.3.9-alpha` Release note must be updated cumulatively on top of the existing Release body. Do not replace it with a short delta that loses earlier v0.3.9-alpha features such as `runtime_payload_guard`, Compact/Trim, context-window limit explanation, pricing refresh, and WeClaw status contract fields.
+
+## p2.10a72 Handbook Latest-state sync
+
+p2.10a72 synchronizes the English and Chinese developer handbooks after the `v0.3.9-alpha` closeout and VM validation. It is a documentation-only state correction node.
+
+Trusted current state after this node:
+
+- `master = origin/master = 6ea67b2`
+- `v0.3.9-alpha = 6ea67b2`
+- `p2.10a71-docs-prerelease-notes = 6ea67b2`
+- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, non-prerelease, and the GitHub Latest Release.
+- Release assets are exactly `bootstrap.sh` and `install.sh`.
+- Erroneous plain tags `v0.3.9` and `v0.3.5` are absent.
+- `dsproxy --version` reports public and internal versions at `6ea67b2`.
+- VM installation and runtime validation passed.
+
+This node does not move public Release tags, does not rebuild Release assets, and does not create a GitHub Release.
