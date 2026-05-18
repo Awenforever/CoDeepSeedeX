@@ -739,3 +739,8 @@ Added profile-aware DeepSeek tokenizer accounting for WeClaw-facing status. The 
 ## p2.10a66-tokenizer-resource-installer-sync
 
 Moved DeepSeek tokenizer resource delivery out of the repository and into installer/user-machine synchronization through `dsproxy tokenizer sync deepseek --json`. The runtime now uses managed tokenizer resources from the install/user resource directory or explicit env overrides, while provider usage remains billing-authoritative and local profile tokenizer counts remain estimates.
+
+
+## p2.10a67-status-tokenizer-contract-consistency
+
+Fixed the WeClaw status tokenizer contract so tokenizer resource availability is separated from observed prompt subcategory availability. `tokens.profile_tokenizer.available` can now be true before the route observes a prompt, while `tokens.prompt_subcategory_split.available=false` reports `profile_tokenizer_available_but_no_observed_prompt` with empty categories.

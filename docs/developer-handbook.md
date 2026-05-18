@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a66-tokenizer-resource-installer-sync`
+- Current internal development line: `p2.10a67-status-tokenizer-contract-consistency`
 - Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
 - Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
@@ -1140,3 +1140,12 @@ Contract boundary:
 p2.10a66 changes tokenizer resource delivery from repository-bundled large JSON files to installer/user-machine synchronization. The runtime now looks for managed tokenizer resources under `DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR` or `DEEPSEEK_PROXY_INSTALL_DIR/resources/tokenizers`, and the CLI exposes `dsproxy tokenizer status` and `dsproxy tokenizer sync deepseek --json`.
 
 The official archive is still the DeepSeek token-usage documentation archive whose internal directory is named `deepseek_v3_tokenizer`. CoDeepSeedeX labels the local binding as `deepseek_official_current` to avoid claiming that it is a V4-specific tokenizer. Provider `usage` remains billing-authoritative; profile tokenizer accounting remains a local estimate for WeClaw display and drift analysis.
+
+
+## p2.10a67 Status tokenizer contract consistency
+
+p2.10a67 fixes the WeClaw status tokenizer contract boundary. `tokens.profile_tokenizer.available` now reports tokenizer resource and runtime binding availability, independently from whether the route has observed an assembled prompt. `tokens.profile_tokenizer.summary.available` reports whether an assembled prompt has been observed and summarized.
+
+When the tokenizer resource is available but the route has not yet observed an assembled prompt, `tokens.prompt_subcategory_split.available` remains false with `reason=profile_tokenizer_available_but_no_observed_prompt` and `categories={}`. When the tokenizer resource is unavailable, the reason comes from the tokenizer contract, for example `profile_tokenizer_json_not_found`.
+
+This prevents WeClaw from seeing a contradictory status where `dsproxy tokenizer status deepseek --json` is available but `tokens.profile_tokenizer.available` is false without a specific explanation.

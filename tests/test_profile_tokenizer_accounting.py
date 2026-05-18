@@ -91,7 +91,7 @@ def test_profile_tokenizer_counts_prompt_subcategories_with_env_tokenizer(tokeni
     split = report["prompt_subcategory_split"]
     assert split["available"] is True
     assert split["is_estimated"] is True
-    assert split["precision"] == "local_profile_tokenizer_content_estimate"
+    assert split["precision"] == "local_profile_tokenizer_estimate"
     assert split["categories"]["user"]["tokens"] > 0
     assert split["categories"]["system"]["tokens"] > 0
     assert split["categories"]["assistant_history"]["tokens"] > 0
@@ -232,3 +232,74 @@ async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(
     assert data["tokens"]["profile_tokenizer"]["available"] is True
     assert data["tokens"]["prompt_subcategory_split"]["available"] is True
     assert data["tokens"]["last_turn"]["summary"]["prompt_tokens"] == 30
+
+
+
+def test_weclaw_tokens_contract_reports_tokenizer_available_before_prompt_observed(
+    tmp_path: Path,
+    tokenizer_json: Path,
+) -> None:
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    tokens = _weclaw_tokens_contract(
+        store,
+        profile="deepseek-thinking",
+        profile_model="deepseek-v4-flash",
+        provider="deepseek",
+        profile_tokenizer_report=None,
+    )
+
+    assert tokens["profile_tokenizer"]["available"] is True
+    assert tokens["profile_tokenizer"]["precision"] == "local_profile_tokenizer_estimate"
+    assert tokens["profile_tokenizer"]["source"] == str(tokenizer_json)
+    assert tokens["profile_tokenizer"]["source_kind"].startswith("env.")
+    assert tokens["profile_tokenizer"]["summary"]["available"] is False
+    assert tokens["profile_tokenizer"]["summary"]["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
+    assert tokens["attribution"]["profile_tokenizer"]["available"] is True
+    assert tokens["attribution"]["profile_tokenizer"]["billing_authoritative"] is False
+
+    split = tokens["prompt_subcategory_split"]
+    assert split["available"] is False
+    assert split["precision"] == "local_profile_tokenizer_estimate"
+    assert split["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
+    assert split["categories"] == {}
+    assert split["tokenizer_kind"] == "deepseek_official_current"
+    assert split["tokenizer_source"] == str(tokenizer_json)
+
+
+@pytest.mark.asyncio
+async def test_runtime_weclaw_status_reports_tokenizer_resource_before_prompt_observed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tokenizer_json: Path,
+) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "plan_mode_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    app = create_app(deepseek_client=DeepSeekClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tokens"]["profile_tokenizer"]["available"] is True
+    assert data["tokens"]["profile_tokenizer"]["summary"]["available"] is False
+    assert data["tokens"]["profile_tokenizer"]["summary"]["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
+    assert data["tokens"]["prompt_subcategory_split"]["available"] is False
+    assert data["tokens"]["prompt_subcategory_split"]["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
+    assert data["tokens"]["prompt_subcategory_split"]["categories"] == {}
+    assert data["tokens"]["attribution"]["profile_tokenizer"]["available"] is True

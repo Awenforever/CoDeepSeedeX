@@ -691,6 +691,7 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
 
     client = TestClient(create_app())
     profile_data = client.get("/v1/proxy/weclaw/profile-status?profile=deepseek-thinking").json()
@@ -732,6 +733,7 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
 
     client = TestClient(create_app())
     data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false").json()
@@ -741,7 +743,7 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
     assert tokens["taxonomy"]["version"] == 4
     assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
     assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
-    assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "not_reported_by_provider_without_tokenizer"
+    assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "unavailable"
 
     assert tokens["attribution"]["provider_usage_totals"]["precision"] == "exact_provider_reported"
     assert tokens["attribution"]["purpose_attribution"]["precision"] == "exact_dsproxy_call_purpose"
@@ -752,5 +754,5 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
     assert tokens["profile_tokenizer"]["summary"]["available"] is False
     assert tokens["prompt_subcategory_split"]["available"] is False
     assert tokens["prompt_subcategory_split"]["precision"] == "unavailable"
-    assert tokens["prompt_subcategory_split"]["reason"] == "provider_usage_is_aggregate_without_prompt_subcategory_breakdown"
-    assert "audited_tokenizer_or_segment_ledger" in tokens["prompt_subcategory_split"]["missing"]
+    assert tokens["prompt_subcategory_split"]["reason"] == "profile_tokenizer_json_not_found"
+    assert "profile_tokenizer_resource" in tokens["prompt_subcategory_split"]["missing"]
