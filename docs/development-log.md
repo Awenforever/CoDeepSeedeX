@@ -749,3 +749,8 @@ Fixed the WeClaw status tokenizer contract so tokenizer resource availability is
 ## p2.10a68-prompt-segment-ledger-audit
 
 Added sanitized latest prompt segmentation for WeClaw Details and refined profile-tokenizer prompt categories. The `user` bucket is now the latest ordinary user segment, `user_history` stores earlier ordinary user-role segments, Codex tool transcripts are classified as `tool_output`, and AGENTS/memory/environment user-role blocks are classified as `environment`.
+
+
+## p2.10a69-pricing-currency-turn-ledger
+
+Added structured Pricing/Cost currency metadata for WeClaw, CNY display conversion based on dsproxy-owned FX metadata, per-turn pricing context columns in the usage ledger, cash cost semantics, reasoning-cost unavailable semantics, and a more robust DeepSeek official pricing HTML parser.

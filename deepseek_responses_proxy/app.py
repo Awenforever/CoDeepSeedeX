@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a68-prompt-segment-ledger-audit"
+PROXY_INTERNAL_VERSION = "p2.10a69-pricing-currency-turn-ledger"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -441,49 +441,38 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
         if cells:
             rows.append(cells)
 
-    model_row = next((row for row in rows if any(cell == "deepseek-v4-flash" or cell.startswith("deepseek-v4-flash") for cell in row)), None)
-    if not model_row:
-        raise ValueError("model row was not found in official pricing table")
-
-    def _model_index(model: str) -> int:
-        for index, cell in enumerate(model_row):
-            if cell == model or cell.startswith(model):
-                return index
-        raise ValueError(f"model {model!r} was not found in official pricing table")
-
-    flash_index = _model_index("deepseek-v4-flash")
-    pro_index = _model_index("deepseek-v4-pro")
-
     prices: dict[str, dict[str, float]] = {
         "deepseek-v4-flash": {},
         "deepseek-v4-pro": {},
     }
 
     label_map = {
-        "1M INPUT TOKENS(CACHE HIT)": "input_cache_hit",
-        "1M INPUT TOKENS (CACHE HIT)": "input_cache_hit",
-        "1M INPUT TOKENS(CACHE MISS)": "input_cache_miss",
-        "1M INPUT TOKENS (CACHE MISS)": "input_cache_miss",
-        "1M OUTPUT TOKENS": "output",
+        "CACHE HIT": "input_cache_hit",
+        "CACHE MISS": "input_cache_miss",
+        "OUTPUT TOKENS": "output",
     }
 
     for row in rows:
-        if not row:
-            continue
-        normalized_label = row[0].replace(" ", " ").strip().upper()
-        normalized_label = re.sub(r"\s+", " ", normalized_label)
+        joined = " ".join(row).upper()
         key = None
         for label, mapped_key in label_map.items():
-            if label in normalized_label:
+            if label in joined:
                 key = mapped_key
                 break
         if key is None:
             continue
 
-        if flash_index >= len(row) or pro_index >= len(row):
-            raise ValueError(f"pricing row for {key} does not have both model columns")
-        prices["deepseek-v4-flash"][key] = _parse_usd_price(row[flash_index])
-        prices["deepseek-v4-pro"][key] = _parse_usd_price(row[pro_index])
+        row_prices: list[float] = []
+        for cell in row:
+            try:
+                row_prices.append(_parse_usd_price(cell))
+            except ValueError:
+                continue
+        if len(row_prices) < 2:
+            raise ValueError(f"pricing row for {key} does not expose both model prices: {row!r}")
+
+        prices["deepseek-v4-flash"][key] = row_prices[0]
+        prices["deepseek-v4-pro"][key] = row_prices[1]
 
     required_keys = {"input_cache_hit", "input_cache_miss", "output"}
     for model, item in prices.items():
@@ -4613,6 +4602,72 @@ class SQLiteResponseStore:
             column="upstream_model",
             ddl="TEXT",
         )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="route",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="effort",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_model",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_currency",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_unit",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_source_kind",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_updated_at",
+            ddl="TEXT",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_input_cache_hit",
+            ddl="REAL",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_input_cache_miss",
+            ddl="REAL",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="pricing_output",
+            ddl="REAL",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="estimated_cost_source_currency",
+            ddl="TEXT NOT NULL DEFAULT 'USD'",
+        )
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         response_id = response["id"]
@@ -4672,10 +4727,16 @@ class SQLiteResponseStore:
         requested_model: str | None = None,
         effective_model: str | None = None,
         upstream_model: str | None = None,
+        route: str | None = None,
+        effort: str | None = None,
+        pricing_context: dict[str, Any] | None = None,
+        estimated_cost_source_currency: str = "USD",
     ) -> None:
         normalized_purpose = str(purpose or "final").strip() or "final"
         normalized_effective_model = str(effective_model or model).strip() or model
         normalized_upstream_model = str(upstream_model or normalized_effective_model).strip() or normalized_effective_model
+        normalized_route = str(route or ("thinking" if thinking_enabled else "non_thinking"))
+        pricing = pricing_context if isinstance(pricing_context, dict) else _pricing_context_for_usage_event(normalized_effective_model)
 
         with self._connect() as conn:
             conn.execute(
@@ -4697,9 +4758,20 @@ class SQLiteResponseStore:
                     total_tokens,
                     cached_tokens,
                     reasoning_tokens,
-                    estimated_cost_usd
+                    estimated_cost_usd,
+                    route,
+                    effort,
+                    pricing_model,
+                    pricing_currency,
+                    pricing_unit,
+                    pricing_source_kind,
+                    pricing_updated_at,
+                    pricing_input_cache_hit,
+                    pricing_input_cache_miss,
+                    pricing_output,
+                    estimated_cost_source_currency
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _now(),
@@ -4719,6 +4791,17 @@ class SQLiteResponseStore:
                     usage_numbers["cached_tokens"],
                     usage_numbers["reasoning_tokens"],
                     estimated_cost_usd,
+                    normalized_route,
+                    effort,
+                    pricing.get("pricing_model"),
+                    pricing.get("pricing_currency"),
+                    pricing.get("pricing_unit"),
+                    pricing.get("pricing_source_kind"),
+                    pricing.get("pricing_updated_at"),
+                    pricing.get("pricing_input_cache_hit"),
+                    pricing.get("pricing_input_cache_miss"),
+                    pricing.get("pricing_output"),
+                    estimated_cost_source_currency,
                 ),
             )
 
@@ -4799,7 +4882,18 @@ class SQLiteResponseStore:
                     total_tokens,
                     cached_tokens,
                     reasoning_tokens,
-                    estimated_cost_usd
+                    estimated_cost_usd,
+                    route,
+                    effort,
+                    pricing_model,
+                    pricing_currency,
+                    pricing_unit,
+                    pricing_source_kind,
+                    pricing_updated_at,
+                    pricing_input_cache_hit,
+                    pricing_input_cache_miss,
+                    pricing_output,
+                    estimated_cost_source_currency
                 FROM usage_events
                 {where_sql}
                 ORDER BY created_at DESC, id DESC
@@ -5988,6 +6082,7 @@ async def _chat_completions_with_usage(
         raise
 
     usage_numbers = _extract_usage_numbers(deepseek_response)
+    pricing_context = _pricing_context_for_usage_event(effective_model)
     estimated_cost_usd = _estimate_cost_usd(effective_model, usage_numbers)
     trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
     if isinstance(trimming_report, dict):
@@ -6029,6 +6124,10 @@ async def _chat_completions_with_usage(
             requested_model=requested_model,
             effective_model=effective_model,
             upstream_model=effective_model,
+            route="thinking" if thinking_enabled else "non_thinking",
+            effort=_deepseek_reasoning_effort_config(payload),
+            pricing_context=pricing_context,
+            estimated_cost_source_currency="USD",
         )
 
     return deepseek_response
@@ -12893,14 +12992,51 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
     summary = _weclaw_zero_usage_summary()
     summary["model_call_count"] = len(events)
     summary["request_count"] = len(events)
+    summary["estimated_cost_by_model_usd"] = {}
+    summary["usage_by_model"] = {}
+    summary["routes"] = {}
     for event in events:
         summary["prompt_tokens"] += _weclaw_usage_int(event.get("prompt_tokens"))
         summary["completion_tokens"] += _weclaw_usage_int(event.get("completion_tokens"))
         summary["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
         summary["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
         summary["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
-        summary["estimated_cost_usd"] += _weclaw_usage_float(event.get("estimated_cost_usd"))
+        event_cost = _weclaw_usage_float(event.get("estimated_cost_usd"))
+        summary["estimated_cost_usd"] += event_cost
+
+        model = str(event.get("effective_model") or event.get("model") or "unknown")
+        route = str(event.get("route") or ("thinking" if bool(event.get("thinking_enabled")) else "non_thinking"))
+        summary["estimated_cost_by_model_usd"][model] = float(summary["estimated_cost_by_model_usd"].get(model, 0.0) + event_cost)
+        model_usage = summary["usage_by_model"].setdefault(
+            model,
+            {
+                "model_call_count": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "cached_tokens": 0,
+                "reasoning_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+            },
+        )
+        model_usage["model_call_count"] += 1
+        model_usage["prompt_tokens"] += _weclaw_usage_int(event.get("prompt_tokens"))
+        model_usage["completion_tokens"] += _weclaw_usage_int(event.get("completion_tokens"))
+        model_usage["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
+        model_usage["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
+        model_usage["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
+        model_usage["estimated_cost_usd"] = float(model_usage["estimated_cost_usd"] + event_cost)
+
+        route_usage = summary["routes"].setdefault(route, {"model_call_count": 0, "estimated_cost_usd": 0.0})
+        route_usage["model_call_count"] += 1
+        route_usage["estimated_cost_usd"] = float(route_usage["estimated_cost_usd"] + event_cost)
+
     summary["estimated_cost_usd"] = float(summary["estimated_cost_usd"])
+    summary["estimated_cost_by_model_usd"] = {
+        key: float(value)
+        for key, value in sorted(summary["estimated_cost_by_model_usd"].items())
+    }
+    summary["models"] = sorted(summary["usage_by_model"])
     return summary
 
 
@@ -13398,7 +13534,145 @@ def _weclaw_tokens_contract(
     }
 
 
-def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
+def _pricing_display_currency(balance: dict[str, Any] | None = None) -> str:
+    configured = os.environ.get("DEEPSEEK_PROXY_DISPLAY_CURRENCY", "").strip().upper()
+    if configured:
+        return configured
+    if isinstance(balance, dict):
+        balance_currency = str(balance.get("currency") or "").strip().upper()
+        if balance_currency:
+            return balance_currency
+    return "CNY"
+
+
+def _usd_cny_fx_contract() -> dict[str, Any]:
+    raw_rate = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_RATE", "").strip()
+    source = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_SOURCE", "").strip()
+    updated_at = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT", "").strip()
+    try:
+        rate = float(raw_rate) if raw_rate else 7.20
+    except ValueError:
+        rate = 7.20
+        source = source or "bundled_static_fx_snapshot_invalid_env_fallback"
+    return {
+        "available": True,
+        "base_currency": "USD",
+        "quote_currency": "CNY",
+        "rate": rate,
+        "source": source or ("env.DEEPSEEK_PROXY_USD_CNY_FX_RATE" if raw_rate else "bundled_static_fx_snapshot"),
+        "updated_at": updated_at or "2026-05-18T00:00:00Z",
+        "is_estimated": True,
+        "action": "set DEEPSEEK_PROXY_USD_CNY_FX_RATE and DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT to override the bundled static display-rate snapshot",
+    }
+
+
+def _pricing_money_amount(
+    amount: float | int | None,
+    *,
+    source_currency: str = "USD",
+    display_currency: str | None = None,
+) -> dict[str, Any]:
+    source = str(source_currency or "USD").upper()
+    display = str(display_currency or source).upper()
+    source_amount = float(amount or 0.0)
+    if display == source:
+        return {
+            "amount": source_amount,
+            "currency": display,
+            "source_amount": source_amount,
+            "source_currency": source,
+            "display_currency": display,
+            "converted": False,
+            "fx_rate": None,
+            "fx_source": None,
+            "fx_updated_at": None,
+        }
+
+    if source == "USD" and display == "CNY":
+        fx = _usd_cny_fx_contract()
+        return {
+            "amount": source_amount * float(fx["rate"]),
+            "currency": display,
+            "source_amount": source_amount,
+            "source_currency": source,
+            "display_currency": display,
+            "converted": True,
+            "fx_rate": fx["rate"],
+            "fx_source": fx["source"],
+            "fx_updated_at": fx["updated_at"],
+            "fx": fx,
+        }
+
+    return {
+        "amount": source_amount,
+        "currency": source,
+        "source_amount": source_amount,
+        "source_currency": source,
+        "display_currency": display,
+        "converted": False,
+        "conversion_available": False,
+        "reason": f"fx_conversion_not_configured_for_{source}_to_{display}",
+        "action": "configure an explicit fx adapter or display the source currency",
+    }
+
+
+def _pricing_context_for_usage_event(model: str) -> dict[str, Any]:
+    pricing_path = _pricing_config_path()
+    metadata = _pricing_metadata_from_path(pricing_path) if pricing_path.exists() else {}
+    source_info = _pricing_source_info(pricing_path)
+    prices = _load_model_pricing_usd_per_1m().get(model) or {}
+    return {
+        "pricing_model": model,
+        "pricing_currency": "USD",
+        "pricing_unit": "per_million_tokens",
+        "pricing_source": source_info.get("source"),
+        "pricing_source_kind": metadata.get("source_kind") or source_info.get("source_kind"),
+        "pricing_updated_at": metadata.get("fetched_at") or metadata.get("snapshot_created_at") or metadata.get("updated_at"),
+        "pricing_source_url": metadata.get("source_url") or DEEPSEEK_OFFICIAL_PRICING_URL,
+        "pricing_input_cache_hit": float(prices.get("input_cache_hit") or 0.0),
+        "pricing_input_cache_miss": float(prices.get("input_cache_miss") or 0.0),
+        "pricing_output": float(prices.get("output") or 0.0),
+    }
+
+
+def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) -> dict[str, Any]:
+    estimated_usd = _weclaw_usage_float(event.get("estimated_cost_usd"))
+    money = _pricing_money_amount(estimated_usd, source_currency="USD", display_currency=display_currency)
+    return {
+        "created_at": event.get("created_at"),
+        "request_id": event.get("request_id"),
+        "response_id": event.get("response_id"),
+        "purpose": event.get("purpose"),
+        "call_index": event.get("call_index"),
+        "route": event.get("route") or ("thinking" if bool(event.get("thinking_enabled")) else "non_thinking"),
+        "thinking_enabled": bool(event.get("thinking_enabled")),
+        "effort": event.get("effort"),
+        "requested_model": event.get("requested_model"),
+        "effective_model": event.get("effective_model") or event.get("model"),
+        "upstream_model": event.get("upstream_model"),
+        "pricing_model": event.get("pricing_model") or event.get("effective_model") or event.get("model"),
+        "pricing_currency": event.get("pricing_currency") or "USD",
+        "pricing_source_kind": event.get("pricing_source_kind"),
+        "pricing_updated_at": event.get("pricing_updated_at"),
+        "pricing_unit": event.get("pricing_unit"),
+        "prices": {
+            "input_cache_hit": event.get("pricing_input_cache_hit"),
+            "input_cache_miss": event.get("pricing_input_cache_miss"),
+            "output": event.get("pricing_output"),
+        },
+        "usage": {
+            "prompt_tokens": event.get("prompt_tokens"),
+            "cached_tokens": event.get("cached_tokens"),
+            "cache_miss_tokens": max(0, _weclaw_usage_int(event.get("prompt_tokens")) - _weclaw_usage_int(event.get("cached_tokens"))),
+            "completion_tokens": event.get("completion_tokens"),
+            "reasoning_tokens": event.get("reasoning_tokens"),
+            "total_tokens": event.get("total_tokens"),
+        },
+        "estimated_cost_usd": estimated_usd,
+        "estimated_cost": money["amount"],
+        "currency": money["currency"],
+    }
+def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None = None) -> dict[str, Any]:
     pricing_path = _pricing_config_path()
     path_exists = pricing_path.exists()
     source_info = _pricing_source_info(pricing_path)
@@ -13429,6 +13703,13 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
     )
     official_price_available = bool(official_cache and fetched_at)
 
+    source_currency = str(metadata.get("currency") or "USD").upper()
+    target_currency = _pricing_display_currency({"currency": display_currency} if display_currency else None)
+    price_values = model_prices or {}
+    cache_hit = _pricing_money_amount(price_values.get("input_cache_hit"), source_currency=source_currency, display_currency=target_currency)
+    cache_miss = _pricing_money_amount(price_values.get("input_cache_miss"), source_currency=source_currency, display_currency=target_currency)
+    output = _pricing_money_amount(price_values.get("output"), source_currency=source_currency, display_currency=target_currency)
+
     refresh = {
         "available": True,
         "reason": None,
@@ -13454,12 +13735,25 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
         "action": None if official_price_available else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
     }
 
+    fx = cache_hit.get("fx") if isinstance(cache_hit, dict) and isinstance(cache_hit.get("fx"), dict) else (
+        _usd_cny_fx_contract() if source_currency == "USD" and target_currency == "CNY" else None
+    )
+
     return {
         "available": bool(model_prices),
         "provider": "deepseek",
         "model": model_key,
-        "currency": "USD",
-        "unit": "per_1m_tokens",
+        "route": "thinking" if _thinking_enabled() else "non_thinking",
+        "currency": target_currency,
+        "source_currency": source_currency,
+        "display_currency": target_currency,
+        "converted": source_currency != target_currency,
+        "fx_rate": fx.get("rate") if isinstance(fx, dict) else None,
+        "fx_source": fx.get("source") if isinstance(fx, dict) else None,
+        "fx_updated_at": fx.get("updated_at") if isinstance(fx, dict) else None,
+        "fx": fx,
+        "unit": "per_million_tokens",
+        "unit_legacy": "per_1m_tokens",
         "source": source_info["source"],
         "source_path": str(pricing_path),
         "source_url": source_url,
@@ -13474,6 +13768,31 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
         "expires_at": metadata.get("expires_at"),
         "ttl_seconds": ttl_seconds,
         "prices": model_prices,
+        "prices_source": {
+            "input_cache_hit": price_values.get("input_cache_hit"),
+            "input_cache_miss": price_values.get("input_cache_miss"),
+            "output": price_values.get("output"),
+            "currency": source_currency,
+            "unit": "per_million_tokens",
+        },
+        "prices_display": {
+            "input_cache_hit": cache_hit.get("amount"),
+            "input_cache_miss": cache_miss.get("amount"),
+            "output": output.get("amount"),
+            "currency": target_currency,
+            "unit": "per_million_tokens",
+        },
+        "cache_hit_input": cache_hit,
+        "cache_miss_input": cache_miss,
+        "output": output,
+        "reasoning_output": {
+            "available": False,
+            "amount": None,
+            "currency": target_currency,
+            "source_currency": source_currency,
+            "reason": "provider_pricing_not_split_by_reasoning_content",
+            "action": "treat provider completion_tokens as billable output tokens unless DeepSeek exposes separate reasoning output pricing",
+        },
         "all_models": sorted(prices),
         "missing": [] if model_prices else ["model_pricing_entry"],
         "official_source": official_source,
@@ -13481,6 +13800,7 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
             "current_prices_are_official_live_cache": official_price_available,
             "current_prices_are_bundled_official_snapshot": bundled_snapshot,
             "current_prices_are_external_config": externally_configured,
+            "cost_uses_turn_ledger_estimated_cost": True,
             "cost_uses_current_prices": bool(model_prices),
             "must_display_source_label": True,
         },
@@ -13488,7 +13808,11 @@ def _weclaw_pricing_contract(model: str | None) -> dict[str, Any]:
     }
 
 
-def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> dict[str, Any]:
+def _weclaw_cost_contract(
+    tokens: dict[str, Any],
+    pricing: dict[str, Any],
+    balance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     last_turn = tokens.get("last_turn") if isinstance(tokens, dict) else {}
     session_total = tokens.get("session_total") if isinstance(tokens, dict) else {}
     auxiliary = tokens.get("auxiliary_model_calls") if isinstance(tokens, dict) else {}
@@ -13504,13 +13828,27 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
         and not pricing_stale
     )
 
-    def _cost_from_summary(section: Any) -> float:
+    display_currency = str(
+        (pricing.get("display_currency") if isinstance(pricing, dict) else None)
+        or _pricing_display_currency(balance)
+    ).upper()
+
+    def _summary(section: Any) -> dict[str, Any]:
         if not isinstance(section, dict):
-            return 0.0
-        summary = section.get("summary")
-        if not isinstance(summary, dict):
-            return 0.0
-        return _weclaw_usage_float(summary.get("estimated_cost_usd"))
+            return {}
+        raw = section.get("summary")
+        return raw if isinstance(raw, dict) else {}
+
+    def _usd_from_summary(section: Any) -> float:
+        return _weclaw_usage_float(_summary(section).get("estimated_cost_usd"))
+
+    def _money_from_summary(section: Any) -> dict[str, Any]:
+        return _pricing_money_amount(_usd_from_summary(section), source_currency="USD", display_currency=display_currency)
+
+    last_money = _money_from_summary(last_turn)
+    session_money = _money_from_summary(session_total)
+    auxiliary_money = _money_from_summary(auxiliary)
+    cash_money = session_money
 
     missing = []
     if not usage_available:
@@ -13529,11 +13867,50 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
     else:
         reason = None
 
-    return {
+    session_events = []
+    if isinstance(session_total, dict) and isinstance(session_total.get("events_tail"), list):
+        session_events = session_total["events_tail"]
+    elif isinstance(session_total, dict):
+        session_events = session_total.get("events_tail", [])
+
+    last_events = last_turn.get("events_tail") if isinstance(last_turn, dict) else []
+    aux_events = auxiliary.get("events_tail") if isinstance(auxiliary, dict) else []
+
+    turn_ledger = {
+        "available": usage_available,
+        "precision": "per_turn_model_pricing",
+        "source": "usage_events.estimated_cost_usd_summed_without_repricing_history",
+        "session_cost_is_sum_of_turn_estimated_cost": True,
+        "session_cost_recomputed_from_current_model": False,
+        "display_currency": display_currency,
+        "source_currency": "USD",
+        "last_turn_events": [
+            _cost_ledger_event_summary(event, display_currency=display_currency)
+            for event in (last_events or [])[:20]
+            if isinstance(event, dict)
+        ],
+        "auxiliary_events": [
+            _cost_ledger_event_summary(event, display_currency=display_currency)
+            for event in (aux_events or [])[:20]
+            if isinstance(event, dict)
+        ],
+    }
+
+    reasoning_tokens = _weclaw_usage_int(_summary(session_total).get("reasoning_tokens"))
+
+    result = {
         "available": available,
-        "currency": str(pricing.get("currency") or "USD"),
+        "currency": display_currency,
+        "display_currency": display_currency,
+        "source_currency": "USD",
+        "converted": display_currency != "USD",
+        "fx_rate": session_money.get("fx_rate"),
+        "fx_source": session_money.get("fx_source"),
+        "fx_updated_at": session_money.get("fx_updated_at"),
+        "fx": session_money.get("fx"),
         "is_estimated": True,
         "source": "dsproxy_usage_ledger.estimated_cost_usd",
+        "ledger_precision": "per_turn_model_pricing",
         "pricing_source": pricing.get("source"),
         "pricing_source_kind": pricing.get("source_kind"),
         "pricing_source_trust": pricing.get("source_trust"),
@@ -13541,19 +13918,38 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any]) -> di
         "official_pricing_available": bool((pricing.get("official_source") or {}).get("available")) if isinstance(pricing.get("official_source"), dict) else False,
         "pricing_updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
-        "last_turn_estimated_cost": _cost_from_summary(last_turn),
-        "session_estimated_cost": _cost_from_summary(session_total),
-        "auxiliary_estimated_cost": _cost_from_summary(auxiliary),
+        "last_turn_estimated_cost": last_money.get("amount"),
+        "session_estimated_cost": session_money.get("amount"),
+        "auxiliary_estimated_cost": auxiliary_money.get("amount"),
+        "cash_estimated_cost": cash_money.get("amount"),
+        "cash_definition": "session_total_estimated_cost_including_auxiliary_model_calls",
+        "last_turn_estimated_cost_usd": last_money.get("source_amount"),
+        "session_estimated_cost_usd": session_money.get("source_amount"),
+        "auxiliary_estimated_cost_usd": auxiliary_money.get("source_amount"),
+        "cash_estimated_cost_usd": cash_money.get("source_amount"),
+        "amounts": {
+            "last": last_money,
+            "session": session_money,
+            "auxiliary": auxiliary_money,
+            "cash": cash_money,
+        },
         "usage_available": usage_available,
         "pricing_available": pricing_available,
         "pricing_stale": pricing_stale,
         "reason": reason,
         "missing": missing,
+        "reasoning_cost_available": False,
+        "reasoning_cost_reason": "provider_usage_not_split" if reasoning_tokens else "provider_usage_has_no_reasoning_tokens",
+        "reasoning_tokens_observed": reasoning_tokens,
+        "reasoning_cost_action": "do not estimate separate reasoning_content cost unless provider reports separately priced reasoning output",
+        "turn_ledger": turn_ledger,
         "notes": [
             "Token counts are provider-reported exact usage totals.",
-            "Cost is estimated from dsproxy pricing cache, not provider invoice data.",
+            "Cost is estimated from per-turn dsproxy usage ledger entries, not by multiplying historical session tokens by the current active model price.",
+            "Display-currency conversion is performed by dsproxy; WeClaw should not perform its own USD/CNY conversion.",
         ],
     }
+    return result
 
 
 def _weclaw_balance_unavailable(reason: str, *, provider: str = "deepseek") -> dict[str, Any]:
@@ -13696,6 +14092,10 @@ def _runtime_weclaw_status(
         )
         provider = str(model_contract.get("provider") or provider or "deepseek")
 
+    balance_contract = balance if isinstance(balance, dict) else _weclaw_balance_unavailable("not_queried")
+    display_currency = _pricing_display_currency(balance_contract)
+    pricing = _weclaw_pricing_contract(str(effective_model or DEFAULT_MODEL), display_currency=display_currency)
+
     tokens = _weclaw_tokens_contract(
         store,
         profile=profile,
@@ -13703,6 +14103,9 @@ def _runtime_weclaw_status(
         profile_model=str(effective_model or DEFAULT_MODEL),
         provider=provider,
     )
+    cost = _weclaw_cost_contract(tokens, pricing, balance_contract)
+    cost["balance"] = balance_contract
+
     context_status = _proxy_context_status()
     runtime_payload_guard = _runtime_payload_guard_contract(
         context_status,
@@ -13724,12 +14127,6 @@ def _runtime_weclaw_status(
     }
     context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
     context_window["runtime_trimming"] = context_status.get("trimming") if isinstance(context_status, dict) else None
-
-    pricing = _weclaw_pricing_contract(str(effective_model or DEFAULT_MODEL))
-    cost = _weclaw_cost_contract(tokens, pricing)
-    balance_contract = balance if isinstance(balance, dict) else _weclaw_balance_unavailable("not_queried")
-
-    cost["balance"] = balance_contract
 
     payload = {
         "status": profile_status.get("status", "ok"),

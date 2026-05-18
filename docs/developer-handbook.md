@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a68-prompt-segment-ledger-audit`
+- Current internal development line: `p2.10a69-pricing-currency-turn-ledger`
 - Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
 - Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
@@ -1158,3 +1158,12 @@ p2.10a68 fixes the prompt subcategory semantics for WeClaw Details. Codex can en
 The tokenizer split now treats `user` as the latest ordinary user segment after excluding known Codex-injected environment and tool transcript markers. Earlier ordinary user segments go into `user_history`. `[tool call transcript]` and `[tool output transcript]` go into `tool_output`. AGENTS, memory, and environment-context user-role blocks go into `environment`.
 
 The WeClaw contract also exposes `tokens.latest_prompt_segmentation` and `tokens.prompt_subcategory_split.latest_prompt_segmentation`, containing sanitized segment records with role, source, category, token_count, char_count, preview, and sha256. Full content must not be exposed in normal status.
+
+
+## p2.10a69 Pricing Currency and Turn Ledger
+
+p2.10a69 fixes the WeClaw Pricing/Cost contract. Pricing remains sourced from DeepSeek official USD prices, but dsproxy now exposes source currency, display currency, FX metadata, converted display amounts, and structured per-million-token price objects. When the account balance is CNY, status display contracts expose CNY amounts so WeClaw does not perform USD/CNY conversion.
+
+Cost remains estimated, but it is explicitly sourced from the per-turn usage ledger (`usage_events.estimated_cost_usd`). Session cost is the sum of historical turn-level estimated costs and must not be recomputed from the currently active model price. The usage ledger now records route, effort, pricing model, pricing currency, pricing source kind, pricing updated timestamp, and per-turn price fields for new events.
+
+Reasoning output cost is not split unless the provider exposes separate reasoning pricing. The contract reports `reasoning_cost_available=false` with a reason instead of asking WeClaw to infer it.

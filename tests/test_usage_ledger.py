@@ -55,6 +55,11 @@ async def test_usage_is_recorded_in_sqlite_store(tmp_path):
     assert event["total_tokens"] == 1500
     assert event["cached_tokens"] == 200
     assert event["reasoning_tokens"] == 123
+    assert event["route"] == "non_thinking"
+    assert event["pricing_model"] == "deepseek-v4-flash"
+    assert event["pricing_currency"] == "USD"
+    assert event["pricing_unit"] == "per_million_tokens"
+    assert event["pricing_input_cache_hit"] == 0.0028
 
     # cost = (200 * 0.0028 + 800 * 0.14 + 500 * 0.28) / 1_000_000
     expected = (200 * 0.0028 + 800 * 0.14 + 500 * 0.28) / 1_000_000

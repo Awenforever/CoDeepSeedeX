@@ -213,3 +213,61 @@ def test_refresh_deepseek_pricing_parse_failure_preserves_existing_cache(monkeyp
     assert result["reason"] == "official_pricing_parse_failed"
     assert result["writes_cache"] is False
     assert json.loads(cache_path.read_text(encoding="utf-8")) == original
+
+
+
+def test_weclaw_pricing_contract_converts_usd_to_cny_for_display(monkeypatch, tmp_path):
+    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_kind": "bundled_official_docs_snapshot",
+                    "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+                    "snapshot_created_at": "2026-05-17T00:00:00Z",
+                    "currency": "USD",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.0028,
+                    "input_cache_miss": 0.14,
+                    "output": 0.28,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_RATE", "7.25")
+    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT", "2026-05-18T00:00:00Z")
+
+    pricing = _weclaw_pricing_contract("deepseek-v4-flash", display_currency="CNY")
+
+    assert pricing["model"] == "deepseek-v4-flash"
+    assert pricing["source_currency"] == "USD"
+    assert pricing["display_currency"] == "CNY"
+    assert pricing["converted"] is True
+    assert pricing["fx_rate"] == 7.25
+    assert pricing["cache_hit_input"]["amount"] == 0.0028 * 7.25
+    assert pricing["cache_hit_input"]["source_amount"] == 0.0028
+    assert pricing["cache_miss_input"]["currency"] == "CNY"
+    assert pricing["output"]["currency"] == "CNY"
+    assert pricing["reasoning_output"]["available"] is False
+
+
+def test_parse_deepseek_official_pricing_html_handles_pricing_row_header():
+    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+
+    html = """
+    <table>
+    <tr><td>MODEL</td><td>deepseek-v4-flash</td><td>deepseek-v4-pro</td></tr>
+    <tr><td>PRICING</td><td>1M INPUT TOKENS (CACHE HIT)</td><td>$0.0028</td><td>$0.003625 (75% off)</td></tr>
+    <tr><td></td><td>1M INPUT TOKENS (CACHE MISS)</td><td>$0.14</td><td>$0.435</td></tr>
+    <tr><td></td><td>1M OUTPUT TOKENS</td><td>$0.28</td><td>$0.87</td></tr>
+    </table>
+    """
+    parsed = _parse_deepseek_official_pricing_html(html)
+
+    assert parsed["deepseek-v4-flash"]["input_cache_hit"] == 0.0028
+    assert parsed["deepseek-v4-pro"]["input_cache_hit"] == 0.003625
