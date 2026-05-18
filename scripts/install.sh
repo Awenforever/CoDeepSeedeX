@@ -1516,6 +1516,24 @@ model_catalog_json_value() {
   json_string "$catalog_path"
 }
 
+sync_deepseek_tokenizer_resource() {
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ DEEPSEEK_PROXY_INSTALL_DIR=%q DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q %q tokenizer sync deepseek --json --resource-dir %q\n' "$INSTALL_DIR" "$INSTALL_DIR/resources/tokenizers" "$INSTALL_DIR/.venv/bin/dsproxy" "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG"
+    ok "DeepSeek tokenizer resource sync planned"
+    return 0
+  fi
+
+  printf '  ... DeepSeek tokenizer resource synced\n'
+  if env DEEPSEEK_PROXY_INSTALL_DIR="$INSTALL_DIR" DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR="$INSTALL_DIR/resources/tokenizers" \
+    "$INSTALL_DIR/.venv/bin/dsproxy" tokenizer sync deepseek --json --resource-dir "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG" 2>&1; then
+    ok "DeepSeek tokenizer resource synced"
+    return 0
+  fi
+
+  warn "DeepSeek tokenizer resource sync failed. Run: dsproxy tokenizer sync deepseek --json"
+  return 1
+}
+
 write_env_file() {
   local stable_port="$1"
   local thinking_port="$2"
@@ -1604,6 +1622,10 @@ write_env_file() {
 ' "$final_model_base_url"
     printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER=%q
 ' "$final_model_provider"
+    printf 'export DEEPSEEK_PROXY_INSTALL_DIR=%q
+' "$INSTALL_DIR"
+    printf 'export DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q
+' "$INSTALL_DIR/resources/tokenizers"
     printf 'export DEEPSEEK_PROXY_PORT=%q
 ' "$stable_port"
     printf 'export DEEPSEEK_PROXY_THINKING_PORT=%q
@@ -2281,6 +2303,9 @@ fi
 run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 run_quiet "pip upgraded" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade --quiet pip
 run_quiet "Python package installed" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --quiet --no-input -e "$INSTALL_DIR"
+if ! sync_deepseek_tokenizer_resource; then
+  warn "Profile tokenizer accounting will stay unavailable until tokenizer sync succeeds."
+fi
 
 write_env_file "$STABLE_PORT" "$THINKING_PORT" "$API_KEY" "$SERPAPI_KEY" "$IMAGE_API_KEY"
 write_dsproxy_wrapper
@@ -2405,6 +2430,8 @@ printf '%s\n' "  dsproxy stop thinking"
 printf '%s\n' "  dsproxy config test-api-key"
 printf '%s\n' "  dsproxy balance"
 printf '%s\n' "  dsproxy config show"
+printf '%s\n' "  dsproxy tokenizer status"
+printf '%s\n' "  dsproxy tokenizer sync deepseek --json"
 printf '%s\n' "  dsproxy config wizard"
 printf '%s\n' "  dsproxy config set-model --provider deepseek"
 printf '%s\n' "  dsproxy config test-api-key"

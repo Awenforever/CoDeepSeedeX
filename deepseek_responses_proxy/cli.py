@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import os
 import re
@@ -10,14 +12,16 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 import urllib.parse
+import zipfile
 from pathlib import Path
 from typing import Any
 
-from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract
+from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
 
 
 APP_NAME = "deepseek-responses-proxy"
@@ -2080,6 +2084,236 @@ def _status(args: argparse.Namespace) -> int:
 
 def _cli_pricing_contract(model: str | None = None) -> dict[str, object]:
     return dict(_weclaw_pricing_contract(model))
+
+
+DEEPSEEK_TOKENIZER_KIND = "deepseek_official_current"
+DEEPSEEK_TOKENIZER_SOURCE_URL = "https://cdn.deepseek.com/api-docs/deepseek_v3_tokenizer.zip"
+DEEPSEEK_TOKENIZER_ZIP_SHA256 = "c954ca6f6e54281d72d3c27e2430cea7663f81292b39982e2f97890c66c302de"
+DEEPSEEK_TOKENIZER_ZIP_ENTRIES = {
+    "tokenizer_json": "deepseek_v3_tokenizer/tokenizer.json",
+    "tokenizer_config_json": "deepseek_v3_tokenizer/tokenizer_config.json",
+}
+
+
+def _tokenizer_resource_root(value: str | None = None) -> Path:
+    if value:
+        return Path(value).expanduser()
+    env_value = os.environ.get("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", "").strip()
+    if env_value:
+        return Path(env_value).expanduser()
+    install_dir = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
+    if install_dir:
+        return Path(install_dir).expanduser() / "resources" / "tokenizers"
+    return Path.home() / ".local" / "share" / APP_NAME / "resources" / "tokenizers"
+
+
+def _tokenizer_provider_kind(provider: str | None) -> str | None:
+    provider_key = str(provider or "deepseek").strip().lower()
+    if provider_key in {"deepseek", "deepseek-v3", "deepseek-v4"}:
+        return DEEPSEEK_TOKENIZER_KIND
+    return None
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_path(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _read_tokenizer_source_bytes(source_url: str, *, timeout: float) -> bytes:
+    parsed = urllib.parse.urlparse(source_url)
+    if parsed.scheme in {"", "file"}:
+        path = Path(urllib.request.url2pathname(parsed.path) if parsed.scheme == "file" else source_url).expanduser()
+        return path.read_bytes()
+
+    with urllib.request.urlopen(source_url, timeout=timeout) as response:
+        return response.read()
+
+
+def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str | None = None) -> dict[str, Any]:
+    kind = _tokenizer_provider_kind(provider)
+    root = _tokenizer_resource_root(resource_root)
+    if kind is None:
+        return {
+            "status": "unsupported",
+            "provider": provider,
+            "available": False,
+            "reason": "unsupported_tokenizer_provider",
+            "supported_providers": ["deepseek"],
+        }
+
+    resource_dir = root / kind
+    tokenizer_json = resource_dir / "tokenizer.json"
+    tokenizer_config = resource_dir / "tokenizer_config.json"
+    manifest_path = resource_dir / "manifest.json"
+    manifest: dict[str, Any] | None = None
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            manifest = {"parse_error": f"{type(exc).__name__}: {exc}"}
+
+    contract = _profile_tokenizer_contract("deepseek-v4-flash", "deepseek")
+    return {
+        "status": "ok",
+        "provider": provider,
+        "tokenizer_kind": kind,
+        "available": tokenizer_json.is_file(),
+        "resource_root": str(root),
+        "resource_dir": str(resource_dir),
+        "tokenizer_json": {
+            "path": str(tokenizer_json),
+            "exists": tokenizer_json.is_file(),
+            "sha256": _sha256_path(tokenizer_json) if tokenizer_json.is_file() else None,
+            "bytes": tokenizer_json.stat().st_size if tokenizer_json.is_file() else None,
+        },
+        "tokenizer_config_json": {
+            "path": str(tokenizer_config),
+            "exists": tokenizer_config.is_file(),
+            "sha256": _sha256_path(tokenizer_config) if tokenizer_config.is_file() else None,
+            "bytes": tokenizer_config.stat().st_size if tokenizer_config.is_file() else None,
+        },
+        "manifest": manifest,
+        "runtime_contract": contract,
+    }
+
+
+def _sync_deepseek_tokenizer_resource(
+    *,
+    source_url: str = DEEPSEEK_TOKENIZER_SOURCE_URL,
+    expected_sha256: str = DEEPSEEK_TOKENIZER_ZIP_SHA256,
+    resource_root: str | None = None,
+    timeout: float = 60.0,
+    force: bool = False,
+) -> dict[str, Any]:
+    root = _tokenizer_resource_root(resource_root)
+    kind = DEEPSEEK_TOKENIZER_KIND
+    resource_dir = root / kind
+    tokenizer_json = resource_dir / "tokenizer.json"
+    tokenizer_config = resource_dir / "tokenizer_config.json"
+    manifest_path = resource_dir / "manifest.json"
+
+    if tokenizer_json.is_file() and tokenizer_config.is_file() and not force:
+        return {
+            "status": "ok",
+            "provider": "deepseek",
+            "tokenizer_kind": kind,
+            "changed": False,
+            "reason": "already_synced",
+            "resource_dir": str(resource_dir),
+            "tokenizer_json": str(tokenizer_json),
+            "manifest": json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else None,
+        }
+
+    data = _read_tokenizer_source_bytes(source_url, timeout=timeout)
+    actual_sha256 = _sha256_bytes(data)
+    if expected_sha256 and actual_sha256.lower() != expected_sha256.lower():
+        return {
+            "status": "error",
+            "provider": "deepseek",
+            "tokenizer_kind": kind,
+            "changed": False,
+            "reason": "tokenizer_zip_sha256_mismatch",
+            "source_url": source_url,
+            "expected_sha256": expected_sha256,
+            "actual_sha256": actual_sha256,
+            "old_resource_preserved": resource_dir.exists(),
+        }
+
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        missing = [entry for entry in DEEPSEEK_TOKENIZER_ZIP_ENTRIES.values() if entry not in archive.namelist()]
+        if missing:
+            return {
+                "status": "error",
+                "provider": "deepseek",
+                "tokenizer_kind": kind,
+                "changed": False,
+                "reason": "tokenizer_zip_missing_expected_entries",
+                "source_url": source_url,
+                "missing": missing,
+                "old_resource_preserved": resource_dir.exists(),
+            }
+
+        root.mkdir(parents=True, exist_ok=True)
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f".{kind}.", dir=str(root)))
+        try:
+            (tmp_dir / "tokenizer.json").write_bytes(archive.read(DEEPSEEK_TOKENIZER_ZIP_ENTRIES["tokenizer_json"]))
+            (tmp_dir / "tokenizer_config.json").write_bytes(archive.read(DEEPSEEK_TOKENIZER_ZIP_ENTRIES["tokenizer_config_json"]))
+            manifest = {
+                "provider": "deepseek",
+                "tokenizer_kind": kind,
+                "source_url": source_url,
+                "source_zip_sha256": actual_sha256,
+                "source_zip_entries": DEEPSEEK_TOKENIZER_ZIP_ENTRIES,
+                "upstream_archive_name": "deepseek_v3_tokenizer.zip",
+                "upstream_archive_internal_dir": "deepseek_v3_tokenizer",
+                "naming_note": "DeepSeek currently publishes this official tokenizer archive from its token usage documentation; the archive name remains deepseek_v3_tokenizer even when used for current DeepSeek profile local estimates.",
+                "fetched_at": int(time.time()),
+                "tokenizer_json_sha256": _sha256_path(tmp_dir / "tokenizer.json"),
+                "tokenizer_config_json_sha256": _sha256_path(tmp_dir / "tokenizer_config.json"),
+            }
+            (tmp_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            backup_dir = None
+            if resource_dir.exists():
+                backup_dir = root / f".{kind}.old.{os.getpid()}"
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir)
+                resource_dir.replace(backup_dir)
+            tmp_dir.replace(resource_dir)
+            if backup_dir is not None and backup_dir.exists():
+                shutil.rmtree(backup_dir)
+
+            return {
+                "status": "ok",
+                "provider": "deepseek",
+                "tokenizer_kind": kind,
+                "changed": True,
+                "resource_dir": str(resource_dir),
+                "tokenizer_json": str(resource_dir / "tokenizer.json"),
+                "tokenizer_config_json": str(resource_dir / "tokenizer_config.json"),
+                "manifest": manifest,
+            }
+        except Exception:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
+
+
+def _tokenizer(args: argparse.Namespace) -> int:
+    command = getattr(args, "tokenizer_command", None)
+    provider = getattr(args, "provider", "deepseek")
+    if command == "status":
+        payload = _tokenizer_resource_status(provider, resource_root=getattr(args, "resource_dir", None))
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload.get("status") == "ok" else 1
+
+    if command == "sync":
+        if provider != "deepseek":
+            print(json.dumps({
+                "status": "error",
+                "error": "unsupported_tokenizer_provider",
+                "provider": provider,
+                "supported_providers": ["deepseek"],
+            }, ensure_ascii=False, indent=2))
+            return 2
+        payload = _sync_deepseek_tokenizer_resource(
+            source_url=getattr(args, "source_url", None) or DEEPSEEK_TOKENIZER_SOURCE_URL,
+            expected_sha256=getattr(args, "expected_sha256", None) or DEEPSEEK_TOKENIZER_ZIP_SHA256,
+            resource_root=getattr(args, "resource_dir", None),
+            timeout=float(getattr(args, "timeout", 60.0) or 60.0),
+            force=bool(getattr(args, "force", False)),
+        )
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload.get("status") == "ok" else 1
+
+    print(json.dumps({"status": "error", "error": "unknown_tokenizer_command"}, ensure_ascii=False, indent=2))
+    return 2
 
 
 def _pricing(args: argparse.Namespace) -> int:
@@ -5112,6 +5346,25 @@ def build_parser() -> argparse.ArgumentParser:
     pricing_refresh.add_argument("--source-url", default="https://api-docs.deepseek.com/quick_start/pricing")
     pricing_refresh.add_argument("--timeout", type=float, default=20.0)
     pricing_refresh.set_defaults(func=_pricing)
+
+    tokenizer = sub.add_parser("tokenizer", help="manage profile tokenizer resources")
+    tokenizer_sub = tokenizer.add_subparsers(dest="tokenizer_command", required=True)
+
+    tokenizer_status = tokenizer_sub.add_parser("status", help="show local profile tokenizer resource status")
+    tokenizer_status.add_argument("provider", nargs="?", default="deepseek", choices=["deepseek"])
+    tokenizer_status.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    tokenizer_status.add_argument("--resource-dir", help="tokenizer resource root; defaults to env/install/user resource dir")
+    tokenizer_status.set_defaults(func=_tokenizer)
+
+    tokenizer_sync = tokenizer_sub.add_parser("sync", help="download and verify official profile tokenizer resources")
+    tokenizer_sync.add_argument("provider", nargs="?", default="deepseek", choices=["deepseek"])
+    tokenizer_sync.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    tokenizer_sync.add_argument("--resource-dir", help="tokenizer resource root; defaults to env/install/user resource dir")
+    tokenizer_sync.add_argument("--source-url", default=DEEPSEEK_TOKENIZER_SOURCE_URL)
+    tokenizer_sync.add_argument("--expected-sha256", default=DEEPSEEK_TOKENIZER_ZIP_SHA256)
+    tokenizer_sync.add_argument("--timeout", type=float, default=60.0)
+    tokenizer_sync.add_argument("--force", action="store_true", help="replace an existing synced tokenizer resource")
+    tokenizer_sync.set_defaults(func=_tokenizer)
 
     config = sub.add_parser("config", help="manage local config")
     config_sub = config.add_subparsers(dest="config_command", required=True)

@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a65-profile-tokenizer-accounting"
+PROXY_INTERNAL_VERSION = "p2.10a66-tokenizer-resource-installer-sync"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11849,8 +11849,20 @@ def _profile_tokenizer_kind_for_model(model: str | None, provider: str | None = 
     provider_key = str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek").strip().lower()
     model_key = str(model or "").strip().lower()
     if provider_key == "deepseek" or model_key.startswith("deepseek-"):
-        return "deepseek_v3"
+        return "deepseek_official_current"
     return None
+
+
+def _profile_tokenizer_resource_root() -> Path:
+    raw = os.environ.get("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+
+    install_root_raw = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
+    if install_root_raw:
+        return Path(install_root_raw).expanduser() / "resources" / "tokenizers"
+
+    return Path.home() / ".local" / "share" / "deepseek-responses-proxy" / "resources" / "tokenizers"
 
 
 def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
@@ -11860,17 +11872,16 @@ def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
         if raw:
             candidates.append((Path(raw).expanduser(), f"env.{name}"))
 
-    candidates.append(
-        (
-            Path(__file__).resolve().parent / "resources" / "tokenizers" / kind / "tokenizer.json",
-            "packaged_resource",
-        )
-    )
+    resource_root = _profile_tokenizer_resource_root()
+    candidates.append((resource_root / kind / "tokenizer.json", "managed_resource"))
 
-    install_root_raw = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
-    if install_root_raw:
-        install_root = Path(install_root_raw).expanduser()
-        candidates.append((install_root / "resources" / "tokenizers" / kind / "tokenizer.json", "install_dir_resource"))
+    if kind == "deepseek_official_current":
+        candidates.append((resource_root / "deepseek_v3" / "tokenizer.json", "legacy_managed_resource"))
+
+    package_root = Path(__file__).resolve().parent / "resources" / "tokenizers"
+    candidates.append((package_root / kind / "tokenizer.json", "package_resource"))
+    if kind == "deepseek_official_current":
+        candidates.append((package_root / "deepseek_v3" / "tokenizer.json", "legacy_package_resource"))
 
     return candidates
 
@@ -11910,7 +11921,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
             "source": None,
             "source_kind": None,
             "reason": "profile_tokenizer_json_not_found",
-            "action": "install the official DeepSeek tokenizer resource or set DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON",
+            "action": "run dsproxy tokenizer sync deepseek --json or set DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON",
             "checked": checked,
         }
 
@@ -12066,7 +12077,7 @@ def _profile_tokenizer_report_for_messages(
             "available": False,
             "reason": "profile_tokenizer_load_failed",
             "error": f"{type(exc).__name__}: {exc}",
-            "action": "verify the packaged official DeepSeek tokenizer.json and tokenizers package",
+            "action": "verify the synced official DeepSeek tokenizer.json and tokenizers package",
         }
         return {
             "available": False,
@@ -12118,7 +12129,7 @@ def _profile_tokenizer_report_for_messages(
         "unit": "tokens",
         "is_estimated": True,
         "precision": "local_profile_tokenizer_content_estimate",
-        "source": "dsproxy_profile_tokenizer.deepseek_v3.tokenizer_json",
+        "source": f"dsproxy_profile_tokenizer.{contract.get('tokenizer_kind')}.tokenizer_json",
         "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
         "tokenizer_kind": contract.get("tokenizer_kind"),
         "tokenizer_source": contract.get("source"),
@@ -12153,9 +12164,6 @@ def _profile_tokenizer_report_for_messages(
         "prompt_subcategory_split": split,
         "messages_tail": message_reports[-20:],
     }
-
-
-
 
 def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
     return {

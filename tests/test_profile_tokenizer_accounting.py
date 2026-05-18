@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import zipfile
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
 
 from deepseek_responses_proxy.app import (
     DeepSeekClient,
@@ -12,9 +18,57 @@ from deepseek_responses_proxy.app import (
     _weclaw_tokens_contract,
     create_app,
 )
+from deepseek_responses_proxy.cli import (
+    _sync_deepseek_tokenizer_resource,
+    _tokenizer_resource_status,
+)
 
 
-def test_profile_tokenizer_counts_prompt_subcategories_with_packaged_deepseek_tokenizer() -> None:
+def _write_test_tokenizer(path: Path) -> None:
+    tokenizer = Tokenizer(
+        WordLevel(
+            {
+                "[UNK]": 0,
+                "You": 1,
+                "are": 2,
+                "concise": 3,
+                "Hello": 4,
+                "token": 5,
+                "accounting": 6,
+                "Previous": 7,
+                "answer": 8,
+                "tool": 9,
+                "output": 10,
+                "text": 11,
+                "deepseek": 12,
+                "proxy": 13,
+                "persistent": 14,
+                "compaction": 15,
+                "summary": 16,
+                "older": 17,
+                "context": 18,
+                "from": 19,
+                "WeClaw": 20,
+                "Runtime": 21,
+                "status": 22,
+                "prompt": 23,
+            },
+            unk_token="[UNK]",
+        )
+    )
+    tokenizer.pre_tokenizer = Whitespace()
+    tokenizer.save(str(path))
+
+
+@pytest.fixture()
+def tokenizer_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "tokenizer.json"
+    _write_test_tokenizer(path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON", str(path))
+    return path
+
+
+def test_profile_tokenizer_counts_prompt_subcategories_with_env_tokenizer(tokenizer_json: Path) -> None:
     report = _profile_tokenizer_report_for_messages(
         [
             {"role": "system", "content": "You are concise."},
@@ -32,8 +86,8 @@ def test_profile_tokenizer_counts_prompt_subcategories_with_packaged_deepseek_to
     )
 
     assert report["available"] is True
-    assert report["tokenizer"]["tokenizer_kind"] == "deepseek_v3"
-    assert Path(report["tokenizer"]["source"]).name == "tokenizer.json"
+    assert report["tokenizer"]["tokenizer_kind"] == "deepseek_official_current"
+    assert report["tokenizer"]["source"] == str(tokenizer_json)
     split = report["prompt_subcategory_split"]
     assert split["available"] is True
     assert split["is_estimated"] is True
@@ -46,7 +100,7 @@ def test_profile_tokenizer_counts_prompt_subcategories_with_packaged_deepseek_to
     assert split["total_tokens"] == report["summary"]["total_content_tokens"]
 
 
-def test_weclaw_tokens_contract_exposes_profile_tokenizer_split_when_available(tmp_path) -> None:
+def test_weclaw_tokens_contract_exposes_profile_tokenizer_split_when_available(tmp_path: Path, tokenizer_json: Path) -> None:
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     store.record_usage(
         response_id="resp_1",
@@ -86,8 +140,43 @@ def test_weclaw_tokens_contract_exposes_profile_tokenizer_split_when_available(t
     assert tokens["attribution"]["profile_tokenizer"]["billing_authoritative"] is False
 
 
+def test_tokenizer_sync_installs_official_zip_entries_from_local_source(tmp_path: Path) -> None:
+    tokenizer = tmp_path / "tokenizer.json"
+    _write_test_tokenizer(tokenizer)
+    config = tmp_path / "tokenizer_config.json"
+    config.write_text(json.dumps({"tokenizer_class": "LlamaTokenizerFast"}), encoding="utf-8")
+
+    archive_path = tmp_path / "deepseek-tokenizer.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(tokenizer, "deepseek_v3_tokenizer/tokenizer.json")
+        archive.write(config, "deepseek_v3_tokenizer/tokenizer_config.json")
+
+    expected_sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    resource_root = tmp_path / "resources"
+
+    result = _sync_deepseek_tokenizer_resource(
+        source_url=str(archive_path),
+        expected_sha256=expected_sha,
+        resource_root=str(resource_root),
+        timeout=5,
+        force=True,
+    )
+
+    assert result["status"] == "ok"
+    assert result["changed"] is True
+    assert Path(result["tokenizer_json"]).is_file()
+    status = _tokenizer_resource_status("deepseek", resource_root=str(resource_root))
+    assert status["available"] is True
+    assert status["manifest"]["source_zip_sha256"] == expected_sha
+    assert status["manifest"]["upstream_archive_internal_dir"] == "deepseek_v3_tokenizer"
+
+
 @pytest.mark.asyncio
-async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(tmp_path, monkeypatch) -> None:
+async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tokenizer_json: Path,
+) -> None:
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
         "[model_providers.deepseek-proxy]\n"

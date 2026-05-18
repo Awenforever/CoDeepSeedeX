@@ -30,6 +30,3 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["deepseek_responses_proxy*"]
-
-[tool.setuptools.package-data]
-deepseek_responses_proxy = ["resources/tokenizers/deepseek_v3/*.json"]

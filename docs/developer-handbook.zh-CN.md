@@ -1089,3 +1089,10 @@ p2.10a65启动profile感知的tokenizer统计主线。该节点为DeepSeek profi
 - prompt子类统计基于dsproxy组装payload后的message边界，统计message text、reasoning content和tool-call名称或参数。chat-template开销不分摊到子类。
 - 不声称替换Codex TUI内部token统计。当前`codex --profile deepseek debug models`证据没有显示DeepSeek model catalog条目，因此dsproxy先为集成客户端提供并行的正确统计。
 - char级`runtime_payload_guard`、Compact和Trim继续与token级profile统计保持分离。
+
+
+## p2.10a66 Tokenizer resource installer sync
+
+p2.10a66 changes tokenizer resource delivery from repository-bundled large JSON files to installer/user-machine synchronization. The runtime now looks for managed tokenizer resources under `DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR` or `DEEPSEEK_PROXY_INSTALL_DIR/resources/tokenizers`, and the CLI exposes `dsproxy tokenizer status` and `dsproxy tokenizer sync deepseek --json`.
+
+The official archive is still the DeepSeek token-usage documentation archive whose internal directory is named `deepseek_v3_tokenizer`. CoDeepSeedeX labels the local binding as `deepseek_official_current` to avoid claiming that it is a V4-specific tokenizer. Provider `usage` remains billing-authoritative; profile tokenizer accounting remains a local estimate for WeClaw display and drift analysis.

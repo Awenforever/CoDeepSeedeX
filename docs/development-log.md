@@ -734,3 +734,8 @@
 ## p2.10a65-profile-tokenizer-accounting
 
 Added profile-aware DeepSeek tokenizer accounting for WeClaw-facing status. The node bundles the official DeepSeek V3 tokenizer JSON resource, adds the `tokenizers` runtime dependency, records local prompt subcategory estimates under `tokens.profile_tokenizer` and `tokens.prompt_subcategory_split`, and keeps provider `usage` as the authoritative billing source. Codex TUI tokenizer behavior remains separate because the current `codex --profile deepseek debug models` evidence did not expose DeepSeek catalog entries.
+
+
+## p2.10a66-tokenizer-resource-installer-sync
+
+Moved DeepSeek tokenizer resource delivery out of the repository and into installer/user-machine synchronization through `dsproxy tokenizer sync deepseek --json`. The runtime now uses managed tokenizer resources from the install/user resource directory or explicit env overrides, while provider usage remains billing-authoritative and local profile tokenizer counts remain estimates.

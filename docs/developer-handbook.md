@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a65-profile-tokenizer-accounting`
+- Current internal development line: `p2.10a66-tokenizer-resource-installer-sync`
 - Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
 - Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
@@ -1133,3 +1133,10 @@ Contract boundary:
 - Prompt subcategory splits use dsproxy message boundaries after payload assembly. They count message text, reasoning content, and tool-call names or arguments with the active DeepSeek tokenizer. Chat-template overhead is not assigned to a subcategory.
 - Codex TUI token accounting is not claimed as replaced. Current evidence from `codex --profile deepseek debug models` did not show DeepSeek model catalog entries, so dsproxy exposes its own correct parallel accounting for integration clients.
 - Char-level `runtime_payload_guard`, Compact, and Trim remain separate from token-level profile accounting.
+
+
+## p2.10a66 Tokenizer resource installer sync
+
+p2.10a66 changes tokenizer resource delivery from repository-bundled large JSON files to installer/user-machine synchronization. The runtime now looks for managed tokenizer resources under `DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR` or `DEEPSEEK_PROXY_INSTALL_DIR/resources/tokenizers`, and the CLI exposes `dsproxy tokenizer status` and `dsproxy tokenizer sync deepseek --json`.
+
+The official archive is still the DeepSeek token-usage documentation archive whose internal directory is named `deepseek_v3_tokenizer`. CoDeepSeedeX labels the local binding as `deepseek_official_current` to avoid claiming that it is a V4-specific tokenizer. Provider `usage` remains billing-authoritative; profile tokenizer accounting remains a local estimate for WeClaw display and drift analysis.
