@@ -744,3 +744,8 @@ Moved DeepSeek tokenizer resource delivery out of the repository and into instal
 ## p2.10a67-status-tokenizer-contract-consistency
 
 Fixed the WeClaw status tokenizer contract so tokenizer resource availability is separated from observed prompt subcategory availability. `tokens.profile_tokenizer.available` can now be true before the route observes a prompt, while `tokens.prompt_subcategory_split.available=false` reports `profile_tokenizer_available_but_no_observed_prompt` with empty categories.
+
+
+## p2.10a68-prompt-segment-ledger-audit
+
+Added sanitized latest prompt segmentation for WeClaw Details and refined profile-tokenizer prompt categories. The `user` bucket is now the latest ordinary user segment, `user_history` stores earlier ordinary user-role segments, Codex tool transcripts are classified as `tool_output`, and AGENTS/memory/environment user-role blocks are classified as `environment`.

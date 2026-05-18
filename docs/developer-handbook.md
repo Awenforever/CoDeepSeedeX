@@ -32,7 +32,7 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, pre-release
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development line: `p2.10a67-status-tokenizer-contract-consistency`
+- Current internal development line: `p2.10a68-prompt-segment-ledger-audit`
 - Current internal development baseline before p2.10a64: `master = origin/master = 98cf535`
 - Latest completed internal checkpoint before this node: `p2.10a63-p0-release-state-doc-sync = 98cf535`
 - Release readiness checkpoint: `p2.10a50-v039-alpha-release-readiness-sync = 677d923`
@@ -1149,3 +1149,12 @@ p2.10a67 fixes the WeClaw status tokenizer contract boundary. `tokens.profile_to
 When the tokenizer resource is available but the route has not yet observed an assembled prompt, `tokens.prompt_subcategory_split.available` remains false with `reason=profile_tokenizer_available_but_no_observed_prompt` and `categories={}`. When the tokenizer resource is unavailable, the reason comes from the tokenizer contract, for example `profile_tokenizer_json_not_found`.
 
 This prevents WeClaw from seeing a contradictory status where `dsproxy tokenizer status deepseek --json` is available but `tokens.profile_tokenizer.available` is false without a specific explanation.
+
+
+## p2.10a68 Prompt Segment Ledger Audit
+
+p2.10a68 fixes the prompt subcategory semantics for WeClaw Details. Codex can encode memory, environment, AGENTS instructions, tool-call transcripts, tool-output transcripts, and historical context as `role=user` messages. Therefore dsproxy must not classify every `role=user` message as the latest user input.
+
+The tokenizer split now treats `user` as the latest ordinary user segment after excluding known Codex-injected environment and tool transcript markers. Earlier ordinary user segments go into `user_history`. `[tool call transcript]` and `[tool output transcript]` go into `tool_output`. AGENTS, memory, and environment-context user-role blocks go into `environment`.
+
+The WeClaw contract also exposes `tokens.latest_prompt_segmentation` and `tokens.prompt_subcategory_split.latest_prompt_segmentation`, containing sanitized segment records with role, source, category, token_count, char_count, preview, and sha256. Full content must not be exposed in normal status.

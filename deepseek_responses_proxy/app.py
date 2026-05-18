@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a67-status-tokenizer-contract-consistency"
+PROXY_INTERNAL_VERSION = "p2.10a68-prompt-segment-ledger-audit"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11834,6 +11834,7 @@ _PROFILE_TOKENIZER_CACHE: dict[str, Any] = {}
 def _profile_tokenizer_requested_categories() -> list[str]:
     return [
         "user",
+        "user_history",
         "assistant_history",
         "tool_output",
         "environment",
@@ -11975,22 +11976,77 @@ def _load_profile_tokenizer(contract: dict[str, Any]) -> Any | None:
     return tokenizer
 
 
-def _profile_tokenizer_message_category(message: dict[str, Any]) -> str:
+def _profile_tokenizer_text_preview(text: str, limit: int = 80) -> dict[str, str]:
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) <= limit * 2:
+        return {"preview": compact, "head": compact, "tail": ""}
+    return {
+        "preview": compact[:limit] + " ... " + compact[-limit:],
+        "head": compact[:limit],
+        "tail": compact[-limit:],
+    }
+
+
+def _profile_tokenizer_segment_source_and_category(
+    message: dict[str, Any],
+    *,
+    index: int,
+    latest_plain_user_index: int | None,
+) -> tuple[str, str]:
     role = str(message.get("role") or "").strip().lower()
     content = _plain_text_from_content(message.get("content", ""))
+    stripped = content.lstrip()
+    lowered_head = stripped[:600].lower()
+
     if "[deepseek-proxy persistent compaction summary]" in content:
-        return "compaction_summary"
-    if role == "tool":
-        return "tool_output"
-    if role == "assistant":
-        return "assistant_history"
+        return "compaction", "compaction_summary"
+
     if role == "system":
-        return "system"
+        return "system", "system"
     if role == "developer":
-        return "developer"
+        return "developer", "developer"
+    if role == "assistant":
+        return "history", "assistant_history"
+    if role == "tool":
+        return "tool", "tool_output"
+
     if role == "user":
-        return "user"
-    return "other_prompt"
+        if stripped.startswith("[tool output transcript]") or stripped.startswith("[tool call transcript]"):
+            return "tool", "tool_output"
+
+        if (
+            "agents.md instructions" in lowered_head
+            or "<instructions>" in lowered_head
+            or "<environment_context>" in lowered_head
+            or "memory writing agent" in lowered_head
+            or "memory_summary begins" in lowered_head
+            or "/.codex/memories" in lowered_head
+            or "codex/memories" in lowered_head
+            or stripped.startswith("<permissions instructions>")
+        ):
+            return "environment", "environment"
+
+        if latest_plain_user_index is not None and index == latest_plain_user_index:
+            return "codex_request", "user"
+        return "history", "user_history"
+
+    return "codex_request", "other_prompt"
+
+
+def _profile_tokenizer_plain_user_candidate(message: dict[str, Any]) -> bool:
+    source, category = _profile_tokenizer_segment_source_and_category(
+        message,
+        index=-1,
+        latest_plain_user_index=None,
+    )
+    return str(message.get("role") or "").strip().lower() == "user" and source in {"history", "codex_request"} and category == "user_history"
+def _profile_tokenizer_message_category(message: dict[str, Any]) -> str:
+    _source, category = _profile_tokenizer_segment_source_and_category(
+        message,
+        index=-1,
+        latest_plain_user_index=None,
+    )
+    return "user" if category == "user_history" else category
 
 
 def _profile_tokenizer_message_text(message: dict[str, Any]) -> str:
@@ -12111,6 +12167,13 @@ def _profile_tokenizer_report_for_messages(
             "prompt_subcategory_split": _weclaw_prompt_subcategory_split_contract(),
         }
 
+    latest_plain_user_index: int | None = None
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        if _profile_tokenizer_plain_user_candidate(message):
+            latest_plain_user_index = index
+
     categories = {
         category: {
             "tokens": 0,
@@ -12120,12 +12183,17 @@ def _profile_tokenizer_report_for_messages(
         for category in _profile_tokenizer_requested_categories()
     }
     message_reports: list[dict[str, Any]] = []
+    segment_ledger: list[dict[str, Any]] = []
     total_tokens = 0
 
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             continue
-        category = _profile_tokenizer_message_category(message)
+        source, category = _profile_tokenizer_segment_source_and_category(
+            message,
+            index=index,
+            latest_plain_user_index=latest_plain_user_index,
+        )
         text = _profile_tokenizer_message_text(message)
         token_count = _profile_tokenizer_count_text(tokenizer, text)
         categories.setdefault(
@@ -12135,15 +12203,58 @@ def _profile_tokenizer_report_for_messages(
         categories[category]["tokens"] += token_count
         categories[category]["message_count"] += 1
         total_tokens += token_count
+
+        digest = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+        preview = _profile_tokenizer_text_preview(text)
+        segment = {
+            "index": index,
+            "source": source,
+            "role": str(message.get("role") or ""),
+            "category": category,
+            "token_count": token_count,
+            "char_count": len(text),
+            "sha256": digest,
+            **preview,
+        }
+        segment_ledger.append(segment)
         message_reports.append(
             {
                 "index": index,
                 "role": str(message.get("role") or ""),
+                "source": source,
                 "category": category,
                 "tokens": token_count,
                 "content_chars": len(text),
             }
         )
+
+    category_totals = {
+        category: int(item.get("tokens") or 0)
+        for category, item in categories.items()
+    }
+
+    latest_prompt_segmentation = {
+        "available": True,
+        "unit": "tokens",
+        "precision": "local_profile_tokenizer_estimate",
+        "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "profile": profile,
+        "model": str(model or "") or None,
+        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "tokenizer_kind": contract.get("tokenizer_kind"),
+        "tokenizer_source": contract.get("source"),
+        "message_count": len(message_reports),
+        "total_prompt_tokens_profile_tokenizer": total_tokens,
+        "latest_plain_user_segment_index": latest_plain_user_index,
+        "category_totals": category_totals,
+        "segments": segment_ledger,
+        "segments_tail": segment_ledger[-30:],
+        "notes": [
+            "The user category is the latest ordinary user-role segment after dsproxy excludes Codex-injected environment/memory instructions and tool transcripts.",
+            "The user_history category contains earlier ordinary user-role segments in the assembled prompt.",
+            "Codex may encode tool transcripts, memory, environment, and historical context as role=user; dsproxy classifies these by content markers before computing Details.",
+        ],
+    }
 
     split = {
         "available": True,
@@ -12157,11 +12268,13 @@ def _profile_tokenizer_report_for_messages(
         "categories": categories,
         "total_tokens": total_tokens,
         "message_count": len(message_reports),
+        "latest_prompt_segmentation": latest_prompt_segmentation,
         "missing": [],
         "notes": [
             "Provider usage totals remain authoritative for billing and aggregate prompt/completion/cache/reasoning fields.",
             "This split uses the active profile tokenizer and dsproxy message boundaries, but it is a local estimate because providers do not report prompt subcategory usage.",
             "The split counts message text, reasoning_content, and tool-call names/arguments after dsproxy payload assembly. Chat-template overhead is not assigned to a subcategory.",
+            "The user bucket is the latest ordinary user segment, not all role=user segments.",
         ],
     }
 
@@ -12183,7 +12296,8 @@ def _profile_tokenizer_report_for_messages(
             "is_estimated": True,
         },
         "prompt_subcategory_split": split,
-        "messages_tail": message_reports[-20:],
+        "latest_prompt_segmentation": latest_prompt_segmentation,
+        "messages_tail": message_reports[-30:],
     }
 
 def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
@@ -13142,7 +13256,7 @@ def _weclaw_tokens_contract(
         else "unavailable"
     )
     taxonomy = {
-        "version": 4,
+        "version": 5,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
@@ -13158,6 +13272,7 @@ def _weclaw_tokens_contract(
             "compaction",
             "semantic_audit",
             "user",
+            "user_history",
             "assistant_history",
             "tool_output",
             "environment",
@@ -13174,11 +13289,14 @@ def _weclaw_tokens_contract(
             "context_window_used_tokens": "unavailable",
         },
         "attribution_schema": {
-            "version": 3,
+            "version": 4,
             "provider_usage_totals": "exact aggregate provider fields",
             "purpose_attribution": "exact dsproxy model-call purpose fields",
             "profile_tokenizer": "resource availability is reported independently from whether a route has observed an assembled prompt",
-            "prompt_subcategory_split": "local profile tokenizer estimate when a route has observed an assembled prompt; otherwise unavailable with a specific reason",
+            "prompt_subcategory_split": "local profile tokenizer estimate with content-marker classification for Codex user-role injected segments",
+            "latest_prompt_segmentation": "sanitized segment ledger with role, source, category, token_count, char_count, preview, and sha256",
+            "user_bucket": "latest ordinary user segment, not all role=user segments",
+            "user_history_bucket": "earlier ordinary user-role segments after excluding environment and tool transcript markers",
         },
     }
 
@@ -13200,6 +13318,11 @@ def _weclaw_tokens_contract(
             "attribution": attribution,
             "profile_tokenizer": profile_tokenizer_section,
             "prompt_subcategory_split": prompt_subcategory_split,
+            "latest_prompt_segmentation": (
+                prompt_subcategory_split.get("latest_prompt_segmentation")
+                if isinstance(prompt_subcategory_split, dict)
+                else None
+            ),
             "last_turn": dict(unavailable),
             "session_total": dict(unavailable),
             "auxiliary_model_calls": {
@@ -13212,11 +13335,31 @@ def _weclaw_tokens_contract(
     session_summary = _weclaw_summarize_usage_events(events)
     auxiliary_summary = _weclaw_summarize_usage_events(auxiliary_events)
 
+    latest_prompt_segmentation = (
+        prompt_subcategory_split.get("latest_prompt_segmentation")
+        if isinstance(prompt_subcategory_split, dict)
+        else None
+    )
+    if isinstance(latest_prompt_segmentation, dict):
+        latest_prompt_segmentation = dict(latest_prompt_segmentation)
+        latest_prompt_segmentation["request_id"] = request_id
+        latest_prompt_segmentation["total_prompt_tokens_provider"] = last_turn_summary.get("prompt_tokens")
+        local_total = latest_prompt_segmentation.get("total_prompt_tokens_profile_tokenizer")
+        provider_total = last_turn_summary.get("prompt_tokens")
+        if isinstance(local_total, int) and isinstance(provider_total, int):
+            latest_prompt_segmentation["provider_vs_profile_tokenizer_delta"] = provider_total - local_total
+            latest_prompt_segmentation["provider_vs_profile_tokenizer_ratio"] = (
+                round(provider_total / local_total, 6) if local_total else None
+            )
+        prompt_subcategory_split = dict(prompt_subcategory_split)
+        prompt_subcategory_split["latest_prompt_segmentation"] = latest_prompt_segmentation
+
     return {
         "taxonomy": taxonomy,
         "attribution": attribution,
         "profile_tokenizer": profile_tokenizer_section,
         "prompt_subcategory_split": prompt_subcategory_split,
+        "latest_prompt_segmentation": latest_prompt_segmentation,
         "last_turn": {
             "available": True,
             "unit": "tokens",

@@ -93,6 +93,7 @@ def test_profile_tokenizer_counts_prompt_subcategories_with_env_tokenizer(tokeni
     assert split["is_estimated"] is True
     assert split["precision"] == "local_profile_tokenizer_estimate"
     assert split["categories"]["user"]["tokens"] > 0
+    assert split["categories"]["user_history"]["tokens"] >= 0
     assert split["categories"]["system"]["tokens"] > 0
     assert split["categories"]["assistant_history"]["tokens"] > 0
     assert split["categories"]["tool_output"]["tokens"] > 0
@@ -131,7 +132,7 @@ def test_weclaw_tokens_contract_exposes_profile_tokenizer_split_when_available(t
 
     tokens = _weclaw_tokens_contract(store, profile="deepseek", profile_tokenizer_report=report)
 
-    assert tokens["taxonomy"]["version"] == 4
+    assert tokens["taxonomy"]["version"] == 5
     assert tokens["profile_tokenizer"]["available"] is True
     assert tokens["prompt_subcategory_split"]["available"] is True
     assert tokens["prompt_subcategory_split"]["categories"]["user"]["tokens"] > 0
@@ -303,3 +304,61 @@ async def test_runtime_weclaw_status_reports_tokenizer_resource_before_prompt_ob
     assert data["tokens"]["prompt_subcategory_split"]["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
     assert data["tokens"]["prompt_subcategory_split"]["categories"] == {}
     assert data["tokens"]["attribution"]["profile_tokenizer"]["available"] is True
+
+
+
+def test_profile_tokenizer_reclassifies_codex_user_role_injected_segments(tokenizer_json: Path) -> None:
+    report = _profile_tokenizer_report_for_messages(
+        [
+            {
+                "role": "system",
+                "content": "You are concise.",
+            },
+            {
+                "role": "user",
+                "content": "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nproject rules\n</INSTRUCTIONS>\n<environment_context>cwd=/repo</environment_context>",
+            },
+            {
+                "role": "user",
+                "content": "[tool call transcript] assistant_requested_tool_calls: call command",
+            },
+            {
+                "role": "user",
+                "content": "[tool output transcript] tool_call_id: call_1 output: result text",
+            },
+            {
+                "role": "user",
+                "content": "Earlier ordinary user request",
+            },
+            {
+                "role": "assistant",
+                "content": "Earlier assistant answer",
+            },
+            {
+                "role": "user",
+                "content": "reply ok exactly",
+            },
+        ],
+        profile="deepseek-thinking",
+        model="deepseek-v4-flash",
+        provider="deepseek",
+    )
+
+    split = report["prompt_subcategory_split"]
+    assert split["available"] is True
+    assert split["categories"]["environment"]["message_count"] == 1
+    assert split["categories"]["tool_output"]["message_count"] == 2
+    assert split["categories"]["user_history"]["message_count"] == 1
+    assert split["categories"]["user"]["message_count"] == 1
+    assert split["categories"]["assistant_history"]["message_count"] == 1
+    ledger = split["latest_prompt_segmentation"]
+    assert ledger["available"] is True
+    assert ledger["latest_plain_user_segment_index"] == 6
+    by_index = {segment["index"]: segment for segment in ledger["segments"]}
+    assert by_index[1]["category"] == "environment"
+    assert by_index[2]["category"] == "tool_output"
+    assert by_index[3]["category"] == "tool_output"
+    assert by_index[4]["category"] == "user_history"
+    assert by_index[6]["category"] == "user"
+    assert by_index[6]["preview"] == "reply ok exactly"
+    assert by_index[6]["sha256"]
