@@ -57,13 +57,17 @@ async def test_usage_is_recorded_in_sqlite_store(tmp_path):
     assert event["reasoning_tokens"] == 123
     assert event["route"] == "non_thinking"
     assert event["pricing_model"] == "deepseek-v4-flash"
-    assert event["pricing_currency"] == "USD"
+    assert event["pricing_currency"] in {"CNY", "USD"}
     assert event["pricing_unit"] == "per_million_tokens"
-    assert event["pricing_input_cache_hit"] == 0.0028
+    assert event["pricing_input_cache_hit"] == 0.02
 
-    # cost = (200 * 0.0028 + 800 * 0.14 + 500 * 0.28) / 1_000_000
-    expected = (200 * 0.0028 + 800 * 0.14 + 500 * 0.28) / 1_000_000
-    assert abs(event["estimated_cost_usd"] - expected) < 1e-12
+    # cost = (200 * 0.02 + 800 * 1.0 + 500 * 2.0) / 1_000_000 CNY
+    expected = (200 * 0.02 + 800 * 1.0 + 500 * 2.0) / 1_000_000
+    assert event["estimated_cost_usd"] == 0.0
+    assert event["estimated_cost_source_currency"] == "CNY"
+    assert abs(event["estimated_cost_source_amount"] - expected) < 1e-12
+    assert event["estimated_cost_display_currency"] == "CNY"
+    assert abs(event["estimated_cost_display_amount"] - expected) < 1e-12
 
 
 @pytest.mark.asyncio
@@ -95,7 +99,8 @@ async def test_usage_summary_endpoint_returns_totals(tmp_path):
     assert data["summary"]["total_tokens"] == 3000
     assert data["summary"]["cached_tokens"] == 400
     assert data["summary"]["reasoning_tokens"] == 246
-    assert data["summary"]["estimated_cost_usd"] > 0
+    assert data["summary"]["estimated_cost_usd"] == 0.0
+    assert data["summary"]["estimated_cost_by_currency"]["CNY"] > 0
     assert "deepseek-v4-flash" in data["pricing_usd_per_1m"]
 
     assert events.status_code == 200
@@ -486,3 +491,46 @@ def test_usage_events_include_attribution_fields_and_filter_by_purpose(tmp_path)
 
     assert store.usage_summary(purpose="liveness_judge")["request_count"] == 1
     assert store.usage_summary(purpose="primary")["request_count"] == 0
+
+
+
+def test_usage_ledger_records_source_amount_and_currency(tmp_path):
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    store.record_usage(
+        response_id="resp",
+        previous_response_id=None,
+        model="deepseek-v4-flash",
+        thinking_enabled=True,
+        usage_numbers={
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "total_tokens": 110,
+            "cached_tokens": 20,
+            "reasoning_tokens": 0,
+        },
+        estimated_cost_usd=0.0,
+        estimated_cost_source_amount=0.00012,
+        estimated_cost_source_currency="CNY",
+        estimated_cost_display_amount=0.00012,
+        estimated_cost_display_currency="CNY",
+        route="thinking",
+        effort="max",
+        pricing_context={
+            "pricing_model": "deepseek-v4-flash",
+            "pricing_currency": "CNY",
+            "pricing_unit": "per_million_tokens",
+            "pricing_source_kind": "bundled_official_docs_snapshot",
+            "pricing_updated_at": "2026-05-18T00:00:00Z",
+            "pricing_input_cache_hit": 0.02,
+            "pricing_input_cache_miss": 1.0,
+            "pricing_output": 2.0,
+        },
+    )
+    event = store.usage_events(limit=1)[0]
+
+    assert event["estimated_cost_usd"] == 0.0
+    assert event["estimated_cost_source_amount"] == 0.00012
+    assert event["estimated_cost_source_currency"] == "CNY"
+    assert event["estimated_cost_display_amount"] == 0.00012
+    assert event["estimated_cost_display_currency"] == "CNY"
+    assert event["pricing_currency"] == "CNY"

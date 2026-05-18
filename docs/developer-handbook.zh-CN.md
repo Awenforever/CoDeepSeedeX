@@ -1123,3 +1123,17 @@ p2.10a69 fixes the WeClaw Pricing/Cost contract. Pricing remains sourced from De
 Cost remains estimated, but it is explicitly sourced from the per-turn usage ledger (`usage_events.estimated_cost_usd`). Session cost is the sum of historical turn-level estimated costs and must not be recomputed from the currently active model price. The usage ledger now records route, effort, pricing model, pricing currency, pricing source kind, pricing updated timestamp, and per-turn price fields for new events.
 
 Reasoning output cost is not split unless the provider exposes separate reasoning pricing. The contract reports `reasoning_cost_available=false` with a reason instead of asking WeClaw to infer it.
+
+
+## p2.10a70 Pricing CNY Primary Source
+
+p2.10a70 changes the DeepSeek pricing source priority. The Chinese official pricing page is the primary source for V4 Flash/Pro prices and uses CNY per million tokens. The English pricing page is retained as a USD fallback/i18n source.
+
+Default bundled prices are now:
+- deepseek-v4-flash: cache hit 0.02 CNY/M, cache miss 1 CNY/M, output 2 CNY/M.
+- deepseek-v4-pro: cache hit 0.025 CNY/M, cache miss 3 CNY/M, output 6 CNY/M.
+
+The p2.10a69 FX fields remain in the contract, but they are not the default DeepSeek CNY path. FX conversion is used only when the active pricing source is USD and the display currency is CNY. WeClaw must continue to consume dsproxy structured pricing/cost fields and must not perform its own currency conversion.
+
+Primary pricing URL: https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+Fallback/i18n pricing URL: https://api-docs.deepseek.com/quick_start/pricing/

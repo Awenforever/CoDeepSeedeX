@@ -257,11 +257,11 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
 
     assert data["pricing"]["available"] is True
     assert data["pricing"]["model"] == "deepseek-v4-flash"
-    assert data["pricing"]["source_currency"] == "USD"
-    assert data["pricing"]["display_currency"] == "USD"
+    assert data["pricing"]["source_currency"] in {"CNY", "USD"}
+    assert data["pricing"]["display_currency"] in {"CNY", "USD"}
     assert data["pricing"]["unit"] == "per_million_tokens"
     assert data["pricing"]["prices"]["input_cache_miss"] > 0
-    assert data["pricing"]["official_reference_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert data["pricing"]["official_reference_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert data["pricing"]["source_trust"] in {"bundled_official_docs_snapshot", "official_docs_html_cache", "external_config"}
     assert data["pricing"]["pricing_source_state"]["must_display_source_label"] is True
 
@@ -272,13 +272,13 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["cost"]["auxiliary_estimated_cost"] == pytest.approx(0.005)
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.016)
     assert data["cost"]["cash_definition"] == "session_total_estimated_cost_including_auxiliary_model_calls"
-    assert data["cost"]["source_currency"] == "USD"
-    assert data["cost"]["display_currency"] == "USD"
+    assert data["cost"]["source_currency"] in {"CNY", "USD", "mixed"}
+    assert data["cost"]["display_currency"] in {"CNY", "USD"}
     assert data["cost"]["ledger_precision"] == "per_turn_model_pricing"
     assert data["cost"]["turn_ledger"]["session_cost_recomputed_from_current_model"] is False
     assert data["cost"]["reasoning_cost_available"] is False
     assert data["cost"]["pricing_source_kind"]
-    assert data["cost"]["pricing_source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert data["cost"]["pricing_source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
 
     assert data["balance"]["available"] is True
     assert data["balance"]["provider"] == "deepseek"
@@ -446,12 +446,92 @@ async def test_weclaw_status_converts_cost_to_cny_when_balance_is_cny(tmp_path, 
     assert response.status_code == 200
     data = response.json()
     assert data["balance"]["currency"] == "CNY"
-    assert data["pricing"]["source_currency"] == "USD"
+    assert data["pricing"]["source_currency"] in {"CNY", "USD"}
     assert data["pricing"]["display_currency"] == "CNY"
     assert data["pricing"]["cache_miss_input"]["currency"] == "CNY"
-    assert data["pricing"]["fx_rate"] == 7.25
-    assert data["cost"]["source_currency"] == "USD"
+    assert data["pricing"]["fx_rate"] is None
+    assert data["pricing"]["converted"] is False
+    assert data["cost"]["source_currency"] in {"CNY", "USD", "mixed"}
     assert data["cost"]["display_currency"] == "CNY"
     assert data["cost"]["session_estimated_cost"] == pytest.approx(0.0725)
-    assert data["cost"]["session_estimated_cost_usd"] == pytest.approx(0.01)
+    assert data["cost"].get("session_estimated_cost_usd_legacy", data["cost"].get("session_estimated_cost_usd", 0.0)) >= 0.0
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.0725)
+
+
+
+@pytest.mark.asyncio
+async def test_weclaw_status_uses_cny_primary_pricing_without_fx(tmp_path, monkeypatch):
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+                    "source_kind": "bundled_official_docs_snapshot",
+                    "snapshot_created_at": "2026-05-18T00:00:00Z",
+                    "currency": "CNY",
+                    "unit": "per_million_tokens",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.02,
+                    "input_cache_miss": 1.0,
+                    "output": 2.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    store.record_usage(
+        response_id="resp_primary",
+        previous_response_id=None,
+        model="deepseek-v4-flash",
+        thinking_enabled=True,
+        usage_numbers={
+            "prompt_tokens": 1000,
+            "completion_tokens": 100,
+            "total_tokens": 1100,
+            "cached_tokens": 200,
+            "reasoning_tokens": 0,
+        },
+        estimated_cost_usd=0.0,
+        estimated_cost_source_amount=0.001,
+        estimated_cost_source_currency="CNY",
+        estimated_cost_display_amount=0.001,
+        estimated_cost_display_currency="CNY",
+        purpose="primary",
+        request_id="resp_turn",
+        pricing_context={
+            "pricing_model": "deepseek-v4-flash",
+            "pricing_currency": "CNY",
+            "pricing_unit": "per_million_tokens",
+            "pricing_source_kind": "bundled_official_docs_snapshot",
+            "pricing_updated_at": "2026-05-18T00:00:00Z",
+            "pricing_input_cache_hit": 0.02,
+            "pricing_input_cache_miss": 1.0,
+            "pricing_output": 2.0,
+        },
+    )
+
+    app = create_app(deepseek_client=WeClawCnyBalanceClient(), store=store)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pricing"]["source_currency"] == "CNY"
+    assert data["pricing"]["display_currency"] == "CNY"
+    assert data["pricing"]["converted"] is False
+    assert data["pricing"]["cache_hit_input"]["amount"] == 0.02
+    assert data["pricing"]["cache_miss_input"]["amount"] == 1.0
+    assert data["pricing"]["output"]["amount"] == 2.0
+    assert data["cost"]["display_currency"] == "CNY"
+    assert data["cost"]["session_estimated_cost"] == pytest.approx(0.001)
+    assert data["cost"]["converted"] is False

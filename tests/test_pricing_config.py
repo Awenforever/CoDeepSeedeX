@@ -112,7 +112,7 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
     assert pricing["refresh"]["write_cache_requires_flag"] == "--write-cache"
-    assert pricing["official_reference_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert pricing["official_reference_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert pricing["pricing_source_state"]["must_display_source_label"] is True
 
 
@@ -184,12 +184,12 @@ def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path)
     assert result["writes_cache"] is True
     saved = json.loads(cache_path.read_text(encoding="utf-8"))
     assert saved["__metadata__"]["source_kind"] == "official_docs_html"
-    assert saved["__metadata__"]["source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert saved["__metadata__"]["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert saved["deepseek-v4-pro"]["output"] == 0.87
 
     monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(cache_path))
     pricing = app_module._weclaw_pricing_contract("deepseek-v4-pro")
-    assert pricing["source_url"] == "https://api-docs.deepseek.com/quick_start/pricing"
+    assert pricing["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert pricing["prices"]["output"] == 0.87
     assert pricing["refresh"]["available"] is True
 
@@ -271,3 +271,64 @@ def test_parse_deepseek_official_pricing_html_handles_pricing_row_header():
 
     assert parsed["deepseek-v4-flash"]["input_cache_hit"] == 0.0028
     assert parsed["deepseek-v4-pro"]["input_cache_hit"] == 0.003625
+
+
+
+def test_weclaw_pricing_contract_uses_cny_primary_snapshot_without_fx(monkeypatch, tmp_path):
+    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_kind": "bundled_official_docs_snapshot",
+                    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+                    "snapshot_created_at": "2026-05-18T00:00:00Z",
+                    "currency": "CNY",
+                    "unit": "per_million_tokens",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.02,
+                    "input_cache_miss": 1.0,
+                    "output": 2.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+
+    pricing = _weclaw_pricing_contract("deepseek-v4-flash", display_currency="CNY")
+
+    assert pricing["model"] == "deepseek-v4-flash"
+    assert pricing["source_currency"] == "CNY"
+    assert pricing["display_currency"] == "CNY"
+    assert pricing["converted"] is False
+    assert pricing["fx_rate"] is None
+    assert pricing["cache_hit_input"]["amount"] == 0.02
+    assert pricing["cache_hit_input"]["source_amount"] == 0.02
+    assert pricing["cache_miss_input"]["amount"] == 1.0
+    assert pricing["output"]["amount"] == 2.0
+    assert pricing["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+
+
+def test_parse_deepseek_official_pricing_html_zh_cny_models():
+    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+
+    html = """
+    <table>
+    <tr><td>模型</td><td>deepseek-v4-flash</td><td>deepseek-v4-pro</td></tr>
+    <tr><td>价格</td><td>百万tokens输入（缓存命中）</td><td>0.02元</td><td>0.025元（2.5折）<del>0.1元</del></td></tr>
+    <tr><td></td><td>百万tokens输入（缓存未命中）</td><td>1元</td><td>3元</td></tr>
+    <tr><td></td><td>百万tokens输出</td><td>2元</td><td>6元</td></tr>
+    </table>
+    """
+    parsed = _parse_deepseek_official_pricing_html(html)
+
+    assert parsed["deepseek-v4-flash"]["input_cache_hit"] == 0.02
+    assert parsed["deepseek-v4-flash"]["input_cache_miss"] == 1.0
+    assert parsed["deepseek-v4-flash"]["output"] == 2.0
+    assert parsed["deepseek-v4-pro"]["input_cache_hit"] == 0.025
+    assert parsed["deepseek-v4-pro"]["input_cache_miss"] == 3.0
+    assert parsed["deepseek-v4-pro"]["output"] == 6.0

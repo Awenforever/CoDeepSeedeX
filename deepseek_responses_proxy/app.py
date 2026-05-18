@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a69-pricing-currency-turn-ledger"
+PROXY_INTERNAL_VERSION = "p2.10a70-pricing-cny-primary-source"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -230,7 +230,8 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     }
 
 
-DEEPSEEK_OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/quick_start/pricing"
+DEEPSEEK_OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+DEEPSEEK_OFFICIAL_PRICING_URL_EN = "https://api-docs.deepseek.com/quick_start/pricing/"
 
 
 def _pricing_project_config_path() -> Path:
@@ -413,10 +414,20 @@ def _clean_pricing_html_cell(value: str) -> str:
     return text.strip()
 
 
-def _parse_usd_price(value: str) -> float:
-    match = re.search(r"\$\s*([0-9]+(?:\.[0-9]+)?)", value)
+def _parse_usd_price(text: str) -> float:
+    """Parse an official pricing amount from either the Chinese CNY page or English USD page.
+
+    The historical function name is kept for compatibility. The returned number is in the
+    source page currency, not necessarily USD.
+    """
+    cleaned = _clean_pricing_html_cell(text)
+    # Remove deleted original prices such as ~~12元~~ or <del>$1.74</del> that may survive
+    # upstream HTML/text conversion. The first non-deleted numeric amount is the active price.
+    cleaned = re.sub(r"~~.*?~~", "", cleaned)
+    cleaned = re.sub(r"\([^)]*(?:折|off)[^)]*\)", "", cleaned, flags=re.IGNORECASE)
+    match = re.search(r"(?:[$￥¥]\s*)?([0-9]+(?:\.[0-9]+)?)\s*(?:元|CNY|RMB|USD)?", cleaned, flags=re.IGNORECASE)
     if not match:
-        raise ValueError(f"missing USD price in cell: {value!r}")
+        raise ValueError(f"could not parse official pricing amount from {text!r}")
     return float(match.group(1))
 
 
@@ -448,15 +459,20 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
 
     label_map = {
         "CACHE HIT": "input_cache_hit",
+        "缓存命中": "input_cache_hit",
         "CACHE MISS": "input_cache_miss",
+        "缓存未命中": "input_cache_miss",
         "OUTPUT TOKENS": "output",
+        "OUTPUT": "output",
+        "输出": "output",
     }
 
     for row in rows:
         joined = " ".join(row).upper()
+        joined_raw = " ".join(row)
         key = None
         for label, mapped_key in label_map.items():
-            if label in joined:
+            if label in joined or label in joined_raw:
                 key = mapped_key
                 break
         if key is None:
@@ -464,6 +480,10 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
 
         row_prices: list[float] = []
         for cell in row:
+            # Skip row labels even when they contain "1M" or "百万".
+            upper_cell = cell.upper()
+            if "TOKEN" in upper_cell or "TOKENS" in upper_cell or "缓存" in cell or "输出" in cell or "输入" in cell:
+                continue
             try:
                 row_prices.append(_parse_usd_price(cell))
             except ValueError:
@@ -4668,6 +4688,24 @@ class SQLiteResponseStore:
             column="estimated_cost_source_currency",
             ddl="TEXT NOT NULL DEFAULT 'USD'",
         )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="estimated_cost_source_amount",
+            ddl="REAL",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="estimated_cost_display_amount",
+            ddl="REAL",
+        )
+        self._ensure_column(
+            conn,
+            table="usage_events",
+            column="estimated_cost_display_currency",
+            ddl="TEXT",
+        )
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         response_id = response["id"]
@@ -4731,12 +4769,20 @@ class SQLiteResponseStore:
         effort: str | None = None,
         pricing_context: dict[str, Any] | None = None,
         estimated_cost_source_currency: str = "USD",
+        estimated_cost_source_amount: float | None = None,
+        estimated_cost_display_amount: float | None = None,
+        estimated_cost_display_currency: str | None = None,
     ) -> None:
         normalized_purpose = str(purpose or "final").strip() or "final"
         normalized_effective_model = str(effective_model or model).strip() or model
         normalized_upstream_model = str(upstream_model or normalized_effective_model).strip() or normalized_effective_model
         normalized_route = str(route or ("thinking" if thinking_enabled else "non_thinking"))
         pricing = pricing_context if isinstance(pricing_context, dict) else _pricing_context_for_usage_event(normalized_effective_model)
+        source_currency = str(estimated_cost_source_currency or pricing.get("pricing_currency") or "CNY").upper()
+        source_amount = float(estimated_cost_source_amount if estimated_cost_source_amount is not None else estimated_cost_usd)
+        legacy_usd_amount = float(source_amount if source_currency == "USD" else 0.0)
+        display_currency = str(estimated_cost_display_currency or source_currency).upper()
+        display_amount = float(estimated_cost_display_amount if estimated_cost_display_amount is not None else source_amount)
 
         with self._connect() as conn:
             conn.execute(
@@ -4769,9 +4815,12 @@ class SQLiteResponseStore:
                     pricing_input_cache_hit,
                     pricing_input_cache_miss,
                     pricing_output,
-                    estimated_cost_source_currency
+                    estimated_cost_source_currency,
+                    estimated_cost_source_amount,
+                    estimated_cost_display_amount,
+                    estimated_cost_display_currency
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _now(),
@@ -4790,7 +4839,7 @@ class SQLiteResponseStore:
                     usage_numbers["total_tokens"],
                     usage_numbers["cached_tokens"],
                     usage_numbers["reasoning_tokens"],
-                    estimated_cost_usd,
+                    legacy_usd_amount,
                     normalized_route,
                     effort,
                     pricing.get("pricing_model"),
@@ -4801,7 +4850,10 @@ class SQLiteResponseStore:
                     pricing.get("pricing_input_cache_hit"),
                     pricing.get("pricing_input_cache_miss"),
                     pricing.get("pricing_output"),
-                    estimated_cost_source_currency,
+                    source_currency,
+                    source_amount,
+                    display_amount,
+                    display_currency,
                 ),
             )
 
@@ -4893,7 +4945,10 @@ class SQLiteResponseStore:
                     pricing_input_cache_hit,
                     pricing_input_cache_miss,
                     pricing_output,
-                    estimated_cost_source_currency
+                    estimated_cost_source_currency,
+                    estimated_cost_source_amount,
+                    estimated_cost_display_amount,
+                    estimated_cost_display_currency
                 FROM usage_events
                 {where_sql}
                 ORDER BY created_at DESC, id DESC
@@ -4938,7 +4993,30 @@ class SQLiteResponseStore:
                 params,
             ).fetchone()
 
-        return dict(row)
+            currency_rows = conn.execute(
+                f"""
+                SELECT
+                    COALESCE(NULLIF(estimated_cost_source_currency, ''), NULLIF(pricing_currency, ''), 'USD') AS currency,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN estimated_cost_source_amount IS NOT NULL THEN estimated_cost_source_amount
+                            ELSE estimated_cost_usd
+                        END
+                    ), 0.0) AS amount
+                FROM usage_events
+                {where_sql}
+                GROUP BY COALESCE(NULLIF(estimated_cost_source_currency, ''), NULLIF(pricing_currency, ''), 'USD')
+                """,
+                params,
+            ).fetchall()
+
+        summary = dict(row)
+        summary["estimated_cost_usd"] = float(summary.get("estimated_cost_usd") or 0.0)
+        summary["estimated_cost_by_currency"] = {
+            str(currency_row["currency"]).upper(): float(currency_row["amount"] or 0.0)
+            for currency_row in currency_rows
+        }
+        return summary
 
 
 def _env_float(name: str, default: float) -> float:
@@ -6083,7 +6161,9 @@ async def _chat_completions_with_usage(
 
     usage_numbers = _extract_usage_numbers(deepseek_response)
     pricing_context = _pricing_context_for_usage_event(effective_model)
-    estimated_cost_usd = _estimate_cost_usd(effective_model, usage_numbers)
+    estimated_cost_source_amount = _estimate_cost_usd(effective_model, usage_numbers)
+    estimated_cost_source_currency = str(pricing_context.get("pricing_currency") or "CNY").upper()
+    estimated_cost_usd = estimated_cost_source_amount if estimated_cost_source_currency == "USD" else 0.0
     trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
     if isinstance(trimming_report, dict):
         _debug_trace_event(
@@ -6127,7 +6207,10 @@ async def _chat_completions_with_usage(
             route="thinking" if thinking_enabled else "non_thinking",
             effort=_deepseek_reasoning_effort_config(payload),
             pricing_context=pricing_context,
-            estimated_cost_source_currency="USD",
+            estimated_cost_source_amount=estimated_cost_source_amount,
+            estimated_cost_display_amount=estimated_cost_source_amount,
+            estimated_cost_display_currency=estimated_cost_source_currency,
+            estimated_cost_source_currency=estimated_cost_source_currency,
         )
 
     return deepseek_response
@@ -12993,6 +13076,7 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
     summary["model_call_count"] = len(events)
     summary["request_count"] = len(events)
     summary["estimated_cost_by_model_usd"] = {}
+    summary["estimated_cost_by_currency"] = {}
     summary["usage_by_model"] = {}
     summary["routes"] = {}
     for event in events:
@@ -13001,12 +13085,23 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
         summary["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
         summary["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
         summary["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
-        event_cost = _weclaw_usage_float(event.get("estimated_cost_usd"))
-        summary["estimated_cost_usd"] += event_cost
+
+        source_currency = str(event.get("estimated_cost_source_currency") or event.get("pricing_currency") or "USD").upper()
+        source_amount_raw = event.get("estimated_cost_source_amount")
+        source_amount = _weclaw_usage_float(source_amount_raw if source_amount_raw is not None else event.get("estimated_cost_usd"))
+        summary["estimated_cost_by_currency"][source_currency] = float(
+            summary["estimated_cost_by_currency"].get(source_currency, 0.0) + source_amount
+        )
+        if source_currency == "USD":
+            summary["estimated_cost_usd"] += source_amount
+        else:
+            summary["estimated_cost_usd"] += _weclaw_usage_float(event.get("estimated_cost_usd"))
 
         model = str(event.get("effective_model") or event.get("model") or "unknown")
         route = str(event.get("route") or ("thinking" if bool(event.get("thinking_enabled")) else "non_thinking"))
-        summary["estimated_cost_by_model_usd"][model] = float(summary["estimated_cost_by_model_usd"].get(model, 0.0) + event_cost)
+        summary["estimated_cost_by_model_usd"][model] = float(
+            summary["estimated_cost_by_model_usd"].get(model, 0.0) + _weclaw_usage_float(event.get("estimated_cost_usd"))
+        )
         model_usage = summary["usage_by_model"].setdefault(
             model,
             {
@@ -13017,6 +13112,7 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
                 "reasoning_tokens": 0,
                 "total_tokens": 0,
                 "estimated_cost_usd": 0.0,
+                "estimated_cost_by_currency": {},
             },
         )
         model_usage["model_call_count"] += 1
@@ -13025,16 +13121,26 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
         model_usage["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
         model_usage["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
         model_usage["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
-        model_usage["estimated_cost_usd"] = float(model_usage["estimated_cost_usd"] + event_cost)
+        model_usage["estimated_cost_usd"] = float(model_usage["estimated_cost_usd"] + _weclaw_usage_float(event.get("estimated_cost_usd")))
+        model_usage["estimated_cost_by_currency"][source_currency] = float(
+            model_usage["estimated_cost_by_currency"].get(source_currency, 0.0) + source_amount
+        )
 
-        route_usage = summary["routes"].setdefault(route, {"model_call_count": 0, "estimated_cost_usd": 0.0})
+        route_usage = summary["routes"].setdefault(route, {"model_call_count": 0, "estimated_cost_usd": 0.0, "estimated_cost_by_currency": {}})
         route_usage["model_call_count"] += 1
-        route_usage["estimated_cost_usd"] = float(route_usage["estimated_cost_usd"] + event_cost)
+        route_usage["estimated_cost_usd"] = float(route_usage["estimated_cost_usd"] + _weclaw_usage_float(event.get("estimated_cost_usd")))
+        route_usage["estimated_cost_by_currency"][source_currency] = float(
+            route_usage["estimated_cost_by_currency"].get(source_currency, 0.0) + source_amount
+        )
 
     summary["estimated_cost_usd"] = float(summary["estimated_cost_usd"])
     summary["estimated_cost_by_model_usd"] = {
         key: float(value)
         for key, value in sorted(summary["estimated_cost_by_model_usd"].items())
+    }
+    summary["estimated_cost_by_currency"] = {
+        key: float(value)
+        for key, value in sorted(summary["estimated_cost_by_currency"].items())
     }
     summary["models"] = sorted(summary["usage_by_model"])
     return summary
@@ -13621,10 +13727,11 @@ def _pricing_context_for_usage_event(model: str) -> dict[str, Any]:
     metadata = _pricing_metadata_from_path(pricing_path) if pricing_path.exists() else {}
     source_info = _pricing_source_info(pricing_path)
     prices = _load_model_pricing_usd_per_1m().get(model) or {}
+    source_currency = str(metadata.get("currency") or "CNY").upper()
     return {
         "pricing_model": model,
-        "pricing_currency": "USD",
-        "pricing_unit": "per_million_tokens",
+        "pricing_currency": source_currency,
+        "pricing_unit": str(metadata.get("unit") or "per_million_tokens"),
         "pricing_source": source_info.get("source"),
         "pricing_source_kind": metadata.get("source_kind") or source_info.get("source_kind"),
         "pricing_updated_at": metadata.get("fetched_at") or metadata.get("snapshot_created_at") or metadata.get("updated_at"),
@@ -13636,8 +13743,10 @@ def _pricing_context_for_usage_event(model: str) -> dict[str, Any]:
 
 
 def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) -> dict[str, Any]:
-    estimated_usd = _weclaw_usage_float(event.get("estimated_cost_usd"))
-    money = _pricing_money_amount(estimated_usd, source_currency="USD", display_currency=display_currency)
+    source_currency = str(event.get("estimated_cost_source_currency") or event.get("pricing_currency") or "USD").upper()
+    source_amount_raw = event.get("estimated_cost_source_amount")
+    source_amount = _weclaw_usage_float(source_amount_raw if source_amount_raw is not None else event.get("estimated_cost_usd"))
+    money = _pricing_money_amount(source_amount, source_currency=source_currency, display_currency=display_currency)
     return {
         "created_at": event.get("created_at"),
         "request_id": event.get("request_id"),
@@ -13651,7 +13760,7 @@ def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) 
         "effective_model": event.get("effective_model") or event.get("model"),
         "upstream_model": event.get("upstream_model"),
         "pricing_model": event.get("pricing_model") or event.get("effective_model") or event.get("model"),
-        "pricing_currency": event.get("pricing_currency") or "USD",
+        "pricing_currency": event.get("pricing_currency") or source_currency,
         "pricing_source_kind": event.get("pricing_source_kind"),
         "pricing_updated_at": event.get("pricing_updated_at"),
         "pricing_unit": event.get("pricing_unit"),
@@ -13668,9 +13777,12 @@ def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) 
             "reasoning_tokens": event.get("reasoning_tokens"),
             "total_tokens": event.get("total_tokens"),
         },
-        "estimated_cost_usd": estimated_usd,
+        "estimated_cost_source_amount": source_amount,
+        "estimated_cost_source_currency": source_currency,
+        "estimated_cost_usd_legacy": _weclaw_usage_float(event.get("estimated_cost_usd")),
         "estimated_cost": money["amount"],
         "currency": money["currency"],
+        "converted": money.get("converted"),
     }
 def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None = None) -> dict[str, Any]:
     pricing_path = _pricing_config_path()
@@ -13839,11 +13951,39 @@ def _weclaw_cost_contract(
         raw = section.get("summary")
         return raw if isinstance(raw, dict) else {}
 
-    def _usd_from_summary(section: Any) -> float:
-        return _weclaw_usage_float(_summary(section).get("estimated_cost_usd"))
-
     def _money_from_summary(section: Any) -> dict[str, Any]:
-        return _pricing_money_amount(_usd_from_summary(section), source_currency="USD", display_currency=display_currency)
+        summary = _summary(section)
+        by_currency = summary.get("estimated_cost_by_currency")
+        if isinstance(by_currency, dict) and by_currency:
+            total = 0.0
+            converted = False
+            fx = None
+            sources = []
+            for currency, amount in by_currency.items():
+                money = _pricing_money_amount(float(amount or 0.0), source_currency=str(currency).upper(), display_currency=display_currency)
+                total += float(money.get("amount") or 0.0)
+                converted = converted or bool(money.get("converted"))
+                if isinstance(money.get("fx"), dict):
+                    fx = money["fx"]
+                sources.append({"currency": str(currency).upper(), "amount": float(amount or 0.0)})
+            return {
+                "amount": total,
+                "currency": display_currency,
+                "display_currency": display_currency,
+                "source_amount": None,
+                "source_currency": "mixed" if len(sources) > 1 else sources[0]["currency"],
+                "source_breakdown": sources,
+                "converted": converted,
+                "fx_rate": fx.get("rate") if isinstance(fx, dict) else None,
+                "fx_source": fx.get("source") if isinstance(fx, dict) else None,
+                "fx_updated_at": fx.get("updated_at") if isinstance(fx, dict) else None,
+                "fx": fx,
+            }
+        return _pricing_money_amount(
+            _weclaw_usage_float(summary.get("estimated_cost_usd")),
+            source_currency="USD",
+            display_currency=display_currency,
+        )
 
     last_money = _money_from_summary(last_turn)
     session_money = _money_from_summary(session_total)
@@ -13867,23 +14007,16 @@ def _weclaw_cost_contract(
     else:
         reason = None
 
-    session_events = []
-    if isinstance(session_total, dict) and isinstance(session_total.get("events_tail"), list):
-        session_events = session_total["events_tail"]
-    elif isinstance(session_total, dict):
-        session_events = session_total.get("events_tail", [])
-
     last_events = last_turn.get("events_tail") if isinstance(last_turn, dict) else []
     aux_events = auxiliary.get("events_tail") if isinstance(auxiliary, dict) else []
 
     turn_ledger = {
         "available": usage_available,
         "precision": "per_turn_model_pricing",
-        "source": "usage_events.estimated_cost_usd_summed_without_repricing_history",
+        "source": "usage_events.estimated_cost_source_amount_summed_without_repricing_history",
         "session_cost_is_sum_of_turn_estimated_cost": True,
         "session_cost_recomputed_from_current_model": False,
         "display_currency": display_currency,
-        "source_currency": "USD",
         "last_turn_events": [
             _cost_ledger_event_summary(event, display_currency=display_currency)
             for event in (last_events or [])[:20]
@@ -13902,14 +14035,16 @@ def _weclaw_cost_contract(
         "available": available,
         "currency": display_currency,
         "display_currency": display_currency,
-        "source_currency": "USD",
-        "converted": display_currency != "USD",
+        "source_currency": session_money.get("source_currency"),
+        "source_breakdown": session_money.get("source_breakdown"),
+        "converted": bool(session_money.get("converted")),
         "fx_rate": session_money.get("fx_rate"),
         "fx_source": session_money.get("fx_source"),
         "fx_updated_at": session_money.get("fx_updated_at"),
         "fx": session_money.get("fx"),
         "is_estimated": True,
-        "source": "dsproxy_usage_ledger.estimated_cost_usd",
+        "source": "dsproxy_usage_ledger.estimated_cost_source_amount",
+        "legacy_source": "usage_events.estimated_cost_usd_for_usd_rows_only",
         "ledger_precision": "per_turn_model_pricing",
         "pricing_source": pricing.get("source"),
         "pricing_source_kind": pricing.get("source_kind"),
@@ -13923,10 +14058,9 @@ def _weclaw_cost_contract(
         "auxiliary_estimated_cost": auxiliary_money.get("amount"),
         "cash_estimated_cost": cash_money.get("amount"),
         "cash_definition": "session_total_estimated_cost_including_auxiliary_model_calls",
-        "last_turn_estimated_cost_usd": last_money.get("source_amount"),
-        "session_estimated_cost_usd": session_money.get("source_amount"),
-        "auxiliary_estimated_cost_usd": auxiliary_money.get("source_amount"),
-        "cash_estimated_cost_usd": cash_money.get("source_amount"),
+        "last_turn_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(last_turn).get("estimated_cost_usd")),
+        "session_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(session_total).get("estimated_cost_usd")),
+        "auxiliary_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(auxiliary).get("estimated_cost_usd")),
         "amounts": {
             "last": last_money,
             "session": session_money,
@@ -13946,7 +14080,7 @@ def _weclaw_cost_contract(
         "notes": [
             "Token counts are provider-reported exact usage totals.",
             "Cost is estimated from per-turn dsproxy usage ledger entries, not by multiplying historical session tokens by the current active model price.",
-            "Display-currency conversion is performed by dsproxy; WeClaw should not perform its own USD/CNY conversion.",
+            "The Chinese DeepSeek official pricing page is the primary CNY source; USD/FX metadata is retained for English fallback or i18n output.",
         ],
     }
     return result

@@ -754,3 +754,8 @@ Added sanitized latest prompt segmentation for WeClaw Details and refined profil
 ## p2.10a69-pricing-currency-turn-ledger
 
 Added structured Pricing/Cost currency metadata for WeClaw, CNY display conversion based on dsproxy-owned FX metadata, per-turn pricing context columns in the usage ledger, cash cost semantics, reasoning-cost unavailable semantics, and a more robust DeepSeek official pricing HTML parser.
+
+
+## p2.10a70-pricing-cny-primary-source
+
+Changed DeepSeek pricing priority so the Chinese official CNY pricing page is the default source for V4 Flash/Pro. The English USD pricing page remains available as fallback/i18n. Bundled pricing now uses CNY prices from https://api-docs.deepseek.com/zh-cn/quick_start/pricing/; FX metadata from p2.10a69 remains but is not the default path when CNY pricing is available.
