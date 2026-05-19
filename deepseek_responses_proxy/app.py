@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a77-prompt-reconciliation-contract"
+PROXY_INTERNAL_VERSION = "p2.10a78-prompt-delta-root-cause"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -12391,6 +12391,151 @@ def _profile_tokenizer_unavailable_report(
 
 
 
+
+def _profile_tokenizer_json_text(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        return str(value)
+
+
+def _profile_tokenizer_json_component(tokenizer: Any, value: Any, *, name: str, source: str) -> dict[str, Any]:
+    text = _profile_tokenizer_json_text(value)
+    preview = _profile_tokenizer_text_preview(text)
+    return {
+        "name": name,
+        "source": source,
+        "available": True,
+        "serialization": "json.dumps.ensure_ascii_false.sort_keys.compact",
+        "local_tokens": _profile_tokenizer_count_text(tokenizer, text),
+        "char_count": len(text),
+        "sha256": hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest(),
+        **preview,
+    }
+
+
+def _profile_tokenizer_observable_payload_report(
+    payload: dict[str, Any] | None,
+    tokenizer: Any,
+    *,
+    message_content_tokens: int,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {
+            "available": False,
+            "reason": "chat_payload_not_available_to_profile_tokenizer_report",
+            "source": None,
+        }
+
+    components: dict[str, Any] = {}
+    components["message_content"] = {
+        "name": "message_content",
+        "source": "prompt_subcategory_split.categories_sum_tokens",
+        "available": True,
+        "local_tokens": int(message_content_tokens or 0),
+        "char_count": None,
+        "serialization": "profile_tokenizer_message_text_concat_by_message",
+    }
+
+    messages = payload.get("messages")
+    if isinstance(messages, list):
+        components["messages_json"] = _profile_tokenizer_json_component(
+            tokenizer,
+            messages,
+            name="messages_json",
+            source="chat_payload.messages",
+        )
+
+    tools = payload.get("tools")
+    if isinstance(tools, list) and tools:
+        components["tools_schema"] = _profile_tokenizer_json_component(
+            tokenizer,
+            tools,
+            name="tools_schema",
+            source="chat_payload.tools",
+        )
+    else:
+        components["tools_schema"] = {
+            "name": "tools_schema",
+            "source": "chat_payload.tools",
+            "available": True,
+            "local_tokens": 0,
+            "char_count": 0,
+            "serialization": "absent_or_empty",
+        }
+
+    for key in ["tool_choice", "response_format"]:
+        if key in payload and payload.get(key) is not None:
+            components[key] = _profile_tokenizer_json_component(
+                tokenizer,
+                payload.get(key),
+                name=key,
+                source=f"chat_payload.{key}",
+            )
+        else:
+            components[key] = {
+                "name": key,
+                "source": f"chat_payload.{key}",
+                "available": True,
+                "local_tokens": 0,
+                "char_count": 0,
+                "serialization": "absent_or_null",
+            }
+
+    request_option_keys = [
+        key
+        for key in ["model", "stream", "thinking", "reasoning_effort", "max_tokens", "temperature", "top_p", "stop"]
+        if key in payload and payload.get(key) is not None
+    ]
+    request_options = {key: payload.get(key) for key in request_option_keys}
+    components["request_options"] = _profile_tokenizer_json_component(
+        tokenizer,
+        request_options,
+        name="request_options",
+        source="chat_payload.non_prompt_control_fields",
+    ) if request_options else {
+        "name": "request_options",
+        "source": "chat_payload.non_prompt_control_fields",
+        "available": True,
+        "local_tokens": 0,
+        "char_count": 0,
+        "serialization": "absent_or_empty",
+    }
+
+    full_payload = _profile_tokenizer_json_component(
+        tokenizer,
+        payload,
+        name="full_payload_json",
+        source="chat_payload.full_json",
+    )
+
+    semantic_prompt_component_names = ["message_content", "tools_schema", "tool_choice", "response_format"]
+    semantic_prompt_candidate_tokens = sum(
+        int((components.get(name) or {}).get("local_tokens") or 0)
+        for name in semantic_prompt_component_names
+    )
+    observable_non_category_tokens = max(0, semantic_prompt_candidate_tokens - int(message_content_tokens or 0))
+
+    return {
+        "available": True,
+        "unit": "tokens",
+        "precision": "local_profile_tokenizer_json_serialized_estimate",
+        "source": "deepseek_chat_payload_after_dsproxy_build_chat_payload",
+        "components": components,
+        "semantic_prompt_component_names": semantic_prompt_component_names,
+        "semantic_prompt_candidate_tokens": semantic_prompt_candidate_tokens,
+        "message_content_tokens": int(message_content_tokens or 0),
+        "observable_non_category_tokens": observable_non_category_tokens,
+        "full_payload_json_tokens": int(full_payload.get("local_tokens") or 0),
+        "full_payload_json": full_payload,
+        "notes": [
+            "semantic_prompt_candidate_tokens adds message content and visible prompt-bearing API fields such as tools, tool_choice, and response_format.",
+            "full_payload_json_tokens is a diagnostic upper-bound style estimate over the serialized local request payload and is not treated as provider billing truth.",
+            "Provider prompt_tokens remain authoritative for billing; this report is for root-cause reconciliation only.",
+        ],
+    }
+
+
 def _profile_tokenizer_report_for_messages(
     messages: list[dict[str, Any]],
     *,
@@ -12398,6 +12543,7 @@ def _profile_tokenizer_report_for_messages(
     model: str | None,
     provider: str | None = None,
     session_id: str | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     contract = _profile_tokenizer_contract(model, provider)
     if not contract.get("available"):
@@ -12483,6 +12629,11 @@ def _profile_tokenizer_report_for_messages(
 
     category_totals = {category: int(item.get("tokens") or 0) for category, item in categories.items()}
     scope = "current_session" if session_id else "route_latest_observed_prompt"
+    observable_payload = _profile_tokenizer_observable_payload_report(
+        payload,
+        tokenizer,
+        message_content_tokens=total_tokens,
+    )
 
     latest_prompt_segmentation = {
         "available": True,
@@ -12502,6 +12653,7 @@ def _profile_tokenizer_report_for_messages(
         "category_totals": category_totals,
         "segments": segment_ledger,
         "segments_tail": segment_ledger[-30:],
+        "observable_payload": observable_payload,
         "notes": [
             "The user category is the latest ordinary user-role segment after dsproxy excludes Codex-injected environment/memory instructions and tool transcripts.",
             "The user_history category contains earlier ordinary user-role segments in the assembled prompt.",
@@ -12524,6 +12676,7 @@ def _profile_tokenizer_report_for_messages(
         "total_tokens": total_tokens,
         "message_count": len(message_reports),
         "latest_prompt_segmentation": latest_prompt_segmentation,
+        "observable_payload": observable_payload,
         "missing": [],
         "notes": [
             "Provider usage totals remain authoritative for billing and aggregate prompt/completion/cache/reasoning fields.",
@@ -12542,6 +12695,7 @@ def _profile_tokenizer_report_for_messages(
         "model": str(model or "") or None,
         "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
         "tokenizer": contract,
+        "observable_payload": observable_payload,
         "summary": {
             "available": True,
             "total_content_tokens": total_tokens,
@@ -13529,6 +13683,7 @@ def _weclaw_token_attribution_contract(
 
 
 
+
 def _weclaw_prompt_split_with_provider_coverage(
     split: dict[str, Any],
     latest_primary_turn: dict[str, Any],
@@ -13558,17 +13713,54 @@ def _weclaw_prompt_split_with_provider_coverage(
     else:
         latest_prompt_segmentation = {}
 
+    observable_payload = normalized.get("observable_payload")
+    if not isinstance(observable_payload, dict):
+        observable_payload = latest_prompt_segmentation.get("observable_payload")
+    if not isinstance(observable_payload, dict):
+        observable_payload = {"available": False, "reason": "observable_payload_report_not_available"}
+
+    local_message_content_tokens = None
+    local_message_content_source = None
+    if "total_prompt_tokens_profile_tokenizer" in latest_prompt_segmentation:
+        local_message_content_tokens = _weclaw_usage_int(latest_prompt_segmentation.get("total_prompt_tokens_profile_tokenizer"))
+        local_message_content_source = "prompt_subcategory_split.latest_prompt_segmentation.total_prompt_tokens_profile_tokenizer"
+    elif "total_tokens" in normalized:
+        local_message_content_tokens = _weclaw_usage_int(normalized.get("total_tokens"))
+        local_message_content_source = "prompt_subcategory_split.total_tokens"
+    elif categories is not None:
+        local_message_content_tokens = categories_sum_tokens
+        local_message_content_source = "prompt_subcategory_split.categories_sum_tokens"
+
+    payload_components = observable_payload.get("components") if isinstance(observable_payload, dict) else None
+    if not isinstance(payload_components, dict):
+        payload_components = {}
+
+    def _component_tokens(name: str) -> int:
+        component = payload_components.get(name)
+        return _weclaw_usage_int(component.get("local_tokens")) if isinstance(component, dict) else 0
+
+    tools_schema_tokens = _component_tokens("tools_schema")
+    tool_choice_tokens = _component_tokens("tool_choice")
+    response_format_tokens = _component_tokens("response_format")
+    request_options_tokens = _component_tokens("request_options")
+    messages_json_tokens = _component_tokens("messages_json")
+
     local_full_observed_prompt_tokens = None
     local_full_observed_prompt_source = None
-    if "total_prompt_tokens_profile_tokenizer" in latest_prompt_segmentation:
-        local_full_observed_prompt_tokens = _weclaw_usage_int(latest_prompt_segmentation.get("total_prompt_tokens_profile_tokenizer"))
-        local_full_observed_prompt_source = "prompt_subcategory_split.latest_prompt_segmentation.total_prompt_tokens_profile_tokenizer"
-    elif "total_tokens" in normalized:
-        local_full_observed_prompt_tokens = _weclaw_usage_int(normalized.get("total_tokens"))
-        local_full_observed_prompt_source = "prompt_subcategory_split.total_tokens"
-    elif categories is not None:
-        local_full_observed_prompt_tokens = categories_sum_tokens
-        local_full_observed_prompt_source = "prompt_subcategory_split.categories_sum_tokens"
+    if isinstance(observable_payload, dict) and observable_payload.get("available"):
+        if observable_payload.get("semantic_prompt_candidate_tokens") is not None:
+            local_full_observed_prompt_tokens = _weclaw_usage_int(observable_payload.get("semantic_prompt_candidate_tokens"))
+            local_full_observed_prompt_source = "prompt_subcategory_split.observable_payload.semantic_prompt_candidate_tokens"
+        elif local_message_content_tokens is not None:
+            local_full_observed_prompt_tokens = int(local_message_content_tokens) + tools_schema_tokens + tool_choice_tokens + response_format_tokens
+            local_full_observed_prompt_source = "prompt_subcategory_split.observable_payload.message_content_plus_prompt_bearing_api_fields"
+    if local_full_observed_prompt_tokens is None:
+        local_full_observed_prompt_tokens = local_message_content_tokens
+        local_full_observed_prompt_source = local_message_content_source
+
+    local_full_observable_payload_tokens = None
+    if isinstance(observable_payload, dict) and observable_payload.get("full_payload_json_tokens") is not None:
+        local_full_observable_payload_tokens = _weclaw_usage_int(observable_payload.get("full_payload_json_tokens"))
 
     provider_prompt_tokens = None
     provider_total_tokens = None
@@ -13630,51 +13822,83 @@ def _weclaw_prompt_split_with_provider_coverage(
         if category in {"", "unclassified", "unknown"}:
             unclassified_segments.append(item)
 
+    if local_message_content_tokens is None and prompt_segments:
+        local_message_content_tokens = segment_categories_sum_tokens
+        local_message_content_source = "prompt_subcategory_split.latest_prompt_segmentation.segments.token_count_sum"
     if local_full_observed_prompt_tokens is None and prompt_segments:
         local_full_observed_prompt_tokens = segment_categories_sum_tokens
         local_full_observed_prompt_source = "prompt_subcategory_split.latest_prompt_segmentation.segments.token_count_sum"
 
-    if local_full_observed_prompt_tokens is not None:
-        unclassified_observed_segments_tokens = max(0, int(local_full_observed_prompt_tokens) - categories_sum_tokens)
+    if local_message_content_tokens is not None:
+        unclassified_observed_segments_tokens = max(0, int(local_message_content_tokens) - categories_sum_tokens)
     else:
         unclassified_observed_segments_tokens = None
 
-    unknown_tokens = None
+    observable_prompt_non_category_tokens = None
+    if local_full_observed_prompt_tokens is not None:
+        observable_prompt_non_category_tokens = max(0, int(local_full_observed_prompt_tokens) - categories_sum_tokens)
+
+    remaining_provider_delta_tokens = None
     if provider_prompt_tokens is not None and local_full_observed_prompt_tokens is not None:
-        unknown_tokens = max(0, int(provider_prompt_tokens) - int(local_full_observed_prompt_tokens))
+        remaining_provider_delta_tokens = max(0, int(provider_prompt_tokens) - int(local_full_observed_prompt_tokens))
     elif provider_prompt_tokens is not None:
-        unknown_tokens = max(0, int(provider_prompt_tokens) - categories_sum_tokens)
+        remaining_provider_delta_tokens = max(0, int(provider_prompt_tokens) - categories_sum_tokens)
+
+    component_delta_candidates = {
+        "tools_schema_tokens": tools_schema_tokens,
+        "tool_choice_tokens": tool_choice_tokens,
+        "response_format_tokens": response_format_tokens,
+        "request_options_tokens": request_options_tokens,
+        "messages_json_over_message_content_tokens": max(0, messages_json_tokens - int(local_message_content_tokens or 0)),
+    }
+    dominant_observable_delta_source = None
+    if component_delta_candidates:
+        dominant_observable_delta_source = max(component_delta_candidates, key=lambda key: component_delta_candidates[key])
+        if component_delta_candidates.get(dominant_observable_delta_source, 0) <= 0:
+            dominant_observable_delta_source = None
 
     if provider_prompt_tokens is None:
         coverage_complete = False
         delta_status = "unavailable"
         delta_reason = "provider_reference_tokens_unavailable"
         is_accounting_suspect = False
+        root_cause_status = "provider_usage_unavailable"
     elif delta_tokens == 0:
         coverage_complete = bool(normalized.get("available"))
         delta_status = "explained"
         delta_reason = None
         is_accounting_suspect = False
-    elif unclassified_observed_segments_tokens and unknown_tokens == 0:
+        root_cause_status = "no_delta"
+    elif local_full_observed_prompt_tokens is not None and int(local_full_observed_prompt_tokens) >= int(provider_prompt_tokens):
         coverage_complete = False
-        delta_status = "explained"
+        delta_status = "explained_by_observable_payload_components"
+        delta_reason = "provider_prompt_delta_is_accounted_for_by_locally_observable_prompt_payload_components"
+        is_accounting_suspect = False
+        root_cause_status = "observable_payload_components_explain_provider_prompt_delta"
+    elif observable_prompt_non_category_tokens and remaining_provider_delta_tokens and remaining_provider_delta_tokens > 0:
+        coverage_complete = False
+        delta_status = "partially_explained_by_observable_payload_components"
+        delta_reason = "observable_prompt_payload_components_explain_part_of_delta_remainder_is_provider_template_or_tokenizer_difference"
+        is_accounting_suspect = True
+        root_cause_status = "observable_payload_components_partially_explain_provider_prompt_delta"
+    elif unclassified_observed_segments_tokens and remaining_provider_delta_tokens == 0:
+        coverage_complete = False
+        delta_status = "explained_by_unclassified_observed_segments"
         delta_reason = "observable_prompt_segments_not_assigned_to_prompt_subcategories"
         is_accounting_suspect = False
-    elif unclassified_observed_segments_tokens and unknown_tokens and unknown_tokens > 0:
-        coverage_complete = False
-        delta_status = "partially_explained"
-        delta_reason = "part_of_delta_is_unclassified_observed_prompt_segments_and_remainder_is_provider_or_template_or_tokenizer_difference"
-        is_accounting_suspect = True
+        root_cause_status = "classification_gap"
     else:
         coverage_complete = False
-        delta_status = "unexplained"
-        delta_reason = "provider_prompt_tokens_exceed_local_observed_prompt_tokens_without_unclassified_observed_segments"
+        delta_status = "unexplained_after_observable_payload_accounting"
+        delta_reason = "provider_prompt_tokens_exceed_local_observable_prompt_payload_tokens"
         is_accounting_suspect = bool(delta_tokens)
+        root_cause_status = "provider_template_hidden_overhead_or_tokenizer_mismatch"
 
     if provider_prompt_tokens is not None and delta_tokens is not None and delta_tokens < 0:
-        delta_status = "unexplained"
+        delta_status = "unexplained_after_observable_payload_accounting"
         delta_reason = "local_profile_tokenizer_prompt_tokens_exceed_provider_prompt_tokens"
         is_accounting_suspect = True
+        root_cause_status = "tokenizer_mismatch_or_local_overcount"
 
     coverage_scope = "local_profile_tokenizer_message_content_only"
     coverage_basis = str(
@@ -13684,11 +13908,17 @@ def _weclaw_prompt_split_with_provider_coverage(
 
     delta_breakdown = {
         "unclassified_observed_segments_tokens": unclassified_observed_segments_tokens,
-        "chat_template_or_protocol_overhead_tokens": None,
-        "provider_hidden_overhead_tokens": None,
+        "observable_prompt_non_category_tokens": observable_prompt_non_category_tokens,
+        "tools_schema_tokens": tools_schema_tokens,
+        "tool_choice_tokens": tool_choice_tokens,
+        "response_format_tokens": response_format_tokens,
+        "request_options_tokens": request_options_tokens,
+        "messages_json_over_message_content_tokens": component_delta_candidates["messages_json_over_message_content_tokens"],
+        "chat_template_or_protocol_overhead_tokens": remaining_provider_delta_tokens,
+        "provider_hidden_overhead_tokens": remaining_provider_delta_tokens,
         "tokenizer_mismatch_tokens": None,
-        "unknown_tokens": unknown_tokens,
-        "provider_or_template_overhead_tokens": unknown_tokens,
+        "unknown_tokens": remaining_provider_delta_tokens,
+        "provider_or_template_overhead_tokens": remaining_provider_delta_tokens,
     }
 
     prompt_segment_audit = {
@@ -13703,13 +13933,7 @@ def _weclaw_prompt_split_with_provider_coverage(
         "classification_complete": not bool(unclassified_observed_segments_tokens),
     }
 
-    experiment_cases = [
-        "minimal_user_only",
-        "system_env_only",
-        "tool_schema_no_execution",
-        "tool_call_output",
-        "historical_session",
-    ]
+    experiment_cases = ["minimal_user_only", "system_env_only", "tool_schema_no_execution", "tool_call_output", "historical_session"]
     minimum_experiment_matrix = {
         "available": False,
         "reason": "requires_live_provider_trace",
@@ -13719,10 +13943,13 @@ def _weclaw_prompt_split_with_provider_coverage(
                 "case": case,
                 "provider_prompt_tokens": None,
                 "local_full_observed_prompt_tokens": None,
+                "local_full_observable_payload_tokens": None,
                 "categories_sum_tokens": None,
                 "delta_tokens": None,
                 "delta_breakdown": {
                     "unclassified_observed_segments_tokens": None,
+                    "observable_prompt_non_category_tokens": None,
+                    "tools_schema_tokens": None,
                     "provider_or_template_overhead_tokens": None,
                     "unknown_tokens": None,
                 },
@@ -13747,33 +13974,33 @@ def _weclaw_prompt_split_with_provider_coverage(
         "provider_reasoning_tokens": provider_reasoning_tokens,
         "local_categories_sum_tokens": categories_sum_tokens,
         "local_categories_source": "prompt_subcategory_split.categories",
+        "local_message_content_tokens": local_message_content_tokens,
+        "local_message_content_source": local_message_content_source,
         "local_full_observed_prompt_tokens": local_full_observed_prompt_tokens,
         "local_full_observed_prompt_source": local_full_observed_prompt_source,
+        "local_full_observable_payload_tokens": local_full_observable_payload_tokens,
+        "local_full_observable_payload_source": "prompt_subcategory_split.observable_payload.full_payload_json_tokens" if local_full_observable_payload_tokens is not None else None,
+        "observable_payload": observable_payload,
         "delta_tokens": delta_tokens,
         "delta_breakdown": delta_breakdown,
         "delta_status": delta_status,
+        "root_cause_status": root_cause_status,
+        "dominant_observable_delta_source": dominant_observable_delta_source,
         "is_accounting_suspect": is_accounting_suspect,
-        "recommended_action": "run_prompt_reconciliation_trace" if delta_status in {"unexplained", "partially_explained"} else None,
+        "recommended_action": "run_prompt_reconciliation_trace" if delta_status in {"unexplained_after_observable_payload_accounting", "partially_explained_by_observable_payload_components"} else None,
         "classification_complete": not bool(unclassified_observed_segments_tokens),
         "local_full_observed_matches_categories": (
             local_full_observed_prompt_tokens is not None
             and int(local_full_observed_prompt_tokens) == categories_sum_tokens
         ),
         "can_provider_prompt_tokens_be_fully_decomposed_to_details": coverage_complete,
-        "delta_interpretation": (
-            "no_delta"
-            if delta_tokens == 0
-            else "observable_classification_gap"
-            if unclassified_observed_segments_tokens and unknown_tokens == 0
-            else "observable_classification_gap_plus_provider_template_or_tokenizer_difference"
-            if unclassified_observed_segments_tokens and unknown_tokens and unknown_tokens > 0
-            else "provider_template_hidden_overhead_or_tokenizer_mismatch_outside_observed_message_content"
-        ),
+        "delta_interpretation": root_cause_status,
         "prompt_segment_audit": prompt_segment_audit,
         "minimum_experiment_matrix": minimum_experiment_matrix,
         "notes": [
             "categories_sum_tokens is the sum of the displayed Details categories.",
-            "local_full_observed_prompt_tokens is the complete assembled prompt content that dsproxy can locally observe and tokenize.",
+            "local_full_observed_prompt_tokens includes locally observable prompt-bearing API fields such as tools_schema in addition to message content when chat_payload is available.",
+            "local_full_observable_payload_tokens is a diagnostic serialized-payload estimate and may over-count provider chat-template accounting.",
             "provider_prompt_tokens is provider-reported usage and remains authoritative for billing.",
             "delta_tokens must not be assigned to other_prompt unless backed by observable prompt segments.",
         ],
@@ -13794,6 +14021,7 @@ def _weclaw_prompt_split_with_provider_coverage(
             "segment_categories_sum_tokens": segment_categories_sum_tokens,
             "unclassified_segments": unclassified_segments,
             "unclassified_segments_tokens": unclassified_observed_segments_tokens,
+            "observable_payload": observable_payload,
         }
     )
     if session_id:
@@ -13811,12 +14039,15 @@ def _weclaw_prompt_split_with_provider_coverage(
                 "coverage_scope": coverage_scope,
                 "coverage_basis": coverage_basis,
                 "delta_reason": delta_reason,
+                "local_message_content_tokens": local_message_content_tokens,
                 "local_full_observed_prompt_tokens": local_full_observed_prompt_tokens,
+                "local_full_observable_payload_tokens": local_full_observable_payload_tokens,
                 "prompt_reconciliation": prompt_reconciliation,
                 "prompt_segments": prompt_segments,
                 "segment_categories_sum_tokens": segment_categories_sum_tokens,
                 "unclassified_segments": unclassified_segments,
                 "unclassified_segments_tokens": unclassified_observed_segments_tokens,
+                "observable_payload": observable_payload,
             }
         )
         if session_id:
@@ -13915,7 +14146,7 @@ def _weclaw_tokens_contract(
         else "unavailable"
     )
     taxonomy = {
-        "version": 9,
+        "version": 10,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
@@ -13932,7 +14163,7 @@ def _weclaw_tokens_contract(
             "context_window_used_tokens": "latest_primary_provider_prompt_tokens_estimate",
             "session_scope": "exact_current_session_when_session_id_available",
             "prompt_segmentation_scope": "current_session_when_session_id_available",
-            "prompt_reconciliation": "compares displayed local prompt categories, locally observed assembled prompt tokens, and provider-reported prompt tokens",
+            "prompt_reconciliation": "compares displayed local prompt categories, locally observable prompt-bearing payload components, serialized payload diagnostics, and provider-reported prompt tokens",
         },
         "attribution_schema": {
             "version": 6,
@@ -15278,6 +15509,7 @@ def create_app(
             model=model,
             provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
             session_id=_session_id_from_request_payload(payload),
+            payload=chat_payload,
         )
         app.state.last_profile_tokenizer_report_by_profile[profile_name] = profile_tokenizer_report
         _debug_trace_event(

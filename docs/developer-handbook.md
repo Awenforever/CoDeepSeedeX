@@ -1292,3 +1292,14 @@ p2.10a77 extends WeClaw Details from simple partial coverage into prompt reconci
 3. dsproxy does not assign provider/local deltas to `other_prompt` unless those tokens correspond to observable prompt segments.
 4. If local observed prompt tokens match the classified category sum but provider prompt tokens are much larger, dsproxy reports the delta as unexplained provider/template/tokenizer-layer difference and recommends `run_prompt_reconciliation_trace`.
 5. The embedded minimum experiment matrix is a live-trace plan, not a fabricated result. Provider prompt usage requires real provider calls.
+
+
+## p2.10a78 Prompt delta root-cause accounting
+
+p2.10a78 changes prompt reconciliation from an `unknown` alarm into local root-cause accounting:
+
+1. dsproxy now passes the full DeepSeek chat payload into profile-tokenizer accounting, not only `messages`.
+2. `observable_payload.components` separately tokenizes message content, serialized messages, tool schema, tool choice, response format, request options, and full serialized payload.
+3. `local_full_observed_prompt_tokens` now includes locally observable prompt-bearing API fields such as `tools_schema` in addition to message content.
+4. `delta_breakdown.tools_schema_tokens` can explain the common gap where provider `prompt_tokens` exceed Details categories because tool/function schemas are prompt tokens but not message-content Details.
+5. Remaining provider delta after observable payload accounting is still reported separately as provider/template/tokenizer overhead; it is not assigned to `other_prompt`.

@@ -1248,3 +1248,14 @@ p2.10a77将WeClaw Details从简单partial覆盖率扩展为prompt reconciliation
 3. dsproxy不会把provider/local差额直接归入`other_prompt`，除非这些token对应可观测的prompt segment。
 4. 如果本地可观测prompt token与分类合计一致，但provider prompt tokens显著更大，则dsproxy把差值标记为未解释的provider/template/tokenizer层差异，并建议`run_prompt_reconciliation_trace`。
 5. 内置最小实验矩阵是live trace计划，不伪造实验结果。provider prompt usage必须通过真实provider调用获得。
+
+
+## p2.10a78 Prompt delta root-cause accounting
+
+p2.10a78将prompt reconciliation从`unknown`报警推进为本地根因账本：
+
+1. dsproxy现在把完整DeepSeek chat payload传入profile-tokenizer accounting，不再只传`messages`。
+2. `observable_payload.components`分别统计message content、serialized messages、tool schema、tool choice、response format、request options和完整serialized payload。
+3. `local_full_observed_prompt_tokens`现在包含本地可观测的prompt-bearing API字段，例如`tools_schema`，而不只是message content。
+4. `delta_breakdown.tools_schema_tokens`可以解释常见差值：provider `prompt_tokens`包含工具/函数schema，但Details分类只显示message content。
+5. observable payload accounting之后仍剩余的provider差值会继续标记为provider/template/tokenizer overhead，不会归入`other_prompt`。

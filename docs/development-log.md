@@ -847,3 +847,17 @@ Scope:
 - Mark unexplained provider/local deltas as accounting-suspect rather than hiding them behind `partial`.
 - Upgrade token taxonomy to version 9.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a78 Prompt delta root-cause accounting
+
+Date: 2026-05-19
+
+Scope:
+
+- Pass full DeepSeek chat payload into profile-tokenizer accounting.
+- Add `observable_payload.components` for message content, messages JSON, tools schema, tool choice, response format, request options, and full payload JSON.
+- Recompute `local_full_observed_prompt_tokens` from message content plus prompt-bearing observable API fields.
+- Classify provider/Details delta as explained by observable payload components, partially explained, or remaining provider/template/tokenizer overhead.
+- Upgrade token taxonomy to version 10.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.
