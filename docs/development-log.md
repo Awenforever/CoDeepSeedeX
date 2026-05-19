@@ -795,3 +795,16 @@ Scope:
 - Keep `context_window.used_tokens` pinned to latest primary prompt tokens.
 - Add explicit Compact/Trim progress numerator, denominator, ratio, and basis fields.
 - Defer DeepSeek pricing discount parser changes to a later node.
+
+
+## p2.10a74 DeepSeek pricing discount contract
+
+Date: 2026-05-19
+
+Scope:
+
+- Make DeepSeek pricing CNY-first and discount-aware.
+- Prefer the Chinese official pricing page for refresh.
+- Expose `deepseek-v4-pro` effective prices, original prices, discount label/rate, and validity window.
+- Keep pricing and cost semantics separated: historical turn costs remain ledger-based and must not be recomputed from the current price table.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.

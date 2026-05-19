@@ -2319,6 +2319,7 @@ def _tokenizer(args: argparse.Namespace) -> int:
     return 2
 
 
+
 def _pricing(args: argparse.Namespace) -> int:
     model = getattr(args, "model", None)
     command = getattr(args, "pricing_command", "show")
@@ -2334,7 +2335,7 @@ def _pricing(args: argparse.Namespace) -> int:
     if command == "refresh":
         payload = _refresh_deepseek_pricing_from_official_docs(
             model=model,
-            source_url=getattr(args, "source_url", None) or "https://api-docs.deepseek.com/quick_start/pricing",
+            source_url=getattr(args, "source_url", None) or "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
             write_cache=bool(getattr(args, "write_cache", False)),
             cache_path=getattr(args, "cache_path", None),
             timeout=float(getattr(args, "timeout", 20.0) or 20.0),
@@ -5347,7 +5348,7 @@ def build_parser() -> argparse.ArgumentParser:
     pricing_refresh.add_argument("--model", default=None)
     pricing_refresh.add_argument("--write-cache", action="store_true", help="atomically write validated pricing to the user cache")
     pricing_refresh.add_argument("--cache-path", default=None, help="optional explicit cache path for --write-cache")
-    pricing_refresh.add_argument("--source-url", default="https://api-docs.deepseek.com/quick_start/pricing")
+    pricing_refresh.add_argument("--source-url", default="https://api-docs.deepseek.com/zh-cn/quick_start/pricing/")
     pricing_refresh.add_argument("--timeout", type=float, default=20.0)
     pricing_refresh.set_defaults(func=_pricing)
 

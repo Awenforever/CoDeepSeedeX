@@ -1249,3 +1249,16 @@ This node does not move public Release tags, does not rebuild Release assets, an
 ## p2.10a73 WeClaw status primary-scope contract
 
 p2.10a73 separates latest primary model-call status from latest-any and auxiliary model calls for WeClaw status consumption. It adds usage ledger `session_id` support, `tokens.latest_primary_turn`, `tokens.latest_any_model_call`, `tokens.latest_auxiliary_call`, current-session filtering through `--session-id`, and explicit Compact/Trim `progress_*` fields. Pricing and discount parsing are intentionally deferred to a later node.
+
+
+## p2.10a74 DeepSeek pricing discount contract
+
+p2.10a74 makes DeepSeek pricing CNY-first and discount-aware.
+
+Contract changes:
+
+1. `dsproxy pricing refresh --json` defaults to the Chinese official pricing page.
+2. The parser recognizes the current effective price, original struck-through price, discount label, discount rate, and official discount validity window.
+3. `config/pricing.json` stores the bundled official CNY snapshot using current effective prices.
+4. `pricing.effective_prices`, `pricing.original_prices`, `pricing.discount`, and `pricing.prices_display` are exposed for WeClaw.
+5. WeClaw should display current effective prices and must not infer the discount window or recompute historical turn costs.

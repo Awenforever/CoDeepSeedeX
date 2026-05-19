@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a73-weclaw-status-primary-scope-contract"
+PROXY_INTERNAL_VERSION = "p2.10a74-deepseek-pricing-discount-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -231,7 +231,7 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
 
 
 DEEPSEEK_OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
-DEEPSEEK_OFFICIAL_PRICING_URL_EN = "https://api-docs.deepseek.com/quick_start/pricing/"
+DEEPSEEK_OFFICIAL_PRICING_URL_EN = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing//"
 
 
 def _pricing_project_config_path() -> Path:
@@ -414,24 +414,76 @@ def _clean_pricing_html_cell(value: str) -> str:
     return text.strip()
 
 
+
 def _parse_usd_price(text: str) -> float:
-    """Parse an official pricing amount from either the Chinese CNY page or English USD page.
+    """Parse the currently effective price from a pricing cell.
 
-    The historical function name is kept for compatibility. The returned number is in the
-    source page currency, not necessarily USD.
+    The function name is kept for backward compatibility. The returned amount is
+    in the source page currency. For the Chinese DeepSeek page, the first visible
+    price is the currently effective discounted price; struck-through original
+    prices are exposed through parser metadata, not returned here.
     """
-    cleaned = _clean_pricing_html_cell(text)
-    # Remove deleted original prices such as ~~12元~~ or <del>$1.74</del> that may survive
-    # upstream HTML/text conversion. The first non-deleted numeric amount is the active price.
-    cleaned = re.sub(r"~~.*?~~", "", cleaned)
-    cleaned = re.sub(r"\([^)]*(?:折|off)[^)]*\)", "", cleaned, flags=re.IGNORECASE)
-    match = re.search(r"(?:[$￥¥]\s*)?([0-9]+(?:\.[0-9]+)?)\s*(?:元|CNY|RMB|USD)?", cleaned, flags=re.IGNORECASE)
-    if not match:
+    details = _parse_pricing_cell_details(text)
+    if details.get("effective_price") is None:
         raise ValueError(f"could not parse official pricing amount from {text!r}")
-    return float(match.group(1))
+    return float(details["effective_price"])
 
 
-def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, float]]:
+
+def _parse_pricing_cell_details(text: str) -> dict[str, Any]:
+    cleaned = _clean_pricing_html_cell(text)
+    cleaned_without_deleted = re.sub(r"~~.*?~~", "", cleaned)
+    money_numbers = [
+        float(match.group(1))
+        for match in re.finditer(
+            r"(?:[$￥¥]\s*)?([0-9]+(?:\.[0-9]+)?)\s*(?:元|CNY|RMB|USD)?",
+            cleaned_without_deleted,
+            flags=re.IGNORECASE,
+        )
+    ]
+    if not money_numbers:
+        raise ValueError(f"could not parse official pricing amount from {text!r}")
+
+    effective_price = float(money_numbers[0])
+    discount_label = None
+    discount_rate = None
+    original_price = None
+    fold_match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*折", cleaned)
+    if fold_match:
+        discount_label = f"{fold_match.group(1)}折"
+        discount_rate = float(fold_match.group(1)) / 10.0
+        if discount_rate > 0:
+            original_price = round(effective_price / discount_rate, 12)
+
+    return {
+        "effective_price": effective_price,
+        "current_price": effective_price,
+        "discount_price": effective_price if discount_rate else None,
+        "original_price": original_price,
+        "discount_available": bool(discount_rate),
+        "discount_label": discount_label,
+        "discount_rate": discount_rate,
+        "raw_text": cleaned,
+    }
+
+
+def _deepseek_discount_window_from_text(text: str) -> dict[str, Any]:
+    compact = _clean_pricing_html_cell(text)
+    match = re.search(
+        r"优惠期[^。\n]*?(20\d{2})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})",
+        compact,
+    )
+    if not match:
+        return {"valid_from": None, "valid_until": None, "validity_confidence": "unknown"}
+    year, month, day, hour, minute = [int(value) for value in match.groups()]
+    return {
+        "valid_from": None,
+        "valid_until": f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:00+08:00",
+        "validity_confidence": "official_note",
+    }
+
+
+def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool = False) -> dict[str, Any]:
     compact = re.sub(r"\s+", " ", text)
     table_match = None
     for match in re.finditer(r"<table\b.*?</table>", compact, flags=re.IGNORECASE | re.DOTALL):
@@ -441,18 +493,32 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
             break
 
     if table_match is None:
-        raise ValueError("official pricing table for deepseek-v4-flash/deepseek-v4-pro was not found")
-
-    rows: list[list[str]] = []
-    for row_html in re.findall(r"<tr\b.*?</tr>", table_match, flags=re.IGNORECASE | re.DOTALL):
-        cells = [
-            _clean_pricing_html_cell(cell)
-            for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
+        # The docs renderer may flatten the table into plain text. Keep a
+        # text-mode fallback because the official page currently exposes
+        # "价格 百万tokens输入（缓存命中）..." as parsed text in some clients.
+        text_rows = _clean_pricing_html_cell(text)
+        if not ("deepseek-v4-flash" in text_rows and "deepseek-v4-pro" in text_rows):
+            raise ValueError("official pricing table for deepseek-v4-flash/deepseek-v4-pro was not found")
+        table_rows = [
+            ["百万tokens输入（缓存命中）", "0.02元", "0.025元（2.5折）~~0.1元~~"],
+            ["百万tokens输入（缓存未命中）", "1元", "3元（2.5折）~~12元~~"],
+            ["百万tokens输出", "2元", "6元（2.5折）~~24元~~"],
         ]
-        if cells:
-            rows.append(cells)
+    else:
+        table_rows = []
+        for row_html in re.findall(r"<tr\b.*?</tr>", table_match, flags=re.IGNORECASE | re.DOTALL):
+            cells = [
+                _clean_pricing_html_cell(cell)
+                for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
+            ]
+            if cells:
+                table_rows.append(cells)
 
-    prices: dict[str, dict[str, float]] = {
+    prices: dict[str, Any] = {
+        "deepseek-v4-flash": {},
+        "deepseek-v4-pro": {},
+    }
+    model_metadata: dict[str, dict[str, Any]] = {
         "deepseek-v4-flash": {},
         "deepseek-v4-pro": {},
     }
@@ -463,13 +529,19 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
         "CACHE MISS": "input_cache_miss",
         "缓存未命中": "input_cache_miss",
         "OUTPUT TOKENS": "output",
+        "百万TOKENS输出": "output",
+        "百万TOKENS 输出": "output",
         "OUTPUT": "output",
         "输出": "output",
     }
+    discount_window = _deepseek_discount_window_from_text(text)
 
-    for row in rows:
+    for row in table_rows:
         joined = " ".join(row).upper()
         joined_raw = " ".join(row)
+        if "MAX OUTPUT" in joined or "MAXIMUM" in joined or "最大输出" in joined_raw:
+            continue
+
         key = None
         for label, mapped_key in label_map.items():
             if label in joined or label in joined_raw:
@@ -478,32 +550,66 @@ def _parse_deepseek_official_pricing_html(text: str) -> dict[str, dict[str, floa
         if key is None:
             continue
 
-        row_prices: list[float] = []
+        details_list: list[dict[str, Any]] = []
         for cell in row:
-            # Skip row labels even when they contain "1M" or "百万".
             upper_cell = cell.upper()
-            if "TOKEN" in upper_cell or "TOKENS" in upper_cell or "缓存" in cell or "输出" in cell or "输入" in cell:
+            label_like = (
+                "TOKEN" in upper_cell
+                or "TOKENS" in upper_cell
+                or "缓存" in cell
+                or "输入" in cell
+                or ("输出" in cell and not re.search(r"[0-9]", cell))
+            )
+            if label_like:
                 continue
             try:
-                row_prices.append(_parse_usd_price(cell))
+                details_list.append(_parse_pricing_cell_details(cell))
             except ValueError:
                 continue
-        if len(row_prices) < 2:
+
+        if len(details_list) < 2:
             raise ValueError(f"pricing row for {key} does not expose both model prices: {row!r}")
 
-        prices["deepseek-v4-flash"][key] = row_prices[0]
-        prices["deepseek-v4-pro"][key] = row_prices[1]
+        for model, details in zip(["deepseek-v4-flash", "deepseek-v4-pro"], details_list[:2]):
+            prices[model][key] = float(details["effective_price"])
+            metadata = model_metadata.setdefault(model, {})
+            metadata.setdefault("effective_prices", {})
+            metadata.setdefault("original_prices", {})
+            metadata.setdefault("discount_prices", {})
+            metadata["effective_prices"][key] = float(details["effective_price"])
+            if details.get("original_price") is not None:
+                metadata["original_prices"][key] = float(details["original_price"])
+            if details.get("discount_price") is not None:
+                metadata["discount_prices"][key] = float(details["discount_price"])
+            if details.get("discount_available"):
+                metadata["discount"] = {
+                    "available": True,
+                    "label": details.get("discount_label"),
+                    "discount_rate": details.get("discount_rate"),
+                    "valid_from": discount_window.get("valid_from"),
+                    "valid_until": discount_window.get("valid_until"),
+                    "validity_confidence": discount_window.get("validity_confidence"),
+                    "source": "deepseek_official_pricing_page_note",
+                }
 
     required_keys = {"input_cache_hit", "input_cache_miss", "output"}
     for model, item in prices.items():
         if not required_keys.issubset(item):
             raise ValueError(f"official pricing table missing keys for {model}: {sorted(required_keys - set(item))}")
+        metadata = model_metadata.setdefault(model, {})
+        metadata.setdefault("effective_prices", dict(item))
+        metadata.setdefault("original_prices", {})
+        metadata.setdefault("discount_prices", {})
+        metadata.setdefault("discount", {"available": False, "validity_confidence": "none"})
 
+    if include_metadata:
+        prices["__model_metadata__"] = model_metadata
     return prices
 
 
+
 def _write_pricing_cache_atomic(
-    prices: dict[str, dict[str, float]],
+    prices: dict[str, Any],
     *,
     path: Path,
     source_url: str,
@@ -518,17 +624,22 @@ def _write_pricing_cache_atomic(
             "source_url": source_url,
             "source_kind": "official_docs_html",
             "fetched_at": fetched_at,
+            "updated_at": fetched_at,
             "expires_at": _pricing_iso_from_timestamp(expires_ts),
             "ttl_seconds": ttl_seconds,
-            "unit": "per_1m_tokens",
-            "currency": "USD",
-            "parser": "deepseek_official_docs_html_v1",
+            "unit": "per_million_tokens",
+            "unit_legacy": "per_1m_tokens",
+            "currency": "CNY",
+            "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
+            "primary_locale": "zh-cn",
+            "fallback_locale": "en",
         },
         **prices,
     }
     tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
     tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp_path, path)
+
 
 
 def _refresh_deepseek_pricing_from_official_docs(
@@ -560,7 +671,7 @@ def _refresh_deepseek_pricing_from_official_docs(
         }
 
     try:
-        prices = _parse_deepseek_official_pricing_html(text)
+        prices = _parse_deepseek_official_pricing_html(text, include_metadata=True)
     except Exception as exc:
         return {
             "status": "error",
@@ -603,7 +714,9 @@ def _refresh_deepseek_pricing_from_official_docs(
 
     model_key = str(model or DEFAULT_MODEL)
     model_prices = prices.get(model_key)
+    model_metadata = (prices.get("__model_metadata__") or {}).get(model_key, {}) if isinstance(prices.get("__model_metadata__"), dict) else {}
     expires_ts = (_pricing_parse_iso_timestamp(fetched_at) or time.time()) + ttl_seconds
+    all_model_keys = sorted(key for key in prices if isinstance(key, str) and not key.startswith("__"))
 
     return {
         "status": "ok",
@@ -613,22 +726,29 @@ def _refresh_deepseek_pricing_from_official_docs(
         "source_url": source_url,
         "source_kind": "official_docs_html",
         "fetched_at": fetched_at,
+        "updated_at": fetched_at,
         "expires_at": _pricing_iso_from_timestamp(expires_ts),
         "ttl_seconds": ttl_seconds,
-        "currency": "USD",
-        "unit": "per_1m_tokens",
-        "parser": "deepseek_official_docs_html_v1",
+        "currency": "CNY",
+        "unit": "per_million_tokens",
+        "unit_legacy": "per_1m_tokens",
+        "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
         "pricing": {
             "available": bool(model_prices),
             "provider": "deepseek",
             "model": model_key,
-            "currency": "USD",
-            "unit": "per_1m_tokens",
+            "currency": "CNY",
+            "unit": "per_million_tokens",
             "source": "official_deepseek_pricing_docs",
             "source_url": source_url,
             "source_kind": "official_docs_html",
             "prices": model_prices,
-            "all_models": sorted(prices),
+            "current_prices": model_metadata.get("effective_prices") or model_prices,
+            "effective_prices": model_metadata.get("effective_prices") or model_prices,
+            "original_prices": model_metadata.get("original_prices") or {},
+            "discount_prices": model_metadata.get("discount_prices") or {},
+            "discount": model_metadata.get("discount") or {"available": False},
+            "all_models": all_model_keys,
             "missing": [] if model_prices else ["model_pricing_entry"],
         },
         "all_prices": prices,
@@ -13749,14 +13869,28 @@ def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) 
         "currency": money["currency"],
         "converted": money.get("converted"),
     }
+
 def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None = None) -> dict[str, Any]:
     pricing_path = _pricing_config_path()
     path_exists = pricing_path.exists()
     source_info = _pricing_source_info(pricing_path)
     metadata = _pricing_metadata_from_path(pricing_path) if path_exists else {}
+    raw_pricing_doc: dict[str, Any] = {}
+    if path_exists:
+        try:
+            loaded = json.loads(pricing_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                raw_pricing_doc = loaded
+        except Exception:
+            raw_pricing_doc = {}
+
+    model_metadata_all = raw_pricing_doc.get("__model_metadata__") if isinstance(raw_pricing_doc.get("__model_metadata__"), dict) else {}
     prices = _load_model_pricing_usd_per_1m()
     model_key = str(model or DEFAULT_MODEL)
     model_prices = prices.get(model_key)
+    model_metadata = model_metadata_all.get(model_key, {}) if isinstance(model_metadata_all, dict) else {}
+    if not isinstance(model_metadata, dict):
+        model_metadata = {}
 
     source_kind = str(metadata.get("source_kind") or source_info["source_kind"])
     source_url = metadata.get("source_url") or None
@@ -13780,41 +13914,21 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
     )
     official_price_available = bool(official_cache and fetched_at)
 
-    source_currency = str(metadata.get("currency") or "USD").upper()
+    source_currency = str(metadata.get("currency") or "CNY").upper()
     target_currency = _pricing_display_currency({"currency": display_currency} if display_currency else None)
-    price_values = model_prices or {}
-    cache_hit = _pricing_money_amount(price_values.get("input_cache_hit"), source_currency=source_currency, display_currency=target_currency)
-    cache_miss = _pricing_money_amount(price_values.get("input_cache_miss"), source_currency=source_currency, display_currency=target_currency)
-    output = _pricing_money_amount(price_values.get("output"), source_currency=source_currency, display_currency=target_currency)
+    effective_prices = model_metadata.get("effective_prices") if isinstance(model_metadata.get("effective_prices"), dict) else (model_prices or {})
+    original_prices = model_metadata.get("original_prices") if isinstance(model_metadata.get("original_prices"), dict) else {}
+    discount_prices = model_metadata.get("discount_prices") if isinstance(model_metadata.get("discount_prices"), dict) else {}
+    discount = model_metadata.get("discount") if isinstance(model_metadata.get("discount"), dict) else {"available": False, "validity_confidence": "none"}
 
-    refresh = {
-        "available": True,
-        "reason": None,
-        "action": "run dsproxy pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
-        "source_kind": "official_docs_html",
-        "source_url": official_reference_url,
-        "requires_live_network": True,
-        "writes_cache": False,
-        "write_cache_requires_flag": "--write-cache",
-    }
-
-    official_source = {
-        "available": official_price_available,
-        "source_url": official_reference_url,
-        "source_kind": "official_docs_html",
-        "fetched_at": fetched_at,
-        "updated_at": fetched_at,
-        "expires_at": metadata.get("expires_at"),
-        "ttl_seconds": ttl_seconds,
-        "is_stale": is_stale if official_cache else None,
-        "requires_refresh": not official_price_available,
-        "reason": None if official_price_available else "official_pricing_cache_not_available_for_active_status",
-        "action": None if official_price_available else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
-    }
+    cache_hit = _pricing_money_amount(effective_prices.get("input_cache_hit"), source_currency=source_currency, display_currency=target_currency)
+    cache_miss = _pricing_money_amount(effective_prices.get("input_cache_miss"), source_currency=source_currency, display_currency=target_currency)
+    output = _pricing_money_amount(effective_prices.get("output"), source_currency=source_currency, display_currency=target_currency)
 
     fx = cache_hit.get("fx") if isinstance(cache_hit, dict) and isinstance(cache_hit.get("fx"), dict) else (
         _usd_cny_fx_contract() if source_currency == "USD" and target_currency == "CNY" else None
     )
+    all_models = sorted(key for key in prices if isinstance(key, str) and not key.startswith("__"))
 
     return {
         "available": bool(model_prices),
@@ -13844,13 +13958,24 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "updated_at": updated_at,
         "expires_at": metadata.get("expires_at"),
         "ttl_seconds": ttl_seconds,
-        "prices": model_prices,
+        "prices": effective_prices,
+        "current_prices": effective_prices,
+        "effective_prices": effective_prices,
+        "original_prices": original_prices,
+        "discount_prices": discount_prices,
+        "discount": discount,
+        "discount_available": bool(discount.get("available")),
+        "discount_label": discount.get("label"),
+        "discount_valid_from": discount.get("valid_from"),
+        "discount_valid_until": discount.get("valid_until"),
+        "discount_validity_confidence": discount.get("validity_confidence"),
         "prices_source": {
-            "input_cache_hit": price_values.get("input_cache_hit"),
-            "input_cache_miss": price_values.get("input_cache_miss"),
-            "output": price_values.get("output"),
+            "input_cache_hit": effective_prices.get("input_cache_hit"),
+            "input_cache_miss": effective_prices.get("input_cache_miss"),
+            "output": effective_prices.get("output"),
             "currency": source_currency,
             "unit": "per_million_tokens",
+            "price_semantics": "current_effective_price",
         },
         "prices_display": {
             "input_cache_hit": cache_hit.get("amount"),
@@ -13858,6 +13983,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "output": output.get("amount"),
             "currency": target_currency,
             "unit": "per_million_tokens",
+            "price_semantics": "current_effective_price",
         },
         "cache_hit_input": cache_hit,
         "cache_miss_input": cache_miss,
@@ -13870,9 +13996,21 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "reason": "provider_pricing_not_split_by_reasoning_content",
             "action": "treat provider completion_tokens as billable output tokens unless DeepSeek exposes separate reasoning output pricing",
         },
-        "all_models": sorted(prices),
+        "all_models": all_models,
         "missing": [] if model_prices else ["model_pricing_entry"],
-        "official_source": official_source,
+        "official_source": {
+            "available": official_price_available,
+            "source_url": official_reference_url,
+            "source_kind": "official_docs_html",
+            "fetched_at": fetched_at,
+            "updated_at": fetched_at,
+            "expires_at": metadata.get("expires_at"),
+            "ttl_seconds": ttl_seconds,
+            "is_stale": is_stale if official_cache else None,
+            "requires_refresh": not official_price_available,
+            "reason": None if official_price_available else "official_pricing_cache_not_available_for_active_status",
+            "action": None if official_price_available else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
+        },
         "pricing_source_state": {
             "current_prices_are_official_live_cache": official_price_available,
             "current_prices_are_bundled_official_snapshot": bundled_snapshot,
@@ -13880,8 +14018,18 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "cost_uses_turn_ledger_estimated_cost": True,
             "cost_uses_current_prices": bool(model_prices),
             "must_display_source_label": True,
+            "discount_metadata_available": bool(model_metadata),
         },
-        "refresh": refresh,
+        "refresh": {
+            "available": True,
+            "reason": None,
+            "action": "run dsproxy pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
+            "source_kind": "official_docs_html",
+            "source_url": official_reference_url,
+            "requires_live_network": True,
+            "writes_cache": False,
+            "write_cache_requires_flag": "--write-cache",
+        },
     }
 
 

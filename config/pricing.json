@@ -1,19 +1,61 @@
 {
   "__metadata__": {
-    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
-    "fallback_source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
-    "source_kind": "bundled_official_docs_snapshot",
-    "snapshot_created_at": "2026-05-18T00:00:00Z",
-    "unit": "per_million_tokens",
     "currency": "CNY",
-    "parser": "deepseek_official_docs_html_bilingual_v2",
-    "primary_locale": "zh-cn",
     "fallback_locale": "en",
+    "fallback_source_url": "https://api-docs.deepseek.com/quick_start/pricing",
     "notes": [
-      "Bundled fallback snapshot from the DeepSeek Chinese official pricing page. Run dsproxy pricing refresh --write-cache --json to replace it with a locally fetched official_docs_html cache.",
-      "The Chinese DeepSeek pricing page is the primary source for CNY display and cost estimates. The English USD page is retained as fallback/i18n source.",
-      "Cost estimates must display source metadata and must not present bundled snapshot prices as freshly fetched official prices."
-    ]
+      "Bundled fallback snapshot from the DeepSeek Chinese official pricing page.",
+      "The Chinese DeepSeek pricing page is the primary source for CNY display and cost estimates.",
+      "deepseek-v4-pro effective prices reflect the official 2.5折 discount valid until Beijing time 2026-05-31 23:59."
+    ],
+    "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
+    "primary_locale": "zh-cn",
+    "snapshot_created_at": "2026-05-19T00:00:00Z",
+    "source_kind": "bundled_official_docs_snapshot",
+    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "unit": "per_million_tokens",
+    "unit_legacy": "per_1m_tokens"
+  },
+  "__model_metadata__": {
+    "deepseek-v4-flash": {
+      "discount": {
+        "available": false,
+        "validity_confidence": "none"
+      },
+      "discount_prices": {},
+      "effective_prices": {
+        "input_cache_hit": 0.02,
+        "input_cache_miss": 1.0,
+        "output": 2.0
+      },
+      "original_prices": {}
+    },
+    "deepseek-v4-pro": {
+      "discount": {
+        "available": true,
+        "discount_rate": 0.25,
+        "label": "2.5折",
+        "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+        "valid_from": null,
+        "valid_until": "2026-05-31T23:59:00+08:00",
+        "validity_confidence": "official_note"
+      },
+      "discount_prices": {
+        "input_cache_hit": 0.025,
+        "input_cache_miss": 3.0,
+        "output": 6.0
+      },
+      "effective_prices": {
+        "input_cache_hit": 0.025,
+        "input_cache_miss": 3.0,
+        "output": 6.0
+      },
+      "original_prices": {
+        "input_cache_hit": 0.1,
+        "input_cache_miss": 12.0,
+        "output": 24.0
+      }
+    }
   },
   "deepseek-v4-flash": {
     "input_cache_hit": 0.02,
