@@ -18,7 +18,7 @@ Active maintainer documents:
 - `docs/developer-handbook.zh-CN.md`: Chinese mirror for the human maintainer.
 - `docs/development-log.md`: detailed long-term development log, read only when historical trace-back is needed.
 
-Retired document families must not be reintroduced as active documents: `OPERATIONS.md`, `docs/install.*.md`, `docs/usage.*.md`, `docs/upgrade.*.md`, `docs/security.*.md`, `docs/troubleshooting.*.md`, `docs/handoff-for-developers.*.md`, `docs/custom_api_handoff.md`, and per-release note files under `docs/`.
+Retired document families must not be reintroduced as active documents: `OPERATIONS.md`, `docs/install.*.md`, `docs/usage.*.md`, `docs/upgrade.*.md`, `docs/security.*.md`, `docs/troubleshooting.*.md`, `docs/handoff-for-developers.*.md`, and `docs/custom_api_handoff.md`. Legacy per-release note fragments under `docs/` stay retired, except the current cumulative Release-note source explicitly maintained for the active public Release, currently `docs/release-notes-v0.3.9-alpha.md`.
 
 If documentation structure changes, tests must be updated to the new contract. Do not keep ghost documents only to satisfy stale tests.
 
@@ -28,19 +28,19 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `6ea67b2`
+- Current public Release commit: `80bb0ea`
 - GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a71-docs-prerelease-notes = 6ea67b2`
-- Latest closed documentation sync checkpoint: `p2.10a72-handbook-latest-state-sync`
+- Current internal development checkpoint: `p2.10a81-handbook-current-state-sync` (resolve the exact commit with `git rev-parse --short p2.10a81-handbook-current-state-sync^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a81-handbook-current-state-sync`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = 6ea67b2`
+  - `v0.3.9-alpha = 80bb0ea`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -240,18 +240,23 @@ The handbook is an AI startup pack:
 
 ## 11. Current major-line summary: p2.10 / v0.3.9-alpha
 
-p2.10 spans the `v0.3.8-alpha` line through the closed `v0.3.9-alpha` Latest Release.
+p2.10 spans the `v0.3.8-alpha` line through the closed `v0.3.9-alpha` Latest Release and the subsequent p2.10a81 documentation-state synchronization.
 
-Current verified Release state:
+Current verified public Release baseline:
 
-- `master = origin/master = 6ea67b2`
-- `v0.3.9-alpha = 6ea67b2`
-- `p2.10a71-docs-prerelease-notes = 6ea67b2`
+- `v0.3.9-alpha = 80bb0ea`
+- `p2.10a80-docs-release-latest = 80bb0ea`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - Release assets: `bootstrap.sh`, `install.sh`
 - Erroneous plain tags `v0.3.9` and `v0.3.5` are absent.
-- VM installation and runtime validation passed after the Release was promoted to Latest.
+- `dsproxy --version` from the p2.10a80 public Release reports `public version: v0.3.9-alpha | 80bb0ea` and `internal version: p2.10a80-docs-release-latest | 80bb0ea`.
+
+Current developer checkpoint:
+
+- `p2.10a81-handbook-current-state-sync` is the active internal documentation/version-metadata checkpoint after this handbook sync.
+- Public Release metadata remains anchored to `v0.3.9-alpha = 80bb0ea`; do not move the public tag or GitHub Release for this documentation-only node.
+- Developer checkout runtime may report `internal version: p2.10a81-handbook-current-state-sync | <checkpoint commit>` while the public version line remains `v0.3.9-alpha | 80bb0ea`.
 
 User-visible changes since `v0.3.8-alpha`:
 
@@ -262,6 +267,7 @@ User-visible changes since `v0.3.8-alpha`:
 - DeepSeek profile-tokenizer accounting is available as local display and drift-analysis data. Provider usage remains billing-authoritative.
 - `dsproxy tokenizer sync deepseek --json` and `dsproxy tokenizer status deepseek --json` manage user-machine tokenizer resources.
 - Prompt segmentation semantics distinguish latest ordinary `user`, `user_history`, `tool_output`, `environment`, `system`, `developer`, and compaction summary categories.
+- Prompt reconciliation now exposes `details_origin_breakdown` so WeClaw Details can display token origins such as user, history, system, environment, tools schema, and protocol overhead instead of a `classified~x/y` subtotal.
 - Pricing and cost contracts are CNY-first for DeepSeek V4. The Chinese official pricing page is the primary source, with English USD pricing kept as fallback and future internationalization support.
 - Session cost uses the per-turn ledger and must not be recomputed from the currently active model price.
 - Reasoning output cost is explicitly unavailable when the provider does not expose separately priced reasoning output.
@@ -280,7 +286,8 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
-git rev-parse --short p2.10a71-docs-prerelease-notes^{}
+git rev-parse --short p2.10a80-docs-release-latest^{}
+git rev-parse --short p2.10a81-handbook-current-state-sync^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -288,19 +295,19 @@ gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,
 dsproxy --version
 ```
 
-Expected current state:
+Expected current public Release baseline:
 
 ```text
-master=origin/master=6ea67b2
 worktree clean
-v0.3.9-alpha=6ea67b2
-p2.10a71-docs-prerelease-notes=6ea67b2
+v0.3.9-alpha=80bb0ea
+p2.10a80-docs-release-latest=80bb0ea
+current_internal_checkpoint=p2.10a81-handbook-current-state-sync
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
-public version: v0.3.9-alpha | 6ea67b2
-internal version: p2.10a71-docs-prerelease-notes | 6ea67b2
+public version: v0.3.9-alpha | 80bb0ea
+internal version: p2.10a81-handbook-current-state-sync | <current checkpoint commit>
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -332,12 +339,12 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, Details, tokenizer status, and compaction from dsproxy-owned CLI/HTTP contracts. | `v0.3.9-alpha = 6ea67b2` | Closed | 2026-05-18 | WeClaw side reported no blocking issue. VM installation and runtime validation passed after v0.3.9-alpha was promoted to Latest. |
+| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, Details, tokenizer status, and compaction from dsproxy-owned CLI/HTTP contracts. | `v0.3.9-alpha = 80bb0ea` | Closed | 2026-05-19 | WeClaw side reported no blocking issue. VM installation and runtime validation passed after v0.3.9-alpha was promoted to Latest. |
 | P0.4 | Token shadow accounting and token-vs-char drift observability | Token-level status, local tokenizer estimates, provider usage, and char-level payload guards remain explicitly separated. | `p2.10a65` to `p2.10a68` | Implemented for DeepSeek profile-tokenizer accounting and prompt segmentation | 2026-05-18 | Provider usage remains billing-authoritative. Local tokenizer accounting is for display and drift analysis. |
 | P0.5 | Semantic payload compaction hardening | Dry-run, canary, telemetry, rollback, and forbidden-content rules exist before any mutation of user intent or patch-critical payloads. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned, not active | 2026-05-18 | Do not implement until a concrete requirement reopens this line. |
 | P0.6 | Codex TUI third-party profile command compatibility | Manual compact path evidence remains compatible with ordinary Responses traffic unless future auto-compact evidence proves otherwise. | Evidence captured at `p2.10a53-tui-compact-path-evidence-sync` | Partially closed | 2026-05-18 | Do not add `/responses/compact` without fresh evidence. |
 | P1 | AnyCodeX-level generalized provider architecture | Evidence-based adapter and capability plan that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active | 2026-05-18 | AnyCodeX remains a future direction only. |
-| P2 | `v0.3.9-alpha` public Latest Release | GitHub Latest Release exists with `prerelease=false`, assets `bootstrap.sh` and `install.sh`, Release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 6ea67b2` | Completed | 2026-05-18 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| P2 | `v0.3.9-alpha` public Latest Release | GitHub Latest Release exists with `prerelease=false`, assets `bootstrap.sh` and `install.sh`, Release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 80bb0ea` | Completed | 2026-05-19 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-18 | `grep` and `rg` may identify candidate files only. |
 
 Checklist maintenance rules:
@@ -1318,3 +1325,19 @@ p2.10a79 changes the WeClaw-facing Details contract from a subtotal-centric view
 ## p2.10a80 Docs and latest release handoff
 
 p2.10a80 updates public/user-facing documentation and moves the existing `v0.3.9-alpha` Latest Release to the current master after p2.10a79. The cumulative release notes are maintained in `docs/release-notes-v0.3.9-alpha.md` and on the GitHub Release page. Public tag `v0.3.9-alpha` is intentionally moved only in this release step.
+
+Final verified p2.10a80 Release state:
+
+- `master = origin/master = 80bb0ea`
+- `p2.10a80-docs-release-latest = 80bb0ea`
+- `v0.3.9-alpha = 80bb0ea`
+- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, non-prerelease, and the GitHub Latest Release.
+- Release assets are exactly `bootstrap.sh` and `install.sh`.
+- Erroneous plain tags `v0.3.9` and `v0.3.5` are absent.
+- Full tests passed before the Release update.
+
+## p2.10a81 Handbook current-state sync
+
+p2.10a81 is a documentation and runtime internal-version sync after p2.10a80. It corrects stale handbook startup state from `6ea67b2` / `p2.10a71-docs-prerelease-notes` to the p2.10a80 public Release baseline at `80bb0ea`, clarifies that the current cumulative release-note source is the only active release-note file under `docs/`, and advances the developer internal checkpoint to `p2.10a81-handbook-current-state-sync`.
+
+This node must not move `v0.3.9-alpha`, recreate the GitHub Release, or rebuild Release assets.

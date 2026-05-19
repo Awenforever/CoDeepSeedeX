@@ -332,6 +332,10 @@ async def test_proxy_image_generation_zhipu_provider_uses_domestic_endpoint(monk
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "zhipu-test-key")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
     monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("ZAI_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("ZHIPUAI_API_KEY", raising=False)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
 
     class FakeResponse:
         def raise_for_status(self):

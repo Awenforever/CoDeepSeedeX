@@ -887,3 +887,30 @@ Scope:
 - Document p2.10a75–p2.10a79 WeClaw-facing contracts in public and developer documentation.
 - Move `v0.3.9-alpha` Latest Release to the current master after validation.
 - Keep forbidden plain tags `v0.3.9` and `v0.3.5` absent.
+
+Final state:
+
+- `master = origin/master = 80bb0ea`
+- `p2.10a80-docs-release-latest = 80bb0ea`
+- `v0.3.9-alpha = 80bb0ea`
+- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, non-prerelease, and Latest.
+- Release assets are `bootstrap.sh` and `install.sh`.
+- Full tests passed before the Release update.
+
+## p2.10a81 Handbook current-state sync
+
+Date: 2026-05-19
+
+Scope:
+
+- Restore the tracked cumulative release-note source if it was accidentally deleted locally.
+- Synchronize English and Chinese handbook current-state blocks from the stale `6ea67b2` / `p2.10a71-docs-prerelease-notes` state to the p2.10a80 public Release baseline `80bb0ea`.
+- Clarify that `docs/release-notes-v0.3.9-alpha.md` is the active cumulative Release-note source for the current public Release, while legacy fragmented release-note documents remain retired.
+- Advance developer internal runtime metadata to `p2.10a81-handbook-current-state-sync`.
+
+Release boundary:
+
+- Public tag `v0.3.9-alpha` remains at `80bb0ea`.
+- No GitHub Release is created or updated.
+- No Release assets are rebuilt.
+- Forbidden plain tags `v0.3.9` and `v0.3.5` must remain absent.
