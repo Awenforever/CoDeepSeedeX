@@ -1259,3 +1259,13 @@ p2.10a78将prompt reconciliation从`unknown`报警推进为本地根因账本：
 3. `local_full_observed_prompt_tokens`现在包含本地可观测的prompt-bearing API字段，例如`tools_schema`，而不只是message content。
 4. `delta_breakdown.tools_schema_tokens`可以解释常见差值：provider `prompt_tokens`包含工具/函数schema，但Details分类只显示message content。
 5. observable payload accounting之后仍剩余的provider差值会继续标记为provider/template/tokenizer overhead，不会归入`other_prompt`。
+
+
+## p2.10a79 Details origin breakdown
+
+p2.10a79将WeClaw侧Details契约从“分类小计”改为“来源拆分”：
+
+1. `prompt_reconciliation.details_origin_breakdown`直接提供可显示的token来源：user、history、tool output、system、developer、compaction summary、environment、runtime injected、other prompt、tools schema、message/protocol overhead和provider residual。
+2. `should_display_classified_total=false`；WeClaw默认不应显示`classified~x/y`小计。
+3. 实测约8.1k差值的主因是`tools_schema_tokens`，剩余可见差值由message JSON/protocol/request-option overhead和少量provider/tokenizer residual解释。
+4. `provider_residual`不能归入`other_prompt`；当`abs_tokens`在容差内时可隐藏。

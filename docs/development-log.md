@@ -861,3 +861,17 @@ Scope:
 - Classify provider/Details delta as explained by observable payload components, partially explained, or remaining provider/template/tokenizer overhead.
 - Upgrade token taxonomy to version 10.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a79 Details origin breakdown
+
+Date: 2026-05-19
+
+Scope:
+
+- Add display-ready `prompt_reconciliation.details_origin_breakdown`.
+- Remove the need for WeClaw to show a `classified~x/y` subtotal.
+- Expose user/history/tool/system/environment/tools schema/message protocol/provider residual origins as separate display components.
+- Classify the observed provider/Details delta as tools schema plus message protocol overhead when residual is within tolerance.
+- Upgrade token taxonomy to version 11.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.

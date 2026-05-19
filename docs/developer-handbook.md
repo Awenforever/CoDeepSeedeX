@@ -1303,3 +1303,13 @@ p2.10a78 changes prompt reconciliation from an `unknown` alarm into local root-c
 3. `local_full_observed_prompt_tokens` now includes locally observable prompt-bearing API fields such as `tools_schema` in addition to message content.
 4. `delta_breakdown.tools_schema_tokens` can explain the common gap where provider `prompt_tokens` exceed Details categories because tool/function schemas are prompt tokens but not message-content Details.
 5. Remaining provider delta after observable payload accounting is still reported separately as provider/template/tokenizer overhead; it is not assigned to `other_prompt`.
+
+
+## p2.10a79 Details origin breakdown
+
+p2.10a79 changes the WeClaw-facing Details contract from a subtotal-centric view to a source-origin view:
+
+1. `prompt_reconciliation.details_origin_breakdown` exposes display-ready token origins: user, history, tool output, system, developer, compaction summary, environment, runtime injected, other prompt, tools schema, message/protocol overhead, and provider residual.
+2. `should_display_classified_total=false`; WeClaw should not show a `classified~x/y` subtotal by default.
+3. The observed ~8.1k gap is explained primarily by `tools_schema_tokens`, with the remaining visible difference explained by message JSON/protocol/request-option overhead and a small provider/tokenizer residual.
+4. `provider_residual` must not be assigned to `other_prompt`; hide it when `abs_tokens` is within tolerance.

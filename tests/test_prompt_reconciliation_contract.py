@@ -153,8 +153,8 @@ def test_prompt_reconciliation_distinguishes_unclassified_observed_segments_from
     assert reconciliation["delta_tokens"] == 5
     assert reconciliation["delta_breakdown"]["unclassified_observed_segments_tokens"] == 3
     assert reconciliation["delta_breakdown"]["unknown_tokens"] == 2
-    assert reconciliation["delta_status"] == "partially_explained_by_observable_payload_components"
-    assert reconciliation["is_accounting_suspect"] is True
+    assert reconciliation["delta_status"] == "explained_by_observable_payload_accounting"
+    assert reconciliation["is_accounting_suspect"] is False
     assert reconciliation["prompt_segment_audit"]["unclassified_segments_tokens"] == 3
     assert len(reconciliation["prompt_segment_audit"]["unclassified_segments"]) == 1
 
@@ -285,7 +285,107 @@ def test_prompt_reconciliation_explains_delta_with_observable_tool_schema_payloa
     assert reconciliation["delta_tokens"] == 8100
     assert reconciliation["delta_breakdown"]["tools_schema_tokens"] == 8100
     assert reconciliation["delta_breakdown"]["unknown_tokens"] == 0
-    assert reconciliation["delta_status"] == "explained_by_observable_payload_components"
-    assert reconciliation["root_cause_status"] == "observable_payload_components_explain_provider_prompt_delta"
-    assert reconciliation["dominant_observable_delta_source"] == "tools_schema_tokens"
+    assert reconciliation["delta_status"] == "explained_by_observable_payload_accounting"
+    assert reconciliation["root_cause_status"] == "tool_schema_and_message_protocol_overhead"
+    assert reconciliation["dominant_observable_delta_source"] == "tools_schema"
+    assert reconciliation["is_accounting_suspect"] is False
+
+
+def test_details_origin_breakdown_exposes_sources_without_classified_subtotal(tmp_path: Path) -> None:
+    store = proxy_app.SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    _record_primary_usage(store, prompt_tokens=21614, total_tokens=21653)
+
+    report = {
+        "available": True,
+        "session_id": "s1",
+        "scope": "current_session",
+        "tokenizer": {"available": True, "source_kind": "managed", "tokenizer_kind": "deepseek_official_current", "source": "test"},
+        "summary": {"available": True, "total_content_tokens": 13563},
+        "prompt_subcategory_split": {
+            "available": True,
+            "scope": "current_session",
+            "session_id": "s1",
+            "unit": "tokens",
+            "is_estimated": True,
+            "precision": "local_profile_tokenizer_estimate",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "categories": {
+                "user": {"tokens": 15},
+                "assistant_history": {"tokens": 6},
+                "user_history": {"tokens": 0},
+                "tool_output": {"tokens": 0},
+                "system": {"tokens": 8280},
+                "developer": {"tokens": 0},
+                "compaction_summary": {"tokens": 0},
+                "environment": {"tokens": 5262},
+                "runtime_injected": {"tokens": 0},
+                "other_prompt": {"tokens": 0},
+            },
+            "total_tokens": 13563,
+            "observable_payload": {
+                "available": True,
+                "semantic_prompt_candidate_tokens": 20938,
+                "full_payload_json_tokens": 21637,
+                "components": {
+                    "message_content": {"local_tokens": 13563},
+                    "messages_json": {"local_tokens": 14229},
+                    "tools_schema": {"local_tokens": 7375},
+                    "tool_choice": {"local_tokens": 0},
+                    "response_format": {"local_tokens": 0},
+                    "request_options": {"local_tokens": 30},
+                },
+            },
+            "latest_prompt_segmentation": {
+                "available": True,
+                "session_id": "s1",
+                "total_prompt_tokens_profile_tokenizer": 13563,
+                "observable_payload": {
+                    "available": True,
+                    "semantic_prompt_candidate_tokens": 20938,
+                    "full_payload_json_tokens": 21637,
+                    "components": {
+                        "message_content": {"local_tokens": 13563},
+                        "messages_json": {"local_tokens": 14229},
+                        "tools_schema": {"local_tokens": 7375},
+                        "tool_choice": {"local_tokens": 0},
+                        "response_format": {"local_tokens": 0},
+                        "request_options": {"local_tokens": 30},
+                    },
+                },
+                "segments": [
+                    {"index": 0, "category": "system", "source": "system", "role": "system", "char_count": 20, "token_count": 8280, "sha256": "s", "preview": "sys"},
+                    {"index": 1, "category": "environment", "source": "environment", "role": "user", "char_count": 20, "token_count": 5262, "sha256": "e", "preview": "env"},
+                    {"index": 2, "category": "assistant_history", "source": "history", "role": "assistant", "char_count": 3, "token_count": 6, "sha256": "h", "preview": "old"},
+                    {"index": 3, "category": "user", "source": "codex_request", "role": "user", "char_count": 2, "token_count": 15, "sha256": "u", "preview": "ok"},
+                ],
+            },
+        },
+    }
+
+    tokens = proxy_app._weclaw_tokens_contract(
+        store,
+        profile="deepseek-thinking",
+        profile_tokenizer_report=report,
+        profile_model="deepseek-v4-pro",
+        provider="deepseek",
+        session_id="s1",
+    )
+    reconciliation = tokens["prompt_reconciliation"]
+    origin = reconciliation["details_origin_breakdown"]
+    components = origin["components"]
+
+    assert origin["should_display_classified_total"] is False
+    assert "classified" not in origin["display_order"]
+    assert components["user"]["tokens"] == 15
+    assert components["history"]["tokens"] == 6
+    assert components["system"]["tokens"] == 8280
+    assert components["environment"]["tokens"] == 5262
+    assert components["tools_schema"]["tokens"] == 7375
+    assert components["message_protocol_overhead"]["tokens"] == 676
+    assert components["provider_residual"]["abs_tokens"] <= origin["provider_residual_tolerance_tokens"]
+
+    assert reconciliation["delta_tokens"] == 8051
+    assert reconciliation["delta_status"] == "explained_by_observable_payload_accounting"
+    assert reconciliation["root_cause_status"] == "tool_schema_and_message_protocol_overhead"
+    assert reconciliation["dominant_observable_delta_source"] == "tools_schema"
     assert reconciliation["is_accounting_suspect"] is False
