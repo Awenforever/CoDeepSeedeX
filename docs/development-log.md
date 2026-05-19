@@ -808,3 +808,16 @@ Scope:
 - Expose `deepseek-v4-pro` effective prices, original prices, discount label/rate, and validity window.
 - Keep pricing and cost semantics separated: historical turn costs remain ledger-based and must not be recomputed from the current price table.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a75 upgrade, current-session cost, prompt segmentation, and retention progress
+
+Date: 2026-05-19
+
+Scope:
+
+- Add same-public-version upgrade skip/reinstall semantics with remote tag commit comparison and `--force`.
+- Expose current-session cost as a nested `cost.session` contract.
+- Prevent session-scoped prompt segmentation from reusing a route-latest prompt report from another session.
+- Make Compact/Trim `progress_*` fields represent information retention and move trigger/capacity semantics to `capacity_progress_*`.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.

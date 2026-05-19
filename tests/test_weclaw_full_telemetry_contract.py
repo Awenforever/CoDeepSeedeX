@@ -214,14 +214,16 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["compaction"]["trigger_chars"] == 900000
     assert guard["compaction"]["target_chars"] == 280000
     assert guard["compaction"]["current_chars"] == 12345
-    assert guard["compaction"]["usage_ratio"] == pytest.approx(12345 / 900000)
+    assert guard["compaction"]["usage_ratio"] == guard["compaction"]["progress_ratio"]
+    assert guard["compaction"]["capacity_progress_ratio"] == pytest.approx(12345 / 900000)
     assert guard["compaction"]["remaining_chars"] == 887655
     assert guard["compaction"]["status"] == "not_triggered"
     assert guard["compaction"]["last_report"]["exists"] is True
     assert guard["trimming"]["available"] is True
     assert guard["trimming"]["max_context_chars"] == 1500000
     assert guard["trimming"]["current_chars"] == 12345
-    assert guard["trimming"]["usage_ratio"] == pytest.approx(12345 / 1500000)
+    assert guard["trimming"]["usage_ratio"] == guard["trimming"]["progress_ratio"]
+    assert guard["trimming"]["capacity_progress_ratio"] == pytest.approx(12345 / 1500000)
     assert guard["trimming"]["remaining_chars"] == 1487655
     assert guard["trimming"]["status"] == "not_triggered"
     assert guard["trimming"]["last_report"]["exists"] is True
@@ -282,13 +284,18 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["pricing"]["source_trust"] in {"bundled_official_docs_snapshot", "official_docs_html_cache", "external_config"}
     assert data["pricing"]["pricing_source_state"]["must_display_source_label"] is True
 
-    assert data["cost"]["available"] is True
+    assert data["cost"]["available"] is False
+    assert data["cost"]["scope"] == "unavailable"
+    assert data["cost"]["session"]["available"] is False
+    assert data["cost"]["session"]["scope"] == "current_session"
     assert data["cost"]["is_estimated"] is True
     assert data["cost"]["last_turn_estimated_cost"] == pytest.approx(0.01)
-    assert data["cost"]["session_estimated_cost"] == pytest.approx(0.016)
+    assert data["cost"]["session_estimated_cost"] is None
+    assert data["cost"]["total_estimated_cost"] is None
     assert data["cost"]["auxiliary_estimated_cost"] == pytest.approx(0.005)
+    assert data["cost"]["profile_route_estimated_cost"] == pytest.approx(0.016)
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.016)
-    assert data["cost"]["cash_definition"] == "session_total_estimated_cost_including_auxiliary_model_calls"
+    assert data["cost"]["cash_definition"] == "current_session_estimated_cost_when_session_id_available_else_profile_route_history"
     assert data["cost"]["source_currency"] in {"CNY", "USD", "mixed"}
     assert data["cost"]["display_currency"] in {"CNY", "USD"}
     assert data["cost"]["ledger_precision"] == "per_turn_model_pricing"
@@ -339,7 +346,11 @@ async def test_weclaw_http_status_uses_app_state_store_and_client_for_runtime_co
     assert data["tokens"]["last_turn"]["available"] is True
     assert data["tokens"]["last_turn"]["summary"]["total_tokens"] == 50
     assert data["tokens"]["session_total"]["available"] is True
-    assert data["cost"]["available"] is True
+    assert data["cost"]["available"] is False
+    assert data["cost"]["scope"] == "unavailable"
+    assert data["cost"]["session"]["available"] is False
+    assert data["cost"]["session_estimated_cost"] is None
+    assert data["cost"]["profile_route_estimated_cost"] is not None
     assert data["balance"]["available"] is True
     assert data["balance"]["display"] == "12.34 USD"
 
@@ -409,6 +420,7 @@ def test_cli_status_weclaw_json_prefers_runtime_weclaw_status(monkeypatch, tmp_p
     assert data["tokens"]["last_turn"]["available"] is True
     assert data["pricing"]["available"] is True
     assert data["cost"]["available"] is True
+    assert data["cost"]["session_estimated_cost"] == pytest.approx(0.016)
     assert data["balance"]["available"] is True
     assert data["runtime_status"]["available"] is True
     assert seen_urls
@@ -470,8 +482,12 @@ async def test_weclaw_status_converts_cost_to_cny_when_balance_is_cny(tmp_path, 
     assert data["pricing"]["converted"] is False
     assert data["cost"]["source_currency"] in {"CNY", "USD", "mixed"}
     assert data["cost"]["display_currency"] == "CNY"
-    assert data["cost"]["session_estimated_cost"] == pytest.approx(0.0725)
-    assert data["cost"].get("session_estimated_cost_usd_legacy", data["cost"].get("session_estimated_cost_usd", 0.0)) >= 0.0
+    assert data["cost"]["available"] is False
+    assert data["cost"]["scope"] == "unavailable"
+    assert data["cost"]["session"]["available"] is False
+    assert data["cost"]["session_estimated_cost"] is None
+    assert data["cost"]["profile_route_estimated_cost"] == pytest.approx(0.0725)
+    assert data["cost"].get("session_estimated_cost_usd_legacy", data["cost"].get("session_estimated_cost_usd", 0.0)) == pytest.approx(0.0)
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.0725)
 
 
@@ -550,5 +566,10 @@ async def test_weclaw_status_uses_cny_primary_pricing_without_fx(tmp_path, monke
     assert data["pricing"]["cache_miss_input"]["amount"] == 1.0
     assert data["pricing"]["output"]["amount"] == 2.0
     assert data["cost"]["display_currency"] == "CNY"
-    assert data["cost"]["session_estimated_cost"] == pytest.approx(0.001)
+    assert data["cost"]["available"] is False
+    assert data["cost"]["scope"] == "unavailable"
+    assert data["cost"]["session"]["available"] is False
+    assert data["cost"]["session_estimated_cost"] is None
+    assert data["cost"]["profile_route_estimated_cost"] == pytest.approx(0.001)
+    assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.001)
     assert data["cost"]["converted"] is False

@@ -1262,3 +1262,13 @@ Contract changes:
 3. `config/pricing.json` stores the bundled official CNY snapshot using current effective prices.
 4. `pricing.effective_prices`, `pricing.original_prices`, `pricing.discount`, and `pricing.prices_display` are exposed for WeClaw.
 5. WeClaw should display current effective prices and must not infer the discount window or recompute historical turn costs.
+
+
+## p2.10a75 upgrade, current-session cost, prompt segmentation, and retention progress
+
+p2.10a75 closes the WeClaw p89 contract gaps:
+
+1. `dsproxy upgrade` now follows WeClaw-style same-version semantics: after checking the remote release tag commit, it skips when the target public version and commit match the current runtime, and reinstalls when the same public version points to a different release commit. `--force` / `--force-reinstall` bypasses the skip.
+2. `cost.session` is an explicit current-session cost object. Route/profile totals are no longer silently labeled as session cost.
+3. Prompt segmentation is session-scoped when `--session-id` is supplied. Route-latest prompt segmentation is not reused for a different active session.
+4. Compact/Trim primary progress fields now describe information retention: post-compaction/post-trim chars over raw uncompressed chars. Capacity/trigger progress is exposed separately as `capacity_progress_*`.

@@ -82,8 +82,9 @@ def test_runtime_payload_guard_progress_fields() -> None:
         compaction_report={"before_chars": 120000, "after_chars": 80000, "chars_removed": 40000, "policy_decision": {"effective_trigger_chars": 900000}, "compacted": True},
         trimming_report={"before_chars": 95000, "after_chars": 90000, "chars_removed": 5000, "max_context_chars": 1500000, "trimmed": True},
     )
-    assert guard["compaction"]["progress_numerator_chars"] == 120000
-    assert guard["compaction"]["progress_denominator_chars"] == 900000
-    assert guard["compaction"]["progress_basis"] == "raw_uncompressed_current_chars_over_trigger_chars"
-    assert guard["trimming"]["progress_numerator_chars"] == 95000
-    assert guard["trimming"]["progress_basis"] == "raw_uncompressed_current_chars_over_max_context_chars"
+    assert guard["compaction"]["progress_numerator_chars"] == 80000
+    assert guard["compaction"]["progress_denominator_chars"] == 120000
+    assert guard["compaction"]["progress_basis"] == "post_compaction_current_chars_over_raw_uncompressed_current_chars"
+    assert guard["trimming"]["progress_numerator_chars"] == 90000
+    assert guard["trimming"]["progress_denominator_chars"] == 95000
+    assert guard["trimming"]["progress_basis"] == "post_trim_current_chars_over_raw_uncompressed_current_chars"

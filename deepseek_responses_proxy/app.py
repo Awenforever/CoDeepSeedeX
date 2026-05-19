@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a74-deepseek-pricing-discount-contract"
+PROXY_INTERNAL_VERSION = "p2.10a75-upgrade-session-cost-retention-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -11791,6 +11791,7 @@ def _runtime_payload_guard_report_snapshot(
     }
 
 
+
 def _runtime_payload_guard_contract(
     context_status: dict[str, Any],
     *,
@@ -11812,22 +11813,23 @@ def _runtime_payload_guard_contract(
     compaction_report_dict = compaction_report if isinstance(compaction_report, dict) else None
     trimming_report_dict = trimming_report if isinstance(trimming_report, dict) else None
 
-    compaction_current = _runtime_payload_guard_int(
-        compaction_report_dict.get("after_chars") if compaction_report_dict else None
-    )
-    trimming_current = _runtime_payload_guard_int(
-        trimming_report_dict.get("after_chars") if trimming_report_dict else None
-    )
-    current_chars = trimming_current if trimming_current is not None else compaction_current
+    compaction_after = _runtime_payload_guard_int(compaction_report_dict.get("after_chars") if compaction_report_dict else None)
+    compaction_before = _runtime_payload_guard_int(compaction_report_dict.get("before_chars") if compaction_report_dict else None)
+    trimming_after = _runtime_payload_guard_int(trimming_report_dict.get("after_chars") if trimming_report_dict else None)
+    trimming_before = _runtime_payload_guard_int(trimming_report_dict.get("before_chars") if trimming_report_dict else None)
+
+    compaction_raw = compaction_before if compaction_before is not None else compaction_after
+    trimming_raw = trimming_before if trimming_before is not None else trimming_after
+    current_chars = trimming_after if trimming_after is not None else compaction_after
 
     current_source = "unavailable"
     current_precision = "unavailable"
     observed_at = None
-    if trimming_current is not None:
+    if trimming_after is not None:
         current_source = "live_request_payload"
         current_precision = "exact"
         observed_at = trimming_report_dict.get("observed_at") if trimming_report_dict else None
-    elif compaction_current is not None:
+    elif compaction_after is not None:
         current_source = "runtime_context_builder"
         current_precision = "exact"
         observed_at = compaction_report_dict.get("observed_at") if compaction_report_dict else None
@@ -11836,28 +11838,17 @@ def _runtime_payload_guard_contract(
     if not isinstance(policy_decision, dict):
         policy_decision = {}
 
-    trigger_chars = _runtime_payload_guard_int(
-        policy_decision.get("effective_trigger_chars")
-        or (compaction_report_dict or {}).get("effective_trigger_chars")
-        or (compaction_report_dict or {}).get("trigger_chars")
-        or compaction_config.get("trigger_chars")
-    )
-    target_chars = _runtime_payload_guard_int(
-        policy_decision.get("effective_target_chars")
-        or (compaction_report_dict or {}).get("effective_target_chars")
-        or (compaction_report_dict or {}).get("target_chars")
-        or compaction_config.get("target_chars")
-    )
-    max_context_chars = _runtime_payload_guard_int(
-        (trimming_report_dict or {}).get("max_context_chars")
-        or trimming_config.get("max_context_chars")
-    )
+    trigger_chars = _runtime_payload_guard_int(policy_decision.get("effective_trigger_chars") or (compaction_report_dict or {}).get("effective_trigger_chars") or (compaction_report_dict or {}).get("trigger_chars") or compaction_config.get("trigger_chars"))
+    target_chars = _runtime_payload_guard_int(policy_decision.get("effective_target_chars") or (compaction_report_dict or {}).get("effective_target_chars") or (compaction_report_dict or {}).get("target_chars") or compaction_config.get("target_chars"))
+    max_context_chars = _runtime_payload_guard_int((trimming_report_dict or {}).get("max_context_chars") or trimming_config.get("max_context_chars"))
 
-    compaction_ratio = _runtime_payload_guard_ratio(compaction_current, trigger_chars)
-    trimming_ratio = _runtime_payload_guard_ratio(trimming_current, max_context_chars)
+    compaction_retention_ratio = _runtime_payload_guard_ratio(compaction_after, compaction_raw)
+    trimming_retention_ratio = _runtime_payload_guard_ratio(trimming_after, trimming_raw)
+    compaction_capacity_ratio = _runtime_payload_guard_ratio(compaction_raw, trigger_chars)
+    trimming_capacity_ratio = _runtime_payload_guard_ratio(trimming_raw, max_context_chars)
 
-    compaction_available = bool(compaction_config.get("enabled", True)) and compaction_current is not None and trigger_chars is not None
-    trimming_available = trimming_current is not None and max_context_chars is not None
+    compaction_available = bool(compaction_config.get("enabled", True)) and compaction_after is not None and compaction_raw is not None
+    trimming_available = trimming_after is not None and trimming_raw is not None
 
     compaction_section = {
         "available": compaction_available,
@@ -11867,30 +11858,29 @@ def _runtime_payload_guard_contract(
         "target_chars": target_chars,
         "target_chars_source": "context_compaction_config.effective_target_chars_or_config_target_chars",
         "keep_recent_messages": _runtime_payload_guard_int(compaction_config.get("keep_recent_messages")),
-        "current_chars": compaction_current,
-        "current_chars_available": compaction_current is not None,
-        "current_chars_source": "runtime_context_builder" if compaction_current is not None else "unavailable",
-        "current_chars_precision": "exact" if compaction_current is not None else "unavailable",
+        "current_chars": compaction_after,
+        "current_chars_available": compaction_after is not None,
+        "current_chars_source": "runtime_context_builder" if compaction_after is not None else "unavailable",
+        "current_chars_precision": "exact" if compaction_after is not None else "unavailable",
         "current_chars_observed_at": (compaction_report_dict or {}).get("observed_at") if compaction_report_dict else None,
-        "usage_ratio": _runtime_payload_guard_ratio(_runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current, trigger_chars),
-        "progress_numerator_chars": _runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current,
-        "progress_denominator_chars": trigger_chars,
-        "progress_ratio": _runtime_payload_guard_ratio(_runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current, trigger_chars),
-        "progress_basis": "raw_uncompressed_current_chars_over_trigger_chars",
-        "raw_uncompressed_current_chars": _runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current,
-        "post_compaction_current_chars": compaction_current,
-        "remaining_chars": max(0, trigger_chars - (_runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current)) if (_runtime_payload_guard_int((compaction_report_dict or {}).get("before_chars")) if compaction_report_dict else compaction_current) is not None and trigger_chars is not None else None,
-        "status": _runtime_payload_guard_status(
-            current_chars=compaction_current,
-            limit_chars=trigger_chars,
-            terminal=bool((compaction_report_dict or {}).get("compacted")),
-            terminal_status="compacted",
-        ),
-        "last_report": _runtime_payload_guard_report_snapshot(
-            compaction_report_dict,
-            kind="compaction",
-            fallback_last_report=compaction_last_report,
-        ),
+        "usage_ratio": compaction_retention_ratio,
+        "progress_numerator_chars": compaction_after,
+        "progress_denominator_chars": compaction_raw,
+        "progress_ratio": compaction_retention_ratio,
+        "progress_basis": "post_compaction_current_chars_over_raw_uncompressed_current_chars",
+        "raw_uncompressed_current_chars": compaction_raw,
+        "post_compaction_current_chars": compaction_after,
+        "retention_numerator_chars": compaction_after,
+        "retention_denominator_chars": compaction_raw,
+        "retention_ratio": compaction_retention_ratio,
+        "retention_basis": "post_compaction_current_chars_over_raw_uncompressed_current_chars",
+        "capacity_progress_numerator_chars": compaction_raw,
+        "capacity_progress_denominator_chars": trigger_chars,
+        "capacity_progress_ratio": compaction_capacity_ratio,
+        "capacity_progress_basis": "raw_uncompressed_current_chars_over_trigger_chars",
+        "remaining_chars": max(0, trigger_chars - compaction_raw) if compaction_raw is not None and trigger_chars is not None else None,
+        "status": _runtime_payload_guard_status(current_chars=compaction_raw, limit_chars=trigger_chars, terminal=bool((compaction_report_dict or {}).get("compacted")), terminal_status="compacted"),
+        "last_report": _runtime_payload_guard_report_snapshot(compaction_report_dict, kind="compaction", fallback_last_report=compaction_last_report),
         "reason": None if compaction_available else "current_compaction_chars_unavailable",
         "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -11901,30 +11891,29 @@ def _runtime_payload_guard_contract(
         "max_context_chars_source": "context_trimming_config.max_context_chars",
         "max_tool_output_chars": _runtime_payload_guard_int(trimming_config.get("max_tool_output_chars")),
         "keep_recent_messages": _runtime_payload_guard_int(trimming_config.get("keep_recent_messages")),
-        "current_chars": trimming_current,
-        "current_chars_available": trimming_current is not None,
-        "current_chars_source": "live_request_payload" if trimming_current is not None else "unavailable",
-        "current_chars_precision": "exact" if trimming_current is not None else "unavailable",
+        "current_chars": trimming_after,
+        "current_chars_available": trimming_after is not None,
+        "current_chars_source": "live_request_payload" if trimming_after is not None else "unavailable",
+        "current_chars_precision": "exact" if trimming_after is not None else "unavailable",
         "current_chars_observed_at": (trimming_report_dict or {}).get("observed_at") if trimming_report_dict else None,
-        "usage_ratio": _runtime_payload_guard_ratio(_runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current, max_context_chars),
-        "progress_numerator_chars": _runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current,
-        "progress_denominator_chars": max_context_chars,
-        "progress_ratio": _runtime_payload_guard_ratio(_runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current, max_context_chars),
-        "progress_basis": "raw_uncompressed_current_chars_over_max_context_chars",
-        "raw_uncompressed_current_chars": _runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current,
-        "post_trim_current_chars": trimming_current,
-        "remaining_chars": max(0, max_context_chars - (_runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current)) if (_runtime_payload_guard_int((trimming_report_dict or {}).get("before_chars")) if trimming_report_dict else trimming_current) is not None and max_context_chars is not None else None,
-        "status": _runtime_payload_guard_status(
-            current_chars=trimming_current,
-            limit_chars=max_context_chars,
-            terminal=bool((trimming_report_dict or {}).get("trimmed")),
-            terminal_status="trimmed",
-        ),
-        "last_report": _runtime_payload_guard_report_snapshot(
-            trimming_report_dict,
-            kind="trimming",
-            fallback_last_report=trimming_last_report,
-        ),
+        "usage_ratio": trimming_retention_ratio,
+        "progress_numerator_chars": trimming_after,
+        "progress_denominator_chars": trimming_raw,
+        "progress_ratio": trimming_retention_ratio,
+        "progress_basis": "post_trim_current_chars_over_raw_uncompressed_current_chars",
+        "raw_uncompressed_current_chars": trimming_raw,
+        "post_trim_current_chars": trimming_after,
+        "retention_numerator_chars": trimming_after,
+        "retention_denominator_chars": trimming_raw,
+        "retention_ratio": trimming_retention_ratio,
+        "retention_basis": "post_trim_current_chars_over_raw_uncompressed_current_chars",
+        "capacity_progress_numerator_chars": trimming_raw,
+        "capacity_progress_denominator_chars": max_context_chars,
+        "capacity_progress_ratio": trimming_capacity_ratio,
+        "capacity_progress_basis": "raw_uncompressed_current_chars_over_max_context_chars",
+        "remaining_chars": max(0, max_context_chars - trimming_raw) if trimming_raw is not None and max_context_chars is not None else None,
+        "status": _runtime_payload_guard_status(current_chars=trimming_raw, limit_chars=max_context_chars, terminal=bool((trimming_report_dict or {}).get("trimmed")), terminal_status="trimmed"),
+        "last_report": _runtime_payload_guard_report_snapshot(trimming_report_dict, kind="trimming", fallback_last_report=trimming_last_report),
         "reason": None if trimming_available else "current_trimming_chars_unavailable",
         "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -12401,16 +12390,21 @@ def _profile_tokenizer_unavailable_report(
     }
 
 
+
 def _profile_tokenizer_report_for_messages(
     messages: list[dict[str, Any]],
     *,
     profile: str,
     model: str | None,
     provider: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     contract = _profile_tokenizer_contract(model, provider)
     if not contract.get("available"):
-        return _profile_tokenizer_unavailable_report(profile=profile, model=model, provider=provider)
+        unavailable = _profile_tokenizer_unavailable_report(profile=profile, model=model, provider=provider)
+        unavailable["session_id"] = session_id
+        unavailable["scope"] = "current_session" if session_id else "route_latest_observed_prompt"
+        return unavailable
 
     try:
         tokenizer = _load_profile_tokenizer(contract)
@@ -12426,6 +12420,8 @@ def _profile_tokenizer_report_for_messages(
             "available": False,
             "unit": "tokens",
             "profile": profile,
+            "session_id": session_id,
+            "scope": "current_session" if session_id else "route_latest_observed_prompt",
             "model": str(model or "") or None,
             "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
             "tokenizer": contract,
@@ -12435,17 +12431,11 @@ def _profile_tokenizer_report_for_messages(
 
     latest_plain_user_index: int | None = None
     for index, message in enumerate(messages):
-        if not isinstance(message, dict):
-            continue
-        if _profile_tokenizer_plain_user_candidate(message):
+        if isinstance(message, dict) and _profile_tokenizer_plain_user_candidate(message):
             latest_plain_user_index = index
 
     categories = {
-        category: {
-            "tokens": 0,
-            "message_count": 0,
-            "source": "dsproxy_deepseek_messages_after_payload_assembly",
-        }
+        category: {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"}
         for category in _profile_tokenizer_requested_categories()
     }
     message_reports: list[dict[str, Any]] = []
@@ -12462,10 +12452,7 @@ def _profile_tokenizer_report_for_messages(
         )
         text = _profile_tokenizer_message_text(message)
         token_count = _profile_tokenizer_count_text(tokenizer, text)
-        categories.setdefault(
-            category,
-            {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"},
-        )
+        categories.setdefault(category, {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"})
         categories[category]["tokens"] += token_count
         categories[category]["message_count"] += 1
         total_tokens += token_count
@@ -12494,16 +12481,16 @@ def _profile_tokenizer_report_for_messages(
             }
         )
 
-    category_totals = {
-        category: int(item.get("tokens") or 0)
-        for category, item in categories.items()
-    }
+    category_totals = {category: int(item.get("tokens") or 0) for category, item in categories.items()}
+    scope = "current_session" if session_id else "route_latest_observed_prompt"
 
     latest_prompt_segmentation = {
         "available": True,
         "unit": "tokens",
         "precision": "local_profile_tokenizer_estimate",
         "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "scope": scope,
+        "session_id": session_id,
         "profile": profile,
         "model": str(model or "") or None,
         "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
@@ -12529,6 +12516,8 @@ def _profile_tokenizer_report_for_messages(
         "precision": "local_profile_tokenizer_estimate",
         "source": f"dsproxy_profile_tokenizer.{contract.get('tokenizer_kind')}.tokenizer_json",
         "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "scope": scope,
+        "session_id": session_id,
         "tokenizer_kind": contract.get("tokenizer_kind"),
         "tokenizer_source": contract.get("source"),
         "categories": categories,
@@ -12548,6 +12537,8 @@ def _profile_tokenizer_report_for_messages(
         "available": True,
         "unit": "tokens",
         "profile": profile,
+        "session_id": session_id,
+        "scope": scope,
         "model": str(model or "") or None,
         "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
         "tokenizer": contract,
@@ -12555,9 +12546,7 @@ def _profile_tokenizer_report_for_messages(
             "available": True,
             "total_content_tokens": total_tokens,
             "message_count": len(message_reports),
-            "categories_with_tokens": [
-                category for category, item in categories.items() if int(item.get("tokens") or 0) > 0
-            ],
+            "categories_with_tokens": [category for category, item in categories.items() if int(item.get("tokens") or 0) > 0],
             "precision": "local_profile_tokenizer_estimate",
             "is_estimated": True,
         },
@@ -13537,6 +13526,7 @@ def _weclaw_token_attribution_contract(
     }
 
 
+
 def _weclaw_tokens_contract(
     store: Any | None,
     *,
@@ -13554,6 +13544,7 @@ def _weclaw_tokens_contract(
     )
     events = scoped_events
     unavailable_reason = scoped_unavailable_reason
+
     primary_events = [event for event in events if str(event.get("purpose") or "final") in _WECLAW_PRIMARY_USAGE_PURPOSES]
     auxiliary_events = [event for event in events if str(event.get("purpose") or "final") not in _WECLAW_PRIMARY_USAGE_PURPOSES]
     route_auxiliary_events = [event for event in route_events if str(event.get("purpose") or "final") not in _WECLAW_PRIMARY_USAGE_PURPOSES]
@@ -13563,7 +13554,33 @@ def _weclaw_tokens_contract(
     latest_aux_request_id, latest_aux_events = _weclaw_latest_turn_events(auxiliary_events)
 
     if isinstance(profile_tokenizer_report, dict):
-        profile_tokenizer_section = profile_tokenizer_report
+        report_session_id = profile_tokenizer_report.get("session_id")
+        if session_id and report_session_id != session_id:
+            tokenizer_contract = profile_tokenizer_report.get("tokenizer") if isinstance(profile_tokenizer_report.get("tokenizer"), dict) else _profile_tokenizer_contract(profile_model or DEFAULT_MODEL, provider)
+            profile_tokenizer_section = _profile_tokenizer_unavailable_report(
+                profile=profile,
+                model=profile_model or DEFAULT_MODEL,
+                provider=provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+                reason="session_scoped_prompt_segmentation_not_observed",
+            )
+            profile_tokenizer_section["session_id"] = session_id
+            profile_tokenizer_section["observed_session_id"] = report_session_id
+            profile_tokenizer_section["scope"] = "current_session"
+            profile_tokenizer_section["summary"]["reason"] = "session_scoped_prompt_segmentation_not_observed"
+            profile_tokenizer_section["summary"]["action"] = "send one primary model request through this session, then re-check dsproxy status --weclaw-json --session-id"
+            split = _weclaw_prompt_subcategory_split_contract(None, tokenizer_contract=tokenizer_contract, no_observed_prompt=True)
+            split = dict(split)
+            split["reason"] = "session_scoped_prompt_segmentation_not_observed"
+            split["scope"] = "current_session"
+            split["session_id"] = session_id
+            split["observed_session_id"] = report_session_id
+            split["action"] = "send one primary model request through this session, then re-check dsproxy status --weclaw-json --session-id"
+            profile_tokenizer_section["prompt_subcategory_split"] = split
+        else:
+            profile_tokenizer_section = dict(profile_tokenizer_report)
+            profile_tokenizer_section.setdefault("scope", "current_session" if session_id else "route_latest_observed_prompt")
+            if session_id:
+                profile_tokenizer_section.setdefault("session_id", session_id)
     else:
         profile_tokenizer_section = _profile_tokenizer_unavailable_report(
             profile=profile,
@@ -13571,29 +13588,35 @@ def _weclaw_tokens_contract(
             provider=provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
             reason="no_profile_tokenizer_report_observed_for_route",
         )
+        if session_id:
+            profile_tokenizer_section["session_id"] = session_id
+            profile_tokenizer_section["scope"] = "current_session"
 
     tokenizer_contract = profile_tokenizer_section.get("tokenizer") if isinstance(profile_tokenizer_section, dict) else None
     if not isinstance(tokenizer_contract, dict):
-        tokenizer_contract = _profile_tokenizer_contract(
-            profile_model or DEFAULT_MODEL,
-            provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
-        )
+        tokenizer_contract = _profile_tokenizer_contract(profile_model or DEFAULT_MODEL, provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"))
 
-    prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract(
-        profile_tokenizer_section if isinstance(profile_tokenizer_section, dict) else None,
-        tokenizer_contract=tokenizer_contract,
-    )
-    attribution = _weclaw_token_attribution_contract(
-        profile_tokenizer_section if isinstance(profile_tokenizer_section, dict) else None,
-        tokenizer_contract=tokenizer_contract,
-    )
+    embedded_prompt_split = profile_tokenizer_section.get("prompt_subcategory_split") if isinstance(profile_tokenizer_section, dict) else None
+    if (
+        isinstance(embedded_prompt_split, dict)
+        and embedded_prompt_split.get("reason") == "session_scoped_prompt_segmentation_not_observed"
+    ):
+        prompt_subcategory_split = dict(embedded_prompt_split)
+    else:
+        prompt_subcategory_split = _weclaw_prompt_subcategory_split_contract(profile_tokenizer_section, tokenizer_contract=tokenizer_contract)
+    if session_id:
+        prompt_subcategory_split = dict(prompt_subcategory_split)
+        prompt_subcategory_split.setdefault("scope", "current_session")
+        prompt_subcategory_split.setdefault("session_id", session_id)
+
+    attribution = _weclaw_token_attribution_contract(profile_tokenizer_section, tokenizer_contract=tokenizer_contract)
     prompt_split_precision = (
         str(prompt_subcategory_split.get("precision") or "local_profile_tokenizer_estimate")
         if prompt_subcategory_split.get("available") or bool(tokenizer_contract.get("available"))
         else "unavailable"
     )
     taxonomy = {
-        "version": 6,
+        "version": 7,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
@@ -13609,8 +13632,31 @@ def _weclaw_tokens_contract(
             "prompt_subcategory_split": prompt_split_precision,
             "context_window_used_tokens": "latest_primary_provider_prompt_tokens_estimate",
             "session_scope": "exact_current_session_when_session_id_available",
+            "prompt_segmentation_scope": "current_session_when_session_id_available",
+        },
+        "attribution_schema": {
+            "version": 6,
+            "provider_usage_totals": "exact aggregate provider fields",
+            "purpose_attribution": "exact dsproxy model-call purpose fields",
+            "session_scope": "usage_events.session_id derived from Codex Responses prompt_cache_key/client_metadata when available",
+            "latest_primary_turn": "latest request group whose purpose is primary/final",
+            "latest_any_model_call": "latest request group regardless of purpose",
+            "latest_auxiliary_call": "latest request group whose purpose is not primary/final",
+            "prompt_segmentation_scope": "latest prompt segmentation is exposed only for the matching session when session_id is supplied",
         },
     }
+
+    def _empty_summary() -> dict[str, Any]:
+        return {
+            "model_call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "estimated_cost_usd": 0.0,
+            "estimated_cost_by_currency": {},
+        }
 
     def _unavailable(reason: str, *, scope: str) -> dict[str, Any]:
         return {
@@ -13619,7 +13665,7 @@ def _weclaw_tokens_contract(
             "scope": scope,
             "ledger_scope": scope,
             "is_estimated": False,
-            "summary": _weclaw_zero_usage_summary(),
+            "summary": _empty_summary(),
             "by_purpose": {},
             "events_tail": [],
             "model_call_count": 0,
@@ -13658,11 +13704,7 @@ def _weclaw_tokens_contract(
     current_session_section = (
         _section(events, request_id=None, source="dsproxy_usage_ledger.current_session", scope="current_session", included_in_session_total=True)
         if current_session_available
-        else {
-            **_unavailable("session_id_not_available", scope="current_session"),
-            "current_session_available": False,
-            "action": "pass active Codex prompt_cache_key/session id to dsproxy status --weclaw-json --session-id",
-        }
+        else {**_unavailable("session_id_not_available", scope="current_session"), "current_session_available": False, "action": "pass active Codex prompt_cache_key/session id to dsproxy status --weclaw-json --session-id"}
     )
     if current_session_available:
         current_session_section["session_id"] = session_id
@@ -13671,13 +13713,7 @@ def _weclaw_tokens_contract(
     latest_primary_section = _section(latest_primary_events, request_id=latest_primary_request_id, source="dsproxy_usage_ledger.latest_primary_turn.grouped_by_request_id", scope=session_scope)
     latest_any_section = _section(latest_any_events, request_id=latest_any_request_id, source="dsproxy_usage_ledger.latest_any_model_call.grouped_by_request_id", scope=session_scope)
     latest_aux_section = _section(latest_aux_events, request_id=latest_aux_request_id, source="dsproxy_usage_ledger.latest_auxiliary_call.grouped_by_request_id", scope=session_scope, included_in_session_total=True)
-    session_total_section = _section(
-        events,
-        request_id=None,
-        source="dsproxy_usage_ledger.current_session" if current_session_available else "dsproxy_usage_ledger.profile_route_history",
-        scope=session_scope,
-        included_in_session_total=True,
-    )
+    session_total_section = _section(events, request_id=None, source="dsproxy_usage_ledger.current_session" if current_session_available else "dsproxy_usage_ledger.profile_route_history", scope=session_scope, included_in_session_total=True)
     if current_session_available:
         session_total_section["session_id"] = session_id
     else:
@@ -13693,11 +13729,14 @@ def _weclaw_tokens_contract(
     if isinstance(latest_prompt_segmentation, dict):
         latest_prompt_segmentation = dict(latest_prompt_segmentation)
         latest_prompt_segmentation["request_id"] = latest_primary_request_id
-        latest_prompt_segmentation["scope"] = "latest_primary_turn"
+        latest_prompt_segmentation["scope"] = "current_session" if session_id else "latest_primary_turn"
+        latest_prompt_segmentation["session_id"] = session_id
         latest_prompt_segmentation["total_prompt_tokens_provider"] = latest_primary_section.get("summary", {}).get("prompt_tokens")
         prompt_subcategory_split = dict(prompt_subcategory_split)
         prompt_subcategory_split["latest_prompt_segmentation"] = latest_prompt_segmentation
-        prompt_subcategory_split["scope"] = "latest_primary_turn"
+        prompt_subcategory_split["scope"] = "current_session" if session_id else "latest_primary_turn"
+        if session_id:
+            prompt_subcategory_split["session_id"] = session_id
 
     return {
         "taxonomy": taxonomy,
@@ -14033,32 +14072,22 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
     }
 
 
-def _weclaw_cost_contract(
-    tokens: dict[str, Any],
-    pricing: dict[str, Any],
-    balance: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+
+def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any], balance: dict[str, Any] | None = None) -> dict[str, Any]:
     last_turn = tokens.get("latest_primary_turn") if isinstance(tokens, dict) else {}
     if not isinstance(last_turn, dict) or not last_turn:
         last_turn = tokens.get("last_turn") if isinstance(tokens, dict) else {}
-    session_total = tokens.get("session") if isinstance(tokens, dict) and isinstance(tokens.get("session"), dict) and tokens.get("session", {}).get("available") else (tokens.get("session_total") if isinstance(tokens, dict) else {})
+
+    session_section = tokens.get("session") if isinstance(tokens, dict) else {}
+    session_available = bool(isinstance(session_section, dict) and session_section.get("available"))
+    profile_route_total = tokens.get("profile_route_total") if isinstance(tokens, dict) else {}
     auxiliary = tokens.get("auxiliary_model_calls") if isinstance(tokens, dict) else {}
 
-    usage_available = bool(isinstance(session_total, dict) and session_total.get("available"))
     pricing_available = bool(isinstance(pricing, dict) and pricing.get("available"))
     pricing_stale = bool(pricing.get("is_stale")) if isinstance(pricing, dict) else False
-    available = bool(
-        isinstance(last_turn, dict)
-        and last_turn.get("available")
-        and usage_available
-        and pricing_available
-        and not pricing_stale
-    )
+    available = bool(isinstance(last_turn, dict) and last_turn.get("available") and session_available and pricing_available and not pricing_stale)
 
-    display_currency = str(
-        (pricing.get("display_currency") if isinstance(pricing, dict) else None)
-        or _pricing_display_currency(balance)
-    ).upper()
+    display_currency = str((pricing.get("display_currency") if isinstance(pricing, dict) else None) or _pricing_display_currency(balance)).upper()
 
     def _summary(section: Any) -> dict[str, Any]:
         if not isinstance(section, dict):
@@ -14094,71 +14123,75 @@ def _weclaw_cost_contract(
                 "fx_updated_at": fx.get("updated_at") if isinstance(fx, dict) else None,
                 "fx": fx,
             }
-        return _pricing_money_amount(
-            _weclaw_usage_float(summary.get("estimated_cost_usd")),
-            source_currency="USD",
-            display_currency=display_currency,
-        )
+        if "estimated_cost_usd" not in summary:
+            return {"amount": None, "currency": display_currency, "display_currency": display_currency, "source_amount": None, "source_currency": None, "converted": False, "fx": None}
+        return _pricing_money_amount(_weclaw_usage_float(summary.get("estimated_cost_usd")), source_currency="USD", display_currency=display_currency)
 
     last_money = _money_from_summary(last_turn)
-    session_money = _money_from_summary(session_total)
+    session_money = _money_from_summary(session_section)
     auxiliary_money = _money_from_summary(auxiliary)
-    cash_money = session_money
+    profile_route_money = _money_from_summary(profile_route_total)
+    cash_money = session_money if session_available else profile_route_money
+    display_money = session_money if session_available else cash_money
 
     missing = []
-    if not usage_available:
-        missing.append("usage_attribution")
+    if not session_available:
+        missing.append("current_session_cost")
     if not pricing_available:
         missing.append("pricing")
     if pricing_stale:
         missing.append("pricing_stale")
 
-    if not usage_available:
-        reason = "usage_unavailable"
+    reason = None
+    if not session_available:
+        reason = "current_session_cost_unavailable"
     elif not pricing_available:
         reason = "pricing_unavailable"
     elif pricing_stale:
         reason = "pricing_stale"
-    else:
-        reason = None
 
     last_events = last_turn.get("events_tail") if isinstance(last_turn, dict) else []
     aux_events = auxiliary.get("events_tail") if isinstance(auxiliary, dict) else []
+    reasoning_tokens = _weclaw_usage_int(_summary(session_section).get("reasoning_tokens"))
+
+    session_contract = {
+        "available": session_available,
+        "scope": "current_session",
+        "estimated_cost": session_money.get("amount") if session_available else None,
+        "display_currency": display_currency,
+        "amount": session_money if session_available else None,
+        "source": "tokens.session.summary.estimated_cost_by_currency",
+        "reason": None if session_available else "current_session_cost_unavailable",
+        "action": None if session_available else "pass active session id and send at least one model request in that session",
+    }
 
     turn_ledger = {
-        "available": usage_available,
+        "available": session_available,
         "precision": "per_turn_model_pricing",
         "source": "usage_events.estimated_cost_source_amount_summed_without_repricing_history",
         "session_cost_is_sum_of_turn_estimated_cost": True,
         "session_cost_recomputed_from_current_model": False,
         "display_currency": display_currency,
-        "last_turn_events": [
-            _cost_ledger_event_summary(event, display_currency=display_currency)
-            for event in (last_events or [])[:20]
-            if isinstance(event, dict)
-        ],
-        "auxiliary_events": [
-            _cost_ledger_event_summary(event, display_currency=display_currency)
-            for event in (aux_events or [])[:20]
-            if isinstance(event, dict)
-        ],
+        "scope": "current_session" if session_available else "unavailable",
+        "last_turn_events": [_cost_ledger_event_summary(event, display_currency=display_currency) for event in (last_events or [])[:20] if isinstance(event, dict)],
+        "auxiliary_events": [_cost_ledger_event_summary(event, display_currency=display_currency) for event in (aux_events or [])[:20] if isinstance(event, dict)],
     }
 
-    reasoning_tokens = _weclaw_usage_int(_summary(session_total).get("reasoning_tokens"))
-
-    result = {
+    return {
         "available": available,
+        "scope": "current_session" if session_available else "unavailable",
+        "ledger_scope": "current_session" if session_available else "unavailable",
         "currency": display_currency,
         "display_currency": display_currency,
-        "source_currency": session_money.get("source_currency"),
-        "source_breakdown": session_money.get("source_breakdown"),
-        "converted": bool(session_money.get("converted")),
-        "fx_rate": session_money.get("fx_rate"),
-        "fx_source": session_money.get("fx_source"),
-        "fx_updated_at": session_money.get("fx_updated_at"),
-        "fx": session_money.get("fx"),
+        "source_currency": display_money.get("source_currency"),
+        "source_breakdown": display_money.get("source_breakdown"),
+        "converted": bool(display_money.get("converted")),
+        "fx_rate": display_money.get("fx_rate"),
+        "fx_source": display_money.get("fx_source"),
+        "fx_updated_at": display_money.get("fx_updated_at"),
+        "fx": display_money.get("fx"),
         "is_estimated": True,
-        "source": "dsproxy_usage_ledger.estimated_cost_source_amount",
+        "source": "tokens.session.summary.estimated_cost_by_currency",
         "legacy_source": "usage_events.estimated_cost_usd_for_usd_rows_only",
         "ledger_precision": "per_turn_model_pricing",
         "pricing_source": pricing.get("source"),
@@ -14168,21 +14201,19 @@ def _weclaw_cost_contract(
         "official_pricing_available": bool((pricing.get("official_source") or {}).get("available")) if isinstance(pricing.get("official_source"), dict) else False,
         "pricing_updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
-        "last_turn_estimated_cost": last_money.get("amount"),
-        "session_estimated_cost": session_money.get("amount"),
-        "auxiliary_estimated_cost": auxiliary_money.get("amount"),
+        "session": session_contract,
+        "last_turn_estimated_cost": last_money.get("amount") if isinstance(last_turn, dict) and last_turn.get("available") else None,
+        "session_estimated_cost": session_money.get("amount") if session_available else None,
+        "auxiliary_estimated_cost": auxiliary_money.get("amount") if isinstance(auxiliary, dict) and auxiliary.get("available") else 0.0,
+        "total_estimated_cost": session_money.get("amount") if session_available else None,
+        "profile_route_estimated_cost": profile_route_money.get("amount") if isinstance(profile_route_total, dict) and profile_route_total.get("available") else None,
         "cash_estimated_cost": cash_money.get("amount"),
-        "cash_definition": "session_total_estimated_cost_including_auxiliary_model_calls",
+        "cash_definition": "current_session_estimated_cost_when_session_id_available_else_profile_route_history",
         "last_turn_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(last_turn).get("estimated_cost_usd")),
-        "session_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(session_total).get("estimated_cost_usd")),
+        "session_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(session_section).get("estimated_cost_usd")),
         "auxiliary_estimated_cost_usd_legacy": _weclaw_usage_float(_summary(auxiliary).get("estimated_cost_usd")),
-        "amounts": {
-            "last": last_money,
-            "session": session_money,
-            "auxiliary": auxiliary_money,
-            "cash": cash_money,
-        },
-        "usage_available": usage_available,
+        "amounts": {"last": last_money, "session": session_money if session_available else None, "auxiliary": auxiliary_money, "cash": cash_money, "profile_route": profile_route_money},
+        "usage_available": session_available,
         "pricing_available": pricing_available,
         "pricing_stale": pricing_stale,
         "reason": reason,
@@ -14194,11 +14225,10 @@ def _weclaw_cost_contract(
         "turn_ledger": turn_ledger,
         "notes": [
             "Token counts are provider-reported exact usage totals.",
+            "Current-session cost is available only from tokens.session when dsproxy status is called with an active session id.",
             "Cost is estimated from per-turn dsproxy usage ledger entries, not by multiplying historical session tokens by the current active model price.",
-            "The Chinese DeepSeek official pricing page is the primary CNY source; USD/FX metadata is retained for English fallback or i18n output.",
         ],
     }
-    return result
 
 
 def _weclaw_balance_unavailable(reason: str, *, provider: str = "deepseek") -> dict[str, Any]:
@@ -14891,6 +14921,7 @@ def create_app(
             profile=profile_name,
             model=model,
             provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+            session_id=_session_id_from_request_payload(payload),
         )
         app.state.last_profile_tokenizer_report_by_profile[profile_name] = profile_tokenizer_report
         _debug_trace_event(

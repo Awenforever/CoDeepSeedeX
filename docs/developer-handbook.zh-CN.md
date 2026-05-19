@@ -1218,3 +1218,13 @@ p2.10a74使DeepSeek pricing采用CNY优先并支持折扣元数据。
 3. `config/pricing.json`保存官方CNY内置快照，并使用当前实际生效价。
 4. `pricing.effective_prices`、`pricing.original_prices`、`pricing.discount`和`pricing.prices_display`暴露给WeClaw。
 5. WeClaw应展示当前实际生效价，不自行推断折扣窗口，也不使用当前价格重算历史turn成本。
+
+
+## p2.10a75 upgrade, current-session cost, prompt segmentation, and retention progress
+
+p2.10a75关闭WeClaw p89反馈的契约缺口：
+
+1. `dsproxy upgrade`采用与WeClaw一致的同版本语义：检查远端release tag commit后，若目标public version和commit与当前运行时一致则跳过；若同public version但release commit不同则覆盖重装。`--force` / `--force-reinstall`可强制重装。
+2. `cost.session`成为明确的current-session cost对象。route/profile累计不再被静默标记为session cost。
+3. 传入`--session-id`时，prompt segmentation按session隔离，不会把route-latest旧session segmentation复用到新session。
+4. Compact/Trim主进度字段表示信息保有率：压缩/裁剪后的chars除以原始未压缩chars。触发/容量进度另用`capacity_progress_*`字段表示。

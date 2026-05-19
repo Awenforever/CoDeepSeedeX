@@ -4509,6 +4509,80 @@ def _git_status_porcelain(repo_root: Path) -> str:
     return result.stdout.strip()
 
 
+
+def _git_commit_for_ref_in_repo(repo_root: Path, ref: str) -> str:
+    if not ref:
+        return ""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", f"{ref}^{{commit}}"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return ""
+    value = result.stdout.strip()
+    if result.returncode != 0 or not value:
+        return ""
+    return value.splitlines()[0].strip() or ""
+
+
+def _git_remote_tag_commit_in_repo(repo_root: Path, tag: str, remote: str = "origin") -> str:
+    if not tag:
+        return ""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-remote", "--tags", remote, tag],
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if result.returncode != 0:
+        return ""
+    direct = ""
+    peeled = ""
+    for line in result.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) < 2:
+            continue
+        commit, ref = parts[0].strip(), parts[1].strip()
+        if ref.endswith(f"refs/tags/{tag}^{{}}"):
+            peeled = commit[:7]
+        elif ref.endswith(f"refs/tags/{tag}"):
+            direct = commit[:7]
+    return peeled or direct
+
+
+def _upgrade_commit_matches(current_commit: str | None, target_commit: str | None) -> bool:
+    current = str(current_commit or "").strip()
+    target = str(target_commit or "").strip()
+    if not current or not target or current == "unknown":
+        return False
+    return current == target or current.startswith(target) or target.startswith(current)
+
+
+def _should_skip_same_public_version_upgrade(
+    *,
+    current_public_version: str | None,
+    current_public_commit: str | None,
+    target_ref: str | None,
+    target_commit: str | None,
+    force: bool = False,
+) -> bool:
+    if force:
+        return False
+    if not _release_tag_matches_runtime(str(target_ref or ""), str(current_public_version or "")):
+        return False
+    target = str(target_commit or "").strip()
+    if not target:
+        return True
+    return _upgrade_commit_matches(current_public_commit, target)
+
 def _backup_upgrade_file(path: Path, backup_dir: Path, result: dict[str, Any]) -> None:
     if not path.exists():
         return
@@ -4629,11 +4703,13 @@ def _resolve_latest_prerelease_tag(api_url: str | None = None, *, timeout: float
     raise RuntimeError("GitHub releases response did not contain a non-draft pre-release tag")
 
 
+
 def _upgrade(args: argparse.Namespace) -> int:
     repo_hint = Path(args.repo).expanduser() if args.repo else Path(__file__).resolve().parents[1]
     requested_ref = args.tag
     alpha_channel = bool(getattr(args, "alpha", False))
     dry_run = bool(args.dry_run)
+    force_reinstall = bool(getattr(args, "force", False) or getattr(args, "force_reinstall", False))
 
     latest_release: dict[str, Any] | None = None
     if requested_ref and alpha_channel:
@@ -4686,16 +4762,23 @@ def _upgrade(args: argparse.Namespace) -> int:
             return 1
 
     release_channel = "explicit" if target_source == "explicit_ref" else ("alpha" if target_source == "latest_prerelease" else "latest")
+    version_metadata = _version_metadata()
     result: dict[str, Any] = {
         "status": "ok",
         "operation": "upgrade",
         "current_runtime_version": PROXY_VERSION,
+        "current_public_version": version_metadata.get("public_version"),
+        "current_public_commit": version_metadata.get("public_commit"),
+        "current_internal_version": version_metadata.get("internal_version"),
+        "current_internal_commit": version_metadata.get("internal_commit"),
         "target_ref": target_ref,
         "target_source": target_source,
+        "target_commit": None,
         "release_channel": release_channel,
         "latest_release": latest_release,
         "repo_hint": str(repo_hint),
         "dry_run": dry_run,
+        "force_reinstall": force_reinstall,
         "mode": "dsproxy_upgrade",
         "fallback": "If this install is not a git checkout, rerun the one-line installer from the GitHub Latest Release.",
         "skip_profile": bool(args.skip_profile),
@@ -4704,14 +4787,12 @@ def _upgrade(args: argparse.Namespace) -> int:
 
     repo_root = _git_root_for(repo_hint)
     if repo_root is None:
-        result.update(
-            {
-                "status": "error",
-                "error": "not_a_git_checkout",
-                "one_line_upgrade": "curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash",
-                "hint": "This command supports git checkout installs. Older or non-git installs should upgrade by rerunning the one-line installer.",
-            }
-        )
+        result.update({
+            "status": "error",
+            "error": "not_a_git_checkout",
+            "one_line_upgrade": "curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash",
+            "hint": "This command supports git checkout installs. Older or non-git installs should upgrade by rerunning the one-line installer.",
+        })
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
 
@@ -4720,16 +4801,58 @@ def _upgrade(args: argparse.Namespace) -> int:
     dirty = _git_status_porcelain(repo_root)
     result["git_dirty"] = bool(dirty)
     if dirty and not args.allow_dirty:
-        result.update(
-            {
-                "status": "error",
-                "error": "dirty_worktree",
-                "git_status": dirty,
-                "hint": "Commit, stash, or pass --allow-dirty if you understand the risk.",
-            }
-        )
+        result.update({"status": "error", "error": "dirty_worktree", "git_status": dirty, "hint": "Commit, stash, or pass --allow-dirty if you understand the risk."})
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
+
+    commands: list[tuple[str, list[str], bool]] = [
+        ("git_fetch_tags", ["git", "-C", str(repo_root), "fetch", "--tags", "origin"], False),
+    ]
+
+    target_commit = ""
+    remote_tag_commit = ""
+    if not dry_run:
+        remote_tag_commit = _git_remote_tag_commit_in_repo(repo_root, target_ref)
+        target_commit = remote_tag_commit
+        for label, argv, allow_failure in commands:
+            ok = _upgrade_run_step(result, label=label, argv=argv, cwd=repo_root, dry_run=False, allow_failure=allow_failure)
+            if not ok:
+                result.update({"status": "error", "error": "upgrade_step_failed", "failed_step": label})
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 1
+        if not target_commit:
+            target_commit = _git_commit_for_ref_in_repo(repo_root, target_ref)
+        result["target_commit"] = target_commit or None
+        result["target_commit_source"] = "remote_tag" if remote_tag_commit else ("local_ref_after_fetch" if target_commit else None)
+        result["same_public_version"] = _release_tag_matches_runtime(target_ref, str(version_metadata.get("public_version") or ""))
+        result["public_commit_matches_target"] = _upgrade_commit_matches(version_metadata.get("public_commit"), target_commit)
+
+        if _should_skip_same_public_version_upgrade(
+            current_public_version=version_metadata.get("public_version"),
+            current_public_commit=version_metadata.get("public_commit"),
+            target_ref=target_ref,
+            target_commit=target_commit,
+            force=force_reinstall,
+        ):
+            result.update({
+                "status": "already_up_to_date",
+                "skipped": True,
+                "skip_reason": "same_public_version_and_commit",
+                "message": f"Already up to date ({version_metadata.get('public_version')} | {version_metadata.get('public_commit')})",
+            })
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if result["same_public_version"] and target_commit and not result["public_commit_matches_target"]:
+            result["same_version_reinstall_reason"] = "release_tag_commit_changed"
+
+        if remote_tag_commit:
+            commands = [("git_fetch_target_tag_force", ["git", "-C", str(repo_root), "fetch", "--force", "origin", f"refs/tags/{target_ref}:refs/tags/{target_ref}"], False)]
+        else:
+            commands = []
+    else:
+        result["target_commit"] = None
+        result["target_commit_source"] = None
 
     if not args.no_backup:
         safe_target_ref = re.sub(r"[^A-Za-z0-9_.-]+", "_", target_ref)
@@ -4737,9 +4860,8 @@ def _upgrade(args: argparse.Namespace) -> int:
         _backup_upgrade_file(default_env_file_path(), backup_root, result)
         _backup_upgrade_file(default_codex_config_path(), backup_root, result)
 
-    commands: list[tuple[str, list[str], bool]] = [
-        ("git_fetch_tags", ["git", "-C", str(repo_root), "fetch", "--tags", "origin"], False),
-    ]
+    if dry_run:
+        commands = [("git_fetch_tags", ["git", "-C", str(repo_root), "fetch", "--tags", "origin"], False)]
 
     if requested_ref:
         commands.append(("git_checkout_target", ["git", "-C", str(repo_root), "checkout", target_ref], False))
@@ -4750,70 +4872,59 @@ def _upgrade(args: argparse.Namespace) -> int:
     commands.append(("pip_install_editable", [sys.executable, "-m", "pip", "install", "-e", str(repo_root)], False))
 
     if not args.skip_profile:
-        commands.extend(
-            [
-                (
-                    "install_codex_profile_stable",
-                    [
-                        sys.executable,
-                        "-m",
-                        "deepseek_responses_proxy.cli",
-                        "install-codex-profile",
-                        "--name",
-                        "deepseek",
-                        "--provider-name",
-                        "deepseek-proxy",
-                        "--base-url",
-                        "http://127.0.0.1:8000/v1",
-                        "--model",
-                        "deepseek-v4-flash",
-                        "--reasoning-effort",
-                        "high",
-                    ],
-                    False,
-                ),
-                (
-                    "install_codex_profile_thinking",
-                    [
-                        sys.executable,
-                        "-m",
-                        "deepseek_responses_proxy.cli",
-                        "install-codex-profile",
-                        "--name",
-                        "deepseek-thinking",
-                        "--provider-name",
-                        "deepseek-thinking-proxy",
-                        "--base-url",
-                        "http://127.0.0.1:8001/v1",
-                        "--model",
-                        "deepseek-v4-pro",
-                        "--reasoning-effort",
-                        "xhigh",
-                    ],
-                    False,
-                ),
-            ]
-        )
+        commands.extend([
+            (
+                "install_codex_profile_stable",
+                [
+                    sys.executable,
+                    "-m",
+                    "deepseek_responses_proxy.cli",
+                    "install-codex-profile",
+                    "--name",
+                    "deepseek",
+                    "--provider-name",
+                    "deepseek-proxy",
+                    "--base-url",
+                    "http://127.0.0.1:8000/v1",
+                    "--model",
+                    "deepseek-v4-flash",
+                    "--reasoning-effort",
+                    "high",
+                ],
+                False,
+            ),
+            (
+                "install_codex_profile_thinking",
+                [
+                    sys.executable,
+                    "-m",
+                    "deepseek_responses_proxy.cli",
+                    "install-codex-profile",
+                    "--name",
+                    "deepseek-thinking",
+                    "--provider-name",
+                    "deepseek-thinking-proxy",
+                    "--base-url",
+                    "http://127.0.0.1:8001/v1",
+                    "--model",
+                    "deepseek-v4-pro",
+                    "--reasoning-effort",
+                    "xhigh",
+                ],
+                False,
+            ),
+        ])
 
     if not args.no_restart:
-        commands.extend(
-            [
-                ("stop_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop"], True),
-                ("stop_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop", "--thinking"], True),
-                ("start_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start"], False),
-                ("start_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start", "--thinking"], False),
-            ]
-        )
+        commands.extend([
+            ("stop_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop"], True),
+            ("stop_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop", "--thinking"], True),
+            ("start_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start"], False),
+            ("start_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start", "--thinking"], False),
+        ])
 
     for label, argv, allow_failure in commands:
-        ok = _upgrade_run_step(
-            result,
-            label=label,
-            argv=argv,
-            cwd=repo_root,
-            dry_run=dry_run,
-            allow_failure=allow_failure,
-        )
+        ok = _upgrade_run_step(result, label=label, argv=argv, cwd=repo_root, dry_run=dry_run, allow_failure=allow_failure)
         if not ok:
             result.update({"status": "error", "error": "upgrade_step_failed", "failed_step": label})
             print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -5545,6 +5656,7 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade.add_argument("--alpha-release-url", help="GitHub releases API URL used by --alpha; defaults to the CoDeepSeedeX releases list endpoint")
     upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
     upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
+    upgrade.add_argument("--force", "--force-reinstall", dest="force", action="store_true", help="reinstall even when the target public version and commit already match")
     upgrade.add_argument("--allow-dirty", action="store_true", help="allow upgrade with a dirty git worktree")
     upgrade.add_argument("--no-backup", action="store_true", help="do not back up local env and Codex config files")
     upgrade.add_argument("--backup-dir", help="directory for env/Codex config backups")
