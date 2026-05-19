@@ -331,3 +331,8 @@ Current WeClaw-facing fields include:
 - char-level Compact and Trim progress through `runtime_payload_guard`.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
+
+
+## v0.3.9-alpha Latest
+
+The current `v0.3.9-alpha` release includes the latest WeClaw-facing telemetry contracts: current-session token/cost scope, auxiliary token zero objects, session-scoped Details, prompt reconciliation, Details origin breakdown, CNY-first pricing/cost fields, Compact/Trim retention fields, and same-version commit-aware upgrade behavior. See `docs/release-notes-v0.3.9-alpha.md` for the cumulative release notes.

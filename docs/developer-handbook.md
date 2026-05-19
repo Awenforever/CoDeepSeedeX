@@ -1313,3 +1313,8 @@ p2.10a79 changes the WeClaw-facing Details contract from a subtotal-centric view
 2. `should_display_classified_total=false`; WeClaw should not show a `classified~x/y` subtotal by default.
 3. The observed ~8.1k gap is explained primarily by `tools_schema_tokens`, with the remaining visible difference explained by message JSON/protocol/request-option overhead and a small provider/tokenizer residual.
 4. `provider_residual` must not be assigned to `other_prompt`; hide it when `abs_tokens` is within tolerance.
+
+
+## p2.10a80 Docs and latest release handoff
+
+p2.10a80 updates public/user-facing documentation and moves the existing `v0.3.9-alpha` Latest Release to the current master after p2.10a79. The cumulative release notes are maintained in `docs/release-notes-v0.3.9-alpha.md` and on the GitHub Release page. Public tag `v0.3.9-alpha` is intentionally moved only in this release step.

@@ -875,3 +875,15 @@ Scope:
 - Classify the observed provider/Details delta as tools schema plus message protocol overhead when residual is within tolerance.
 - Upgrade token taxonomy to version 11.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a80 Docs and latest release handoff
+
+Date: 2026-05-19
+
+Scope:
+
+- Update cumulative public release notes for `v0.3.9-alpha`.
+- Document p2.10a75–p2.10a79 WeClaw-facing contracts in public and developer documentation.
+- Move `v0.3.9-alpha` Latest Release to the current master after validation.
+- Keep forbidden plain tags `v0.3.9` and `v0.3.5` absent.
