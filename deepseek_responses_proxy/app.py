@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a75-upgrade-session-cost-retention-contract"
+PROXY_INTERNAL_VERSION = "p2.10a76-aux-details-coverage-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -13527,6 +13527,95 @@ def _weclaw_token_attribution_contract(
 
 
 
+
+def _weclaw_prompt_split_with_provider_coverage(
+    split: dict[str, Any],
+    latest_primary_turn: dict[str, Any],
+    *,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(split, dict):
+        return split
+
+    normalized = dict(split)
+    categories = normalized.get("categories")
+    categories_sum_tokens = normalized.get("categories_sum_tokens")
+    if categories_sum_tokens is None:
+        if isinstance(categories, dict):
+            categories_sum_tokens = sum(
+                _weclaw_usage_int(item.get("tokens"))
+                for item in categories.values()
+                if isinstance(item, dict)
+            )
+        else:
+            categories_sum_tokens = 0
+
+    provider_reference_tokens = None
+    provider_reference_field = "latest_primary_turn.summary.prompt_tokens"
+    if isinstance(latest_primary_turn, dict) and latest_primary_turn.get("available"):
+        summary = latest_primary_turn.get("summary")
+        if isinstance(summary, dict) and "prompt_tokens" in summary:
+            provider_reference_tokens = _weclaw_usage_int(summary.get("prompt_tokens"))
+
+    delta_tokens = None
+    coverage_complete = False
+    if provider_reference_tokens is not None:
+        delta_tokens = int(provider_reference_tokens) - int(categories_sum_tokens or 0)
+        coverage_complete = bool(normalized.get("available")) and delta_tokens == 0
+
+    if coverage_complete:
+        delta_reason = None
+    elif provider_reference_tokens is None:
+        delta_reason = "provider_reference_tokens_unavailable"
+    elif not normalized.get("available"):
+        delta_reason = str(normalized.get("reason") or "prompt_subcategory_split_unavailable")
+    else:
+        delta_reason = "provider_prompt_tokens_include_chat_template_or_provider_overhead_not_assigned_to_prompt_subcategories"
+
+    coverage_scope = "local_profile_tokenizer_message_content_only"
+    coverage_basis = str(
+        normalized.get("semantic_scope")
+        or "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly"
+    )
+
+    normalized.update(
+        {
+            "categories_sum_tokens": int(categories_sum_tokens or 0),
+            "provider_reference_tokens": provider_reference_tokens,
+            "provider_reference_field": provider_reference_field,
+            "delta_tokens": delta_tokens,
+            "coverage_complete": coverage_complete,
+            "coverage_scope": coverage_scope,
+            "coverage_basis": coverage_basis,
+            "delta_reason": delta_reason,
+        }
+    )
+    if session_id:
+        normalized.setdefault("scope", "current_session")
+        normalized.setdefault("session_id", session_id)
+
+    latest_prompt_segmentation = normalized.get("latest_prompt_segmentation")
+    if isinstance(latest_prompt_segmentation, dict):
+        latest = dict(latest_prompt_segmentation)
+        latest.update(
+            {
+                "categories_sum_tokens": int(categories_sum_tokens or 0),
+                "provider_reference_tokens": provider_reference_tokens,
+                "provider_reference_field": provider_reference_field,
+                "delta_tokens": delta_tokens,
+                "coverage_complete": coverage_complete,
+                "coverage_scope": coverage_scope,
+                "coverage_basis": coverage_basis,
+                "delta_reason": delta_reason,
+            }
+        )
+        if session_id:
+            latest.setdefault("scope", "current_session")
+            latest.setdefault("session_id", session_id)
+        normalized["latest_prompt_segmentation"] = latest
+
+    return normalized
+
 def _weclaw_tokens_contract(
     store: Any | None,
     *,
@@ -13616,7 +13705,7 @@ def _weclaw_tokens_contract(
         else "unavailable"
     )
     taxonomy = {
-        "version": 7,
+        "version": 8,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
@@ -13669,6 +13758,11 @@ def _weclaw_tokens_contract(
             "by_purpose": {},
             "events_tail": [],
             "model_call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
             "missing": [reason],
             "reason": reason,
             "status": reason,
@@ -13679,6 +13773,7 @@ def _weclaw_tokens_contract(
     def _section(section_events: list[dict[str, Any]], *, request_id: str | None, source: str, scope: str, included_in_session_total: bool | None = None) -> dict[str, Any]:
         if not section_events:
             return _unavailable("usage_ledger_events_not_available_for_scope", scope=scope)
+        summary = _weclaw_summarize_usage_events(section_events)
         result = {
             "available": True,
             "unit": "tokens",
@@ -13688,7 +13783,12 @@ def _weclaw_tokens_contract(
             "source": source,
             "request_id": request_id,
             "model_call_count": len(section_events),
-            "summary": _weclaw_summarize_usage_events(section_events),
+            "prompt_tokens": _weclaw_usage_int(summary.get("prompt_tokens")),
+            "completion_tokens": _weclaw_usage_int(summary.get("completion_tokens")),
+            "total_tokens": _weclaw_usage_int(summary.get("total_tokens")),
+            "cached_tokens": _weclaw_usage_int(summary.get("cached_tokens")),
+            "reasoning_tokens": _weclaw_usage_int(summary.get("reasoning_tokens")),
+            "summary": summary,
             "by_purpose": _weclaw_usage_by_purpose(section_events),
             "events_tail": section_events[:20],
             "missing": [],
@@ -13713,6 +13813,11 @@ def _weclaw_tokens_contract(
     latest_primary_section = _section(latest_primary_events, request_id=latest_primary_request_id, source="dsproxy_usage_ledger.latest_primary_turn.grouped_by_request_id", scope=session_scope)
     latest_any_section = _section(latest_any_events, request_id=latest_any_request_id, source="dsproxy_usage_ledger.latest_any_model_call.grouped_by_request_id", scope=session_scope)
     latest_aux_section = _section(latest_aux_events, request_id=latest_aux_request_id, source="dsproxy_usage_ledger.latest_auxiliary_call.grouped_by_request_id", scope=session_scope, included_in_session_total=True)
+    prompt_subcategory_split = _weclaw_prompt_split_with_provider_coverage(
+        prompt_subcategory_split,
+        latest_primary_section,
+        session_id=session_id,
+    )
     session_total_section = _section(events, request_id=None, source="dsproxy_usage_ledger.current_session" if current_session_available else "dsproxy_usage_ledger.profile_route_history", scope=session_scope, included_in_session_total=True)
     if current_session_available:
         session_total_section["session_id"] = session_id
@@ -13722,7 +13827,40 @@ def _weclaw_tokens_contract(
         session_total_section["action"] = "pass active session id for current_session scope. This legacy section is profile_route_history."
 
     profile_route_total = _section(route_events, request_id=None, source="dsproxy_usage_ledger.profile_route_history", scope="profile_route_history", included_in_session_total=False) if route_events else _unavailable(route_unavailable_reason or "usage_ledger_events", scope="profile_route_history")
-    auxiliary_section = _section(auxiliary_events, request_id=None, source="dsproxy_usage_ledger.non_primary_purposes", scope=session_scope, included_in_session_total=True) if auxiliary_events else _unavailable("auxiliary_usage_events_not_available", scope=session_scope)
+    if auxiliary_events:
+        auxiliary_section = _section(
+            auxiliary_events,
+            request_id=None,
+            source="dsproxy_usage_ledger.non_primary_purposes",
+            scope=session_scope,
+            included_in_session_total=True,
+        )
+    elif current_session_available:
+        auxiliary_summary = _empty_summary()
+        auxiliary_section = {
+            "available": True,
+            "unit": "tokens",
+            "scope": "current_session",
+            "ledger_scope": "current_session",
+            "is_estimated": False,
+            "source": "dsproxy_usage_ledger.non_primary_purposes",
+            "request_id": None,
+            "model_call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "summary": auxiliary_summary,
+            "by_purpose": {},
+            "events_tail": [],
+            "missing": [],
+            "reason": "no_auxiliary_model_call_in_current_session",
+            "status": "no_auxiliary_model_call_in_current_session",
+            "included_in_session_total": True,
+        }
+    else:
+        auxiliary_section = _unavailable("auxiliary_usage_events_not_available", scope=session_scope)
     route_auxiliary_section = _section(route_auxiliary_events, request_id=None, source="dsproxy_usage_ledger.profile_route_history.non_primary_purposes", scope="profile_route_history", included_in_session_total=False) if route_auxiliary_events else _unavailable("auxiliary_usage_events_not_available", scope="profile_route_history")
 
     latest_prompt_segmentation = prompt_subcategory_split.get("latest_prompt_segmentation") if isinstance(prompt_subcategory_split, dict) else None

@@ -1272,3 +1272,12 @@ p2.10a75 closes the WeClaw p89 contract gaps:
 2. `cost.session` is an explicit current-session cost object. Route/profile totals are no longer silently labeled as session cost.
 3. Prompt segmentation is session-scoped when `--session-id` is supplied. Route-latest prompt segmentation is not reused for a different active session.
 4. Compact/Trim primary progress fields now describe information retention: post-compaction/post-trim chars over raw uncompressed chars. Capacity/trigger progress is exposed separately as `capacity_progress_*`.
+
+
+## p2.10a76 Tokens aux and Details coverage contract
+
+p2.10a76 closes the WeClaw p92/p93 contract gaps:
+
+1. `tokens.auxiliary_model_calls` now returns an explicit current-session zero object when the active session has no auxiliary model calls: `available=true`, `scope=current_session`, `total_tokens=0`, `model_call_count=0`, and `reason=no_auxiliary_model_call_in_current_session`.
+2. `tokens.prompt_subcategory_split` now reports coverage metadata against `latest_primary_turn.summary.prompt_tokens`: `categories_sum_tokens`, `provider_reference_tokens`, `provider_reference_field`, `delta_tokens`, `coverage_complete`, `coverage_scope`, `coverage_basis`, and `delta_reason`.
+3. Details remain a local profile-tokenizer estimate over message content and tool-call arguments after dsproxy payload assembly. They are not a complete conservation breakdown of provider prompt tokens unless `coverage_complete=true`.

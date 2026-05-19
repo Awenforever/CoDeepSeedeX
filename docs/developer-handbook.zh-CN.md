@@ -1228,3 +1228,12 @@ p2.10a75关闭WeClaw p89反馈的契约缺口：
 2. `cost.session`成为明确的current-session cost对象。route/profile累计不再被静默标记为session cost。
 3. 传入`--session-id`时，prompt segmentation按session隔离，不会把route-latest旧session segmentation复用到新session。
 4. Compact/Trim主进度字段表示信息保有率：压缩/裁剪后的chars除以原始未压缩chars。触发/容量进度另用`capacity_progress_*`字段表示。
+
+
+## p2.10a76 Tokens aux and Details coverage contract
+
+p2.10a76关闭WeClaw p92/p93反馈的契约缺口：
+
+1. 当前session没有辅助模型调用时，`tokens.auxiliary_model_calls`仍返回明确的零对象：`available=true`、`scope=current_session`、`total_tokens=0`、`model_call_count=0`、`reason=no_auxiliary_model_call_in_current_session`。
+2. `tokens.prompt_subcategory_split`新增相对`latest_primary_turn.summary.prompt_tokens`的覆盖率字段：`categories_sum_tokens`、`provider_reference_tokens`、`provider_reference_field`、`delta_tokens`、`coverage_complete`、`coverage_scope`、`coverage_basis`、`delta_reason`。
+3. Details仍是本地profile tokenizer对dsproxy组装后message content和tool-call arguments的估算。除非`coverage_complete=true`，否则不能理解为provider prompt tokens的完整守恒分解。

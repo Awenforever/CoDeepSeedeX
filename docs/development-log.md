@@ -821,3 +821,15 @@ Scope:
 - Prevent session-scoped prompt segmentation from reusing a route-latest prompt report from another session.
 - Make Compact/Trim `progress_*` fields represent information retention and move trigger/capacity semantics to `capacity_progress_*`.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a76 Tokens aux and Details coverage contract
+
+Date: 2026-05-19
+
+Scope:
+
+- Add explicit zero current-session `tokens.auxiliary_model_calls` object when no auxiliary model calls occurred.
+- Add prompt Details coverage and delta metadata so WeClaw does not infer missing provider prompt-token overhead.
+- Upgrade token taxonomy to version 8.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.
