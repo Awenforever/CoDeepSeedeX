@@ -833,3 +833,17 @@ Scope:
 - Add prompt Details coverage and delta metadata so WeClaw does not infer missing provider prompt-token overhead.
 - Upgrade token taxonomy to version 8.
 - Public Release tag `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a77 Prompt reconciliation contract
+
+Date: 2026-05-19
+
+Scope:
+
+- Add `tokens.prompt_reconciliation` for Details/provider prompt-token reconciliation.
+- Distinguish displayed category sum, local full observed prompt tokens, and provider prompt tokens.
+- Add sanitized segment audit summary and unclassified segment accounting.
+- Mark unexplained provider/local deltas as accounting-suspect rather than hiding them behind `partial`.
+- Upgrade token taxonomy to version 9.
+- Public Release tag `v0.3.9-alpha` is not moved by this internal node.

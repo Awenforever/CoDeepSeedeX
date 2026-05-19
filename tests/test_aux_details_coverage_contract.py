@@ -116,7 +116,7 @@ def test_prompt_subcategory_split_exposes_provider_coverage_and_delta(tmp_path: 
     assert split["coverage_complete"] is False
     assert split["coverage_scope"] == "local_profile_tokenizer_message_content_only"
     assert split["coverage_basis"] == "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly"
-    assert split["delta_reason"] == "provider_prompt_tokens_include_chat_template_or_provider_overhead_not_assigned_to_prompt_subcategories"
+    assert split["delta_reason"] == "provider_prompt_tokens_exceed_local_observed_prompt_tokens_without_unclassified_observed_segments"
 
 
 def test_prompt_subcategory_split_marks_complete_when_local_sum_matches_provider_prompt(tmp_path: Path) -> None:

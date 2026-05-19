@@ -740,7 +740,7 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
 
     assert data["status"] == "ok"
     tokens = data["tokens"]
-    assert tokens["taxonomy"]["version"] == 8
+    assert tokens["taxonomy"]["version"] == 9
     assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
     assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
     assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "unavailable"

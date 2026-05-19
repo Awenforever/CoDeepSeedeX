@@ -1281,3 +1281,14 @@ p2.10a76 closes the WeClaw p92/p93 contract gaps:
 1. `tokens.auxiliary_model_calls` now returns an explicit current-session zero object when the active session has no auxiliary model calls: `available=true`, `scope=current_session`, `total_tokens=0`, `model_call_count=0`, and `reason=no_auxiliary_model_call_in_current_session`.
 2. `tokens.prompt_subcategory_split` now reports coverage metadata against `latest_primary_turn.summary.prompt_tokens`: `categories_sum_tokens`, `provider_reference_tokens`, `provider_reference_field`, `delta_tokens`, `coverage_complete`, `coverage_scope`, `coverage_basis`, and `delta_reason`.
 3. Details remain a local profile-tokenizer estimate over message content and tool-call arguments after dsproxy payload assembly. They are not a complete conservation breakdown of provider prompt tokens unless `coverage_complete=true`.
+
+
+## p2.10a77 Prompt reconciliation contract
+
+p2.10a77 extends WeClaw Details from simple partial coverage into prompt reconciliation:
+
+1. `tokens.prompt_reconciliation` compares three totals: `prompt_subcategory_split.categories_sum_tokens`, `local_full_observed_prompt_tokens`, and provider-reported `latest_primary_turn.summary.prompt_tokens`.
+2. The contract exposes `delta_breakdown`, `delta_status`, `is_accounting_suspect`, `recommended_action`, and a sanitized `prompt_segment_audit`.
+3. dsproxy does not assign provider/local deltas to `other_prompt` unless those tokens correspond to observable prompt segments.
+4. If local observed prompt tokens match the classified category sum but provider prompt tokens are much larger, dsproxy reports the delta as unexplained provider/template/tokenizer-layer difference and recommends `run_prompt_reconciliation_trace`.
+5. The embedded minimum experiment matrix is a live-trace plan, not a fabricated result. Provider prompt usage requires real provider calls.

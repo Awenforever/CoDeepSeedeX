@@ -1237,3 +1237,14 @@ p2.10a76关闭WeClaw p92/p93反馈的契约缺口：
 1. 当前session没有辅助模型调用时，`tokens.auxiliary_model_calls`仍返回明确的零对象：`available=true`、`scope=current_session`、`total_tokens=0`、`model_call_count=0`、`reason=no_auxiliary_model_call_in_current_session`。
 2. `tokens.prompt_subcategory_split`新增相对`latest_primary_turn.summary.prompt_tokens`的覆盖率字段：`categories_sum_tokens`、`provider_reference_tokens`、`provider_reference_field`、`delta_tokens`、`coverage_complete`、`coverage_scope`、`coverage_basis`、`delta_reason`。
 3. Details仍是本地profile tokenizer对dsproxy组装后message content和tool-call arguments的估算。除非`coverage_complete=true`，否则不能理解为provider prompt tokens的完整守恒分解。
+
+
+## p2.10a77 Prompt reconciliation contract
+
+p2.10a77将WeClaw Details从简单partial覆盖率扩展为prompt reconciliation：
+
+1. `tokens.prompt_reconciliation`同时比较三种总量：`prompt_subcategory_split.categories_sum_tokens`、`local_full_observed_prompt_tokens`和provider返回的`latest_primary_turn.summary.prompt_tokens`。
+2. 新增`delta_breakdown`、`delta_status`、`is_accounting_suspect`、`recommended_action`和脱敏后的`prompt_segment_audit`。
+3. dsproxy不会把provider/local差额直接归入`other_prompt`，除非这些token对应可观测的prompt segment。
+4. 如果本地可观测prompt token与分类合计一致，但provider prompt tokens显著更大，则dsproxy把差值标记为未解释的provider/template/tokenizer层差异，并建议`run_prompt_reconciliation_trace`。
+5. 内置最小实验矩阵是live trace计划，不伪造实验结果。provider prompt usage必须通过真实provider调用获得。

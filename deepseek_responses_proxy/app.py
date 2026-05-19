@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a76-aux-details-coverage-contract"
+PROXY_INTERNAL_VERSION = "p2.10a77-prompt-reconciliation-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -13528,6 +13528,7 @@ def _weclaw_token_attribution_contract(
 
 
 
+
 def _weclaw_prompt_split_with_provider_coverage(
     split: dict[str, Any],
     latest_primary_turn: dict[str, Any],
@@ -13549,28 +13550,131 @@ def _weclaw_prompt_split_with_provider_coverage(
             )
         else:
             categories_sum_tokens = 0
+    categories_sum_tokens = int(categories_sum_tokens or 0)
 
-    provider_reference_tokens = None
-    provider_reference_field = "latest_primary_turn.summary.prompt_tokens"
+    latest_prompt_segmentation = normalized.get("latest_prompt_segmentation")
+    if isinstance(latest_prompt_segmentation, dict):
+        latest_prompt_segmentation = dict(latest_prompt_segmentation)
+    else:
+        latest_prompt_segmentation = {}
+
+    local_full_observed_prompt_tokens = None
+    local_full_observed_prompt_source = None
+    if "total_prompt_tokens_profile_tokenizer" in latest_prompt_segmentation:
+        local_full_observed_prompt_tokens = _weclaw_usage_int(latest_prompt_segmentation.get("total_prompt_tokens_profile_tokenizer"))
+        local_full_observed_prompt_source = "prompt_subcategory_split.latest_prompt_segmentation.total_prompt_tokens_profile_tokenizer"
+    elif "total_tokens" in normalized:
+        local_full_observed_prompt_tokens = _weclaw_usage_int(normalized.get("total_tokens"))
+        local_full_observed_prompt_source = "prompt_subcategory_split.total_tokens"
+    elif categories is not None:
+        local_full_observed_prompt_tokens = categories_sum_tokens
+        local_full_observed_prompt_source = "prompt_subcategory_split.categories_sum_tokens"
+
+    provider_prompt_tokens = None
+    provider_total_tokens = None
+    provider_cached_tokens = None
+    provider_completion_tokens = None
+    provider_reasoning_tokens = None
+    provider_prompt_tokens_source = "latest_primary_turn.summary.prompt_tokens"
+    provider_total_tokens_source = "latest_primary_turn.summary.total_tokens"
+    request_id = None
     if isinstance(latest_primary_turn, dict) and latest_primary_turn.get("available"):
+        request_id = latest_primary_turn.get("request_id")
         summary = latest_primary_turn.get("summary")
-        if isinstance(summary, dict) and "prompt_tokens" in summary:
-            provider_reference_tokens = _weclaw_usage_int(summary.get("prompt_tokens"))
+        if isinstance(summary, dict):
+            if "prompt_tokens" in summary:
+                provider_prompt_tokens = _weclaw_usage_int(summary.get("prompt_tokens"))
+            if "total_tokens" in summary:
+                provider_total_tokens = _weclaw_usage_int(summary.get("total_tokens"))
+            if "cached_tokens" in summary:
+                provider_cached_tokens = _weclaw_usage_int(summary.get("cached_tokens"))
+            if "completion_tokens" in summary:
+                provider_completion_tokens = _weclaw_usage_int(summary.get("completion_tokens"))
+            if "reasoning_tokens" in summary:
+                provider_reasoning_tokens = _weclaw_usage_int(summary.get("reasoning_tokens"))
 
     delta_tokens = None
-    coverage_complete = False
-    if provider_reference_tokens is not None:
-        delta_tokens = int(provider_reference_tokens) - int(categories_sum_tokens or 0)
-        coverage_complete = bool(normalized.get("available")) and delta_tokens == 0
+    if provider_prompt_tokens is not None:
+        delta_tokens = int(provider_prompt_tokens) - categories_sum_tokens
 
-    if coverage_complete:
-        delta_reason = None
-    elif provider_reference_tokens is None:
-        delta_reason = "provider_reference_tokens_unavailable"
-    elif not normalized.get("available"):
-        delta_reason = str(normalized.get("reason") or "prompt_subcategory_split_unavailable")
+    segment_source = latest_prompt_segmentation.get("segments")
+    if not isinstance(segment_source, list):
+        segment_source = latest_prompt_segmentation.get("segments_tail")
+    if not isinstance(segment_source, list):
+        segment_source = []
+
+    prompt_segments: list[dict[str, Any]] = []
+    segment_categories_sum_tokens = 0
+    unclassified_segments: list[dict[str, Any]] = []
+    for segment in segment_source:
+        if not isinstance(segment, dict):
+            continue
+        category = str(segment.get("category") or "unclassified")
+        local_tokens = _weclaw_usage_int(segment.get("local_tokens") if "local_tokens" in segment else segment.get("token_count"))
+        segment_categories_sum_tokens += local_tokens
+        item = {
+            "index": segment.get("index"),
+            "category": category,
+            "source": segment.get("source"),
+            "role": segment.get("role"),
+            "char_count": _weclaw_usage_int(segment.get("char_count")),
+            "local_tokens": local_tokens,
+            "sha256": segment.get("sha256"),
+            "preview": segment.get("preview"),
+        }
+        if segment.get("head") is not None:
+            item["head"] = segment.get("head")
+        if segment.get("tail") is not None:
+            item["tail"] = segment.get("tail")
+        prompt_segments.append(item)
+        if category in {"", "unclassified", "unknown"}:
+            unclassified_segments.append(item)
+
+    if local_full_observed_prompt_tokens is None and prompt_segments:
+        local_full_observed_prompt_tokens = segment_categories_sum_tokens
+        local_full_observed_prompt_source = "prompt_subcategory_split.latest_prompt_segmentation.segments.token_count_sum"
+
+    if local_full_observed_prompt_tokens is not None:
+        unclassified_observed_segments_tokens = max(0, int(local_full_observed_prompt_tokens) - categories_sum_tokens)
     else:
-        delta_reason = "provider_prompt_tokens_include_chat_template_or_provider_overhead_not_assigned_to_prompt_subcategories"
+        unclassified_observed_segments_tokens = None
+
+    unknown_tokens = None
+    if provider_prompt_tokens is not None and local_full_observed_prompt_tokens is not None:
+        unknown_tokens = max(0, int(provider_prompt_tokens) - int(local_full_observed_prompt_tokens))
+    elif provider_prompt_tokens is not None:
+        unknown_tokens = max(0, int(provider_prompt_tokens) - categories_sum_tokens)
+
+    if provider_prompt_tokens is None:
+        coverage_complete = False
+        delta_status = "unavailable"
+        delta_reason = "provider_reference_tokens_unavailable"
+        is_accounting_suspect = False
+    elif delta_tokens == 0:
+        coverage_complete = bool(normalized.get("available"))
+        delta_status = "explained"
+        delta_reason = None
+        is_accounting_suspect = False
+    elif unclassified_observed_segments_tokens and unknown_tokens == 0:
+        coverage_complete = False
+        delta_status = "explained"
+        delta_reason = "observable_prompt_segments_not_assigned_to_prompt_subcategories"
+        is_accounting_suspect = False
+    elif unclassified_observed_segments_tokens and unknown_tokens and unknown_tokens > 0:
+        coverage_complete = False
+        delta_status = "partially_explained"
+        delta_reason = "part_of_delta_is_unclassified_observed_prompt_segments_and_remainder_is_provider_or_template_or_tokenizer_difference"
+        is_accounting_suspect = True
+    else:
+        coverage_complete = False
+        delta_status = "unexplained"
+        delta_reason = "provider_prompt_tokens_exceed_local_observed_prompt_tokens_without_unclassified_observed_segments"
+        is_accounting_suspect = bool(delta_tokens)
+
+    if provider_prompt_tokens is not None and delta_tokens is not None and delta_tokens < 0:
+        delta_status = "unexplained"
+        delta_reason = "local_profile_tokenizer_prompt_tokens_exceed_provider_prompt_tokens"
+        is_accounting_suspect = True
 
     coverage_scope = "local_profile_tokenizer_message_content_only"
     coverage_basis = str(
@@ -13578,41 +13682,147 @@ def _weclaw_prompt_split_with_provider_coverage(
         or "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly"
     )
 
+    delta_breakdown = {
+        "unclassified_observed_segments_tokens": unclassified_observed_segments_tokens,
+        "chat_template_or_protocol_overhead_tokens": None,
+        "provider_hidden_overhead_tokens": None,
+        "tokenizer_mismatch_tokens": None,
+        "unknown_tokens": unknown_tokens,
+        "provider_or_template_overhead_tokens": unknown_tokens,
+    }
+
+    prompt_segment_audit = {
+        "available": bool(prompt_segments),
+        "scope": "current_session" if session_id else normalized.get("scope"),
+        "session_id": session_id or normalized.get("session_id"),
+        "request_id": request_id,
+        "prompt_segments": prompt_segments,
+        "segment_categories_sum_tokens": segment_categories_sum_tokens,
+        "unclassified_segments": unclassified_segments,
+        "unclassified_segments_tokens": unclassified_observed_segments_tokens,
+        "classification_complete": not bool(unclassified_observed_segments_tokens),
+    }
+
+    experiment_cases = [
+        "minimal_user_only",
+        "system_env_only",
+        "tool_schema_no_execution",
+        "tool_call_output",
+        "historical_session",
+    ]
+    minimum_experiment_matrix = {
+        "available": False,
+        "reason": "requires_live_provider_trace",
+        "recommended_action": "run_prompt_reconciliation_trace",
+        "cases": [
+            {
+                "case": case,
+                "provider_prompt_tokens": None,
+                "local_full_observed_prompt_tokens": None,
+                "categories_sum_tokens": None,
+                "delta_tokens": None,
+                "delta_breakdown": {
+                    "unclassified_observed_segments_tokens": None,
+                    "provider_or_template_overhead_tokens": None,
+                    "unknown_tokens": None,
+                },
+                "is_accounting_suspect": None,
+                "status": "not_run_requires_live_provider_trace",
+            }
+            for case in experiment_cases
+        ],
+    }
+
+    prompt_reconciliation = {
+        "available": True,
+        "scope": "current_session" if session_id else normalized.get("scope"),
+        "session_id": session_id or normalized.get("session_id"),
+        "request_id": request_id,
+        "provider_prompt_tokens": provider_prompt_tokens,
+        "provider_prompt_tokens_source": provider_prompt_tokens_source,
+        "provider_total_tokens": provider_total_tokens,
+        "provider_total_tokens_source": provider_total_tokens_source,
+        "provider_cached_tokens": provider_cached_tokens,
+        "provider_completion_tokens": provider_completion_tokens,
+        "provider_reasoning_tokens": provider_reasoning_tokens,
+        "local_categories_sum_tokens": categories_sum_tokens,
+        "local_categories_source": "prompt_subcategory_split.categories",
+        "local_full_observed_prompt_tokens": local_full_observed_prompt_tokens,
+        "local_full_observed_prompt_source": local_full_observed_prompt_source,
+        "delta_tokens": delta_tokens,
+        "delta_breakdown": delta_breakdown,
+        "delta_status": delta_status,
+        "is_accounting_suspect": is_accounting_suspect,
+        "recommended_action": "run_prompt_reconciliation_trace" if delta_status in {"unexplained", "partially_explained"} else None,
+        "classification_complete": not bool(unclassified_observed_segments_tokens),
+        "local_full_observed_matches_categories": (
+            local_full_observed_prompt_tokens is not None
+            and int(local_full_observed_prompt_tokens) == categories_sum_tokens
+        ),
+        "can_provider_prompt_tokens_be_fully_decomposed_to_details": coverage_complete,
+        "delta_interpretation": (
+            "no_delta"
+            if delta_tokens == 0
+            else "observable_classification_gap"
+            if unclassified_observed_segments_tokens and unknown_tokens == 0
+            else "observable_classification_gap_plus_provider_template_or_tokenizer_difference"
+            if unclassified_observed_segments_tokens and unknown_tokens and unknown_tokens > 0
+            else "provider_template_hidden_overhead_or_tokenizer_mismatch_outside_observed_message_content"
+        ),
+        "prompt_segment_audit": prompt_segment_audit,
+        "minimum_experiment_matrix": minimum_experiment_matrix,
+        "notes": [
+            "categories_sum_tokens is the sum of the displayed Details categories.",
+            "local_full_observed_prompt_tokens is the complete assembled prompt content that dsproxy can locally observe and tokenize.",
+            "provider_prompt_tokens is provider-reported usage and remains authoritative for billing.",
+            "delta_tokens must not be assigned to other_prompt unless backed by observable prompt segments.",
+        ],
+    }
+
     normalized.update(
         {
-            "categories_sum_tokens": int(categories_sum_tokens or 0),
-            "provider_reference_tokens": provider_reference_tokens,
-            "provider_reference_field": provider_reference_field,
+            "categories_sum_tokens": categories_sum_tokens,
+            "provider_reference_tokens": provider_prompt_tokens,
+            "provider_reference_field": provider_prompt_tokens_source,
             "delta_tokens": delta_tokens,
             "coverage_complete": coverage_complete,
             "coverage_scope": coverage_scope,
             "coverage_basis": coverage_basis,
             "delta_reason": delta_reason,
+            "prompt_reconciliation": prompt_reconciliation,
+            "prompt_segments": prompt_segments,
+            "segment_categories_sum_tokens": segment_categories_sum_tokens,
+            "unclassified_segments": unclassified_segments,
+            "unclassified_segments_tokens": unclassified_observed_segments_tokens,
         }
     )
     if session_id:
         normalized.setdefault("scope", "current_session")
         normalized.setdefault("session_id", session_id)
 
-    latest_prompt_segmentation = normalized.get("latest_prompt_segmentation")
-    if isinstance(latest_prompt_segmentation, dict):
-        latest = dict(latest_prompt_segmentation)
-        latest.update(
+    if latest_prompt_segmentation:
+        latest_prompt_segmentation.update(
             {
-                "categories_sum_tokens": int(categories_sum_tokens or 0),
-                "provider_reference_tokens": provider_reference_tokens,
-                "provider_reference_field": provider_reference_field,
+                "categories_sum_tokens": categories_sum_tokens,
+                "provider_reference_tokens": provider_prompt_tokens,
+                "provider_reference_field": provider_prompt_tokens_source,
                 "delta_tokens": delta_tokens,
                 "coverage_complete": coverage_complete,
                 "coverage_scope": coverage_scope,
                 "coverage_basis": coverage_basis,
                 "delta_reason": delta_reason,
+                "local_full_observed_prompt_tokens": local_full_observed_prompt_tokens,
+                "prompt_reconciliation": prompt_reconciliation,
+                "prompt_segments": prompt_segments,
+                "segment_categories_sum_tokens": segment_categories_sum_tokens,
+                "unclassified_segments": unclassified_segments,
+                "unclassified_segments_tokens": unclassified_observed_segments_tokens,
             }
         )
         if session_id:
-            latest.setdefault("scope", "current_session")
-            latest.setdefault("session_id", session_id)
-        normalized["latest_prompt_segmentation"] = latest
+            latest_prompt_segmentation.setdefault("scope", "current_session")
+            latest_prompt_segmentation.setdefault("session_id", session_id)
+        normalized["latest_prompt_segmentation"] = latest_prompt_segmentation
 
     return normalized
 
@@ -13705,7 +13915,7 @@ def _weclaw_tokens_contract(
         else "unavailable"
     )
     taxonomy = {
-        "version": 8,
+        "version": 9,
         "unit": "tokens",
         "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
@@ -13722,6 +13932,7 @@ def _weclaw_tokens_contract(
             "context_window_used_tokens": "latest_primary_provider_prompt_tokens_estimate",
             "session_scope": "exact_current_session_when_session_id_available",
             "prompt_segmentation_scope": "current_session_when_session_id_available",
+            "prompt_reconciliation": "compares displayed local prompt categories, locally observed assembled prompt tokens, and provider-reported prompt tokens",
         },
         "attribution_schema": {
             "version": 6,
@@ -13876,11 +14087,18 @@ def _weclaw_tokens_contract(
         if session_id:
             prompt_subcategory_split["session_id"] = session_id
 
+    prompt_reconciliation = (
+        prompt_subcategory_split.get("prompt_reconciliation")
+        if isinstance(prompt_subcategory_split, dict)
+        else None
+    )
+
     return {
         "taxonomy": taxonomy,
         "attribution": attribution,
         "profile_tokenizer": profile_tokenizer_section,
         "prompt_subcategory_split": prompt_subcategory_split,
+        "prompt_reconciliation": prompt_reconciliation,
         "latest_prompt_segmentation": latest_prompt_segmentation,
         "session": current_session_section,
         "last_turn": latest_primary_section,
