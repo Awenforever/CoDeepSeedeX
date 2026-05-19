@@ -132,7 +132,7 @@ def test_weclaw_tokens_contract_exposes_profile_tokenizer_split_when_available(t
 
     tokens = _weclaw_tokens_contract(store, profile="deepseek", profile_tokenizer_report=report)
 
-    assert tokens["taxonomy"]["version"] == 5
+    assert tokens["taxonomy"]["version"] == 6
     assert tokens["profile_tokenizer"]["available"] is True
     assert tokens["prompt_subcategory_split"]["available"] is True
     assert tokens["prompt_subcategory_split"]["categories"]["user"]["tokens"] > 0

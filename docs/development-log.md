@@ -782,3 +782,16 @@ Scope:
 - No public Release tag movement.
 - No GitHub Release rebuild.
 - No Release asset upload.
+
+
+## p2.10a73 WeClaw status primary-scope contract
+
+Date: 2026-05-19
+
+Scope:
+
+- Add `usage_events.session_id` and current-session filtering.
+- Split latest primary, latest any model call, and latest auxiliary call in the WeClaw token contract.
+- Keep `context_window.used_tokens` pinned to latest primary prompt tokens.
+- Add explicit Compact/Trim progress numerator, denominator, ratio, and basis fields.
+- Defer DeepSeek pricing discount parser changes to a later node.

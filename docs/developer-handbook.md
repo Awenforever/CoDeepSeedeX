@@ -1244,3 +1244,8 @@ Trusted current state after this node:
 - VM installation and runtime validation passed.
 
 This node does not move public Release tags, does not rebuild Release assets, and does not create a GitHub Release.
+
+
+## p2.10a73 WeClaw status primary-scope contract
+
+p2.10a73 separates latest primary model-call status from latest-any and auxiliary model calls for WeClaw status consumption. It adds usage ledger `session_id` support, `tokens.latest_primary_turn`, `tokens.latest_any_model_call`, `tokens.latest_auxiliary_call`, current-session filtering through `--session-id`, and explicit Compact/Trim `progress_*` fields. Pricing and discount parsing are intentionally deferred to a later node.

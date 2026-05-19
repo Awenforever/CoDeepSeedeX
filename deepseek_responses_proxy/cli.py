@@ -1405,7 +1405,10 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         port = _port_for(thinking, getattr(args, "port", None))
         timeout = float(getattr(args, "timeout", 2.0) or 2.0)
         base_url = _base_url(thinking=thinking, port=port)
-        weclaw_url = f"{base_url}/v1/proxy/weclaw/status?profile={profile_name}&include_balance=true"
+        query = {"profile": profile_name, "include_balance": "true"}
+        if getattr(args, "session_id", None):
+            query["session_id"] = str(args.session_id)
+        weclaw_url = f"{base_url}/v1/proxy/weclaw/status?{urllib.parse.urlencode(query)}"
         http_status, data, error = _http_json(weclaw_url, timeout=timeout)
         if isinstance(data, dict) and data.get("status") in {"ok", "error"}:
             data = dict(data)
@@ -5295,6 +5298,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
     status.add_argument("--weclaw-json", action="store_true", help="print WeClaw integration status JSON")
+    status.add_argument("--session-id", help="active Codex/ACP session id for current-session usage scope")
     status.set_defaults(func=_status)
 
     doctor = sub.add_parser("doctor", help="diagnose local proxy setup")

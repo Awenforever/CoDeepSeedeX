@@ -663,7 +663,7 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
     assert data["context_window"]["codex_profile"]["unit"] == "tokens"
     assert data["context_window"]["used_tokens"] is None
     assert data["context_window"]["used_tokens_available"] is False
-    assert data["context_window"]["used_tokens_source"] == "not_reported"
+    assert data["context_window"]["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     assert data["context_window"]["runtime"]["unit"] == "chars"
     assert data["context_window"]["runtime"]["available"] is True
     assert data["runtime_payload_guard"]["available"] is False
@@ -740,7 +740,7 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
 
     assert data["status"] == "ok"
     tokens = data["tokens"]
-    assert tokens["taxonomy"]["version"] == 5
+    assert tokens["taxonomy"]["version"] == 6
     assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
     assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
     assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "unavailable"

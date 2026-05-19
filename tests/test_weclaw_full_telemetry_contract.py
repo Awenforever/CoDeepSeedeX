@@ -195,7 +195,7 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert context_window["used_tokens_available"] is True
     assert context_window["used_tokens"] == 1000
     assert context_window["used_tokens_is_estimated"] is True
-    assert context_window["used_tokens_source"] == "dsproxy_usage_ledger.latest_turn.by_purpose.primary.prompt_tokens"
+    assert context_window["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     assert context_window["latest_upstream_prompt_tokens"]["value"] == 1000
     assert context_window["latest_upstream_prompt_tokens"]["is_estimated_for_context_window"] is True
     assert context_window["remaining_tokens_estimate"] == 749000
@@ -232,15 +232,32 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert last_turn["available"] is True
     assert last_turn["unit"] == "tokens"
     assert last_turn["request_id"] == "resp_turn"
-    assert last_turn["summary"]["model_call_count"] == 3
-    assert last_turn["summary"]["prompt_tokens"] == 1350
-    assert last_turn["summary"]["completion_tokens"] == 135
-    assert last_turn["summary"]["total_tokens"] == 1485
-    assert last_turn["summary"]["cached_tokens"] == 220
+    assert last_turn["summary"]["model_call_count"] == 1
+    assert last_turn["summary"]["prompt_tokens"] == 1000
+    assert last_turn["summary"]["completion_tokens"] == 100
+    assert last_turn["summary"]["total_tokens"] == 1100
+    assert last_turn["summary"]["cached_tokens"] == 200
     assert last_turn["summary"]["reasoning_tokens"] == 10
+    assert set(last_turn["by_purpose"]) == {"primary"}
     assert last_turn["by_purpose"]["primary"]["prompt_tokens"] == 1000
-    assert last_turn["by_purpose"]["tool_bridge"]["prompt_tokens"] == 300
-    assert last_turn["by_purpose"]["liveness_judge"]["prompt_tokens"] == 50
+
+    latest_primary = data["tokens"]["latest_primary_turn"]
+    assert latest_primary["request_id"] == "resp_turn"
+    assert latest_primary["summary"]["prompt_tokens"] == 1000
+
+    latest_any = data["tokens"]["latest_any_model_call"]
+    assert latest_any["available"] is True
+    assert latest_any["unit"] == "tokens"
+    assert latest_any["request_id"] == "resp_turn"
+    assert latest_any["summary"]["model_call_count"] == 3
+    assert latest_any["summary"]["prompt_tokens"] == 1350
+    assert latest_any["summary"]["completion_tokens"] == 135
+    assert latest_any["summary"]["total_tokens"] == 1485
+    assert latest_any["summary"]["cached_tokens"] == 220
+    assert latest_any["summary"]["reasoning_tokens"] == 10
+    assert latest_any["by_purpose"]["primary"]["prompt_tokens"] == 1000
+    assert latest_any["by_purpose"]["tool_bridge"]["prompt_tokens"] == 300
+    assert latest_any["by_purpose"]["liveness_judge"]["prompt_tokens"] == 50
 
     session_total = data["tokens"]["session_total"]
     assert session_total["available"] is True
@@ -267,7 +284,7 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
 
     assert data["cost"]["available"] is True
     assert data["cost"]["is_estimated"] is True
-    assert data["cost"]["last_turn_estimated_cost"] == pytest.approx(0.015)
+    assert data["cost"]["last_turn_estimated_cost"] == pytest.approx(0.01)
     assert data["cost"]["session_estimated_cost"] == pytest.approx(0.016)
     assert data["cost"]["auxiliary_estimated_cost"] == pytest.approx(0.005)
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.016)
