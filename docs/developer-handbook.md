@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a81-handbook-current-state-sync` (resolve the exact commit with `git rev-parse --short p2.10a81-handbook-current-state-sync^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a81-handbook-current-state-sync`
+- Current internal development checkpoint: `p2.10a82-append-only-payload-trace` (resolve the exact commit with `git rev-parse --short p2.10a82-append-only-payload-trace^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a82-append-only-payload-trace`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
@@ -287,7 +287,7 @@ git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
 git rev-parse --short p2.10a80-docs-release-latest^{}
-git rev-parse --short p2.10a81-handbook-current-state-sync^{} || true
+git rev-parse --short p2.10a82-append-only-payload-trace^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -301,13 +301,13 @@ Expected current public Release baseline:
 worktree clean
 v0.3.9-alpha=80bb0ea
 p2.10a80-docs-release-latest=80bb0ea
-current_internal_checkpoint=p2.10a81-handbook-current-state-sync
+current_internal_checkpoint=p2.10a82-append-only-payload-trace
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 public version: v0.3.9-alpha | 80bb0ea
-internal version: p2.10a81-handbook-current-state-sync | <current checkpoint commit>
+internal version: p2.10a82-append-only-payload-trace | <current checkpoint commit>
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -1341,3 +1341,12 @@ Final verified p2.10a80 Release state:
 p2.10a81 is a documentation and runtime internal-version sync after p2.10a80. It corrects stale handbook startup state from `6ea67b2` / `p2.10a71-docs-prerelease-notes` to the p2.10a80 public Release baseline at `80bb0ea`, clarifies that the current cumulative release-note source is the only active release-note file under `docs/`, and advances the developer internal checkpoint to `p2.10a81-handbook-current-state-sync`.
 
 This node must not move `v0.3.9-alpha`, recreate the GitHub Release, or rebuild Release assets.
+
+
+## p2.10a82 Append-only upstream payload trace
+
+p2.10a82 adds an opt-in append-only upstream payload trace for diagnosing what Codex sends through the active profile route. Set `DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR` to an absolute directory under `/tmp` to enable it.
+
+The trace is local-only and disabled by default. Each `DeepSeekClient.chat_completions()` call writes one JSON event containing sanitized raw payload, payload summary, request purpose metadata, duplicate-content hashes, role character totals, tools schema size, and the context trimming report. The trace does not change prompt assembly, model selection, compaction, trimming, provider calls, pricing, or Release metadata.
+
+This node is for observability only. It must not be treated as a payload reduction, prompt cache, or semantic compaction implementation. Public `v0.3.9-alpha` remains at `80bb0ea`.

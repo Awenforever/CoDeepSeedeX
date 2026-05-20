@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a81-handbook-current-state-sync`，准确提交用`git rev-parse --short p2.10a81-handbook-current-state-sync^{}`解析
-- 最新闭合文档同步检查点：`p2.10a81-handbook-current-state-sync`
+- 当前内部开发检查点：`p2.10a82-append-only-payload-trace`，准确提交用`git rev-parse --short p2.10a82-append-only-payload-trace^{}`解析
+- 最新闭合文档同步检查点：`p2.10a82-append-only-payload-trace`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -260,7 +260,7 @@ git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
 git rev-parse --short p2.10a80-docs-release-latest^{}
-git rev-parse --short p2.10a81-handbook-current-state-sync^{} || true
+git rev-parse --short p2.10a82-append-only-payload-trace^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -274,13 +274,13 @@ dsproxy --version
 worktree clean
 v0.3.9-alpha=80bb0ea
 p2.10a80-docs-release-latest=80bb0ea
-current_internal_checkpoint=p2.10a81-handbook-current-state-sync
+current_internal_checkpoint=p2.10a82-append-only-payload-trace
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 public version: v0.3.9-alpha | 80bb0ea
-internal version: p2.10a81-handbook-current-state-sync | <current checkpoint commit>
+internal version: p2.10a82-append-only-payload-trace | <current checkpoint commit>
 ```
 
 然后阅读`docs/developer-handbook.md`。只有需要历史回溯时再阅读`docs/development-log.md`。
@@ -1297,3 +1297,12 @@ p2.10a80最终验证状态：
 p2.10a81是p2.10a80之后的文档和运行时内部版本同步节点。它将手册启动状态从过期的`6ea67b2` / `p2.10a71-docs-prerelease-notes`修正为p2.10a80公开Release基线`80bb0ea`，明确当前累计Release-note源文件是`docs/`下唯一仍活跃的release-note文件，并将开发侧内部检查点推进到`p2.10a81-handbook-current-state-sync`。
 
 本节点不得移动`v0.3.9-alpha`，不得重建GitHub Release，也不得重新上传Release资产。
+
+
+## p2.10a82 Append-only upstream payload trace
+
+p2.10a82新增可选的append-only上游payload trace，用于诊断Codex通过当前profile route实际发送给上游模型的内容。设置`DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR`为`/tmp`下的绝对目录即可启用。
+
+该trace仅限本地，默认关闭。每次`DeepSeekClient.chat_completions()`调用会写入一个JSON事件，包含脱敏后的原始payload、payload摘要、request purpose元数据、重复content hash、各role字符数、tools schema大小和context trimming report。该trace不改变prompt组装、模型选择、compaction、trimming、provider调用、pricing或Release元数据。
+
+本节点只提供观测能力。它不是payload减冗余、prompt cache或semantic compaction实现。公开`v0.3.9-alpha`仍停留在`80bb0ea`。

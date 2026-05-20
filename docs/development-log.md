@@ -914,3 +914,21 @@ Release boundary:
 - No GitHub Release is created or updated.
 - No Release assets are rebuilt.
 - Forbidden plain tags `v0.3.9` and `v0.3.5` must remain absent.
+
+
+## p2.10a82 Append-only upstream payload trace
+
+Date: 2026-05-20
+
+Scope:
+
+- Add opt-in append-only upstream payload tracing through `DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR`.
+- Record one local JSON event per `DeepSeekClient.chat_completions()` call before the upstream POST.
+- Include sanitized raw payload, summary, request purpose metadata, duplicate-content hashes, role character totals, tools schema size, and context trimming report.
+- Restrict trace output to `/tmp` and keep the feature disabled by default.
+
+Boundary:
+
+- No prompt assembly behavior changes.
+- No payload reduction, semantic compaction, prompt caching, pricing, Release asset, or public tag changes.
+- Public `v0.3.9-alpha` remains at `80bb0ea`.

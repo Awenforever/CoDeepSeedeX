@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a81-handbook-current-state-sync"
+PROXY_INTERNAL_VERSION = "p2.10a82-append-only-payload-trace"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -6049,6 +6049,202 @@ def _write_context_compaction_report(report: dict[str, Any]) -> None:
         print(f"[deepseek-responses-proxy] failed to write context compaction report: {exc}")
 
 
+_PAYLOAD_TRACE_SENSITIVE_KEY_RE = re.compile(r"(api[_-]?key|authorization|token|secret|password)", re.IGNORECASE)
+
+
+def _payload_trace_dir() -> Path | None:
+    raw = os.environ.get("DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR", "").strip()
+    if not raw:
+        return None
+
+    try:
+        trace_dir = Path(raw).expanduser().resolve()
+        tmp_root = Path("/tmp").resolve()
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] invalid DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR={raw!r}: {exc}")
+        return None
+
+    if trace_dir != tmp_root and tmp_root not in trace_dir.parents:
+        print("[deepseek-responses-proxy] ignoring DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR outside /tmp")
+        return None
+
+    return trace_dir
+
+
+def _payload_trace_sanitize(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if _PAYLOAD_TRACE_SENSITIVE_KEY_RE.search(key_text):
+                sanitized[key_text] = "<redacted>"
+            else:
+                sanitized[key_text] = _payload_trace_sanitize(item)
+        return sanitized
+
+    if isinstance(value, list):
+        return [_payload_trace_sanitize(item) for item in value]
+
+    return value
+
+
+def _payload_trace_json_chars(value: Any) -> int:
+    try:
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    except Exception:
+        return 0
+
+
+def _payload_trace_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if isinstance(item.get("text"), str):
+                    parts.append(str(item["text"]))
+                elif isinstance(item.get("content"), str):
+                    parts.append(str(item["content"]))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts)
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _payload_trace_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    messages = payload.get("messages")
+    tools = payload.get("tools")
+    summary: dict[str, Any] = {
+        "model": payload.get("model"),
+        "stream": payload.get("stream"),
+        "payload_chars": _payload_trace_json_chars(payload),
+        "message_count": len(messages) if isinstance(messages, list) else None,
+        "tools_count": len(tools) if isinstance(tools, list) else 0,
+        "tools_chars": _payload_trace_json_chars(tools) if isinstance(tools, list) else 0,
+        "roles": {},
+        "large_messages": [],
+        "duplicate_message_content": [],
+        "request_option_keys": sorted([str(key) for key in payload.keys() if key not in {"messages", "tools"}]),
+    }
+
+    if isinstance(messages, list):
+        role_stats: dict[str, dict[str, int]] = {}
+        seen_content: dict[str, list[int]] = {}
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                continue
+            role = str(message.get("role") or "unknown")
+            content_text = _payload_trace_content_text(message.get("content"))
+            content_chars = len(content_text)
+            role_stats.setdefault(role, {"count": 0, "content_chars": 0})
+            role_stats[role]["count"] += 1
+            role_stats[role]["content_chars"] += content_chars
+
+            normalized = " ".join(content_text.split()).strip()
+            if normalized:
+                digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+                seen_content.setdefault(digest, []).append(index)
+
+            if content_chars >= 2000:
+                summary["large_messages"].append(
+                    {
+                        "index": index,
+                        "role": role,
+                        "content_chars": content_chars,
+                        "sha256": hashlib.sha256(content_text.encode("utf-8")).hexdigest(),
+                        "preview": content_text[:240],
+                    }
+                )
+
+        summary["roles"] = role_stats
+        for digest, indexes in seen_content.items():
+            if len(indexes) > 1:
+                summary["duplicate_message_content"].append(
+                    {
+                        "sha256": digest,
+                        "indexes": indexes,
+                        "count": len(indexes),
+                    }
+                )
+
+    flags: list[str] = []
+    if int(summary.get("tools_chars") or 0) >= 6000:
+        flags.append("large_tools_schema")
+    if summary.get("duplicate_message_content"):
+        flags.append("duplicate_message_content")
+    roles = summary.get("roles")
+    if isinstance(roles, dict):
+        system_count = int(roles.get("system", {}).get("count", 0))
+        developer_count = int(roles.get("developer", {}).get("count", 0))
+        if system_count + developer_count > 3:
+            flags.append("many_system_or_developer_messages")
+    summary["preliminary_unhealthy_flags"] = flags
+    return summary
+
+
+def _payload_trace_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+
+    safe: dict[str, Any] = {}
+    for key, value in metadata.items():
+        key_text = str(key)
+        if _PAYLOAD_TRACE_SENSITIVE_KEY_RE.search(key_text):
+            safe[key_text] = "<redacted>"
+        elif isinstance(value, (str, int, float, bool)) or value is None:
+            safe[key_text] = value if not isinstance(value, str) else value[:1000]
+        else:
+            safe[key_text] = _payload_trace_sanitize(value)
+    return safe
+
+
+def _write_upstream_payload_trace(
+    payload: dict[str, Any],
+    *,
+    context_trimming_report: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    trace_dir = _payload_trace_dir()
+    if trace_dir is None:
+        return
+
+    try:
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            trace_dir.chmod(0o700)
+        except Exception:
+            pass
+
+        sanitized_payload = _payload_trace_sanitize(payload)
+        serialized_payload = json.dumps(sanitized_payload, ensure_ascii=False, indent=2)
+        payload_sha256 = hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
+        observed_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="microseconds")
+        event_id = f"{time.time_ns()}-{uuid.uuid4().hex[:8]}"
+
+        event = {
+            "schema_version": 1,
+            "event_id": event_id,
+            "observed_at": observed_at,
+            "source": "DeepSeekClient.chat_completions",
+            "metadata": _payload_trace_metadata(metadata),
+            "payload_sha256": payload_sha256,
+            "payload_bytes": len(serialized_payload.encode("utf-8")),
+            "summary": _payload_trace_summary(sanitized_payload if isinstance(sanitized_payload, dict) else {}),
+            "context_trimming_report": _payload_trace_sanitize(context_trimming_report or {}),
+            "payload": sanitized_payload,
+        }
+
+        tmp_path = trace_dir / f".{event_id}.tmp"
+        final_path = trace_dir / f"{event_id}.json"
+        tmp_path.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path.replace(final_path)
+    except Exception as exc:
+        print(f"[deepseek-responses-proxy] failed to write upstream payload trace: {exc}")
+
+
 class DeepSeekClient:
     def __init__(
         self,
@@ -6099,7 +6295,7 @@ class DeepSeekClient:
                 },
             ) from exc
 
-    async def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def chat_completions(self, payload: dict[str, Any], trace_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -6129,6 +6325,12 @@ class DeepSeekClient:
             )
         except Exception as exc:
             print(f"[deepseek-responses-proxy] failed to write debug payload: {exc}")
+
+        _write_upstream_payload_trace(
+            payload,
+            context_trimming_report=context_trimming_report,
+            metadata=trace_metadata,
+        )
 
         response = await self._client.post(
             f"{self.base_url}/chat/completions",
@@ -6209,7 +6411,32 @@ async def _chat_completions_with_usage(
     )
     started = time.time()
     try:
-        deepseek_response = await deepseek_client.chat_completions(payload)
+        trace_metadata = {
+            "purpose": purpose,
+            "call_index": call_index,
+            "response_id": response_id,
+            "previous_response_id": previous_response_id,
+            "request_id": request_id,
+            "requested_model": requested_model,
+            "effective_model": effective_model,
+            "thinking_enabled": thinking_enabled,
+            "session_id": session_id,
+        }
+        chat_completions = deepseek_client.chat_completions
+        try:
+            import inspect
+
+            signature = inspect.signature(chat_completions)
+            accepts_trace_metadata = "trace_metadata" in signature.parameters or any(
+                parameter.kind == parameter.VAR_KEYWORD for parameter in signature.parameters.values()
+            )
+        except (TypeError, ValueError):
+            accepts_trace_metadata = False
+
+        if accepts_trace_metadata:
+            deepseek_response = await chat_completions(payload, trace_metadata=trace_metadata)
+        else:
+            deepseek_response = await chat_completions(payload)
     except Exception as exc:
         _debug_trace_event(
             response_id,
