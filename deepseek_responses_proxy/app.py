@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a82-append-only-payload-trace"
+PROXY_INTERNAL_VERSION = "p2.10a83-deepseek-cache-accounting-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -209,23 +209,35 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     prompt_details = usage.get("prompt_tokens_details") or {}
     completion_details = usage.get("completion_tokens_details") or {}
 
-    cached_tokens = int(
-        prompt_details.get("cached_tokens")
-        or usage.get("prompt_cache_hit_tokens")
+    prompt_cache_hit_tokens = int(
+        usage.get("prompt_cache_hit_tokens")
+        if usage.get("prompt_cache_hit_tokens") is not None
+        else prompt_details.get("cached_tokens")
         or 0
     )
-    reasoning_tokens = int(completion_details.get("reasoning_tokens") or 0)
+    if prompt_cache_hit_tokens < 0:
+        prompt_cache_hit_tokens = 0
+    if prompt_cache_hit_tokens > prompt_tokens:
+        prompt_cache_hit_tokens = prompt_tokens
 
-    if cached_tokens < 0:
-        cached_tokens = 0
-    if cached_tokens > prompt_tokens:
-        cached_tokens = prompt_tokens
+    if usage.get("prompt_cache_miss_tokens") is not None:
+        prompt_cache_miss_tokens = int(usage.get("prompt_cache_miss_tokens") or 0)
+    else:
+        prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
+    if prompt_cache_miss_tokens < 0:
+        prompt_cache_miss_tokens = 0
+    if prompt_cache_hit_tokens + prompt_cache_miss_tokens > prompt_tokens:
+        prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
+
+    reasoning_tokens = int(completion_details.get("reasoning_tokens") or 0)
 
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
-        "cached_tokens": cached_tokens,
+        "cached_tokens": prompt_cache_hit_tokens,
+        "prompt_cache_hit_tokens": prompt_cache_hit_tokens,
+        "prompt_cache_miss_tokens": prompt_cache_miss_tokens,
         "reasoning_tokens": reasoning_tokens,
     }
 
@@ -764,8 +776,10 @@ def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
         return 0.0
 
     prompt_tokens = usage_numbers["prompt_tokens"]
-    cached_tokens = usage_numbers["cached_tokens"]
-    cache_miss_tokens = max(0, prompt_tokens - cached_tokens)
+    cached_tokens = int(usage_numbers.get("prompt_cache_hit_tokens", usage_numbers.get("cached_tokens", 0)))
+    cache_miss_tokens = usage_numbers.get("prompt_cache_miss_tokens")
+    if cache_miss_tokens is None:
+        cache_miss_tokens = max(0, prompt_tokens - cached_tokens)
     completion_tokens = usage_numbers["completion_tokens"]
 
     cost = (
@@ -4673,6 +4687,8 @@ class SQLiteResponseStore:
                     completion_tokens INTEGER NOT NULL,
                     total_tokens INTEGER NOT NULL,
                     cached_tokens INTEGER NOT NULL,
+                    prompt_cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+                    prompt_cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
                     reasoning_tokens INTEGER NOT NULL,
                     estimated_cost_usd REAL NOT NULL
                 )
@@ -4716,6 +4732,8 @@ class SQLiteResponseStore:
         self._ensure_column(conn, table="usage_events", column="upstream_model", ddl="TEXT")
         self._ensure_column(conn, table="usage_events", column="route", ddl="TEXT")
         self._ensure_column(conn, table="usage_events", column="effort", ddl="TEXT")
+        self._ensure_column(conn, table="usage_events", column="prompt_cache_hit_tokens", ddl="INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(conn, table="usage_events", column="prompt_cache_miss_tokens", ddl="INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(conn, table="usage_events", column="pricing_model", ddl="TEXT")
         self._ensure_column(conn, table="usage_events", column="pricing_currency", ddl="TEXT")
         self._ensure_column(conn, table="usage_events", column="pricing_unit", ddl="TEXT")
@@ -4830,6 +4848,8 @@ class SQLiteResponseStore:
                     completion_tokens,
                     total_tokens,
                     cached_tokens,
+                    prompt_cache_hit_tokens,
+                    prompt_cache_miss_tokens,
                     reasoning_tokens,
                     estimated_cost_usd,
                     route,
@@ -4847,7 +4867,7 @@ class SQLiteResponseStore:
                     estimated_cost_display_amount,
                     estimated_cost_display_currency
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _now(),
@@ -4866,6 +4886,8 @@ class SQLiteResponseStore:
                     usage_numbers["completion_tokens"],
                     usage_numbers["total_tokens"],
                     usage_numbers["cached_tokens"],
+                    usage_numbers.get("prompt_cache_hit_tokens", usage_numbers.get("cached_tokens", 0)),
+                    usage_numbers.get("prompt_cache_miss_tokens", max(0, usage_numbers.get("prompt_tokens", 0) - usage_numbers.get("cached_tokens", 0))),
                     usage_numbers["reasoning_tokens"],
                     legacy_usd_amount,
                     normalized_route,
@@ -4972,6 +4994,8 @@ class SQLiteResponseStore:
                     completion_tokens,
                     total_tokens,
                     cached_tokens,
+                    prompt_cache_hit_tokens,
+                    prompt_cache_miss_tokens,
                     reasoning_tokens,
                     estimated_cost_usd,
                     route,
@@ -5027,6 +5051,8 @@ class SQLiteResponseStore:
                     COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
                     COALESCE(SUM(total_tokens), 0) AS total_tokens,
                     COALESCE(SUM(cached_tokens), 0) AS cached_tokens,
+                    COALESCE(SUM(prompt_cache_hit_tokens), 0) AS prompt_cache_hit_tokens,
+                    COALESCE(SUM(prompt_cache_miss_tokens), 0) AS prompt_cache_miss_tokens,
                     COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                     COALESCE(SUM(estimated_cost_usd), 0.0) AS estimated_cost_usd
                 FROM usage_events
@@ -11752,6 +11778,57 @@ def _stream_response_events(response: dict[str, Any]):
     yield b"data: [DONE]\n\n"
 
 
+def _stable_deepseek_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _stable_deepseek_json_value(value[key]) for key in sorted(value, key=lambda item: str(item))}
+    if isinstance(value, list):
+        return [_stable_deepseek_json_value(item) for item in value]
+    return value
+
+
+def _stable_deepseek_tools(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if not tools:
+        return None
+    stable_tools = [_stable_deepseek_json_value(tool) for tool in tools]
+
+    def _tool_sort_key(tool: Any) -> tuple[str, str, str]:
+        if not isinstance(tool, dict):
+            return ("", "", json.dumps(tool, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str))
+        function = tool.get("function")
+        function_name = str(function.get("name") or "") if isinstance(function, dict) else ""
+        return (
+            str(tool.get("type") or ""),
+            function_name,
+            json.dumps(tool, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str),
+        )
+
+    return sorted(stable_tools, key=_tool_sort_key)
+
+
+def _deepseek_cache_user_id(request_payload: dict[str, Any] | None, *, model: str) -> str | None:
+    if os.environ.get("DEEPSEEK_PROXY_DISABLE_STABLE_USER_ID", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return None
+    configured = os.environ.get("DEEPSEEK_PROXY_USER_ID", "").strip()
+    if configured:
+        return configured[:128]
+    session_id = _session_id_from_request_payload(request_payload)
+    route = "thinking" if _thinking_enabled() else "non_thinking"
+    provider = os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
+    try:
+        project_hash = hashlib.sha256(str(Path.cwd().resolve()).encode("utf-8", errors="replace")).hexdigest()[:16]
+    except Exception:
+        project_hash = "unknown_project"
+    material = "|".join([
+        f"provider={provider}",
+        f"route={route}",
+        f"model={model}",
+        f"project={project_hash}",
+        f"session={session_id or 'profile_route'}",
+    ])
+    digest = hashlib.sha256(material.encode("utf-8", errors="replace")).hexdigest()[:32]
+    return f"codeepseedex_{route}_{digest}"[:128]
+
+
 def _build_chat_payload(
     *,
     model: str,
@@ -11772,6 +11849,10 @@ def _build_chat_payload(
         "thinking": _deepseek_thinking_config(),
     }
 
+    user_id = _deepseek_cache_user_id(request_payload, model=model)
+    if user_id:
+        payload["user_id"] = user_id
+
     if reasoning_effort is not None:
         payload["reasoning_effort"] = reasoning_effort
 
@@ -11786,8 +11867,13 @@ def _build_chat_payload(
             if key in request_payload and request_payload[key] is not None:
                 payload[key] = request_payload[key]
 
-    if tools:
-        payload["tools"] = tools
+    stable_tools = _stable_deepseek_tools(tools)
+    if stable_tools:
+        payload["tools"] = stable_tools
+        if isinstance(request_payload, dict) and request_payload.get("tool_choice") is not None:
+            payload["tool_choice"] = request_payload.get("tool_choice")
+        else:
+            payload["tool_choice"] = "auto"
 
     return payload
 
@@ -13506,6 +13592,8 @@ def _weclaw_zero_usage_summary() -> dict[str, Any]:
         "completion_tokens": 0,
         "total_tokens": 0,
         "cached_tokens": 0,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 0,
         "reasoning_tokens": 0,
         "estimated_cost_usd": 0.0,
     }
@@ -13525,6 +13613,29 @@ def _weclaw_usage_float(value: Any) -> float:
         return 0.0
 
 
+def _weclaw_cache_summary_from_summary(summary: dict[str, Any], *, scope: str, source: str) -> dict[str, Any]:
+    prompt_tokens = _weclaw_usage_int(summary.get("prompt_tokens"))
+    hit_tokens = _weclaw_usage_int(summary.get("prompt_cache_hit_tokens") if "prompt_cache_hit_tokens" in summary else summary.get("cached_tokens"))
+    miss_tokens = _weclaw_usage_int(summary.get("prompt_cache_miss_tokens"))
+    if miss_tokens == 0 and prompt_tokens and hit_tokens <= prompt_tokens:
+        miss_tokens = max(0, prompt_tokens - hit_tokens)
+    return {
+        "available": prompt_tokens > 0,
+        "unit": "tokens",
+        "scope": scope,
+        "source": source,
+        "is_estimated": False,
+        "provider_authoritative": True,
+        "prompt_tokens": prompt_tokens,
+        "prompt_cache_hit_tokens": hit_tokens,
+        "prompt_cache_miss_tokens": miss_tokens,
+        "cached_tokens": hit_tokens,
+        "cache_hit_ratio": (hit_tokens / prompt_tokens) if prompt_tokens > 0 else None,
+        "cache_miss_ratio": (miss_tokens / prompt_tokens) if prompt_tokens > 0 else None,
+        "reason": None if prompt_tokens > 0 else "provider_usage_not_available",
+    }
+
+
 def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     summary = _weclaw_zero_usage_summary()
     summary["model_call_count"] = len(events)
@@ -13537,7 +13648,13 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
         summary["prompt_tokens"] += _weclaw_usage_int(event.get("prompt_tokens"))
         summary["completion_tokens"] += _weclaw_usage_int(event.get("completion_tokens"))
         summary["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
-        summary["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
+        hit_tokens = _weclaw_usage_int(event.get("prompt_cache_hit_tokens") if event.get("prompt_cache_hit_tokens") is not None else event.get("cached_tokens"))
+        miss_tokens = _weclaw_usage_int(event.get("prompt_cache_miss_tokens"))
+        if miss_tokens == 0:
+            miss_tokens = max(0, _weclaw_usage_int(event.get("prompt_tokens")) - hit_tokens)
+        summary["cached_tokens"] += hit_tokens
+        summary["prompt_cache_hit_tokens"] += hit_tokens
+        summary["prompt_cache_miss_tokens"] += miss_tokens
         summary["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
 
         source_currency = str(event.get("estimated_cost_source_currency") or event.get("pricing_currency") or "USD").upper()
@@ -13563,6 +13680,8 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "cached_tokens": 0,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 0,
                 "reasoning_tokens": 0,
                 "total_tokens": 0,
                 "estimated_cost_usd": 0.0,
@@ -13572,7 +13691,9 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
         model_usage["model_call_count"] += 1
         model_usage["prompt_tokens"] += _weclaw_usage_int(event.get("prompt_tokens"))
         model_usage["completion_tokens"] += _weclaw_usage_int(event.get("completion_tokens"))
-        model_usage["cached_tokens"] += _weclaw_usage_int(event.get("cached_tokens"))
+        model_usage["cached_tokens"] += hit_tokens
+        model_usage["prompt_cache_hit_tokens"] += hit_tokens
+        model_usage["prompt_cache_miss_tokens"] += miss_tokens
         model_usage["reasoning_tokens"] += _weclaw_usage_int(event.get("reasoning_tokens"))
         model_usage["total_tokens"] += _weclaw_usage_int(event.get("total_tokens"))
         model_usage["estimated_cost_usd"] = float(model_usage["estimated_cost_usd"] + _weclaw_usage_float(event.get("estimated_cost_usd")))
@@ -13596,6 +13717,9 @@ def _weclaw_summarize_usage_events(events: list[dict[str, Any]]) -> dict[str, An
         key: float(value)
         for key, value in sorted(summary["estimated_cost_by_currency"].items())
     }
+    summary["cache_hit_ratio"] = (summary["prompt_cache_hit_tokens"] / summary["prompt_tokens"]) if summary["prompt_tokens"] else None
+    for model_usage in summary["usage_by_model"].values():
+        model_usage["cache_hit_ratio"] = (model_usage["prompt_cache_hit_tokens"] / model_usage["prompt_tokens"]) if model_usage["prompt_tokens"] else None
     summary["models"] = sorted(summary["usage_by_model"])
     return summary
 
@@ -14509,6 +14633,8 @@ def _weclaw_tokens_contract(
             "completion_tokens": 0,
             "total_tokens": 0,
             "cached_tokens": 0,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 0,
             "reasoning_tokens": 0,
             "estimated_cost_usd": 0.0,
             "estimated_cost_by_currency": {},
@@ -14529,6 +14655,8 @@ def _weclaw_tokens_contract(
             "completion_tokens": 0,
             "total_tokens": 0,
             "cached_tokens": 0,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 0,
             "reasoning_tokens": 0,
             "missing": [reason],
             "reason": reason,
@@ -14554,6 +14682,10 @@ def _weclaw_tokens_contract(
             "completion_tokens": _weclaw_usage_int(summary.get("completion_tokens")),
             "total_tokens": _weclaw_usage_int(summary.get("total_tokens")),
             "cached_tokens": _weclaw_usage_int(summary.get("cached_tokens")),
+            "prompt_cache_hit_tokens": _weclaw_usage_int(summary.get("prompt_cache_hit_tokens")),
+            "prompt_cache_miss_tokens": _weclaw_usage_int(summary.get("prompt_cache_miss_tokens")),
+            "cache_hit_ratio": summary.get("cache_hit_ratio"),
+            "cache": _weclaw_cache_summary_from_summary(summary, scope=scope, source=f"{source}.summary.provider_cache_fields"),
             "reasoning_tokens": _weclaw_usage_int(summary.get("reasoning_tokens")),
             "summary": summary,
             "by_purpose": _weclaw_usage_by_purpose(section_events),
@@ -14617,6 +14749,10 @@ def _weclaw_tokens_contract(
             "completion_tokens": 0,
             "total_tokens": 0,
             "cached_tokens": 0,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 0,
+            "cache_hit_ratio": None,
+            "cache": _weclaw_cache_summary_from_summary(auxiliary_summary, scope="current_session", source="dsproxy_usage_ledger.non_primary_purposes.summary.provider_cache_fields"),
             "reasoning_tokens": 0,
             "summary": auxiliary_summary,
             "by_purpose": {},
@@ -14665,6 +14801,21 @@ def _weclaw_tokens_contract(
         "profile_route_total": profile_route_total,
         "auxiliary_model_calls": auxiliary_section,
         "profile_route_auxiliary_model_calls": route_auxiliary_section,
+        "cache": {
+            "available": True,
+            "unit": "tokens",
+            "source": "deepseek_usage.prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_via_dsproxy_usage_ledger",
+            "provider_authoritative": True,
+            "session": current_session_section.get("cache") if isinstance(current_session_section, dict) else None,
+            "last_turn": latest_primary_section.get("cache") if isinstance(latest_primary_section, dict) else None,
+            "latest_primary_turn": latest_primary_section.get("cache") if isinstance(latest_primary_section, dict) else None,
+            "latest_any_model_call": latest_any_section.get("cache") if isinstance(latest_any_section, dict) else None,
+            "latest_auxiliary_call": latest_aux_section.get("cache") if isinstance(latest_aux_section, dict) else None,
+            "auxiliary_model_calls": auxiliary_section.get("cache") if isinstance(auxiliary_section, dict) else None,
+            "session_total": session_total_section.get("cache") if isinstance(session_total_section, dict) else None,
+            "profile_route_total": profile_route_total.get("cache") if isinstance(profile_route_total, dict) else None,
+            "profile_route_auxiliary_model_calls": route_auxiliary_section.get("cache") if isinstance(route_auxiliary_section, dict) else None,
+        },
         "scope": {
             "requested_session_id": session_id,
             "current_session_available": current_session_available,
@@ -14808,7 +14959,9 @@ def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) 
         "usage": {
             "prompt_tokens": event.get("prompt_tokens"),
             "cached_tokens": event.get("cached_tokens"),
-            "cache_miss_tokens": max(0, _weclaw_usage_int(event.get("prompt_tokens")) - _weclaw_usage_int(event.get("cached_tokens"))),
+            "prompt_cache_hit_tokens": event.get("prompt_cache_hit_tokens") if event.get("prompt_cache_hit_tokens") is not None else event.get("cached_tokens"),
+            "prompt_cache_miss_tokens": event.get("prompt_cache_miss_tokens") if event.get("prompt_cache_miss_tokens") is not None else max(0, _weclaw_usage_int(event.get("prompt_tokens")) - _weclaw_usage_int(event.get("cached_tokens"))),
+            "cache_miss_tokens": event.get("prompt_cache_miss_tokens") if event.get("prompt_cache_miss_tokens") is not None else max(0, _weclaw_usage_int(event.get("prompt_tokens")) - _weclaw_usage_int(event.get("cached_tokens"))),
             "completion_tokens": event.get("completion_tokens"),
             "reasoning_tokens": event.get("reasoning_tokens"),
             "total_tokens": event.get("total_tokens"),
@@ -15081,6 +15234,8 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any], balan
         "available": session_available,
         "precision": "per_turn_model_pricing",
         "source": "usage_events.estimated_cost_source_amount_summed_without_repricing_history",
+        "cost_uses_provider_cache_hit_miss_tokens": True,
+        "prompt_cost_semantics": "per_turn_cost_uses_provider_prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_when_available",
         "session_cost_is_sum_of_turn_estimated_cost": True,
         "session_cost_recomputed_from_current_model": False,
         "display_currency": display_currency,
@@ -15114,6 +15269,14 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any], balan
         "pricing_updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "updated_at": pricing.get("fetched_at") or pricing.get("updated_at"),
         "session": session_contract,
+        "provider_cache": {
+            "available": True,
+            "source": "tokens.cache.provider_authoritative_request_level_totals",
+            "session": (tokens.get("cache") or {}).get("session") if isinstance(tokens.get("cache"), dict) else None,
+            "last_turn": (tokens.get("cache") or {}).get("last_turn") if isinstance(tokens.get("cache"), dict) else None,
+            "auxiliary": (tokens.get("cache") or {}).get("auxiliary_model_calls") if isinstance(tokens.get("cache"), dict) else None,
+        },
+        "cost_uses_provider_cache_hit_miss_tokens": True,
         "last_turn_estimated_cost": last_money.get("amount") if isinstance(last_turn, dict) and last_turn.get("available") else None,
         "session_estimated_cost": session_money.get("amount") if session_available else None,
         "auxiliary_estimated_cost": auxiliary_money.get("amount") if isinstance(auxiliary, dict) and auxiliary.get("available") else 0.0,
@@ -15139,6 +15302,7 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any], balan
             "Token counts are provider-reported exact usage totals.",
             "Current-session cost is available only from tokens.session when dsproxy status is called with an active session id.",
             "Cost is estimated from per-turn dsproxy usage ledger entries, not by multiplying historical session tokens by the current active model price.",
+            "Prompt input cost uses provider prompt_cache_hit_tokens and prompt_cache_miss_tokens when available; it does not treat all prompt tokens as miss or all as hit.",
         ],
     }
 

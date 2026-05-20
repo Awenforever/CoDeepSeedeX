@@ -932,3 +932,8 @@ Boundary:
 - No prompt assembly behavior changes.
 - No payload reduction, semantic compaction, prompt caching, pricing, Release asset, or public tag changes.
 - Public `v0.3.9-alpha` remains at `80bb0ea`.
+
+
+## p2.10a83 DeepSeek cache accounting contract
+
+Adds provider-authoritative DeepSeek prompt cache hit/miss accounting to the usage ledger, WeClaw status, and cost contract. Session, last-turn, and auxiliary cache sections expose request-level `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, and cache hit ratio. Cost remains per-turn ledger based and uses hit/miss input prices rather than treating all prompt tokens as cache miss or cache hit. DeepSeek ChatCompletions payloads now set a stable hashed `user_id` by default and canonicalize tools schema ordering to protect DeepSeek context-cache reuse. Segment-level origin splits remain local estimates; provider cache hit/miss is request-level authoritative.
