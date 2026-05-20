@@ -34,8 +34,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a83-deepseek-cache-accounting-contract` (resolve the exact commit with `git rev-parse --short p2.10a83-deepseek-cache-accounting-contract^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a83-deepseek-cache-accounting-contract`
+- Current internal development checkpoint: `p2.10a84-token-first-compact-trim-contract` (resolve the exact commit with `git rev-parse --short p2.10a84-token-first-compact-trim-contract^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a84-token-first-compact-trim-contract`
+- Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
@@ -287,7 +288,7 @@ git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
 git rev-parse --short p2.10a80-docs-release-latest^{}
-git rev-parse --short p2.10a83-deepseek-cache-accounting-contract^{} || true
+git rev-parse --short p2.10a84-token-first-compact-trim-contract^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -301,7 +302,7 @@ Expected current public Release baseline:
 worktree clean
 v0.3.9-alpha=80bb0ea
 p2.10a80-docs-release-latest=80bb0ea
-current_internal_checkpoint=p2.10a83-deepseek-cache-accounting-contract
+current_internal_checkpoint=p2.10a84-token-first-compact-trim-contract
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
@@ -1355,3 +1356,18 @@ This node is for observability only. It must not be treated as a payload reducti
 ## p2.10a83 DeepSeek cache accounting contract
 
 Adds provider-authoritative DeepSeek prompt cache hit/miss accounting to the usage ledger, WeClaw status, and cost contract. Session, last-turn, and auxiliary cache sections expose request-level `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, and cache hit ratio. Cost remains per-turn ledger based and uses hit/miss input prices rather than treating all prompt tokens as cache miss or cache hit. DeepSeek ChatCompletions payloads now set a stable hashed `user_id` by default and canonicalize tools schema ordering to protect DeepSeek context-cache reuse. Segment-level origin splits remain local estimates; provider cache hit/miss is request-level authoritative.
+
+## p2.10a84 Token-first Compact/Trim context contract
+
+p2.10a84 changes the active context-window contract from an auto-compact-threshold display to a token-first model-window display.
+
+Rules:
+
+1. Managed Codex profiles keep `model_context_window = 1000000` for the DeepSeek V4 profile line.
+2. Managed Codex profiles derive `model_auto_compact_token_limit` from the only managed ratio, `auto_compact_ratio = 0.90`, so the default threshold is `900000`.
+3. WeClaw and CLI status must display `context_window.display_limit_tokens` from `model_context_window_tokens`, not from `model_auto_compact_token_limit`.
+4. `model_auto_compact_token_limit` is exposed as `auto_compact_threshold_tokens` and remains a trigger threshold, not a context-window denominator.
+5. Char-level `runtime_payload_guard`, Compact, and Trim fields remain available as fallback/debug payload guards with `unit=chars`; they must not be merged into the token-level context window.
+6. Legacy explicit `--auto-compact-token-limit` input is accepted only for compatibility and ignored by managed profile generation; the threshold is derived from the ratio.
+
+Release boundary: this node does not move public `v0.3.9-alpha`, does not rebuild Release assets, and does not update GitHub Release notes.

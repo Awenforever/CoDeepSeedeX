@@ -186,7 +186,7 @@ async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -281,7 +281,7 @@ async def test_runtime_weclaw_status_reports_tokenizer_resource_before_prompt_ob
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
         encoding="utf-8",

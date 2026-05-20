@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a83-deepseek-cache-accounting-contract"
+PROXY_INTERNAL_VERSION = "p2.10a84-token-first-compact-trim-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5485,7 +5485,7 @@ def _context_compaction_env_config() -> dict[str, Any]:
         "material_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", 260_000),
         "max_summary_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", 60_000),
         "min_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", 350_000),
-        "max_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", 750_000),
+        "max_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", 900_000),
         "min_new_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", 250_000),
         "min_turns": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", 4),
         "emergency_ratio": _env_float("DEEPSEEK_PROXY_COMPACT_EMERGENCY_RATIO", 0.92),
@@ -13049,33 +13049,50 @@ def _weclaw_context_limit_explanation(
         catalog_tokens = model_catalog.get("context_window_tokens")
         catalog_source = model_catalog.get("source")
 
-    display_reason = "model_context_window"
-    if auto_compact_token_limit > 0:
-        display_reason = "codex_profile_auto_compact_token_limit"
-    elif effective_safe_window <= 0:
+    display_limit_tokens = model_context_window or effective_safe_window or auto_compact_token_limit or 0
+    auto_compact_ratio = None
+    if model_context_window > 0 and auto_compact_token_limit > 0:
+        auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6)
+
+    if model_context_window > 0:
+        display_source = "codex_profile.model_context_window"
+        display_reason = "declared_model_context_window"
+    elif effective_safe_window > 0:
+        display_source = "derived_context_window_fallback"
+        display_reason = "model_context_window_unavailable_using_legacy_effective_window"
+    elif auto_compact_token_limit > 0:
+        display_source = "codex_profile.model_auto_compact_token_limit"
+        display_reason = "model_context_window_unavailable_using_auto_compact_threshold_fallback"
+    else:
+        display_source = "unavailable"
         display_reason = "unavailable"
 
     return {
         "unit": "tokens",
-        "display_limit_tokens": effective_safe_window,
-        "display_limit_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else "codex_profile.model_context_window",
+        "display_limit_tokens": display_limit_tokens,
+        "display_limit_source": display_source,
         "display_limit_reason": display_reason,
         "model_context_window_tokens": model_context_window or None,
         "model_context_window_source": "codex_profile.model_context_window" if model_context_window > 0 else None,
         "auto_compact_token_limit": auto_compact_token_limit or None,
+        "auto_compact_threshold_tokens": auto_compact_token_limit or None,
         "auto_compact_token_limit_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else None,
+        "auto_compact_threshold_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else None,
+        "auto_compact_ratio": auto_compact_ratio,
+        "auto_compact_ratio_source": "derived:auto_compact_token_limit/model_context_window" if auto_compact_ratio is not None else None,
         "model_catalog_context_window_tokens": catalog_tokens,
         "model_catalog_source": catalog_source,
         "value_explanations": {
-            "display_limit_tokens": "The denominator WeClaw should display for the active profile. It prefers Codex model_auto_compact_token_limit when configured, because that is the practical profile limit before Codex auto-compaction.",
-            "model_context_window_tokens": "The declared model context window in the managed Codex profile. This can be larger than the display limit.",
-            "auto_compact_token_limit": "The Codex profile threshold where Codex may compact before the full model context window is reached.",
-            "model_catalog_context_window_tokens": "The dsproxy model-catalog context-window declaration, used for consistency diagnostics and not automatically used as the WeClaw denominator.",
+            "display_limit_tokens": "The denominator WeClaw should display for the active profile. It is the real declared model context window when available.",
+            "model_context_window_tokens": "The declared model context window in the managed Codex profile.",
+            "auto_compact_token_limit": "The Codex profile threshold where Codex may compact before the full model context window is reached. CoDeepSeedeX managed profiles derive it from the 0.90 auto compact ratio.",
+            "auto_compact_ratio": "The ratio auto_compact_token_limit/model_context_window. Managed profiles use 0.90 unless a legacy profile is being inspected.",
+            "model_catalog_context_window_tokens": "The dsproxy model-catalog context-window declaration, used for consistency diagnostics and not as a replacement for the active profile declaration.",
         },
         "notes": [
-            "Different values such as 750k and 1M are expected when Codex profile auto-compaction is set below the full model context window.",
-            "If a UI displays another denominator such as 950k, it should map that value to one of these explicit fields or treat it as external to the current dsproxy contract.",
-            "dsproxy runtime compaction and trimming values are char-level safety controls and are not token denominators.",
+            "WeClaw should display the full model context window as the context denominator.",
+            "The auto-compact threshold is a separate trigger value, not the context-window size.",
+            "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and are not token denominators.",
         ],
     }
 
@@ -13427,7 +13444,8 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
 def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
     model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
-    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    display_limit_tokens = model_context_window or auto_compact_token_limit or 0
+    auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
     conflicts: list[dict[str, Any]] = []
     catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
@@ -13442,39 +13460,45 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "field": "model_context_window_tokens",
                 "codex_profile_value": model_context_window,
                 "model_catalog_value": catalog_context,
-                "resolution": "codex_profile_model_auto_compact_token_limit_remains_display_source",
+                "resolution": "codex_profile_model_context_window_remains_display_source",
                 "user_visible": False,
             }
         )
     limit_explanation = _weclaw_context_limit_explanation(
         model_context_window=model_context_window,
         auto_compact_token_limit=auto_compact_token_limit,
-        effective_safe_window=effective_safe_window,
+        effective_safe_window=display_limit_tokens,
         model_catalog=model_catalog,
     )
     return {
-        "display_limit_tokens": effective_safe_window,
+        "display_limit_tokens": display_limit_tokens,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
-        "effective_safe_window_tokens": effective_safe_window,
+        "auto_compact_threshold_tokens": auto_compact_token_limit,
+        "auto_compact_ratio": auto_compact_ratio,
+        "effective_safe_window_tokens": display_limit_tokens,
         **_weclaw_context_used_tokens_unavailable_contract(),
         "source": limit_explanation["display_limit_source"],
         "is_estimated": False,
         "codex_profile": {
             "model_context_window_tokens": model_context_window,
             "auto_compact_token_limit": auto_compact_token_limit,
+            "auto_compact_threshold_tokens": auto_compact_token_limit,
+            "auto_compact_ratio": auto_compact_ratio,
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
         "model_catalog": model_catalog,
         "effective_display": {
-            "limit_tokens": effective_safe_window,
+            "limit_tokens": display_limit_tokens,
             "source": limit_explanation["display_limit_source"],
             "is_estimated": False,
         },
         "limit_explanation": limit_explanation,
         "notes": [
-            "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
+            "Codex profile values are token-level declarations.",
+            "The displayed context denominator is model_context_window_tokens, while auto_compact_token_limit is only the auto-compact trigger threshold.",
+            "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and must not be treated as equivalent token denominators.",
         ],
         "conflicts": conflicts,
     }

@@ -451,7 +451,7 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
         "message_count_after": 2,
         "policy_decision": {
             "effective_trigger_chars": 1250000,
-            "effective_target_chars": 750000,
+            "effective_target_chars": 900000,
             "emergency_chars": 1380000,
             "min_new_chars": 250000,
             "min_turns": 4,

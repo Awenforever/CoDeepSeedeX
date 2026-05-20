@@ -328,7 +328,8 @@ Current WeClaw-facing fields include:
 - sanitized prompt segmentation for `user`, `user_history`, `tool_output`, `environment`, and related buckets,
 - CNY-first Pricing/Cost fields based on DeepSeek's Chinese official pricing page,
 - per-turn cost ledger semantics so mixed model or route sessions are not recalculated using the current active model price,
-- char-level Compact and Trim progress through `runtime_payload_guard`.
+- token-first context-window display using the full managed `model_context_window_tokens`, with the auto-compact threshold exposed separately;
+- char-level Compact and Trim fallback/debug progress through `runtime_payload_guard`.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 

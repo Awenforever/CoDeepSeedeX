@@ -26,6 +26,34 @@ from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, P
 
 APP_NAME = "deepseek-responses-proxy"
 
+DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000
+DEFAULT_AUTO_COMPACT_RATIO = 0.90
+
+
+def _normalize_auto_compact_ratio(value: object) -> float:
+    try:
+        ratio = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_AUTO_COMPACT_RATIO
+    if not 0 < ratio < 1:
+        return DEFAULT_AUTO_COMPACT_RATIO
+    return ratio
+
+
+def _derive_auto_compact_token_limit(
+    context_window: int,
+    ratio: float = DEFAULT_AUTO_COMPACT_RATIO,
+) -> int:
+    try:
+        context_tokens = int(context_window)
+    except (TypeError, ValueError):
+        context_tokens = 0
+    if context_tokens <= 0:
+        return 0
+    safe_ratio = _normalize_auto_compact_ratio(ratio)
+    return max(1, int(context_tokens * safe_ratio))
+
+
 
 def _repo_root_for_version_metadata() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -453,7 +481,7 @@ def _write_default_config(path: Path, *, force: bool = False) -> bool:
         'compaction_policy = "adaptive"\n'
         "max_context_chars = 1500000\n"
         "min_target_chars = 350000\n"
-        "max_target_chars = 750000\n"
+        "max_target_chars = 900000\n"
         "min_new_chars = 250000\n"
         "min_turns = 4\n"
     )
@@ -562,6 +590,9 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
     profile_name = args.name
     provider_name = args.provider_name or f"{profile_name}-proxy"
+    auto_compact_ratio = _normalize_auto_compact_ratio(getattr(args, "auto_compact_ratio", DEFAULT_AUTO_COMPACT_RATIO))
+    derived_auto_compact_token_limit = _derive_auto_compact_token_limit(args.context_window, auto_compact_ratio)
+    legacy_auto_compact_token_limit = getattr(args, "auto_compact_token_limit", None)
 
     provider_header, provider_block, profile_header, profile_block = _codex_profile_blocks(
         profile_name=profile_name,
@@ -570,7 +601,7 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
         model=args.model,
         reasoning_effort=args.reasoning_effort,
         context_window=args.context_window,
-        auto_compact_token_limit=args.auto_compact_token_limit,
+        auto_compact_token_limit=derived_auto_compact_token_limit,
         tool_output_token_limit=args.tool_output_token_limit,
         model_catalog_json=args.model_catalog_json,
     )
@@ -588,7 +619,14 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
         "provider_existed": provider_existed,
         "profile_existed": profile_existed,
         "dry_run": bool(args.dry_run),
+        "context_window_tokens": int(args.context_window),
+        "auto_compact_ratio": auto_compact_ratio,
+        "auto_compact_token_limit": derived_auto_compact_token_limit,
+        "auto_compact_token_limit_source": "derived_from_context_window_tokens_and_auto_compact_ratio",
     }
+    if legacy_auto_compact_token_limit is not None:
+        result["ignored_legacy_auto_compact_token_limit"] = int(legacy_auto_compact_token_limit)
+        result["ignored_legacy_auto_compact_token_limit_reason"] = "managed profiles derive the threshold from auto_compact_ratio"
 
     if args.dry_run:
         result["config_preview"] = text
@@ -802,7 +840,8 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
 def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, object]:
     model_context_window = _int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
-    effective_safe_window = auto_compact_token_limit or model_context_window or 0
+    display_limit_tokens = model_context_window or auto_compact_token_limit or 0
+    auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
     conflicts: list[dict[str, object]] = []
     catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
@@ -817,22 +856,27 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "field": "model_context_window_tokens",
                 "codex_profile_value": model_context_window,
                 "model_catalog_value": catalog_context,
-                "resolution": "codex_profile_model_auto_compact_token_limit_remains_display_source",
+                "resolution": "codex_profile_model_context_window_remains_display_source",
                 "user_visible": False,
             }
         )
 
+    display_source = "codex_profile.model_context_window" if model_context_window > 0 else "codex_profile.model_auto_compact_token_limit"
     return {
-        "display_limit_tokens": effective_safe_window,
+        "display_limit_tokens": display_limit_tokens,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
-        "effective_safe_window_tokens": effective_safe_window,
+        "auto_compact_threshold_tokens": auto_compact_token_limit,
+        "auto_compact_ratio": auto_compact_ratio,
+        "effective_safe_window_tokens": display_limit_tokens,
         **_weclaw_context_used_tokens_unavailable_contract(),
-        "source": "codex_profile.model_auto_compact_token_limit",
+        "source": display_source,
         "is_estimated": False,
         "codex_profile": {
             "model_context_window_tokens": model_context_window,
             "auto_compact_token_limit": auto_compact_token_limit,
+            "auto_compact_threshold_tokens": auto_compact_token_limit,
+            "auto_compact_ratio": auto_compact_ratio,
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
@@ -843,13 +887,15 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "source": "not_queried",
         },
         "effective_display": {
-            "limit_tokens": effective_safe_window,
-            "source": "codex_profile.model_auto_compact_token_limit",
+            "limit_tokens": display_limit_tokens,
+            "source": display_source,
             "is_estimated": False,
         },
         "conflicts": conflicts,
         "notes": [
-            "Codex profile values are token-level declarations. dsproxy runtime compaction and trimming values are char-level controls and must not be treated as equivalent."
+            "Codex profile values are token-level declarations.",
+            "The displayed context denominator is model_context_window_tokens, while auto_compact_token_limit is only the auto-compact trigger threshold.",
+            "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and must not be treated as equivalent token denominators.",
         ],
     }
 
@@ -5673,8 +5719,9 @@ def build_parser() -> argparse.ArgumentParser:
     install_profile.add_argument("--base-url", default="http://127.0.0.1:8001/v1")
     install_profile.add_argument("--model", default="deepseek-v4-pro")
     install_profile.add_argument("--reasoning-effort", default="xhigh")
-    install_profile.add_argument("--context-window", type=int, default=1_000_000)
-    install_profile.add_argument("--auto-compact-token-limit", type=int, default=750_000)
+    install_profile.add_argument("--context-window", type=int, default=DEFAULT_CONTEXT_WINDOW_TOKENS)
+    install_profile.add_argument("--auto-compact-ratio", type=float, default=DEFAULT_AUTO_COMPACT_RATIO, help="derive model_auto_compact_token_limit from context window; managed default is 0.90")
+    install_profile.add_argument("--auto-compact-token-limit", type=int, default=None, help=argparse.SUPPRESS)
     install_profile.add_argument("--tool-output-token-limit", type=int, default=12_000)
     install_profile.add_argument("--model-catalog-json")
     install_profile.add_argument("--dry-run", action="store_true")

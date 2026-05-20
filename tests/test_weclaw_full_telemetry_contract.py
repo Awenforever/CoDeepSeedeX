@@ -33,7 +33,7 @@ def _write_codex_config(path: Path) -> None:
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -198,10 +198,10 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert context_window["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     assert context_window["latest_upstream_prompt_tokens"]["value"] == 1000
     assert context_window["latest_upstream_prompt_tokens"]["is_estimated_for_context_window"] is True
-    assert context_window["remaining_tokens_estimate"] == 749000
-    assert context_window["limit_explanation"]["display_limit_tokens"] == 750000
+    assert context_window["remaining_tokens_estimate"] == 999000
+    assert context_window["limit_explanation"]["display_limit_tokens"] == 1000000
     assert context_window["limit_explanation"]["model_context_window_tokens"] == 1000000
-    assert context_window["limit_explanation"]["auto_compact_token_limit"] == 750000
+    assert context_window["limit_explanation"]["auto_compact_token_limit"] == 900000
 
     guard = data["runtime_payload_guard"]
     assert guard["available"] is True

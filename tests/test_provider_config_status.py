@@ -614,7 +614,7 @@ def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch
         "model = \"glm-5.1\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
@@ -634,7 +634,7 @@ def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch
     assert data["model"]["display_hint"] is None
     assert data["model"]["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
     assert data["model"]["user_visible"] is False
-    assert data["context_window"]["effective_safe_window_tokens"] == 750000
+    assert data["context_window"]["effective_safe_window_tokens"] == 1000000
     assert data["context_window"]["used_tokens"] is None
     assert data["context_window"]["used_tokens_available"] is False
     assert data["context_window"]["used_tokens_source"] == "not_reported"
@@ -650,7 +650,7 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
         "[profiles.deepseek-thinking]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
@@ -689,7 +689,7 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
         "[profiles.deepseek-thinking]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         f"model_catalog_json = \"{catalog_path}\"\n",
         encoding="utf-8",
@@ -732,7 +732,7 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
         "[profiles.deepseek-thinking]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )

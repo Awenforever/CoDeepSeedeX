@@ -937,3 +937,23 @@ Boundary:
 ## p2.10a83 DeepSeek cache accounting contract
 
 Adds provider-authoritative DeepSeek prompt cache hit/miss accounting to the usage ledger, WeClaw status, and cost contract. Session, last-turn, and auxiliary cache sections expose request-level `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, and cache hit ratio. Cost remains per-turn ledger based and uses hit/miss input prices rather than treating all prompt tokens as cache miss or cache hit. DeepSeek ChatCompletions payloads now set a stable hashed `user_id` by default and canonicalize tools schema ordering to protect DeepSeek context-cache reuse. Segment-level origin splits remain local estimates; provider cache hit/miss is request-level authoritative.
+
+## p2.10a84 Token-first Compact/Trim context contract
+
+Date: 2026-05-20
+
+Scope:
+
+- Make the active context-window display token-first.
+- Managed Codex profile generation now derives `model_auto_compact_token_limit` from the single managed `auto_compact_ratio = 0.90`.
+- Default DeepSeek V4 managed profile context remains `model_context_window = 1000000`, so the derived auto-compact threshold is `900000`.
+- `context_window.display_limit_tokens` and `effective_safe_window_tokens` now report the full `model_context_window_tokens`.
+- `auto_compact_threshold_tokens` exposes the separate trigger threshold.
+- Char-level `runtime_payload_guard`, Compact, Trim, and context-trimming fields remain `unit=chars` fallback/debug payload guards and are not token denominators.
+
+Boundary:
+
+- No semantic payload compaction enablement.
+- No token-based runtime trimming enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.

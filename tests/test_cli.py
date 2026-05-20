@@ -270,6 +270,11 @@ def test_cli_install_codex_profile_writes_profile(tmp_path, capsys):
     assert 'model = "deepseek-v4-pro"' in text
     assert 'model_provider = "deepseek-thinking-proxy"' in text
     assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'model_context_window = 1000000' in text
+    assert 'model_auto_compact_token_limit = 900000' in text
+    assert result["context_window_tokens"] == 1000000
+    assert result["auto_compact_ratio"] == 0.9
+    assert result["auto_compact_token_limit"] == 900000
 
 
 def test_cli_install_codex_profile_dry_run_does_not_write(tmp_path, capsys):
@@ -2558,7 +2563,7 @@ def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -2573,7 +2578,7 @@ def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
     assert result["effort"]["deepseek_reasoning_effort"] == "max"
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
     assert result["health"]["codex_config_loadable"] is True
-    assert result["context_window"]["effective_safe_window_tokens"] == 750000
+    assert result["context_window"]["effective_safe_window_tokens"] == 1000000
     assert result["context_window"]["used_tokens"] is None
     assert result["context_window"]["used_tokens_available"] is False
     assert result["context_window"]["used_tokens_source"] == "not_reported"
@@ -2604,7 +2609,7 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
         "[profiles.deepseek-thinking]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
@@ -2650,7 +2655,7 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
         "model = \"glm-5.1\"\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n",
+        "model_auto_compact_token_limit = 900000\n",
         encoding="utf-8",
     )
 
@@ -2764,7 +2769,7 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
         "[profiles.deepseek-thinking]\n"
         "model = \"glm-5.1\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
@@ -2785,7 +2790,7 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
     assert result["profile"] == "deepseek-thinking"
     assert result["model"]["effective_model"] == "deepseek-v4-flash"
     assert result["model"]["model_conflict"] is True
-    assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 750000
+    assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 900000
     assert result["context_window"]["used_tokens"] is None
     assert result["context_window"]["used_tokens_available"] is False
     assert result["context_window"]["used_tokens_source"] == "not_reported"
@@ -2922,7 +2927,7 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
-        "model_auto_compact_token_limit = 750000\n"
+        "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         f"model_catalog_json = \"{catalog_path}\"\n"
         "\n[model_providers.deepseek-thinking-proxy]\n"
