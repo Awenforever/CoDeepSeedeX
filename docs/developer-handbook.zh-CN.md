@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a87-compact-audit-dry-run-on-skip`，准确提交用`git rev-parse --short p2.10a87-compact-audit-dry-run-on-skip^{}`解析
-- 最新闭合文档同步检查点：`p2.10a87-compact-audit-dry-run-on-skip`
+- 当前内部开发检查点：`p2.10a88-http-weclaw-compact-audit-e2e`，准确提交用`git rev-parse --short p2.10a88-http-weclaw-compact-audit-e2e^{}`解析
+- 最新闭合文档同步检查点：`p2.10a88-http-weclaw-compact-audit-e2e`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1364,4 +1364,17 @@ p2.10a87关闭p2.10a87运行态审计发现的可用性缺口。
 3. 生成的metadata保持`mode=dry_run`、`applied=false`、`raw_prompt_exposed=false`和`raw_material_exposed=false`。
 4. 因此在普通未触发compaction的请求之后，runtime、CLI和WeClaw status也可以显示`compact_audit.available=true`，不再必须等待真正compaction事件。
 5. compaction被禁用时仍报告disabled/unavailable，不伪造audit metadata。
+6. 本节点不移动公开`v0.3.9-alpha`。
+
+## p2.10a88 HTTP WeClaw Compact audit E2E regression
+
+p2.10a88把p2.10a88运行态审计固化为HTTP端到端回归测试。
+
+规则：
+
+1. 测试必须用fake no-network DeepSeek client执行真实ASGI `POST /v1/responses`请求。
+2. 同一个app实例随后查询`GET /v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false`。
+3. 断言必须覆盖`compaction.compact_audit`和`context_window.runtime.payload_guard.compaction.compact_audit`。
+4. 普通未触发compaction的请求必须暴露`compact_audit.available=true`、`mode=dry_run`、`applied=false`和脱敏fingerprint metadata。
+5. status payload不能暴露raw prompt或raw compact material。
 6. 本节点不移动公开`v0.3.9-alpha`。

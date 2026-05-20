@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a87-compact-audit-dry-run-on-skip"
+PROXY_INTERNAL_VERSION = "p2.10a88-http-weclaw-compact-audit-e2e"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -12390,6 +12390,7 @@ def _runtime_payload_guard_report_snapshot(
             "compact_material_classifier_dry_run",
             "retained_recent_policy",
             "compact_audit",
+            "compact_audit_generation",
         ]
         snapshot = {
             "exists": True,

@@ -332,7 +332,8 @@ Current WeClaw-facing fields include:
 - char-level Compact and Trim fallback/debug progress through `runtime_payload_guard`;
 - redacted Compact prompt fingerprints and dry-run material classification for compaction auditability;
 - Compact audit metadata through runtime/WeClaw status and CLI fallback surfaces;
-- Compact audit dry-run metadata for skipped compaction reports without model calls or payload mutation.
+- Compact audit dry-run metadata for skipped compaction reports without model calls or payload mutation;
+- HTTP end-to-end regression coverage for Compact audit visibility through WeClaw status.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 

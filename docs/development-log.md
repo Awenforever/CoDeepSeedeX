@@ -1015,3 +1015,23 @@ Boundary:
 - No token-based runtime trimming enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a88 HTTP WeClaw Compact audit E2E regression
+
+Date: 2026-05-20
+
+Scope:
+
+- Added a no-network ASGI end-to-end regression for Compact audit after skipped compaction.
+- The test executes `POST /v1/responses`, then checks `GET /v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false` on the same app instance.
+- The test asserts both top-level `compaction.compact_audit` and nested `context_window.runtime.payload_guard.compaction.compact_audit`.
+- The test confirms dry-run classifier semantics, retained-recent metadata, 64-character SHA-256 fingerprint presence, and no raw prompt/material exposure.
+
+Boundary:
+
+- No production behavior change beyond internal version metadata.
+- No model/network calls in the new regression.
+- No semantic payload compaction enablement.
+- No token-based runtime trimming enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.

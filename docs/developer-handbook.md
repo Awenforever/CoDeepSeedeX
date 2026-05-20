@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a87-compact-audit-dry-run-on-skip` (resolve the exact commit with `git rev-parse --short p2.10a87-compact-audit-dry-run-on-skip^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a87-compact-audit-dry-run-on-skip`
+- Current internal development checkpoint: `p2.10a88-http-weclaw-compact-audit-e2e` (resolve the exact commit with `git rev-parse --short p2.10a88-http-weclaw-compact-audit-e2e^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a88-http-weclaw-compact-audit-e2e`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1409,4 +1409,17 @@ Rules:
 3. The generated metadata remains `mode=dry_run`, `applied=false`, `raw_prompt_exposed=false`, and `raw_material_exposed=false`.
 4. Runtime, CLI, and WeClaw status may therefore show `compact_audit.available=true` after normal non-triggering requests, rather than requiring a full compaction event.
 5. Disabled compaction still reports disabled/unavailable rather than fabricating audit metadata.
+6. This node does not move public `v0.3.9-alpha`.
+
+## p2.10a88 HTTP WeClaw Compact audit E2E regression
+
+p2.10a88 turns the p2.10a88 runtime audit into a permanent HTTP regression.
+
+Rules:
+
+1. The test must execute a real ASGI `POST /v1/responses` request with a fake no-network DeepSeek client.
+2. The same app instance must then query `GET /v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false`.
+3. The assertion must cover both `compaction.compact_audit` and `context_window.runtime.payload_guard.compaction.compact_audit`.
+4. A skipped non-triggering compaction request must expose `compact_audit.available=true`, `mode=dry_run`, `applied=false`, and redacted fingerprint metadata.
+5. The status payload must not expose raw prompt or raw compact material.
 6. This node does not move public `v0.3.9-alpha`.

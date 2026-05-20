@@ -606,3 +606,114 @@ async def test_weclaw_status_uses_cny_primary_pricing_without_fx(tmp_path, monke
     assert data["cost"]["profile_route_estimated_cost"] == pytest.approx(0.001)
     assert data["cost"]["cash_estimated_cost"] == pytest.approx(0.001)
     assert data["cost"]["converted"] is False
+
+
+class WeClawNoNetworkPrimaryClient(WeClawBalanceClient):
+    def __init__(self) -> None:
+        super().__init__(api_key="test", base_url="https://example.deepseek")
+        self.primary_payloads: list[dict] = []
+
+    async def chat_completions(self, payload: dict, trace_metadata: dict | None = None):
+        serialized_payload = json.dumps(payload, ensure_ascii=False)
+        assert "Codex-like conversation compactor" not in serialized_payload
+        self.primary_payloads.append(payload)
+        return {
+            "id": "chatcmpl_skip_audit_primary",
+            "model": payload.get("model") or "deepseek-v4-flash",
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "OK",
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 12,
+                "completion_tokens": 1,
+                "total_tokens": 13,
+            },
+        }
+
+
+@pytest.mark.asyncio
+async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compaction_request(tmp_path, monkeypatch):
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
+    monkeypatch.chdir(tmp_path)
+
+    upstream = WeClawNoNetworkPrimaryClient()
+    app = create_app(
+        deepseek_client=upstream,
+        store=SQLiteResponseStore(tmp_path / "usage.sqlite3"),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-flash",
+                "input": "Reply OK exactly. Do not leak this raw user sentence through Compact audit metadata.",
+            },
+        )
+        assert response.status_code == 200
+
+        status_response = await client.get(
+            "/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false"
+        )
+
+    assert len(upstream.primary_payloads) == 1
+    assert app.state.last_context_compaction_report is not None
+    report = app.state.last_context_compaction_report
+    assert report["compacted"] is False
+    assert report["reason"] == "not_triggered"
+    assert report["compact_audit_generation"]["available"] is True
+    assert report["compact_audit_generation"]["mode"] == "dry_run"
+    assert report["compact_audit_generation"]["applied"] is False
+    assert report["compact_audit_generation"]["source"] == "policy_decision_not_triggered"
+    assert report["compact_audit_generation"]["raw_prompt_exposed"] is False
+    assert report["compact_audit_generation"]["raw_material_exposed"] is False
+
+    assert status_response.status_code == 200
+    data = status_response.json()
+    guard = data["runtime_payload_guard"]
+    top_audit = data["compaction"]["compact_audit"]
+    nested_audit = data["context_window"]["runtime"]["payload_guard"]["compaction"]["compact_audit"]
+    last_report = guard["compaction"]["last_report"]
+
+    for audit in (top_audit, nested_audit, guard["compaction"]["compact_audit"], last_report["compact_audit"]):
+        assert audit["available"] is True
+        assert audit["unit"] == "chars/messages"
+        assert audit["redacted"] is True
+        assert audit["raw_content_exposed"] is False
+        assert audit["missing"] == []
+        assert audit["reason"] is None
+        assert len(audit["fingerprint"]["sha256"]) == 64
+        assert audit["fingerprint"]["raw_prompt_exposed"] is False
+        assert audit["fingerprint"]["raw_material_exposed"] is False
+        assert audit["classifier_dry_run"]["available"] is True
+        assert audit["classifier_dry_run"]["mode"] == "dry_run"
+        assert audit["classifier_dry_run"]["applied"] is False
+        assert audit["retained_recent_policy"]["available"] is True
+
+    assert guard["compaction"]["available"] is True
+    assert guard["compaction"]["status"] == "not_triggered"
+    assert guard["compaction"]["last_report"]["exists"] is True
+    assert guard["compaction"]["last_report"]["compact_audit_generation"]["available"] is True
+    assert guard["compaction"]["last_report"]["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert data["context_window"]["runtime"]["payload_guard"]["compaction"]["compact_audit"]["available"] is True
+    assert data["compaction"]["compact_audit"]["fingerprint"]["sha256"] == guard["compaction"]["compact_audit"]["fingerprint"]["sha256"]
+
+    serialized_status = json.dumps(data, ensure_ascii=False)
+    assert "Reply OK exactly. Do not leak this raw user sentence through Compact audit metadata." not in serialized_status
+    assert '"raw_prompt_exposed": true' not in serialized_status.lower()
+    assert '"raw_material_exposed": true' not in serialized_status.lower()
