@@ -22,7 +22,10 @@ class FakeDeepSeekClient:
         self.payloads.append(payload)
         serialized = json.dumps(payload, ensure_ascii=False)
 
-        if "Codex-like conversation compactor" in serialized:
+        if (
+            "Codex-like conversation compactor" in serialized
+            or "CONTEXT CHECKPOINT COMPACTION" in serialized
+        ):
             self.compaction_calls += 1
             return {
                 "choices": [
@@ -383,3 +386,72 @@ async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(mon
     assert report["compacted"] is False
     assert report["reason"] == "adaptive_cooldown"
     assert fake.compaction_calls == 0
+
+
+def test_codex_native_compact_source_alignment_contract():
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    evidence = proxy_app._codex_native_compact_source_evidence_contract()
+    alignment = proxy_app._compact_prompt_alignment_contract()
+
+    assert evidence["prompt_md_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+    assert evidence["summary_prefix_md_sha256"] == "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
+    assert evidence["compact_rs_includes_prompt_md"] is True
+    assert evidence["compact_rs_includes_summary_prefix_md"] is True
+    assert evidence["remote_compact_endpoint"] == "responses/compact"
+    assert evidence["remote_compaction_claimed_for_dsproxy_provider"] is False
+    assert alignment["alignment"] == "github_source_backed_codex_native_local_prompt"
+    assert alignment["exact_native_codex_local_prompt_text"] is True
+    assert alignment["remote_native_compaction_claimed"] is False
+
+    compact_messages, meta = proxy_app._compaction_prompt_messages(
+        [
+            {"role": "user", "content": "Need to preserve exact repo status."},
+            {"role": "assistant", "content": "Working on p2.10a92."},
+        ],
+        material_chars=20000,
+        keep_recent_messages=1,
+    )
+
+    assert compact_messages[0]["role"] == "system"
+    assert compact_messages[1]["role"] == "user"
+    assert proxy_app.CODEX_NATIVE_COMPACT_PROMPT in compact_messages[1]["content"]
+    assert compact_messages[1]["content"].startswith(proxy_app.CODEX_NATIVE_COMPACT_PROMPT)
+    assert meta["codex_native_source_evidence"]["prompt_md_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+    assert meta["compact_prompt_alignment"]["exact_native_codex_local_prompt_text"] is True
+    assert meta["codex_summary_prefix"]["sha256"] == "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
+    assert meta["compaction_prompt_fingerprint"]["codex_native_prompt_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+
+
+def test_codex_native_compact_source_alignment_report_is_redacted():
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    compact_messages, meta = proxy_app._compaction_prompt_messages(
+        [
+            {"role": "user", "content": "Secret raw task detail should not appear in metadata."},
+            {"role": "assistant", "content": "Acknowledged."},
+        ],
+        material_chars=20000,
+        keep_recent_messages=1,
+    )
+    report = {
+        "version": proxy_app.PROXY_VERSION,
+        "enabled": True,
+        "compacted": False,
+        "material": meta,
+    }
+    audit = proxy_app._compaction_audit_metadata_from_report(report)
+
+    assert audit["available"] is True
+    assert audit["codex_native_source_evidence"]["prompt_md_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+    assert audit["compact_prompt_alignment"]["alignment"] == "github_source_backed_codex_native_local_prompt"
+    assert audit["compact_prompt_alignment"]["remote_native_compaction_claimed"] is False
+    assert audit["codex_summary_prefix"]["sha256"] == "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
+
+    serialized_audit = __import__("json").dumps(audit, ensure_ascii=False)
+    assert proxy_app.CODEX_NATIVE_COMPACT_PROMPT not in serialized_audit
+    assert "Secret raw task detail" not in serialized_audit
+    assert '"raw_prompt_exposed": true' not in serialized_audit.lower()
+    assert '"raw_material_exposed": true' not in serialized_audit.lower()

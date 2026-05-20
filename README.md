@@ -336,7 +336,8 @@ Current WeClaw-facing fields include:
 - HTTP end-to-end regression coverage for Compact audit visibility through WeClaw status;
 - token-first TRIM dry-run with type enum, first-image protection, and static-block protection;
 - type-aware production TRIM for low-risk text payloads with redacted status metadata;
-- image semantic envelopes for non-protected image payloads with first-image preservation.
+- image semantic envelopes for non-protected image payloads with first-image preservation;
+- GitHub source-backed Codex native local Compact prompt alignment, with remote `responses/compact` explicitly treated as provider-gated and not claimed for the third-party DeepSeek route.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 

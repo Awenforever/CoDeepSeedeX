@@ -1091,3 +1091,22 @@ Boundary:
 
 - This node does not implement OCR, image captioning, or external vision analysis.
 - This node does not update the public `v0.3.9-alpha` release.
+
+## p2.10a92 Codex native Compact source alignment
+
+Date: 2026-05-21
+
+Scope:
+
+- Replaced the failed installed-package-only Compact conclusion with GitHub source-backed evidence.
+- Included the exact Codex `prompt.md` text in dsproxy's local Compact user message.
+- Recorded `prompt.md` sha256 `ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07`.
+- Recorded `summary_prefix.md` sha256 `e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e`.
+- Exposed `codex_native_source_evidence`, `compact_prompt_alignment`, and `codex_summary_prefix` through Compact metadata, compact audit, runtime payload guard, and WeClaw status paths.
+- Preserved the boundary that Codex remote `responses/compact` is provider-gated and is not claimed for the third-party DeepSeek route.
+
+Boundary:
+
+- This node does not implement the remote `responses/compact` endpoint locally.
+- This node does not claim DeepSeek route native remote compaction support.
+- Public `v0.3.9-alpha` remains unmoved.

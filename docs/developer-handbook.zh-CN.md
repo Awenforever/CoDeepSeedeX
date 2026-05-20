@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a91-image-semantic-envelope`，准确提交用`git rev-parse --short p2.10a91-image-semantic-envelope^{}`解析
-- 最新闭合文档同步检查点：`p2.10a91-image-semantic-envelope`
+- 当前内部开发检查点：`p2.10a92-codex-native-compact-source-alignment`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1421,3 +1421,27 @@ p2.10a91新增面向context TRIM的display-safe图像语义信封层。
 4. metadata不得暴露raw image payload、base64字符串、data URL或raw message content。
 5. `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE=0`关闭envelope report层；`DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM=0`保留report metadata但关闭payload替换。
 6. 公开`v0.3.9-alpha`在完整清单完成前继续冻结。
+
+## p2.10a92 Codex native Compact source alignment
+
+p2.10a92将dsproxy本地Compact prompt对齐到Codex GitHub源码模板，并记录remote Compact边界。
+
+源码证据：
+
+1. 审计时观察到的`openai/codex` GitHub源码commit：`main`。
+2. `codex-rs/core/src/compact.rs`引入`codex-rs/core/templates/compact/prompt.md`。
+3. `codex-rs/core/src/compact.rs`引入`codex-rs/core/templates/compact/summary_prefix.md`。
+4. `prompt.md` sha256：`ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07`。
+5. `summary_prefix.md` sha256：`e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e`。
+6. `run_inline_auto_compact_task()`从`turn_context.compact_prompt()`合成compact输入。
+7. manual compact和mid-turn auto compact的`InitialContextInjection`行为不同。
+8. remote compact端点存在，为`responses/compact`，但Codex通过provider能力门控。
+
+运行时契约：
+
+1. dsproxy在本地Compact user message中包含精确的Codex `prompt.md`文本。
+2. dsproxy通过Compact metadata、compact audit、runtime payload guard和WeClaw status暴露`codex_native_source_evidence`、`compact_prompt_alignment`和`codex_summary_prefix`。
+3. dsproxy可以声明本地prompt文本精确对齐。
+4. dsproxy不得声称第三方DeepSeek route具备Codex原生remote compaction能力。
+5. status metadata继续不暴露raw prompt和raw material。
+6. 公开`v0.3.9-alpha`继续冻结。

@@ -767,6 +767,13 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
         assert audit["classifier_dry_run"]["mode"] == "dry_run"
         assert audit["classifier_dry_run"]["applied"] is False
         assert audit["retained_recent_policy"]["available"] is True
+        assert audit["codex_native_source_evidence"]["prompt_md_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+        assert audit["codex_native_source_evidence"]["remote_compact_endpoint"] == "responses/compact"
+        assert audit["codex_native_source_evidence"]["remote_compaction_claimed_for_dsproxy_provider"] is False
+        assert audit["compact_prompt_alignment"]["alignment"] == "github_source_backed_codex_native_local_prompt"
+        assert audit["compact_prompt_alignment"]["exact_native_codex_local_prompt_text"] is True
+        assert audit["compact_prompt_alignment"]["remote_native_compaction_claimed"] is False
+        assert audit["codex_summary_prefix"]["sha256"] == "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
 
     assert guard["compaction"]["available"] is True
     assert guard["compaction"]["status"] == "not_triggered"

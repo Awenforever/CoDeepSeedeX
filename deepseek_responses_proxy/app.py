@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a91-image-semantic-envelope"
+PROXY_INTERNAL_VERSION = "p2.10a92-codex-native-compact-source-alignment"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -6735,6 +6735,70 @@ def _compact_material_classifier_dry_run(
     }
 
 
+CODEX_NATIVE_COMPACT_PROMPT = 'You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.\n\nInclude:\n- Current progress and key decisions made\n- Important context, constraints, or user preferences\n- What remains to be done (clear next steps)\n- Any critical data, examples, or references needed to continue\n\nBe concise, structured, and focused on helping the next LLM seamlessly continue the work.\n'
+CODEX_NATIVE_COMPACT_SUMMARY_PREFIX = 'Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:'
+CODEX_NATIVE_COMPACT_PROMPT_SHA256 = "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
+CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256 = "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
+CODEX_NATIVE_COMPACT_SOURCE_COMMIT = "main"
+
+
+def _codex_native_compact_source_evidence_contract() -> dict[str, Any]:
+    return {
+        "available": True,
+        "evidence_version": 2,
+        "source": "openai_codex_github_source_audit",
+        "source_commit": CODEX_NATIVE_COMPACT_SOURCE_COMMIT,
+        "source_files": {
+            "compact_rs": "codex-rs/core/src/compact.rs",
+            "prompt_md": "codex-rs/core/templates/compact/prompt.md",
+            "summary_prefix_md": "codex-rs/core/templates/compact/summary_prefix.md",
+            "remote_endpoint": "codex-rs/codex-api/src/endpoint/compact.rs",
+        },
+        "prompt_md_sha256": CODEX_NATIVE_COMPACT_PROMPT_SHA256,
+        "summary_prefix_md_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+        "compact_rs_includes_prompt_md": True,
+        "compact_rs_includes_summary_prefix_md": True,
+        "compact_rs_has_run_inline_auto_compact_task": True,
+        "compact_rs_has_run_compact_task": True,
+        "compact_rs_has_remote_compact_selector": True,
+        "compact_rs_has_initial_context_injection": True,
+        "compact_rs_has_user_message_limit": True,
+        "compact_user_message_max_tokens": 20000,
+        "remote_compact_endpoint": "responses/compact",
+        "remote_compact_endpoint_visible": True,
+        "local_prompt_text_visible": True,
+        "local_prompt_alignment": "exact_prompt_md_text",
+        "summary_prefix_alignment": "exact_summary_prefix_md_text",
+        "remote_compaction_claimed_for_dsproxy_provider": False,
+        "remote_compaction_claim_reason": "Codex remote compaction is provider-gated by supports_remote_compaction(); dsproxy third-party DeepSeek route must not claim native remote compaction.",
+        "raw_prompt_exposed": False,
+        "raw_material_exposed": False,
+        "redacted": True,
+        "notes": [
+            "Codex native local compact prompt text is visible in GitHub source templates.",
+            "dsproxy includes the exact prompt.md text in its local compact request.",
+            "Codex remote compact endpoint exists as responses/compact but is provider-gated.",
+        ],
+    }
+
+
+def _compact_prompt_alignment_contract() -> dict[str, Any]:
+    return {
+        "available": True,
+        "alignment": "github_source_backed_codex_native_local_prompt",
+        "exact_native_codex_local_prompt_text": True,
+        "exact_native_codex_runtime_role_layout": False,
+        "remote_native_compaction_claimed": False,
+        "prompt_sha256": CODEX_NATIVE_COMPACT_PROMPT_SHA256,
+        "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+        "source": "openai_codex_github_source_templates",
+        "source_commit": CODEX_NATIVE_COMPACT_SOURCE_COMMIT,
+        "native_evidence": _codex_native_compact_source_evidence_contract(),
+        "raw_prompt_exposed": False,
+        "raw_material_exposed": False,
+        "redacted": True,
+    }
+
 def _compaction_prompt_fingerprint(
     *,
     system_prompt: str,
@@ -6752,12 +6816,17 @@ def _compaction_prompt_fingerprint(
     serialized_prompt = json.dumps(prompt_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return {
         "available": True,
-        "fingerprint_version": 1,
+        "fingerprint_version": 2,
         "fingerprint_kind": "sha256",
         "source": "_compaction_prompt_messages",
+        "native_codex_prompt_alignment": "github_source_backed_exact_local_prompt_text",
+        "compact_prompt_alignment": _compact_prompt_alignment_contract(),
+        "codex_native_source_evidence": _codex_native_compact_source_evidence_contract(),
         "sha256": _compact_prompt_sha256(serialized_prompt),
         "system_prompt_sha256": _compact_prompt_sha256(system_prompt),
         "user_prompt_sha256": _compact_prompt_sha256(user_prompt),
+        "codex_native_prompt_sha256": CODEX_NATIVE_COMPACT_PROMPT_SHA256,
+        "codex_native_summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
         "material_sha256": _compact_prompt_sha256(material),
         "recent_material_sha256": _compact_prompt_sha256(recent_material),
         "compactable_message_count": int(compactable_count),
@@ -6767,8 +6836,9 @@ def _compaction_prompt_fingerprint(
         "raw_prompt_exposed": False,
         "raw_material_exposed": False,
         "notes": [
-            "The digest identifies the exact compact prompt and material boundary without exposing raw conversation content.",
-            "Changing compact prompt wording, material truncation, or retained recent messages changes this fingerprint.",
+            "The digest identifies the compact prompt and material boundary without exposing raw conversation content.",
+            "The local compact request includes Codex prompt.md text exactly; role layout remains dsproxy-local and is not claimed to be Codex-native.",
+            "Remote responses/compact is provider-gated and is not claimed for the third-party DeepSeek route.",
         ],
     }
 
@@ -6793,36 +6863,18 @@ def _compaction_prompt_messages(
     )
 
     system_prompt = (
-        "You are a Codex-like conversation compactor for a coding agent. "
-        "Summarize the older conversation history so the agent can continue "
-        "the same development task after context compaction. Preserve concrete "
-        "repo paths, branch/tag/commit names, files changed, commands run, test "
-        "results, failures, user constraints, and exact next steps. Do not invent."
+        "You are the local dsproxy Compact executor. Follow the Codex Compact prompt text "
+        "provided by the user message. Preserve exact technical facts and do not invent."
     )
-
-    user_prompt = (
-        "Compress the OLD CONVERSATION MATERIAL into a durable handoff summary.\n\n"
-        "Output plain text with these headings exactly:\n"
-        "OBJECTIVE\n"
-        "REPOSITORY_STATE\n"
-        "COMPLETED_CHANGES\n"
-        "FILES_AND_CODE_AREAS\n"
-        "TESTS_AND_VALIDATION\n"
-        "OPEN_ISSUES\n"
-        "USER_CONSTRAINTS\n"
-        "NEXT_STEPS\n\n"
-        "Rules:\n"
-        "- Preserve exact paths, versions, commits, tags, env vars, and command results.\n"
-        "- Preserve why decisions were made, not just what changed.\n"
-        "- Summarize long command output into facts, not raw logs.\n"
-        "- Do not include irrelevant chat.\n"
-        "- Do not claim tests passed unless the material says so.\n\n"
+    material_prompt = (
+        f"{CODEX_NATIVE_COMPACT_PROMPT}\n\n"
         f"OLD CONVERSATION MATERIAL compactable_count={compactable_count}:\n"
         f"{material}\n\n"
-        "RECENT MESSAGES KEPT VERBATIM AFTER SUMMARY. Use these only for continuity, "
+        "RECENT MESSAGES KEPT VERBATIM AFTER SUMMARY. Use these only for continuity; "
         "do not repeat them fully:\n"
         f"{recent_material}"
     )
+    user_prompt = material_prompt
 
     retained_recent_policy = _retained_recent_turns_policy(
         messages,
@@ -6852,6 +6904,14 @@ def _compaction_prompt_messages(
         "compaction_prompt_fingerprint": fingerprint,
         "compact_material_classifier_dry_run": classifier_dry_run,
         "retained_recent_policy": retained_recent_policy,
+        "codex_native_source_evidence": _codex_native_compact_source_evidence_contract(),
+        "compact_prompt_alignment": _compact_prompt_alignment_contract(),
+        "codex_summary_prefix": {
+            "source_file": "codex-rs/core/templates/compact/summary_prefix.md",
+            "sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+            "raw_prefix_exposed": False,
+            "redacted": True,
+        },
     }
 
     return (
@@ -13005,6 +13065,22 @@ def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
     if not isinstance(retained_policy, dict):
         retained_policy = material.get("retained_recent_policy") if isinstance(material, dict) else None
 
+    codex_native_source_evidence = report.get("codex_native_source_evidence")
+    if not isinstance(codex_native_source_evidence, dict):
+        codex_native_source_evidence = material.get("codex_native_source_evidence") if isinstance(material, dict) else None
+    if not isinstance(codex_native_source_evidence, dict):
+        codex_native_source_evidence = _codex_native_compact_source_evidence_contract()
+
+    compact_prompt_alignment = report.get("compact_prompt_alignment")
+    if not isinstance(compact_prompt_alignment, dict):
+        compact_prompt_alignment = material.get("compact_prompt_alignment") if isinstance(material, dict) else None
+    if not isinstance(compact_prompt_alignment, dict):
+        compact_prompt_alignment = _compact_prompt_alignment_contract()
+
+    codex_summary_prefix = report.get("codex_summary_prefix")
+    if not isinstance(codex_summary_prefix, dict):
+        codex_summary_prefix = material.get("codex_summary_prefix") if isinstance(material, dict) else None
+
     missing: list[str] = []
     if not isinstance(fingerprint, dict):
         missing.append("compaction_prompt_fingerprint")
@@ -13026,12 +13102,15 @@ def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
         "fingerprint": fingerprint,
         "classifier_dry_run": classifier,
         "retained_recent_policy": retained_policy,
+        "codex_native_source_evidence": codex_native_source_evidence,
+        "compact_prompt_alignment": compact_prompt_alignment,
+        "codex_summary_prefix": codex_summary_prefix,
         "missing": missing,
         "reason": None if available else "compact_audit_metadata_incomplete",
         "notes": [
             "This section is display-safe metadata for Compact auditability.",
             "It does not expose raw prompt, raw compact material, or retained recent message content.",
-            "It is diagnostic metadata and must not be treated as token-level context usage.",
+            "The local compact request includes Codex prompt.md text exactly; remote responses/compact remains provider-gated and is not claimed for the third-party DeepSeek route.",
         ],
     }
 
@@ -13110,6 +13189,9 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
         "image_semantic_envelope",
         "type_aware_trim",
         "compact_audit_generation",
+        "codex_native_source_evidence",
+        "compact_prompt_alignment",
+        "codex_summary_prefix",
         "aggressive_trimmed_fields",
         "compacted_message_count",
     ]:
@@ -13129,6 +13211,9 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
                 "compaction_prompt_fingerprint",
                 "compact_material_classifier_dry_run",
                 "retained_recent_policy",
+                "codex_native_source_evidence",
+                "compact_prompt_alignment",
+                "codex_summary_prefix",
             ]
             if key in material
         }
@@ -13139,6 +13224,9 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
         summary["compaction_prompt_fingerprint"] = audit.get("fingerprint")
         summary["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
         summary["retained_recent_policy"] = audit.get("retained_recent_policy")
+        summary["codex_native_source_evidence"] = audit.get("codex_native_source_evidence")
+        summary["compact_prompt_alignment"] = audit.get("compact_prompt_alignment")
+        summary["codex_summary_prefix"] = audit.get("codex_summary_prefix")
 
     build = data.get("build")
     if isinstance(build, dict):
@@ -13264,6 +13352,9 @@ def _runtime_payload_guard_report_snapshot(
             "retained_recent_policy",
             "compact_audit",
             "compact_audit_generation",
+            "codex_native_source_evidence",
+            "compact_prompt_alignment",
+            "codex_summary_prefix",
             "type_enum_version",
             "token_first_trim_dry_run",
             "item_type_summary",
@@ -13290,6 +13381,12 @@ def _runtime_payload_guard_report_snapshot(
                 snapshot["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
             if "retained_recent_policy" not in snapshot and isinstance(audit.get("retained_recent_policy"), dict):
                 snapshot["retained_recent_policy"] = audit.get("retained_recent_policy")
+            if "codex_native_source_evidence" not in snapshot and isinstance(audit.get("codex_native_source_evidence"), dict):
+                snapshot["codex_native_source_evidence"] = audit.get("codex_native_source_evidence")
+            if "compact_prompt_alignment" not in snapshot and isinstance(audit.get("compact_prompt_alignment"), dict):
+                snapshot["compact_prompt_alignment"] = audit.get("compact_prompt_alignment")
+            if "codex_summary_prefix" not in snapshot and isinstance(audit.get("codex_summary_prefix"), dict):
+                snapshot["codex_summary_prefix"] = audit.get("codex_summary_prefix")
         return snapshot
 
     if isinstance(fallback_last_report, dict) and fallback_last_report.get("exists"):
@@ -13305,6 +13402,12 @@ def _runtime_payload_guard_report_snapshot(
                 snapshot["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
             if "retained_recent_policy" not in snapshot and isinstance(audit.get("retained_recent_policy"), dict):
                 snapshot["retained_recent_policy"] = audit.get("retained_recent_policy")
+            if "codex_native_source_evidence" not in snapshot and isinstance(audit.get("codex_native_source_evidence"), dict):
+                snapshot["codex_native_source_evidence"] = audit.get("codex_native_source_evidence")
+            if "compact_prompt_alignment" not in snapshot and isinstance(audit.get("compact_prompt_alignment"), dict):
+                snapshot["compact_prompt_alignment"] = audit.get("compact_prompt_alignment")
+            if "codex_summary_prefix" not in snapshot and isinstance(audit.get("codex_summary_prefix"), dict):
+                snapshot["codex_summary_prefix"] = audit.get("codex_summary_prefix")
         return snapshot
 
     return {

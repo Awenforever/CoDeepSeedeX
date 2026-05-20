@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a91-image-semantic-envelope` (resolve the exact commit with `git rev-parse --short p2.10a91-image-semantic-envelope^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a91-image-semantic-envelope`
+- Current internal development checkpoint: `p2.10a92-codex-native-compact-source-alignment` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a92-codex-native-compact-source-alignment`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1466,3 +1466,27 @@ Rules:
 4. Raw image payloads, base64 strings, data URLs, and raw message content must not be exposed through metadata.
 5. `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE=0` disables the envelope report layer; `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM=0` keeps report metadata but disables payload replacement.
 6. Public `v0.3.9-alpha` remains frozen until the full checklist is complete.
+
+## p2.10a92 Codex native Compact source alignment
+
+p2.10a92 aligns dsproxy's local Compact prompt with the Codex GitHub source template and records the remote-Compact boundary.
+
+Source evidence:
+
+1. `openai/codex` GitHub source commit observed during audit: `main`.
+2. `codex-rs/core/src/compact.rs` includes `codex-rs/core/templates/compact/prompt.md`.
+3. `codex-rs/core/src/compact.rs` includes `codex-rs/core/templates/compact/summary_prefix.md`.
+4. `prompt.md` sha256: `ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07`.
+5. `summary_prefix.md` sha256: `e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e`.
+6. `run_inline_auto_compact_task()` synthesizes compact input from `turn_context.compact_prompt()`.
+7. Manual compact and mid-turn auto compact differ in `InitialContextInjection` behavior.
+8. Remote compact endpoint exists as `responses/compact`, but Codex gates it by provider capability.
+
+Runtime contract:
+
+1. dsproxy includes the exact Codex `prompt.md` text in the local Compact user message.
+2. dsproxy exposes `codex_native_source_evidence`, `compact_prompt_alignment`, and `codex_summary_prefix` through Compact metadata, compact audit, runtime payload guard, and WeClaw status.
+3. dsproxy may claim exact local prompt text alignment.
+4. dsproxy must not claim native remote compaction for the third-party DeepSeek route.
+5. Raw prompt and raw material remain redacted from status metadata.
+6. Public `v0.3.9-alpha` remains frozen.
