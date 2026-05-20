@@ -976,3 +976,22 @@ Boundary:
 - No token-based runtime trimming enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a86 Compact runtime/status contract
+
+Date: 2026-05-20
+
+Scope:
+
+- Added a stable redacted `compact_audit` contract for Compact metadata.
+- Runtime WeClaw status now exposes `runtime_payload_guard.compaction.compact_audit` and mirrors it under `compaction.compact_audit`.
+- CLI legacy fallback can expose the same audit metadata from `/v1/proxy/status.context.compaction.last_report` when the direct WeClaw runtime endpoint is unavailable.
+- Debug budget reports expose Compact audit metadata for local validation.
+- Added focused tests for runtime status serialization, WeClaw status, CLI fallback, and debug budget propagation.
+
+Boundary:
+
+- No semantic payload compaction enablement.
+- No token-based runtime trimming enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.

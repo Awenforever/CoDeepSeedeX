@@ -165,6 +165,24 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
         },
         "observed_at": "2026-05-17T10:00:00Z",
         "source": "runtime_context_builder",
+        "material": {
+            "compactable_message_count": 8,
+            "compaction_prompt_fingerprint": {
+                "available": True,
+                "sha256": "c" * 64,
+                "raw_prompt_exposed": False,
+                "raw_material_exposed": False,
+            },
+            "compact_material_classifier_dry_run": {
+                "available": True,
+                "mode": "dry_run",
+                "applied": False,
+            },
+            "retained_recent_policy": {
+                "available": True,
+                "retained_recent_message_count": 4,
+            },
+        },
     }
     app.state.deepseek_client.last_context_trimming_report = {
         "version": "v0.3.9-alpha",
@@ -219,6 +237,13 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["compaction"]["remaining_chars"] == 887655
     assert guard["compaction"]["status"] == "not_triggered"
     assert guard["compaction"]["last_report"]["exists"] is True
+    assert guard["compaction"]["compact_audit"]["available"] is True
+    assert guard["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "c" * 64
+    assert guard["compaction"]["last_report"]["compact_audit"]["fingerprint"]["sha256"] == "c" * 64
+    assert guard["compaction"]["last_report"]["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert guard["compaction"]["last_report"]["retained_recent_policy"]["retained_recent_message_count"] == 4
+    assert data["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "c" * 64
+    assert data["context_window"]["runtime"]["payload_guard"]["compaction"]["compact_audit"]["available"] is True
     assert guard["trimming"]["available"] is True
     assert guard["trimming"]["max_context_chars"] == 1500000
     assert guard["trimming"]["current_chars"] == 12345

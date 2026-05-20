@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a85-compact-prompt-fingerprint"
+PROXY_INTERNAL_VERSION = "p2.10a86-compact-runtime-status-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -2214,6 +2214,8 @@ def _context_budget_breakdown(
     if not isinstance(policy_decision, dict):
         policy_decision = {}
 
+    compact_audit = _compaction_audit_metadata_from_report(context_compaction_report)
+
     return {
         "request_payload_chars": _debug_trace_json_chars(request_payload),
         "current_input_chars": _debug_trace_json_chars(input_value),
@@ -2244,6 +2246,10 @@ def _context_budget_breakdown(
             "min_new_chars": policy_decision.get("min_new_chars"),
             "min_turns": policy_decision.get("min_turns"),
             "growth": policy_decision.get("growth"),
+            "compact_audit": compact_audit,
+            "compaction_prompt_fingerprint": compact_audit.get("fingerprint"),
+            "compact_material_classifier_dry_run": compact_audit.get("classifier_dry_run"),
+            "retained_recent_policy": compact_audit.get("retained_recent_policy"),
         },
     }
 
@@ -12039,6 +12045,63 @@ def _build_chat_payload(
     return payload
 
 
+def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "available": False,
+            "unit": "chars/messages",
+            "source": "context_compaction_report",
+            "reason": "context_compaction_report_unavailable",
+            "missing": [
+                "compaction_prompt_fingerprint",
+                "compact_material_classifier_dry_run",
+                "retained_recent_policy",
+            ],
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+
+    material = report.get("material") if isinstance(report.get("material"), dict) else {}
+    fingerprint = report.get("compaction_prompt_fingerprint")
+    if not isinstance(fingerprint, dict):
+        fingerprint = material.get("compaction_prompt_fingerprint") if isinstance(material, dict) else None
+    classifier = report.get("compact_material_classifier_dry_run")
+    if not isinstance(classifier, dict):
+        classifier = material.get("compact_material_classifier_dry_run") if isinstance(material, dict) else None
+    retained_policy = report.get("retained_recent_policy")
+    if not isinstance(retained_policy, dict):
+        retained_policy = material.get("retained_recent_policy") if isinstance(material, dict) else None
+
+    missing: list[str] = []
+    if not isinstance(fingerprint, dict):
+        missing.append("compaction_prompt_fingerprint")
+        fingerprint = None
+    if not isinstance(classifier, dict):
+        missing.append("compact_material_classifier_dry_run")
+        classifier = None
+    if not isinstance(retained_policy, dict):
+        missing.append("retained_recent_policy")
+        retained_policy = None
+
+    available = not missing
+    return {
+        "available": available,
+        "unit": "chars/messages",
+        "source": "context_compaction_report.compact_audit_metadata",
+        "raw_content_exposed": False,
+        "redacted": True,
+        "fingerprint": fingerprint,
+        "classifier_dry_run": classifier,
+        "retained_recent_policy": retained_policy,
+        "missing": missing,
+        "reason": None if available else "compact_audit_metadata_incomplete",
+        "notes": [
+            "This section is display-safe metadata for Compact auditability.",
+            "It does not expose raw prompt, raw compact material, or retained recent message content.",
+            "It is diagnostic metadata and must not be treated as token-level context usage.",
+        ],
+    }
+
 def _context_report_summary(filename: str) -> dict[str, Any]:
     path = Path(".debug") / filename
     summary: dict[str, Any] = {
@@ -12113,6 +12176,13 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
             ]
             if key in material
         }
+
+    audit = _compaction_audit_metadata_from_report(data)
+    if audit.get("available"):
+        summary["compact_audit"] = audit
+        summary["compaction_prompt_fingerprint"] = audit.get("fingerprint")
+        summary["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
+        summary["retained_recent_policy"] = audit.get("retained_recent_policy")
 
     policy_decision = data.get("policy_decision")
     if isinstance(policy_decision, dict):
@@ -12248,6 +12318,7 @@ def _runtime_payload_guard_report_snapshot(
             "compaction_prompt_fingerprint",
             "compact_material_classifier_dry_run",
             "retained_recent_policy",
+            "compact_audit",
         ]
         snapshot = {
             "exists": True,
@@ -12257,12 +12328,30 @@ def _runtime_payload_guard_report_snapshot(
         for key in keys:
             if key in report:
                 snapshot[key] = report.get(key)
+        if kind == "compaction":
+            audit = _compaction_audit_metadata_from_report(snapshot)
+            snapshot["compact_audit"] = audit
+            if "compaction_prompt_fingerprint" not in snapshot and isinstance(audit.get("fingerprint"), dict):
+                snapshot["compaction_prompt_fingerprint"] = audit.get("fingerprint")
+            if "compact_material_classifier_dry_run" not in snapshot and isinstance(audit.get("classifier_dry_run"), dict):
+                snapshot["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
+            if "retained_recent_policy" not in snapshot and isinstance(audit.get("retained_recent_policy"), dict):
+                snapshot["retained_recent_policy"] = audit.get("retained_recent_policy")
         return snapshot
 
     if isinstance(fallback_last_report, dict) and fallback_last_report.get("exists"):
         snapshot = dict(fallback_last_report)
         snapshot["source"] = "debug_last_report_summary"
         snapshot.setdefault("reason", "debug_last_report_available_but_not_used_for_realtime_current_chars")
+        if kind == "compaction":
+            audit = _compaction_audit_metadata_from_report(snapshot)
+            snapshot["compact_audit"] = audit
+            if "compaction_prompt_fingerprint" not in snapshot and isinstance(audit.get("fingerprint"), dict):
+                snapshot["compaction_prompt_fingerprint"] = audit.get("fingerprint")
+            if "compact_material_classifier_dry_run" not in snapshot and isinstance(audit.get("classifier_dry_run"), dict):
+                snapshot["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
+            if "retained_recent_policy" not in snapshot and isinstance(audit.get("retained_recent_policy"), dict):
+                snapshot["retained_recent_policy"] = audit.get("retained_recent_policy")
         return snapshot
 
     return {
@@ -12362,6 +12451,7 @@ def _runtime_payload_guard_contract(
         "remaining_chars": max(0, trigger_chars - compaction_raw) if compaction_raw is not None and trigger_chars is not None else None,
         "status": _runtime_payload_guard_status(current_chars=compaction_raw, limit_chars=trigger_chars, terminal=bool((compaction_report_dict or {}).get("compacted")), terminal_status="compacted"),
         "last_report": _runtime_payload_guard_report_snapshot(compaction_report_dict, kind="compaction", fallback_last_report=compaction_last_report),
+        "compact_audit": _compaction_audit_metadata_from_report(compaction_report_dict or compaction_last_report),
         "reason": None if compaction_available else "current_compaction_chars_unavailable",
         "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -15708,6 +15798,11 @@ def _runtime_weclaw_status(
             "unit": "chars",
             "runtime_context": context_status,
             "runtime_payload_guard": runtime_payload_guard,
+            "compact_audit": (
+                runtime_payload_guard.get("compaction", {}).get("compact_audit")
+                if isinstance(runtime_payload_guard.get("compaction"), dict)
+                else _compaction_audit_metadata_from_report(last_context_compaction_report)
+            ),
             "semantic_compaction": semantic_status,
             "missing": [],
         },

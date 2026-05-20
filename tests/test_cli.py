@@ -2637,8 +2637,71 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     assert result["balance"]["status"] == "not_configured"
     assert result["balance"]["reason"] == "running_dsproxy_weclaw_status_endpoint_unavailable"
     assert result["balance"]["action"] == "start the selected dsproxy route and re-run dsproxy status --weclaw-json"
+
     assert result["runtime_status"]["available"] is False
 
+
+def test_cli_status_weclaw_json_exposes_legacy_compact_audit_when_runtime_weclaw_unavailable(monkeypatch, tmp_path, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
+
+    def fake_http_json(url, timeout=2.0):
+        if "/v1/proxy/weclaw/status" in url:
+            return 599, None, "connection refused"
+        if "/v1/proxy/status" in url:
+            return 200, {
+                "context": {
+                    "compaction": {
+                        "last_report": {
+                            "exists": True,
+                            "material": {
+                                "compaction_prompt_fingerprint": {
+                                    "available": True,
+                                    "sha256": "e" * 64,
+                                    "raw_prompt_exposed": False,
+                                    "raw_material_exposed": False,
+                                },
+                                "compact_material_classifier_dry_run": {
+                                    "available": True,
+                                    "mode": "dry_run",
+                                    "applied": False,
+                                },
+                                "retained_recent_policy": {
+                                    "available": True,
+                                    "retained_recent_message_count": 5,
+                                },
+                            },
+                        },
+                    },
+                },
+                "semantic_compaction": {"available": True},
+            }, None
+        return 404, None, "unexpected url"
+
+    monkeypatch.setattr(cli_module, "_http_json", fake_http_json)
+
+    assert main(["status", "thinking", "--weclaw-json"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["runtime_status"]["available"] is True
+    assert result["compaction"]["compact_audit"]["available"] is True
+    assert result["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "e" * 64
+    assert result["compaction"]["compact_audit"]["classifier_dry_run"]["mode"] == "dry_run"
+    assert result["compaction"]["compact_audit"]["retained_recent_policy"]["retained_recent_message_count"] == 5
+    assert result["runtime_payload_guard"]["compaction"]["compact_audit"]["available"] is True
 
 
 def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):

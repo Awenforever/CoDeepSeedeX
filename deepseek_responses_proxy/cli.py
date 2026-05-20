@@ -1440,6 +1440,76 @@ def _profile(args: argparse.Namespace) -> int:
     return 2
 
 
+def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str, object] | None) -> dict[str, object]:
+    if not isinstance(runtime_status, dict):
+        return {
+            "available": False,
+            "unit": "chars/messages",
+            "source": "legacy_runtime_status_unavailable",
+            "reason": "legacy_runtime_status_unavailable",
+            "missing": [
+                "compaction_prompt_fingerprint",
+                "compact_material_classifier_dry_run",
+                "retained_recent_policy",
+            ],
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+
+    runtime_context = runtime_status.get("context")
+    compaction = runtime_context.get("compaction") if isinstance(runtime_context, dict) else None
+    last_report = compaction.get("last_report") if isinstance(compaction, dict) else None
+    if not isinstance(last_report, dict):
+        return {
+            "available": False,
+            "unit": "chars/messages",
+            "source": "legacy_runtime_status.context.compaction.last_report",
+            "reason": "context_compaction_last_report_unavailable",
+            "missing": [
+                "compaction_prompt_fingerprint",
+                "compact_material_classifier_dry_run",
+                "retained_recent_policy",
+            ],
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+
+    material = last_report.get("material") if isinstance(last_report.get("material"), dict) else {}
+    fingerprint = last_report.get("compaction_prompt_fingerprint")
+    if not isinstance(fingerprint, dict):
+        fingerprint = material.get("compaction_prompt_fingerprint") if isinstance(material, dict) else None
+    classifier = last_report.get("compact_material_classifier_dry_run")
+    if not isinstance(classifier, dict):
+        classifier = material.get("compact_material_classifier_dry_run") if isinstance(material, dict) else None
+    retained_policy = last_report.get("retained_recent_policy")
+    if not isinstance(retained_policy, dict):
+        retained_policy = material.get("retained_recent_policy") if isinstance(material, dict) else None
+
+    missing: list[str] = []
+    if not isinstance(fingerprint, dict):
+        missing.append("compaction_prompt_fingerprint")
+        fingerprint = None
+    if not isinstance(classifier, dict):
+        missing.append("compact_material_classifier_dry_run")
+        classifier = None
+    if not isinstance(retained_policy, dict):
+        missing.append("retained_recent_policy")
+        retained_policy = None
+
+    available = not missing
+    return {
+        "available": available,
+        "unit": "chars/messages",
+        "source": "legacy_runtime_status.context.compaction.last_report.compact_audit_metadata",
+        "raw_content_exposed": False,
+        "redacted": True,
+        "fingerprint": fingerprint,
+        "classifier_dry_run": classifier,
+        "retained_recent_policy": retained_policy,
+        "missing": missing,
+        "reason": None if available else "compact_audit_metadata_incomplete",
+    }
+
 def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
     profile_name = "deepseek-thinking" if bool(getattr(args, "thinking", False)) else "deepseek"
     env_file = Path(getattr(args, "env_file", "")).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
@@ -1494,6 +1564,8 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
     semantic_compaction = None
     if isinstance(legacy_runtime_status, dict) and isinstance(legacy_runtime_status.get("semantic_compaction"), dict):
         semantic_compaction = legacy_runtime_status.get("semantic_compaction")
+
+    compact_audit = _cli_compaction_audit_metadata_from_runtime_status(legacy_runtime_status)
 
     fallback_pricing = {
         "available": False,
@@ -1638,6 +1710,7 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
                 "available": False,
                 "status": "unavailable",
                 "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "compact_audit": compact_audit,
             },
             "trimming": {
                 "available": False,
@@ -1651,6 +1724,7 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "source": "dsproxy_runtime./v1/proxy/status.context",
             "unit": "chars",
             "runtime_context": runtime_context if isinstance(runtime_context, dict) else None,
+            "compact_audit": compact_audit,
             "semantic_compaction": semantic_compaction,
             "missing": [] if compaction_available else ["context_compaction_report_binding"],
         },

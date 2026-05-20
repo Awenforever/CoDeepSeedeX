@@ -457,6 +457,23 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
             "min_turns": 4,
             "growth": {"turns_since_last_compaction": 3},
         },
+        "material": {
+            "compaction_prompt_fingerprint": {
+                "available": True,
+                "sha256": "d" * 64,
+                "raw_prompt_exposed": False,
+                "raw_material_exposed": False,
+            },
+            "compact_material_classifier_dry_run": {
+                "available": True,
+                "mode": "dry_run",
+                "applied": False,
+            },
+            "retained_recent_policy": {
+                "available": True,
+                "retained_recent_message_count": 2,
+            },
+        },
     }
 
     budget = proxy_app._context_budget_breakdown(
@@ -478,6 +495,10 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
     assert budget["messages_for_deepseek"]["roles"]["tool"]["count"] == 1
     assert budget["compaction"]["reason"] == "not_triggered"
     assert budget["compaction"]["effective_trigger_chars"] == 1250000
+    assert budget["compaction"]["compact_audit"]["available"] is True
+    assert budget["compaction"]["compaction_prompt_fingerprint"]["sha256"] == "d" * 64
+    assert budget["compaction"]["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert budget["compaction"]["retained_recent_policy"]["retained_recent_message_count"] == 2
 
 
 def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):

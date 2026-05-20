@@ -43,6 +43,21 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
                     "recent_message_count": 10,
                     "recent_start": 40,
                     "material_chars": 12000,
+                    "compaction_prompt_fingerprint": {
+                        "available": True,
+                        "sha256": "b" * 64,
+                        "raw_prompt_exposed": False,
+                        "raw_material_exposed": False,
+                    },
+                    "compact_material_classifier_dry_run": {
+                        "available": True,
+                        "mode": "dry_run",
+                        "applied": False,
+                    },
+                    "retained_recent_policy": {
+                        "available": True,
+                        "retained_recent_message_count": 10,
+                    },
                 },
                 "build": {
                     "summary_chars": 3000,
@@ -101,6 +116,11 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     assert compaction["last_report"]["summary_source"] == "deepseek"
     assert compaction["last_report"]["chars_removed"] == 80000
     assert compaction["last_report"]["material"]["compactable_message_count"] == 40
+    assert compaction["last_report"]["compact_audit"]["available"] is True
+    assert compaction["last_report"]["compact_audit"]["fingerprint"]["sha256"] == "b" * 64
+    assert compaction["last_report"]["compaction_prompt_fingerprint"]["sha256"] == "b" * 64
+    assert compaction["last_report"]["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert compaction["last_report"]["retained_recent_policy"]["retained_recent_message_count"] == 10
     assert compaction["last_report"]["build"]["summary_chars"] == 3000
 
     live_report = {
@@ -144,6 +164,9 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     }
     runtime = proxy_app._runtime_payload_guard_contract({"compaction": {"config": {}}}, compaction_report=live_report)
     last_report = runtime["compaction"]["last_report"]
+    assert runtime["compaction"]["compact_audit"]["available"] is True
+    assert runtime["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "a" * 64
+    assert last_report["compact_audit"]["fingerprint"]["sha256"] == "a" * 64
     assert last_report["compaction_prompt_fingerprint"]["sha256"] == "a" * 64
     assert last_report["compact_material_classifier_dry_run"]["mode"] == "dry_run"
     assert last_report["retained_recent_policy"]["retained_recent_message_count"] == 3

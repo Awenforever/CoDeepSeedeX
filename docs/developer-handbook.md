@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a85-compact-prompt-fingerprint` (resolve the exact commit with `git rev-parse --short p2.10a85-compact-prompt-fingerprint^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a85-compact-prompt-fingerprint`
+- Current internal development checkpoint: `p2.10a86-compact-runtime-status-contract` (resolve the exact commit with `git rev-parse --short p2.10a86-compact-runtime-status-contract^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a86-compact-runtime-status-contract`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1383,4 +1383,17 @@ Rules:
 3. `compact_material_classifier_dry_run` classifies compaction material, retained recent verbatim messages, and leading system/developer messages without changing the payload.
 4. `retained_recent_policy` makes the `_safe_recent_message_start()` boundary explicit, including whether dsproxy rewound the boundary to preserve an assistant tool_call/tool result pair.
 5. Runtime status may expose these fields under compaction last-report metadata. They remain `unit=chars/messages` diagnostic fields and must not modify the p2.10a84 token-first context denominator.
+6. This node does not enable semantic payload compaction, does not enable token-based runtime trimming, and does not move public `v0.3.9-alpha`.
+
+## p2.10a86 Compact runtime/status contract
+
+p2.10a86 stabilizes the runtime/status surface for p2.10a85 Compact audit metadata.
+
+Rules:
+
+1. Runtime WeClaw status exposes `runtime_payload_guard.compaction.compact_audit` and mirrors it under `compaction.compact_audit`.
+2. `compact_audit` is display-safe and redacted. It contains fingerprint, classifier dry-run, and retained-recent-policy metadata only.
+3. Legacy CLI fallback from `/v1/proxy/status.context.compaction.last_report` also exposes `compaction.compact_audit` when `/v1/proxy/weclaw/status` is unavailable.
+4. Debug budget reports expose the same audit metadata under the compaction section for local runtime validation.
+5. The contract remains `unit=chars/messages`; it is separate from p2.10a84 token-first context-window accounting.
 6. This node does not enable semantic payload compaction, does not enable token-based runtime trimming, and does not move public `v0.3.9-alpha`.

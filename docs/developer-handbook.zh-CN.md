@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a85-compact-prompt-fingerprint`，准确提交用`git rev-parse --short p2.10a85-compact-prompt-fingerprint^{}`解析
-- 最新闭合文档同步检查点：`p2.10a85-compact-prompt-fingerprint`
+- 当前内部开发检查点：`p2.10a86-compact-runtime-status-contract`，准确提交用`git rev-parse --short p2.10a86-compact-runtime-status-contract^{}`解析
+- 最新闭合文档同步检查点：`p2.10a86-compact-runtime-status-contract`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1338,4 +1338,17 @@ p2.10a85为Codex-like persistent compaction增加只审计metadata。
 3. `compact_material_classifier_dry_run`只分类compaction material、retained recent verbatim messages和leading system/developer messages，不改payload。
 4. `retained_recent_policy`显式暴露`_safe_recent_message_start()`边界，包括是否为了保留assistant tool_call/tool result对而回退边界。
 5. runtime status可在compaction last-report metadata下暴露这些字段。它们仍是`unit=chars/messages`诊断字段，不能改变p2.10a84的token-first context分母。
+6. 本节点不启用semantic payload compaction，不启用token-based runtime trimming，也不移动公开`v0.3.9-alpha`。
+
+## p2.10a86 Compact runtime/status contract
+
+p2.10a86稳定p2.10a85 Compact audit metadata的runtime/status契约面。
+
+规则：
+
+1. runtime WeClaw status暴露`runtime_payload_guard.compaction.compact_audit`，并在`compaction.compact_audit`下镜像。
+2. `compact_audit`是可展示且脱敏的字段，只包含fingerprint、classifier dry-run和retained-recent-policy metadata。
+3. 当`/v1/proxy/weclaw/status`不可用时，CLI legacy fallback会从`/v1/proxy/status.context.compaction.last_report`暴露`compaction.compact_audit`。
+4. debug budget在compaction区暴露同一组audit metadata，便于本地运行时验证。
+5. 该契约仍为`unit=chars/messages`，与p2.10a84 token-first context-window统计分离。
 6. 本节点不启用semantic payload compaction，不启用token-based runtime trimming，也不移动公开`v0.3.9-alpha`。
