@@ -289,3 +289,70 @@ def test_type_aware_trim_can_be_disabled_without_disabling_dry_run(monkeypatch):
     assert report["type_aware_trim"]["enabled"] is False
     assert report["type_aware_trim"]["applied"] is False
     assert trimmed["messages"][0]["content"] == raw_log
+
+
+def test_image_semantic_envelope_transforms_non_first_image_without_raw_leak(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "60000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+
+    first_image = "data:image/png;base64," + ("A" * 1600)
+    second_image = "data:image/png;base64," + ("B" * 2200)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": first_image},
+            {"role": "user", "content": second_image},
+            {"role": "user", "content": "final request"},
+        ],
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    envelope = report["image_semantic_envelope"]
+    assert envelope["available"] is True
+    assert envelope["enabled"] is True
+    assert envelope["transform_enabled"] is True
+    assert envelope["applied"] is True
+    assert envelope["image_message_count"] == 2
+    assert envelope["protected_count"] == 1
+    assert envelope["transformed_count"] == 1
+    assert envelope["items"][0]["protected"] is True
+    assert envelope["items"][0]["raw_image_content_exposed"] is False
+    assert envelope["items"][1]["transformed"] is True
+
+    assert trimmed["messages"][0]["content"] == first_image
+    assert "[deepseek-proxy image semantic envelope]" in trimmed["messages"][1]["content"]
+    assert "raw_image_content_exposed: false" in trimmed["messages"][1]["content"]
+
+    serialized_report = json.dumps(report, ensure_ascii=False)
+    serialized_trimmed = json.dumps(trimmed, ensure_ascii=False)
+    assert second_image not in serialized_report
+    assert second_image not in serialized_trimmed
+    assert '"raw_image_content_exposed": true' not in serialized_report.lower()
+
+
+def test_image_semantic_envelope_transform_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "60000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+
+    first_image = "data:image/png;base64," + ("A" * 1600)
+    second_image = "data:image/png;base64," + ("B" * 2200)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": first_image},
+            {"role": "user", "content": second_image},
+            {"role": "user", "content": "final request"},
+        ],
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    assert report["image_semantic_envelope"]["available"] is True
+    assert report["image_semantic_envelope"]["transform_enabled"] is False
+    assert report["image_semantic_envelope"]["applied"] is False
+    assert report["image_semantic_envelope"]["transformed_count"] == 0
+    assert trimmed["messages"][1]["content"] == second_image

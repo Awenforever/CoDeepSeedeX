@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a90-type-aware-trim-enablement`，准确提交用`git rev-parse --short p2.10a90-type-aware-trim-enablement^{}`解析
-- 最新闭合文档同步检查点：`p2.10a90-type-aware-trim-enablement`
+- 当前内部开发检查点：`p2.10a91-image-semantic-envelope`，准确提交用`git rev-parse --short p2.10a91-image-semantic-envelope^{}`解析
+- 最新闭合文档同步检查点：`p2.10a91-image-semantic-envelope`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1408,3 +1408,16 @@ p2.10a90启用第一批生产类型感知context TRIM。
 6. metadata不得暴露raw message content、image payload、static block文本或tool arguments。
 7. `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0`可以关闭生产类型感知TRIM，但不关闭dry-run metadata。
 8. 公开`v0.3.9-alpha`在完整清单完成前继续冻结。
+
+## p2.10a91 Image semantic envelope
+
+p2.10a91新增面向context TRIM的display-safe图像语义信封层。
+
+规则：
+
+1. 第一个被观察到的image payload继续受保护并保持原样。
+2. 非保护image message可以被替换为semantic envelope文本，只记录message index、role、image count、media type提示、source shape、byte estimate和sha256。
+3. `image_semantic_envelope`会暴露到context trim report、runtime payload guard snapshot和WeClaw status surface。
+4. metadata不得暴露raw image payload、base64字符串、data URL或raw message content。
+5. `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE=0`关闭envelope report层；`DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM=0`保留report metadata但关闭payload替换。
+6. 公开`v0.3.9-alpha`在完整清单完成前继续冻结。

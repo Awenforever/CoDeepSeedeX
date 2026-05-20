@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a90-type-aware-trim-enablement` (resolve the exact commit with `git rev-parse --short p2.10a90-type-aware-trim-enablement^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a90-type-aware-trim-enablement`
+- Current internal development checkpoint: `p2.10a91-image-semantic-envelope` (resolve the exact commit with `git rev-parse --short p2.10a91-image-semantic-envelope^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a91-image-semantic-envelope`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1453,3 +1453,16 @@ Rules:
 6. Raw message content, image payloads, static block text, and tool arguments must not be exposed through metadata.
 7. `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0` disables production type-aware trimming without disabling dry-run metadata.
 8. Public `v0.3.9-alpha` remains frozen until the full checklist is complete.
+
+## p2.10a91 Image semantic envelope
+
+p2.10a91 adds a display-safe image semantic envelope layer for context TRIM.
+
+Rules:
+
+1. The first observed image payload remains protected and verbatim.
+2. Non-protected image messages can be replaced with semantic envelope text that records only message index, role, image count, media type hints, source shape, byte estimate, and sha256.
+3. `image_semantic_envelope` is exposed in context trim reports, runtime payload guard snapshots, and WeClaw status surfaces.
+4. Raw image payloads, base64 strings, data URLs, and raw message content must not be exposed through metadata.
+5. `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE=0` disables the envelope report layer; `DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM=0` keeps report metadata but disables payload replacement.
+6. Public `v0.3.9-alpha` remains frozen until the full checklist is complete.

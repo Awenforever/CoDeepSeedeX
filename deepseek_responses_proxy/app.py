@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a90-type-aware-trim-enablement"
+PROXY_INTERNAL_VERSION = "p2.10a91-image-semantic-envelope"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5151,6 +5151,9 @@ def _context_trim_env_config() -> dict[str, int]:
         "max_tool_output_chars": max_tool_output_chars,
         "keep_recent_messages": _env_int("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", 24),
         "type_aware_trim_enabled": 1 if _env_bool("DEEPSEEK_PROXY_TYPE_AWARE_TRIM", True) else 0,
+        "image_semantic_envelope_enabled": 1 if _env_bool("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE", True) else 0,
+        "image_semantic_envelope_transform_enabled": 1 if _env_bool("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM", True) else 0,
+        "image_semantic_envelope_max_items": _env_int("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_MAX_ITEMS", 24),
         "trim_tool_result_chars": _env_int("DEEPSEEK_PROXY_TRIM_TOOL_RESULT_CHARS", max_tool_output_chars),
         "trim_log_chars": _env_int("DEEPSEEK_PROXY_TRIM_LOG_CHARS", min(max_tool_output_chars, 8_000)),
         "trim_pytest_chars": _env_int("DEEPSEEK_PROXY_TRIM_PYTEST_CHARS", min(max_tool_output_chars, 6_000)),
@@ -5498,6 +5501,239 @@ def _context_trim_record_type_aware_application(
     limit_keys = item.setdefault("limit_keys", [])
     if limit_key not in limit_keys:
         limit_keys.append(limit_key)
+
+def _context_image_semantic_findings(value: Any, *, path: str = "$", max_items: int = 64) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+
+    def add_finding(
+        *,
+        path_value: str,
+        source_shape: str,
+        media_type: str | None = None,
+        byte_estimate: int | None = None,
+    ) -> None:
+        if len(findings) >= max_items:
+            return
+        findings.append(
+            {
+                "path": path_value,
+                "source_shape": source_shape,
+                "media_type": media_type,
+                "byte_estimate": byte_estimate,
+                "raw_image_content_exposed": False,
+                "redacted": True,
+            }
+        )
+
+    def walk(node: Any, current_path: str) -> None:
+        if len(findings) >= max_items:
+            return
+
+        if isinstance(node, str):
+            lowered = node.lower()
+            if "data:image" in lowered:
+                media_match = re.search(r"data:(image/[A-Za-z0-9.+-]+);base64,", node, re.IGNORECASE)
+                payload_match = re.search(r"data:image/[A-Za-z0-9.+-]+;base64,([A-Za-z0-9+/=]+)", node, re.IGNORECASE)
+                byte_estimate = None
+                if payload_match:
+                    byte_estimate = max(0, (len(payload_match.group(1)) * 3) // 4)
+                add_finding(
+                    path_value=current_path,
+                    source_shape="data_url_string",
+                    media_type=media_match.group(1).lower() if media_match else "image/unknown",
+                    byte_estimate=byte_estimate,
+                )
+            elif "image_url" in lowered or '"type":"input_image"' in lowered.replace(" ", "") or "b64_json" in lowered:
+                add_finding(path_value=current_path, source_shape="json_string_with_image_marker")
+            return
+
+        if isinstance(node, dict):
+            type_value = str(node.get("type") or "").lower()
+            mime_value = str(node.get("mime_type") or node.get("media_type") or "").lower()
+            if type_value in {"input_image", "image_url"} or type_value.startswith("image"):
+                add_finding(
+                    path_value=current_path,
+                    source_shape=f"type:{type_value or 'image'}",
+                    media_type=mime_value if mime_value.startswith("image/") else None,
+                )
+            elif mime_value.startswith("image/"):
+                add_finding(path_value=current_path, source_shape="mime_type", media_type=mime_value)
+            elif "b64_json" in node:
+                add_finding(
+                    path_value=f"{current_path}.b64_json",
+                    source_shape="b64_json",
+                    media_type=mime_value if mime_value.startswith("image/") else "image/unknown",
+                    byte_estimate=max(0, (len(str(node.get("b64_json") or "")) * 3) // 4),
+                )
+            elif "image_url" in node:
+                add_finding(path_value=f"{current_path}.image_url", source_shape="image_url")
+            for key, child in node.items():
+                safe_key = str(key).replace("\\", "\\\\").replace(".", "\\.")
+                walk(child, f"{current_path}.{safe_key}")
+            return
+
+        if isinstance(node, list):
+            for index, child in enumerate(node):
+                walk(child, f"{current_path}[{index}]")
+
+    walk(value, path)
+    return findings
+
+
+def _context_image_semantic_envelope_text(item: dict[str, Any]) -> str:
+    media_types = item.get("media_types") if isinstance(item.get("media_types"), list) else []
+    source_shapes = item.get("source_shapes") if isinstance(item.get("source_shapes"), list) else []
+    return "\n".join(
+        [
+            "[deepseek-proxy image semantic envelope]",
+            f"original_message_index: {item.get('index')}",
+            f"role: {item.get('role')}",
+            f"image_count: {item.get('image_count')}",
+            f"media_types: {json.dumps(media_types, ensure_ascii=False)}",
+            f"source_shapes: {json.dumps(source_shapes, ensure_ascii=False)}",
+            f"original_message_sha256: {item.get('sha256')}",
+            "raw_image_content_exposed: false",
+            "note: Raw image payload was replaced by display-safe semantic metadata. The first observed image payload is preserved verbatim separately.",
+        ]
+    )
+
+
+def _context_image_semantic_envelope_report(
+    messages: list[dict[str, Any]],
+    *,
+    protected_message_indexes: set[int],
+    config: dict[str, int],
+) -> dict[str, Any]:
+    enabled = bool(config.get("image_semantic_envelope_enabled", 1))
+    transform_enabled = bool(config.get("image_semantic_envelope_transform_enabled", 1))
+    max_items = max(1, int(config.get("image_semantic_envelope_max_items") or 24))
+
+    items: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        findings = _context_image_semantic_findings(message, path=f"messages[{index}]")
+        if not findings:
+            continue
+
+        protected = index in protected_message_indexes
+        has_tool_calls = isinstance(message.get("tool_calls"), list) and bool(message.get("tool_calls"))
+        transform_eligible = bool(enabled and transform_enabled and not protected and not has_tool_calls)
+        media_types = sorted({str(item.get("media_type")) for item in findings if item.get("media_type")})
+        source_shapes = sorted({str(item.get("source_shape")) for item in findings if item.get("source_shape")})
+        byte_estimates = [
+            int(item.get("byte_estimate"))
+            for item in findings
+            if isinstance(item.get("byte_estimate"), int)
+        ]
+        items.append(
+            {
+                "index": index,
+                "role": str(message.get("role") or "unknown"),
+                "type": _context_trim_content_shape_type(message),
+                "protected": protected,
+                "transform_eligible": transform_eligible,
+                "transformed": False,
+                "protection_reasons": (
+                    ["protected_message_index"]
+                    if protected
+                    else (["tool_call_structure_preserved"] if has_tool_calls else [])
+                ),
+                "image_count": len(findings),
+                "paths": [str(item.get("path")) for item in findings[:12]],
+                "media_types": media_types,
+                "source_shapes": source_shapes,
+                "byte_estimate": sum(byte_estimates) if byte_estimates else None,
+                "char_count": _json_char_size(message),
+                "sha256": hashlib.sha256(_context_trim_json_text(message).encode("utf-8", errors="replace")).hexdigest(),
+                "raw_image_content_exposed": False,
+                "raw_content_exposed": False,
+                "redacted": True,
+            }
+        )
+
+    transformed_count = sum(1 for item in items if bool(item.get("transform_eligible")))
+    protected_count = sum(1 for item in items if bool(item.get("protected")))
+    return {
+        "available": bool(items),
+        "enabled": enabled,
+        "mode": "enabled",
+        "unit": "messages",
+        "transform_enabled": transform_enabled,
+        "applied": bool(enabled and transform_enabled and transformed_count),
+        "applied_count": transformed_count if enabled and transform_enabled else 0,
+        "image_message_count": len(items),
+        "image_count": sum(int(item.get("image_count") or 0) for item in items),
+        "protected_count": protected_count,
+        "transformed_count": transformed_count if enabled and transform_enabled else 0,
+        "items": items[:max_items],
+        "raw_image_content_exposed": False,
+        "raw_content_exposed": False,
+        "redacted": True,
+        "notes": [
+            "This report exposes display-safe image metadata only.",
+            "The first observed image payload remains protected and verbatim.",
+            "Non-protected image messages can be replaced with semantic envelope text to reduce raw image payload pressure.",
+        ],
+    }
+
+
+def _apply_context_image_semantic_envelopes(
+    messages: list[Any],
+    *,
+    envelope_report: dict[str, Any],
+) -> list[Any]:
+    if not bool(envelope_report.get("enabled")) or not bool(envelope_report.get("transform_enabled")):
+        return messages
+
+    item_by_index = {
+        int(item.get("index")): item
+        for item in (envelope_report.get("items") or [])
+        if isinstance(item, dict) and isinstance(item.get("index"), int)
+    }
+    if not item_by_index:
+        return messages
+
+    transformed: list[Any] = []
+    for index, message in enumerate(messages):
+        item = item_by_index.get(index)
+        if not isinstance(message, dict) or not isinstance(item, dict) or not bool(item.get("transform_eligible")):
+            transformed.append(message)
+            continue
+
+        envelope_text = _context_image_semantic_envelope_text(item)
+        new_message: dict[str, Any] = {
+            key: deepcopy(value)
+            for key, value in message.items()
+            if key in {"role", "name", "tool_call_id"}
+        }
+        new_message.setdefault("role", str(message.get("role") or "user"))
+        new_message["content"] = envelope_text
+        transformed.append(new_message)
+
+        item["transformed"] = True
+        _append_context_trim_operation(
+            envelope_report,
+            {
+                "kind": "image_semantic_envelope_transform",
+                "location": f"messages[{index}]",
+                "message_type": item.get("type"),
+                "image_count": item.get("image_count"),
+                "original_chars": item.get("char_count"),
+                "replacement_chars": len(envelope_text),
+                "sha256": item.get("sha256"),
+                "raw_image_content_exposed": False,
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        )
+
+    envelope_report["transformed_count"] = sum(
+        1 for item in item_by_index.values() if bool(item.get("transformed"))
+    )
+    envelope_report["applied_count"] = envelope_report["transformed_count"]
+    envelope_report["applied"] = bool(envelope_report["transformed_count"])
+    return transformed
 
 def _context_trim_token_first_dry_run(
     payload: dict[str, Any],
@@ -6033,6 +6269,17 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
     report["protected_message_indexes"] = sorted(protected_message_indexes)
     report["protected_static_blocks"] = token_dry_run.get("static_block_protection")
     report["image_first_protection"] = token_dry_run.get("image_first_protection")
+    report["image_semantic_envelope"] = _context_image_semantic_envelope_report(
+        trimmed_messages,
+        protected_message_indexes=protected_message_indexes,
+        config=config,
+    )
+    trimmed_messages = _apply_context_image_semantic_envelopes(
+        trimmed_messages,
+        envelope_report=report["image_semantic_envelope"],
+    )
+    if isinstance(report.get("image_semantic_envelope"), dict) and report["image_semantic_envelope"].get("applied"):
+        report["trimmed"] = True
 
     new_messages: list[dict[str, Any]] = []
     for index, message in enumerate(trimmed_messages):
@@ -12860,6 +13107,7 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
         "protected_message_indexes",
         "protected_static_blocks",
         "image_first_protection",
+        "image_semantic_envelope",
         "type_aware_trim",
         "compact_audit_generation",
         "aggressive_trimmed_fields",
@@ -13022,6 +13270,7 @@ def _runtime_payload_guard_report_snapshot(
             "protected_message_indexes",
             "protected_static_blocks",
             "image_first_protection",
+            "image_semantic_envelope",
             "type_aware_trim",
         ]
         snapshot = {

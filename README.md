@@ -335,7 +335,8 @@ Current WeClaw-facing fields include:
 - Compact audit dry-run metadata for skipped compaction reports without model calls or payload mutation;
 - HTTP end-to-end regression coverage for Compact audit visibility through WeClaw status;
 - token-first TRIM dry-run with type enum, first-image protection, and static-block protection;
-- type-aware production TRIM for low-risk text payloads with redacted status metadata.
+- type-aware production TRIM for low-risk text payloads with redacted status metadata;
+- image semantic envelopes for non-protected image payloads with first-image preservation.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 

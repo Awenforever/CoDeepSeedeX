@@ -1075,3 +1075,19 @@ Boundary:
 - This node does not enable semantic payload compaction.
 - This node does not implement image semantic envelopes.
 - Public `v0.3.9-alpha` remains unmoved.
+
+## p2.10a91 Image semantic envelope
+
+Date: 2026-05-20
+
+Scope:
+
+- Added display-safe `image_semantic_envelope` metadata for context TRIM.
+- Preserved the first observed image payload verbatim while allowing non-protected image messages to be replaced with semantic envelope text.
+- Exposed envelope metadata through trim reports, runtime payload guard snapshots, and WeClaw status paths.
+- Added regression coverage for first-image preservation, non-first image replacement, opt-out behavior, and raw image redaction.
+
+Boundary:
+
+- This node does not implement OCR, image captioning, or external vision analysis.
+- This node does not update the public `v0.3.9-alpha` release.
