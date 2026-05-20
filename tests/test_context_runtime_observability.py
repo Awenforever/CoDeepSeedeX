@@ -59,6 +59,14 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
                         "retained_recent_message_count": 10,
                     },
                 },
+                "compact_audit_generation": {
+                    "available": True,
+                    "mode": "dry_run",
+                    "applied": False,
+                    "source": "policy_decision_not_triggered",
+                    "raw_prompt_exposed": False,
+                    "raw_material_exposed": False,
+                },
                 "build": {
                     "summary_chars": 3000,
                     "summary_was_trimmed": False,

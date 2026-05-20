@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a86-compact-runtime-status-contract"
+PROXY_INTERNAL_VERSION = "p2.10a87-compact-audit-dry-run-on-skip"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -6108,6 +6108,57 @@ def _build_persistent_compacted_history(
     return compacted, report
 
 
+def _attach_compaction_dry_run_audit_to_report(
+    report: dict[str, Any],
+    messages: list[dict[str, Any]],
+    config: dict[str, Any],
+    *,
+    audit_source: str,
+) -> None:
+    if not bool(config.get("enabled", True)):
+        report["compact_audit_generation"] = {
+            "available": False,
+            "reason": "context_compaction_disabled",
+            "source": audit_source,
+        }
+        return
+
+    if isinstance(report.get("material"), dict):
+        return
+
+    try:
+        _prompt_messages, material_meta = _compaction_prompt_messages(
+            messages,
+            material_chars=int(config["material_chars"]),
+            keep_recent_messages=int(config["keep_recent_messages"]),
+        )
+    except Exception as exc:
+        report["compact_audit_generation"] = {
+            "available": False,
+            "reason": "compact_audit_dry_run_failed",
+            "source": audit_source,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
+        return
+
+    report["material"] = material_meta
+    report["compaction_prompt_fingerprint"] = material_meta.get("compaction_prompt_fingerprint")
+    report["compact_material_classifier_dry_run"] = material_meta.get("compact_material_classifier_dry_run")
+    report["retained_recent_policy"] = material_meta.get("retained_recent_policy")
+    report["compact_audit_generation"] = {
+        "available": True,
+        "mode": "dry_run",
+        "applied": False,
+        "source": audit_source,
+        "raw_prompt_exposed": False,
+        "raw_material_exposed": False,
+        "notes": [
+            "Compact audit metadata was generated without invoking the model and without mutating payload messages.",
+            "This is a dry-run observability surface for status/debug consumers when compaction has not been triggered.",
+        ],
+    }
+
 async def _compact_chat_history_for_codex_like_persistence(
     *,
     deepseek_client: "DeepSeekClient",
@@ -6158,10 +6209,22 @@ async def _compact_chat_history_for_codex_like_persistence(
 
     if not policy_decision["should_compact"]:
         report["reason"] = str(policy_decision["reason"])
+        _attach_compaction_dry_run_audit_to_report(
+            report,
+            messages,
+            config,
+            audit_source="policy_decision_not_triggered",
+        )
         return messages, report
 
     if len(messages) <= max(2, int(config["keep_recent_messages"])):
         report["reason"] = "too_few_messages"
+        _attach_compaction_dry_run_audit_to_report(
+            report,
+            messages,
+            config,
+            audit_source="too_few_messages_pre_compaction",
+        )
         return messages, report
 
     compaction_messages, material_meta = _compaction_prompt_messages(
@@ -6173,6 +6236,14 @@ async def _compact_chat_history_for_codex_like_persistence(
     report["compaction_prompt_fingerprint"] = material_meta.get("compaction_prompt_fingerprint")
     report["compact_material_classifier_dry_run"] = material_meta.get("compact_material_classifier_dry_run")
     report["retained_recent_policy"] = material_meta.get("retained_recent_policy")
+    report["compact_audit_generation"] = {
+        "available": True,
+        "mode": "dry_run",
+        "applied": False,
+        "source": "triggered_compaction_material_preflight",
+        "raw_prompt_exposed": False,
+        "raw_material_exposed": False,
+    }
 
     compaction_payload = {
         "model": _select_upstream_model((request_payload or {}).get("model")),

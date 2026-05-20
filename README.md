@@ -331,7 +331,8 @@ Current WeClaw-facing fields include:
 - token-first context-window display using the full managed `model_context_window_tokens`, with the auto-compact threshold exposed separately;
 - char-level Compact and Trim fallback/debug progress through `runtime_payload_guard`;
 - redacted Compact prompt fingerprints and dry-run material classification for compaction auditability;
-- Compact audit metadata through runtime/WeClaw status and CLI fallback surfaces.
+- Compact audit metadata through runtime/WeClaw status and CLI fallback surfaces;
+- Compact audit dry-run metadata for skipped compaction reports without model calls or payload mutation.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 

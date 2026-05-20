@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a86-compact-runtime-status-contract`，准确提交用`git rev-parse --short p2.10a86-compact-runtime-status-contract^{}`解析
-- 最新闭合文档同步检查点：`p2.10a86-compact-runtime-status-contract`
+- 当前内部开发检查点：`p2.10a87-compact-audit-dry-run-on-skip`，准确提交用`git rev-parse --short p2.10a87-compact-audit-dry-run-on-skip^{}`解析
+- 最新闭合文档同步检查点：`p2.10a87-compact-audit-dry-run-on-skip`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1352,3 +1352,16 @@ p2.10a86稳定p2.10a85 Compact audit metadata的runtime/status契约面。
 4. debug budget在compaction区暴露同一组audit metadata，便于本地运行时验证。
 5. 该契约仍为`unit=chars/messages`，与p2.10a84 token-first context-window统计分离。
 6. 本节点不启用semantic payload compaction，不启用token-based runtime trimming，也不移动公开`v0.3.9-alpha`。
+
+## p2.10a87 Compact audit dry-run on skipped compaction
+
+p2.10a87关闭p2.10a87运行态审计发现的可用性缺口。
+
+规则：
+
+1. 当policy未触发或消息过少导致compaction跳过时，`_compact_chat_history_for_codex_like_persistence()`也会附加脱敏Compact audit metadata。
+2. 这不会调用模型，不会改变payload messages，也不会启用semantic payload compaction。
+3. 生成的metadata保持`mode=dry_run`、`applied=false`、`raw_prompt_exposed=false`和`raw_material_exposed=false`。
+4. 因此在普通未触发compaction的请求之后，runtime、CLI和WeClaw status也可以显示`compact_audit.available=true`，不再必须等待真正compaction事件。
+5. compaction被禁用时仍报告disabled/unavailable，不伪造audit metadata。
+6. 本节点不移动公开`v0.3.9-alpha`。

@@ -183,6 +183,14 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
                 "retained_recent_message_count": 4,
             },
         },
+        "compact_audit_generation": {
+            "available": True,
+            "mode": "dry_run",
+            "applied": False,
+            "source": "policy_decision_not_triggered",
+            "raw_prompt_exposed": False,
+            "raw_material_exposed": False,
+        },
     }
     app.state.deepseek_client.last_context_trimming_report = {
         "version": "v0.3.9-alpha",

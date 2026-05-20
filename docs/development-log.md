@@ -995,3 +995,23 @@ Boundary:
 - No token-based runtime trimming enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a87 Compact audit dry-run on skipped compaction
+
+Date: 2026-05-20
+
+Scope:
+
+- Closed the runtime gap where `compact_audit` fields existed but remained unavailable after normal non-triggering requests.
+- Attached redacted dry-run Compact audit metadata to skipped compaction reports when the policy is not triggered or there are too few messages.
+- Preserved disabled-compaction semantics: disabled compaction still reports disabled/unavailable and does not fabricate audit metadata.
+- Added focused regression coverage for non-triggered compaction reports, redaction, classifier dry-run metadata, retained-recent policy metadata, and existing runtime/WeClaw status propagation.
+
+Boundary:
+
+- No model call is made for skipped-compaction audit metadata.
+- No payload mutation.
+- No semantic payload compaction enablement.
+- No token-based runtime trimming enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.

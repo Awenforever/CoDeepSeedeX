@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a86-compact-runtime-status-contract` (resolve the exact commit with `git rev-parse --short p2.10a86-compact-runtime-status-contract^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a86-compact-runtime-status-contract`
+- Current internal development checkpoint: `p2.10a87-compact-audit-dry-run-on-skip` (resolve the exact commit with `git rev-parse --short p2.10a87-compact-audit-dry-run-on-skip^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a87-compact-audit-dry-run-on-skip`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1397,3 +1397,16 @@ Rules:
 4. Debug budget reports expose the same audit metadata under the compaction section for local runtime validation.
 5. The contract remains `unit=chars/messages`; it is separate from p2.10a84 token-first context-window accounting.
 6. This node does not enable semantic payload compaction, does not enable token-based runtime trimming, and does not move public `v0.3.9-alpha`.
+
+## p2.10a87 Compact audit dry-run on skipped compaction
+
+p2.10a87 closes the runtime availability gap found by p2.10a87 audit.
+
+Rules:
+
+1. `_compact_chat_history_for_codex_like_persistence()` now attaches redacted Compact audit metadata when compaction is skipped because the policy is not triggered or there are too few messages.
+2. This does not invoke the model, does not mutate payload messages, and does not enable semantic payload compaction.
+3. The generated metadata remains `mode=dry_run`, `applied=false`, `raw_prompt_exposed=false`, and `raw_material_exposed=false`.
+4. Runtime, CLI, and WeClaw status may therefore show `compact_audit.available=true` after normal non-triggering requests, rather than requiring a full compaction event.
+5. Disabled compaction still reports disabled/unavailable rather than fabricating audit metadata.
+6. This node does not move public `v0.3.9-alpha`.

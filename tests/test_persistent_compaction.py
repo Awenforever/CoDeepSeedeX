@@ -250,6 +250,62 @@ def test_compaction_prompt_metadata_is_fingerprinted_redacted_and_classified():
 
 
 
+
+@pytest.mark.asyncio
+async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
+
+    messages = [
+        {"role": "system", "content": "system rules must remain protected"},
+        {"role": "user", "content": "old user requirement that must not leak through audit metadata"},
+        {"role": "assistant", "content": "old assistant answer"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_recent",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{\"cmd\":\"pytest\"}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_recent", "content": "recent tool output"},
+        {"role": "user", "content": "latest instruction"},
+    ]
+
+    compacted, report = await _compact_chat_history_for_codex_like_persistence(
+        deepseek_client=object(),
+        messages=messages,
+        request_payload={"model": "deepseek-v4-flash"},
+        previous_response_id=None,
+    )
+
+    assert compacted == messages
+    assert report["compacted"] is False
+    assert report["reason"] == "not_triggered"
+    assert report["compact_audit_generation"]["available"] is True
+    assert report["compact_audit_generation"]["mode"] == "dry_run"
+    assert report["compact_audit_generation"]["applied"] is False
+    assert report["compaction_prompt_fingerprint"]["available"] is True
+    assert len(report["compaction_prompt_fingerprint"]["sha256"]) == 64
+    assert report["compaction_prompt_fingerprint"]["raw_prompt_exposed"] is False
+    assert report["compaction_prompt_fingerprint"]["raw_material_exposed"] is False
+    assert report["compact_material_classifier_dry_run"]["available"] is True
+    assert report["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert report["compact_material_classifier_dry_run"]["applied"] is False
+    assert report["retained_recent_policy"]["available"] is True
+    assert report["retained_recent_policy"]["adjusted_for_tool_result_boundary"] is True
+
+    serialized_report = json.dumps(report, ensure_ascii=False)
+    assert "old user requirement that must not leak through audit metadata" not in serialized_report
+    assert "latest instruction" not in serialized_report
+
+
 @pytest.mark.asyncio
 async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
