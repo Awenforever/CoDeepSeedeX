@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from deepseek_responses_proxy.app import (
     InMemoryResponseStore,
     _compact_chat_history_for_codex_like_persistence,
+    _compaction_prompt_messages,
     create_app,
 )
 
@@ -184,6 +185,68 @@ async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
     assert compacted[assistant_index + 1]["role"] == "tool"
     assert compacted[assistant_index + 1]["tool_call_id"] == "call_recent"
     assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+    assert report["material"]["compaction_prompt_fingerprint"]["sha256"]
+    assert len(report["material"]["compaction_prompt_fingerprint"]["sha256"]) == 64
+    assert report["compaction_prompt_fingerprint"]["sha256"] == report["material"]["compaction_prompt_fingerprint"]["sha256"]
+    assert report["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert report["compact_material_classifier_dry_run"]["applied"] is False
+    assert report["retained_recent_policy"]["retained_recent_message_count"] >= 2
+
+
+
+def test_compaction_prompt_metadata_is_fingerprinted_redacted_and_classified():
+    messages = [
+        {"role": "system", "content": "system policy must stay protected"},
+        {"role": "user", "content": "old task details should be compacted"},
+        {"role": "assistant", "content": "old assistant answer should be compacted"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_recent",
+                    "type": "function",
+                    "function": {"name": "shell", "arguments": "{\"cmd\": \"pytest\"}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_recent", "content": "recent tool output"},
+        {"role": "user", "content": "latest user instruction"},
+    ]
+
+    prompt_messages, meta = _compaction_prompt_messages(
+        messages,
+        material_chars=12000,
+        keep_recent_messages=2,
+    )
+
+    assert len(prompt_messages) == 2
+    fingerprint = meta["compaction_prompt_fingerprint"]
+    assert fingerprint["available"] is True
+    assert fingerprint["fingerprint_kind"] == "sha256"
+    assert len(fingerprint["sha256"]) == 64
+    assert len(fingerprint["material_sha256"]) == 64
+    assert len(fingerprint["recent_material_sha256"]) == 64
+    assert fingerprint["raw_prompt_exposed"] is False
+    assert fingerprint["raw_material_exposed"] is False
+
+    serialized_meta = json.dumps(meta, ensure_ascii=False)
+    assert "old task details should be compacted" not in serialized_meta
+    assert "latest user instruction" not in serialized_meta
+
+    retained = meta["retained_recent_policy"]
+    assert retained["strategy"] == "retain_recent_tail_with_tool_result_boundary_rewind"
+    assert retained["nominal_recent_start"] == 4
+    assert retained["effective_recent_start"] == 3
+    assert retained["adjusted_for_tool_result_boundary"] is True
+    assert retained["retained_recent_message_count"] == 3
+
+    classifier = meta["compact_material_classifier_dry_run"]
+    assert classifier["mode"] == "dry_run"
+    assert classifier["applied"] is False
+    assert classifier["would_summarize_message_count"] == 3
+    assert classifier["would_keep_recent_verbatim_message_count"] == 3
+    assert classifier["sections"]["leading_system_developer_verbatim_after_compaction"]["message_count"] == 1
 
 
 

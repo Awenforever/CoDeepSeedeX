@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a84-token-first-compact-trim-contract"
+PROXY_INTERNAL_VERSION = "p2.10a85-compact-prompt-fingerprint"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5768,6 +5768,142 @@ def _build_compaction_material(
     return "\n\n".join(rendered), len(compactable)
 
 
+def _compact_prompt_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _compact_message_section_stats(
+    messages: list[dict[str, Any]],
+    *,
+    start: int,
+    end: int,
+) -> dict[str, Any]:
+    bounded_start = max(0, min(start, len(messages)))
+    bounded_end = max(bounded_start, min(end, len(messages)))
+    role_counts: dict[str, int] = {}
+    char_count = 0
+    for index in range(bounded_start, bounded_end):
+        message = messages[index]
+        if not isinstance(message, dict):
+            role = "unknown"
+            char_count += _json_char_size(message)
+        else:
+            role = str(message.get("role") or "unknown")
+            char_count += _json_char_size(message)
+        role_counts[role] = role_counts.get(role, 0) + 1
+    message_count = max(0, bounded_end - bounded_start)
+    return {
+        "message_count": message_count,
+        "first_index": bounded_start if message_count else None,
+        "last_index": (bounded_end - 1) if message_count else None,
+        "role_counts": role_counts,
+        "chars": char_count,
+    }
+
+
+def _retained_recent_turns_policy(
+    messages: list[dict[str, Any]],
+    *,
+    keep_recent_messages: int,
+    recent_start: int,
+) -> dict[str, Any]:
+    nominal_recent_start = max(0, len(messages) - max(1, int(keep_recent_messages or 1)))
+    retained_stats = _compact_message_section_stats(messages, start=recent_start, end=len(messages))
+    return {
+        "available": True,
+        "unit": "messages",
+        "strategy": "retain_recent_tail_with_tool_result_boundary_rewind",
+        "source": "_safe_recent_message_start",
+        "keep_recent_messages_requested": int(keep_recent_messages),
+        "nominal_recent_start": nominal_recent_start,
+        "effective_recent_start": recent_start,
+        "adjusted_for_tool_result_boundary": recent_start < nominal_recent_start,
+        "retained_recent_message_count": retained_stats["message_count"],
+        "retained_recent_role_counts": retained_stats["role_counts"],
+        "retained_recent_chars": retained_stats["chars"],
+        "first_retained_index": retained_stats["first_index"],
+        "last_retained_index": retained_stats["last_index"],
+        "notes": [
+            "The retained recent tail stays verbatim after the compacted summary.",
+            "If the nominal boundary lands on a tool result, dsproxy rewinds to keep the assistant tool_call with its tool output.",
+        ],
+    }
+
+
+def _compact_material_classifier_dry_run(
+    messages: list[dict[str, Any]],
+    *,
+    recent_start: int,
+) -> dict[str, Any]:
+    leading, leading_end = _leading_system_developer_messages(messages)
+    compact_material = _compact_message_section_stats(messages, start=0, end=recent_start)
+    retained_recent = _compact_message_section_stats(messages, start=recent_start, end=len(messages))
+    leading_verbatim = _compact_message_section_stats(messages, start=0, end=leading_end)
+    return {
+        "available": True,
+        "mode": "dry_run",
+        "applied": False,
+        "unit": "messages",
+        "strategy": "codex_compact_material_classifier_dry_run",
+        "source": "_compaction_prompt_messages",
+        "would_summarize_message_count": compact_material["message_count"],
+        "would_keep_recent_verbatim_message_count": retained_recent["message_count"],
+        "leading_system_developer_message_count": len(leading),
+        "sections": {
+            "compaction_material": compact_material,
+            "retained_recent_verbatim": retained_recent,
+            "leading_system_developer_verbatim_after_compaction": leading_verbatim,
+        },
+        "safety": {
+            "mutates_payload": False,
+            "raw_content_exposed": False,
+            "classification_only": True,
+        },
+        "notes": [
+            "This classifier is dry-run metadata for COMPACT material only.",
+            "It does not enable semantic payload compaction or token-based trimming.",
+            "Counts and indexes are exposed without raw message content.",
+        ],
+    }
+
+
+def _compaction_prompt_fingerprint(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    material: str,
+    recent_material: str,
+    compactable_count: int,
+    recent_start: int,
+    recent_count: int,
+) -> dict[str, Any]:
+    prompt_payload = {
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+    }
+    serialized_prompt = json.dumps(prompt_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "available": True,
+        "fingerprint_version": 1,
+        "fingerprint_kind": "sha256",
+        "source": "_compaction_prompt_messages",
+        "sha256": _compact_prompt_sha256(serialized_prompt),
+        "system_prompt_sha256": _compact_prompt_sha256(system_prompt),
+        "user_prompt_sha256": _compact_prompt_sha256(user_prompt),
+        "material_sha256": _compact_prompt_sha256(material),
+        "recent_material_sha256": _compact_prompt_sha256(recent_material),
+        "compactable_message_count": int(compactable_count),
+        "recent_message_count": int(recent_count),
+        "recent_start": int(recent_start),
+        "redacted": True,
+        "raw_prompt_exposed": False,
+        "raw_material_exposed": False,
+        "notes": [
+            "The digest identifies the exact compact prompt and material boundary without exposing raw conversation content.",
+            "Changing compact prompt wording, material truncation, or retained recent messages changes this fingerprint.",
+        ],
+    }
+
 def _compaction_prompt_messages(
     messages: list[dict[str, Any]],
     *,
@@ -5820,12 +5956,34 @@ def _compaction_prompt_messages(
         f"{recent_material}"
     )
 
+    retained_recent_policy = _retained_recent_turns_policy(
+        messages,
+        keep_recent_messages=keep_recent_messages,
+        recent_start=recent_start,
+    )
+    classifier_dry_run = _compact_material_classifier_dry_run(
+        messages,
+        recent_start=recent_start,
+    )
+    fingerprint = _compaction_prompt_fingerprint(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        material=material,
+        recent_material=recent_material,
+        compactable_count=compactable_count,
+        recent_start=recent_start,
+        recent_count=len(recent_messages),
+    )
+
     meta = {
         "compactable_message_count": compactable_count,
         "recent_message_count": len(recent_messages),
         "recent_start": recent_start,
         "material_chars": len(material),
         "recent_material_chars": len(recent_material),
+        "compaction_prompt_fingerprint": fingerprint,
+        "compact_material_classifier_dry_run": classifier_dry_run,
+        "retained_recent_policy": retained_recent_policy,
     }
 
     return (
@@ -6006,6 +6164,9 @@ async def _compact_chat_history_for_codex_like_persistence(
         keep_recent_messages=int(config["keep_recent_messages"]),
     )
     report["material"] = material_meta
+    report["compaction_prompt_fingerprint"] = material_meta.get("compaction_prompt_fingerprint")
+    report["compact_material_classifier_dry_run"] = material_meta.get("compact_material_classifier_dry_run")
+    report["retained_recent_policy"] = material_meta.get("retained_recent_policy")
 
     compaction_payload = {
         "model": _select_upstream_model((request_payload or {}).get("model")),
@@ -11946,6 +12107,9 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
                 "recent_start",
                 "material_chars",
                 "recent_material_chars",
+                "compaction_prompt_fingerprint",
+                "compact_material_classifier_dry_run",
+                "retained_recent_policy",
             ]
             if key in material
         }
@@ -12080,6 +12244,10 @@ def _runtime_payload_guard_report_snapshot(
             "keep_recent_messages",
             "observed_at",
             "source",
+            "material",
+            "compaction_prompt_fingerprint",
+            "compact_material_classifier_dry_run",
+            "retained_recent_policy",
         ]
         snapshot = {
             "exists": True,

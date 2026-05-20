@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 
 import pytest
+import importlib
+
+proxy_app = importlib.import_module("deepseek_responses_proxy.app")
 from httpx import ASGITransport, AsyncClient
 
 from deepseek_responses_proxy.app import create_app
@@ -99,6 +102,51 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     assert compaction["last_report"]["chars_removed"] == 80000
     assert compaction["last_report"]["material"]["compactable_message_count"] == 40
     assert compaction["last_report"]["build"]["summary_chars"] == 3000
+
+    live_report = {
+        "version": "v0.3.9-alpha",
+        "enabled": True,
+        "compacted": True,
+        "reason": "adaptive_triggered",
+        "before_chars": 10000,
+        "after_chars": 4000,
+        "material": {
+            "compactable_message_count": 8,
+            "compaction_prompt_fingerprint": {
+                "available": True,
+                "sha256": "a" * 64,
+                "redacted": True,
+            },
+            "compact_material_classifier_dry_run": {
+                "available": True,
+                "mode": "dry_run",
+                "applied": False,
+            },
+            "retained_recent_policy": {
+                "available": True,
+                "retained_recent_message_count": 3,
+            },
+        },
+        "compaction_prompt_fingerprint": {
+            "available": True,
+            "sha256": "a" * 64,
+            "redacted": True,
+        },
+        "compact_material_classifier_dry_run": {
+            "available": True,
+            "mode": "dry_run",
+            "applied": False,
+        },
+        "retained_recent_policy": {
+            "available": True,
+            "retained_recent_message_count": 3,
+        },
+    }
+    runtime = proxy_app._runtime_payload_guard_contract({"compaction": {"config": {}}}, compaction_report=live_report)
+    last_report = runtime["compaction"]["last_report"]
+    assert last_report["compaction_prompt_fingerprint"]["sha256"] == "a" * 64
+    assert last_report["compact_material_classifier_dry_run"]["mode"] == "dry_run"
+    assert last_report["retained_recent_policy"]["retained_recent_message_count"] == 3
 
     assert trimming["config"]["max_context_chars"] == 22222
     assert trimming["config"]["max_tool_output_chars"] == 333

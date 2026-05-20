@@ -957,3 +957,22 @@ Boundary:
 - No token-based runtime trimming enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a85 Compact prompt fingerprint and material classifier dry-run
+
+Date: 2026-05-20
+
+Scope:
+
+- Added redacted SHA-256 compact prompt fingerprints for Codex-like persistent compaction.
+- Added COMPACT material classifier dry-run metadata for compaction material, retained recent verbatim messages, and leading protected messages.
+- Added retained recent policy metadata showing the requested keep-recent count, nominal boundary, effective boundary, and tool-result-boundary rewind.
+- Exposed the new metadata through compaction reports and runtime payload guard last-report snapshots.
+- Added focused regression tests for fingerprint stability, content redaction, dry-run-only classifier semantics, retained tool-call/tool-result boundary preservation, and runtime status exposure.
+
+Boundary:
+
+- No semantic payload compaction enablement.
+- No token-based runtime trimming enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.
