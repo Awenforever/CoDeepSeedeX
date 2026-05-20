@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a88-http-weclaw-compact-audit-e2e` (resolve the exact commit with `git rev-parse --short p2.10a88-http-weclaw-compact-audit-e2e^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a88-http-weclaw-compact-audit-e2e`
+- Current internal development checkpoint: `p2.10a89-trim-type-enum-image-first-token-dryrun` (resolve the exact commit with `git rev-parse --short p2.10a89-trim-type-enum-image-first-token-dryrun^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a89-trim-type-enum-image-first-token-dryrun`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1423,3 +1423,18 @@ Rules:
 4. A skipped non-triggering compaction request must expose `compact_audit.available=true`, `mode=dry_run`, `applied=false`, and redacted fingerprint metadata.
 5. The status payload must not expose raw prompt or raw compact material.
 6. This node does not move public `v0.3.9-alpha`.
+
+## p2.10a89 TRIM type enum, first-image protection, and token dry-run
+
+p2.10a89 returns to the original TRIM checklist.
+
+Rules:
+
+1. `_compact_deepseek_payload_context()` now emits a redacted `token_first_trim_dry_run` report.
+2. The dry-run reports `unit=tokens`, an explicit type enum, item type counts, type token estimates, candidate trim targets, and protection metadata.
+3. Production context trimming remains the existing char-level hard guard in this node; token-based trimming is not yet applied.
+4. The first image payload observed in the message list is protected from context TRIM and last-resort aggressive shrinking.
+5. The current/latest static blocks for system, developer, AGENTS, environment, and protocol categories are identified and protected from context TRIM; older duplicates can be handled by later type-aware TRIM work.
+6. Status/report snapshots expose `token_first_trim_dry_run`, `item_type_summary`, `protected_static_blocks`, and `image_first_protection`.
+7. No raw message content, raw image payload, or raw static block text may be exposed through the dry-run metadata.
+8. This node does not enable semantic payload compaction, does not enable token-based runtime trimming, and does not move public `v0.3.9-alpha`.

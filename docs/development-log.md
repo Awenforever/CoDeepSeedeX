@@ -1035,3 +1035,25 @@ Boundary:
 - No token-based runtime trimming enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a89 TRIM type enum, first-image protection, and token dry-run
+
+Date: 2026-05-20
+
+Scope:
+
+- Returned to the original TRIM checklist after the Compact audit observability nodes.
+- Added redacted `token_first_trim_dry_run` metadata to context trimming reports.
+- Added context trim type enum metadata for text, image payload, tool call/result, JSON, diff, pytest, traceback, log, static system/developer/AGENTS/environment/protocol, and unknown-style categories.
+- Added first-image protection so the first observed image payload is not context-trimmed or aggressively shrunk.
+- Added current/latest static block protection metadata and guard behavior for system/developer/AGENTS/environment/protocol blocks.
+- Exposed TRIM dry-run metadata through runtime payload guard report snapshots.
+- Added regression coverage for first-image protection, static block protection, redaction, and runtime status propagation.
+
+Boundary:
+
+- Production context trimming remains char-level in this node.
+- Token-based runtime trimming is dry-run only.
+- No semantic payload compaction enablement.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update or Release asset rebuild.

@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a88-http-weclaw-compact-audit-e2e"
+PROXY_INTERNAL_VERSION = "p2.10a89-trim-type-enum-image-first-token-dryrun"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5167,6 +5167,364 @@ def _safe_recent_message_start(messages: list[dict[str, Any]], keep_recent_messa
     return start
 
 
+CONTEXT_TRIM_TYPE_ENUM_VERSION = 1
+
+_CONTEXT_TRIM_STATIC_TYPES = {
+    "static_system",
+    "static_developer",
+    "static_agents",
+    "static_environment",
+    "static_protocol",
+}
+
+
+def _context_trim_json_text(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _context_trim_message_text_for_classification(message: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("role", "name", "tool_call_id"):
+        value = message.get(key)
+        if value is not None:
+            parts.append(str(value))
+    for key in ("content", "reasoning_content"):
+        value = message.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+        elif value is not None:
+            parts.append(_context_trim_json_text(value))
+    tool_calls = message.get("tool_calls")
+    if tool_calls is not None:
+        parts.append(_context_trim_json_text(tool_calls))
+    return "\n".join(parts)
+
+
+def _context_trim_contains_image_value(value: Any) -> bool:
+    if isinstance(value, str):
+        lowered = value.lower()
+        return (
+            "data:image" in lowered
+            or "image_url" in lowered
+            or "\"type\":\"input_image\"" in lowered.replace(" ", "")
+            or "b64_json" in lowered
+        )
+    if isinstance(value, dict):
+        type_value = str(value.get("type") or "").lower()
+        mime_value = str(value.get("mime_type") or value.get("media_type") or "").lower()
+        if type_value in {"input_image", "image_url"} or type_value.startswith("image"):
+            return True
+        if mime_value.startswith("image/"):
+            return True
+        if "b64_json" in value:
+            return True
+        if "image_url" in value:
+            return True
+        return any(_context_trim_contains_image_value(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_context_trim_contains_image_value(item) for item in value)
+    return False
+
+
+def _context_trim_static_type_for_message(message: dict[str, Any]) -> str | None:
+    role = str(message.get("role") or "").lower()
+    if role == "system":
+        return "static_system"
+    if role == "developer":
+        return "static_developer"
+
+    text = _context_trim_message_text_for_classification(message)
+    lowered = text.lower()
+    if "agents.md" in lowered or "ag ents.md" in lowered or "agent instructions" in lowered:
+        return "static_agents"
+    if "<environment_context>" in lowered or "environment context" in lowered or "runtime environment" in lowered:
+        return "static_environment"
+    if "tool protocol" in lowered or "available tools" in lowered or "function schema" in lowered:
+        return "static_protocol"
+    return None
+
+
+def _context_trim_content_shape_type(message: dict[str, Any]) -> str:
+    role = str(message.get("role") or "").lower()
+    if role == "tool":
+        return "tool_result"
+    if isinstance(message.get("tool_calls"), list) and message.get("tool_calls"):
+        return "tool_call"
+    if _context_trim_contains_image_value(message):
+        return "image_payload"
+
+    static_type = _context_trim_static_type_for_message(message)
+    if static_type:
+        return static_type
+
+    text = _context_trim_message_text_for_classification(message)
+    stripped = text.strip()
+    lowered = stripped.lower()
+    if "traceback (most recent call last)" in lowered or "exception" in lowered and "stack" in lowered:
+        return "traceback"
+    if "pytest" in lowered or " failed" in lowered and " passed" in lowered:
+        return "pytest"
+    if stripped.startswith(("{", "[")) and stripped.endswith(("}", "]")):
+        return "json"
+    if "\ndiff --git " in "\n" + stripped or "\n@@ " in "\n" + stripped:
+        return "diff"
+    if any(marker in lowered for marker in ("stdout", "stderr", "run_ok=", "===== header =====", "traceback")):
+        return "log"
+    if role == "assistant":
+        return "assistant_text"
+    if role == "user":
+        return "user_text"
+    return "text"
+
+
+def _context_trim_latest_static_indexes(messages: list[dict[str, Any]]) -> dict[str, int]:
+    latest: dict[str, int] = {}
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        static_type = _context_trim_static_type_for_message(message)
+        if static_type:
+            latest[static_type] = index
+    return latest
+
+
+def _context_trim_first_image_index(messages: list[dict[str, Any]]) -> int | None:
+    for index, message in enumerate(messages):
+        if isinstance(message, dict) and _context_trim_contains_image_value(message):
+            return index
+    return None
+
+
+def _context_trim_tokenizer_for_payload(payload: dict[str, Any]) -> tuple[Any | None, dict[str, Any]]:
+    model = str(payload.get("model") or DEFAULT_MODEL)
+    provider = str(os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    try:
+        contract = _profile_tokenizer_contract(model, provider)
+    except Exception as exc:
+        return None, {
+            "available": False,
+            "reason": "profile_tokenizer_contract_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+            "model": model,
+            "provider": provider,
+        }
+    if not isinstance(contract, dict) or not contract.get("available"):
+        return None, contract if isinstance(contract, dict) else {"available": False, "reason": "profile_tokenizer_contract_unavailable"}
+    try:
+        return _load_profile_tokenizer(contract), contract
+    except Exception as exc:
+        failed = dict(contract)
+        failed.update(
+            {
+                "available": False,
+                "reason": "profile_tokenizer_load_failed_for_context_trim_dry_run",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+        return None, failed
+
+
+def _context_trim_count_tokens(value: Any, tokenizer: Any | None) -> tuple[int, str]:
+    text = _context_trim_json_text(value)
+    if tokenizer is not None:
+        try:
+            return int(_profile_tokenizer_count_text(tokenizer, text)), "local_profile_tokenizer_json_estimate"
+        except Exception:
+            pass
+    return max(1, (len(text) + 3) // 4), "char_heuristic_4_chars_per_token"
+
+
+def _context_trim_item_meta(
+    message: dict[str, Any],
+    *,
+    index: int,
+    first_image_index: int | None,
+    latest_static_indexes: dict[str, int],
+    recent_start: int,
+    tokenizer: Any | None,
+) -> dict[str, Any]:
+    item_type = _context_trim_content_shape_type(message)
+    static_type = _context_trim_static_type_for_message(message)
+    has_image = _context_trim_contains_image_value(message)
+    protected = False
+    protection_reasons: list[str] = []
+
+    if index == first_image_index and has_image:
+        protected = True
+        protection_reasons.append("first_image_payload_preserved_verbatim")
+
+    if static_type in {"static_system", "static_developer"}:
+        protected = True
+        protection_reasons.append("current_system_developer_static_block_preserved")
+    elif static_type and latest_static_indexes.get(static_type) == index:
+        protected = True
+        protection_reasons.append("latest_static_block_for_type_preserved")
+
+    is_recent = index >= recent_start
+    if is_recent:
+        protection_reasons.append("recent_tail")
+
+    token_count, token_source = _context_trim_count_tokens(message, tokenizer)
+    char_count = _json_char_size(message)
+    return {
+        "index": index,
+        "role": str(message.get("role") or "unknown"),
+        "type": item_type,
+        "static_type": static_type,
+        "has_image": has_image,
+        "is_recent": is_recent,
+        "protected": protected,
+        "protection_reasons": protection_reasons,
+        "char_count": char_count,
+        "estimated_tokens": token_count,
+        "estimated_tokens_source": token_source,
+        "sha256": hashlib.sha256(_context_trim_json_text(message).encode("utf-8", errors="replace")).hexdigest(),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+
+def _context_trim_token_first_dry_run(
+    payload: dict[str, Any],
+    messages: list[dict[str, Any]],
+    config: dict[str, int],
+    *,
+    recent_start: int,
+) -> dict[str, Any]:
+    tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
+    first_image_index = _context_trim_first_image_index(messages)
+    latest_static_indexes = _context_trim_latest_static_indexes(messages)
+
+    items: list[dict[str, Any]] = []
+    type_counts: dict[str, int] = {}
+    type_tokens: dict[str, int] = {}
+    protected_indexes: list[int] = []
+    protected_static_indexes: list[int] = []
+    image_indexes: list[int] = []
+
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        meta = _context_trim_item_meta(
+            message,
+            index=index,
+            first_image_index=first_image_index,
+            latest_static_indexes=latest_static_indexes,
+            recent_start=recent_start,
+            tokenizer=tokenizer,
+        )
+        items.append(meta)
+        item_type = str(meta["type"])
+        type_counts[item_type] = int(type_counts.get(item_type, 0)) + 1
+        type_tokens[item_type] = int(type_tokens.get(item_type, 0)) + int(meta.get("estimated_tokens") or 0)
+        if bool(meta.get("protected")):
+            protected_indexes.append(index)
+        if meta.get("static_type") and bool(meta.get("protected")):
+            protected_static_indexes.append(index)
+        if bool(meta.get("has_image")):
+            image_indexes.append(index)
+
+    payload_tokens, payload_token_source = _context_trim_count_tokens(payload, tokenizer)
+    messages_tokens = sum(int(item.get("estimated_tokens") or 0) for item in items)
+    max_context_tokens = max(0, _env_int("DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS", 0))
+    would_trim = bool(max_context_tokens > 0 and payload_tokens > max_context_tokens)
+
+    candidate_items = [
+        {
+            "index": item.get("index"),
+            "type": item.get("type"),
+            "role": item.get("role"),
+            "estimated_tokens": item.get("estimated_tokens"),
+            "char_count": item.get("char_count"),
+            "protected": item.get("protected"),
+            "protection_reasons": item.get("protection_reasons"),
+            "sha256": item.get("sha256"),
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+        for item in sorted(items, key=lambda value: int(value.get("estimated_tokens") or 0), reverse=True)
+        if not bool(item.get("protected"))
+    ][: max(1, _env_int("DEEPSEEK_PROXY_TRIM_DRY_RUN_MAX_TARGETS", 12))]
+
+    return {
+        "available": True,
+        "mode": "dry_run",
+        "applied": False,
+        "unit": "tokens",
+        "type_enum_version": CONTEXT_TRIM_TYPE_ENUM_VERSION,
+        "source": "context_trim_token_first_dry_run",
+        "precision": "local_profile_tokenizer_estimate" if tokenizer is not None else "char_heuristic_estimate",
+        "tokenizer": tokenizer_contract,
+        "estimated_payload_tokens": payload_tokens,
+        "estimated_payload_tokens_source": payload_token_source,
+        "estimated_message_tokens": messages_tokens,
+        "max_context_tokens": max_context_tokens or None,
+        "max_context_tokens_source": "DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS" if max_context_tokens > 0 else None,
+        "would_trim": would_trim,
+        "would_trim_reason": (
+            "estimated_payload_tokens_exceed_max_context_tokens"
+            if would_trim
+            else ("token_target_not_configured" if max_context_tokens <= 0 else "estimated_payload_tokens_within_limit")
+        ),
+        "items": items,
+        "items_tail": items[-30:],
+        "candidate_items": candidate_items,
+        "type_counts": dict(sorted(type_counts.items())),
+        "type_tokens": dict(sorted(type_tokens.items())),
+        "protected_message_indexes": protected_indexes,
+        "protected_static_message_indexes": protected_static_indexes,
+        "image_message_indexes": image_indexes,
+        "first_image_index": first_image_index,
+        "latest_static_indexes": dict(sorted(latest_static_indexes.items())),
+        "image_first_protection": {
+            "available": first_image_index is not None,
+            "first_image_index": first_image_index,
+            "protected": first_image_index in protected_indexes if first_image_index is not None else False,
+            "raw_image_content_exposed": False,
+        },
+        "static_block_protection": {
+            "available": bool(latest_static_indexes),
+            "latest_static_indexes": dict(sorted(latest_static_indexes.items())),
+            "protected_static_message_indexes": protected_static_indexes,
+            "raw_content_exposed": False,
+        },
+        "notes": [
+            "This is dry-run metadata only; it does not apply token-based runtime trimming.",
+            "Current production payload trimming remains the existing char-level hard guard.",
+            "Raw message content, raw image payloads, and raw static blocks are not exposed in this report.",
+        ],
+    }
+
+
+def _context_trim_summary_from_token_dry_run(dry_run: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "available": bool(dry_run.get("available")),
+        "mode": dry_run.get("mode"),
+        "applied": dry_run.get("applied"),
+        "unit": "tokens",
+        "type_enum_version": dry_run.get("type_enum_version"),
+        "precision": dry_run.get("precision"),
+        "estimated_payload_tokens": dry_run.get("estimated_payload_tokens"),
+        "estimated_message_tokens": dry_run.get("estimated_message_tokens"),
+        "max_context_tokens": dry_run.get("max_context_tokens"),
+        "would_trim": dry_run.get("would_trim"),
+        "would_trim_reason": dry_run.get("would_trim_reason"),
+        "type_counts": dry_run.get("type_counts"),
+        "type_tokens": dry_run.get("type_tokens"),
+        "protected_message_indexes": dry_run.get("protected_message_indexes"),
+        "protected_static_message_indexes": dry_run.get("protected_static_message_indexes"),
+        "image_message_indexes": dry_run.get("image_message_indexes"),
+        "first_image_index": dry_run.get("first_image_index"),
+        "image_first_protection": dry_run.get("image_first_protection"),
+        "static_block_protection": dry_run.get("static_block_protection"),
+        "candidate_items": dry_run.get("candidate_items"),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
 def _trim_message_text_field(
     container: dict[str, Any],
     key: str,
@@ -5206,9 +5564,27 @@ def _trim_message_for_context(
     is_recent: bool,
     max_tool_output_chars: int,
     report: dict[str, Any],
+    item_type: str | None = None,
+    protected: bool = False,
+    protection_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
     trimmed = deepcopy(message)
     role = trimmed.get("role")
+    item_type_value = item_type or _context_trim_content_shape_type(trimmed)
+
+    if protected:
+        _append_context_trim_operation(
+            report,
+            {
+                "kind": "protect_message_from_trim",
+                "location": f"messages[{index}]",
+                "message_type": item_type_value,
+                "protection_reasons": list(protection_reasons or []),
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        )
+        return trimmed
 
     # Tool outputs are the dominant source of Codex context explosions. Trim them
     # even in recent turns, while preserving role, tool_call_id, and ordering.
@@ -5269,9 +5645,12 @@ def _compact_old_message_prefix(
     *,
     keep_recent_messages: int,
     report: dict[str, Any],
+    protected_message_indexes: set[int] | None = None,
 ) -> list[dict[str, Any]]:
     if len(messages) <= keep_recent_messages:
         return messages
+
+    protected_message_indexes = protected_message_indexes or set()
 
     leading_system: list[dict[str, Any]] = []
     cursor = 0
@@ -5287,8 +5666,18 @@ def _compact_old_message_prefix(
     if recent_start <= cursor:
         return messages
 
-    compacted = messages[cursor:recent_start]
+    protected_prefix: list[dict[str, Any]] = []
+    compacted: list[dict[str, Any]] = []
+    for original_index in range(cursor, recent_start):
+        message = messages[original_index]
+        if original_index in protected_message_indexes:
+            protected_prefix.append(message)
+        else:
+            compacted.append(message)
     retained = messages[recent_start:]
+    if not compacted:
+        return leading_system + protected_prefix + retained
+
     role_counts: dict[str, int] = {}
     compacted_chars = _json_char_size(compacted)
     for message in compacted:
@@ -5304,7 +5693,7 @@ def _compact_old_message_prefix(
         f"compacted_chars: {compacted_chars}\n"
         f"role_counts: {json.dumps(role_counts, ensure_ascii=False, sort_keys=True)}\n"
         "Older messages were summarized by the proxy to avoid exceeding the "
-        "DeepSeek upstream context limit. Recent messages and tool-call protocol "
+        "DeepSeek upstream context limit. Recent messages and protected static/image "
         "structure are retained."
     )
     summary_message = {"role": "user", "content": summary_text}
@@ -5318,19 +5707,24 @@ def _compact_old_message_prefix(
             "compacted_message_count": len(compacted),
             "compacted_chars": compacted_chars,
             "retained_recent_messages": len(retained),
+            "protected_prefix_message_count": len(protected_prefix),
+            "protected_message_indexes": sorted(protected_message_indexes),
             "role_counts": role_counts,
         },
     )
 
-    return leading_system + [summary_message] + retained
+    return leading_system + protected_prefix + [summary_message] + retained
 
 
-def _iter_payload_string_fields(payload: dict[str, Any]):
+def _iter_payload_string_fields(payload: dict[str, Any], *, protected_message_indexes: set[int] | None = None):
+    protected_message_indexes = protected_message_indexes or set()
     messages = payload.get("messages")
     if not isinstance(messages, list):
         return
 
     for index, message in enumerate(messages):
+        if index in protected_message_indexes:
+            continue
         if not isinstance(message, dict):
             continue
         for key in ("content", "reasoning_content"):
@@ -5365,12 +5759,17 @@ def _aggressively_shrink_payload_to_limit(
     # Last-resort safety valve. It never changes roles, ordering, tool_call_id, or
     # function names. It only shortens string fields until the serialized request
     # falls below the configured character budget or no useful string remains.
+    protected_message_indexes = {
+        int(index)
+        for index in (report.get("protected_message_indexes") or [])
+        if isinstance(index, int)
+    }
     for _ in range(100):
         current_chars = _json_char_size(payload)
         if current_chars <= max_context_chars:
             return payload
 
-        fields = list(_iter_payload_string_fields(payload) or [])
+        fields = list(_iter_payload_string_fields(payload, protected_message_indexes=protected_message_indexes) or [])
         if not fields:
             return payload
 
@@ -5399,6 +5798,7 @@ def _aggressively_shrink_payload_to_limit(
                 "original_chars": current_len,
                 "trimmed_chars": len(new_value),
                 "target_payload_chars": max_context_chars,
+                "protected_message_indexes": sorted(protected_message_indexes),
             },
         )
 
@@ -5425,22 +5825,67 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         "message_count_before": len(messages) if isinstance(messages, list) else None,
         "message_count_after": len(messages) if isinstance(messages, list) else None,
         "operations": [],
+        "type_enum_version": CONTEXT_TRIM_TYPE_ENUM_VERSION,
     }
 
     if not isinstance(messages, list):
+        report["token_first_trim_dry_run"] = {
+            "available": False,
+            "reason": "payload_messages_not_list",
+            "unit": "tokens",
+            "mode": "dry_run",
+            "applied": False,
+        }
         return payload, report
 
     trimmed_payload = deepcopy(payload)
     trimmed_messages = trimmed_payload.get("messages")
     if not isinstance(trimmed_messages, list):
+        report["token_first_trim_dry_run"] = {
+            "available": False,
+            "reason": "trimmed_payload_messages_not_list",
+            "unit": "tokens",
+            "mode": "dry_run",
+            "applied": False,
+        }
         return payload, report
 
     recent_start = _safe_recent_message_start(trimmed_messages, keep_recent_messages)
+    token_dry_run = _context_trim_token_first_dry_run(
+        trimmed_payload,
+        trimmed_messages,
+        config,
+        recent_start=recent_start,
+    )
+    protected_message_indexes = {
+        int(index)
+        for index in (token_dry_run.get("protected_message_indexes") or [])
+        if isinstance(index, int)
+    }
+    meta_by_index = {
+        int(item["index"]): item
+        for item in (token_dry_run.get("items") or [])
+        if isinstance(item, dict) and isinstance(item.get("index"), int)
+    }
+
+    report["token_first_trim_dry_run"] = _context_trim_summary_from_token_dry_run(token_dry_run)
+    report["item_type_summary"] = {
+        "type_enum_version": CONTEXT_TRIM_TYPE_ENUM_VERSION,
+        "type_counts": token_dry_run.get("type_counts"),
+        "type_tokens": token_dry_run.get("type_tokens"),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+    report["protected_message_indexes"] = sorted(protected_message_indexes)
+    report["protected_static_blocks"] = token_dry_run.get("static_block_protection")
+    report["image_first_protection"] = token_dry_run.get("image_first_protection")
+
     new_messages: list[dict[str, Any]] = []
     for index, message in enumerate(trimmed_messages):
         if not isinstance(message, dict):
             new_messages.append(message)
             continue
+        item_meta = meta_by_index.get(index, {})
         is_recent = index >= recent_start or message.get("role") in {"system", "developer"}
         new_messages.append(
             _trim_message_for_context(
@@ -5449,6 +5894,12 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
                 is_recent=is_recent,
                 max_tool_output_chars=max_tool_output_chars,
                 report=report,
+                item_type=str(item_meta.get("type") or _context_trim_content_shape_type(message)),
+                protected=bool(item_meta.get("protected")),
+                protection_reasons=[
+                    str(reason)
+                    for reason in (item_meta.get("protection_reasons") or [])
+                ],
             )
         )
     trimmed_payload["messages"] = new_messages
@@ -5458,6 +5909,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
             trimmed_payload["messages"],
             keep_recent_messages=keep_recent_messages,
             report=report,
+            protected_message_indexes=protected_message_indexes,
         )
 
     if _json_char_size(trimmed_payload) > max_context_chars:
@@ -12173,28 +12625,35 @@ def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
         ],
     }
 
-def _context_report_summary(filename: str) -> dict[str, Any]:
-    path = Path(".debug") / filename
-    summary: dict[str, Any] = {
-        "path": str(path),
-        "exists": path.exists(),
-    }
-    if not path.exists():
-        return summary
+def _context_report_summary(data: Any) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        loaded_data: Any = None
+        if isinstance(data, (str, os.PathLike)):
+            raw_path = Path(data).expanduser()
+            candidates = [raw_path] if raw_path.is_absolute() else [raw_path, Path(".debug") / raw_path]
+            read_errors: list[str] = []
+            for candidate in candidates:
+                try:
+                    if not candidate.is_file():
+                        continue
+                    loaded_data = json.loads(candidate.read_text(encoding="utf-8", errors="replace"))
+                    break
+                except Exception as exc:
+                    read_errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
+            if loaded_data is None and read_errors:
+                return {
+                    "exists": False,
+                    "reason": "context_report_read_failed",
+                    "errors": read_errors[-3:],
+                }
+        data = loaded_data
+        if not isinstance(data, dict):
+            return {
+                "exists": False,
+                "reason": "context_report_unavailable",
+            }
 
-    try:
-        stat = path.stat()
-        summary["size_bytes"] = stat.st_size
-        summary["mtime"] = int(stat.st_mtime)
-    except Exception as exc:
-        summary["stat_error"] = str(exc)[:500]
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        summary["read_error"] = str(exc)[:500]
-        return summary
-
+    summary: dict[str, Any] = {"exists": True}
     for key in [
         "version",
         "enabled",
@@ -12202,12 +12661,13 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "trimmed",
         "reason",
         "summary_source",
+        "summary_error_type",
+        "summary_error",
         "before_chars",
         "after_chars",
         "chars_removed",
         "message_count_before",
         "message_count_after",
-        "policy",
         "trigger_chars",
         "target_chars",
         "effective_trigger_chars",
@@ -12216,20 +12676,33 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         "max_context_chars",
         "max_tool_output_chars",
         "keep_recent_messages",
+        "material_chars_limit",
+        "max_summary_chars",
+        "policy",
+        "observed_at",
+        "source",
+        "previous_response_id",
         "triggered",
         "retry_count",
         "max_retries",
         "tools_available",
         "round_index",
-        "initial_content_preview",
+        "guard_reason",
         "final_has_tool_calls",
         "final_tool_call_count",
-        "guard_reason",
-        "retry_attempts",
-        "judge_attempts",
+        "raw_content_exposed",
+        "type_enum_version",
+        "token_first_trim_dry_run",
+        "item_type_summary",
+        "protected_message_indexes",
+        "protected_static_blocks",
+        "image_first_protection",
+        "compact_audit_generation",
+        "aggressive_trimmed_fields",
+        "compacted_message_count",
     ]:
         if key in data:
-            summary[key] = data[key]
+            summary[key] = data.get(key)
 
     material = data.get("material")
     if isinstance(material, dict):
@@ -12255,54 +12728,42 @@ def _context_report_summary(filename: str) -> dict[str, Any]:
         summary["compact_material_classifier_dry_run"] = audit.get("classifier_dry_run")
         summary["retained_recent_policy"] = audit.get("retained_recent_policy")
 
-    policy_decision = data.get("policy_decision")
-    if isinstance(policy_decision, dict):
-        growth = policy_decision.get("growth")
-        summary["policy_decision"] = {
-            key: policy_decision.get(key)
-            for key in [
-                "policy",
-                "should_compact",
-                "reason",
-                "effective_trigger_chars",
-                "effective_target_chars",
-                "emergency_chars",
-                "reserve_before_send",
-                "reserve_after_compact",
-                "min_new_chars",
-                "min_turns",
-            ]
-            if key in policy_decision
-        }
-        if isinstance(growth, dict):
-            summary["policy_decision"]["growth"] = {
-                key: growth.get(key)
-                for key in [
-                    "recent_message_count",
-                    "recent_growth_chars",
-                    "recent_growth_chars_per_turn",
-                    "last_compaction_summary_index",
-                    "new_chars_since_last_compaction",
-                    "turns_since_last_compaction",
-                ]
-                if key in growth
-            }
-
     build = data.get("build")
     if isinstance(build, dict):
         summary["build"] = {
             key: build.get(key)
             for key in [
-                "leading_message_count",
-                "recent_message_count",
-                "recent_start",
                 "summary_chars",
                 "summary_was_trimmed",
-                "before_final_shrink_chars",
+                "after_summary_chars",
+                "after_recent_shrink_chars",
                 "after_final_shrink_chars",
+                "removed_empty_messages",
             ]
             if key in build
         }
+
+    policy_decision = data.get("policy_decision")
+    if isinstance(policy_decision, dict):
+        summary["policy_decision"] = {
+            key: policy_decision.get(key)
+            for key in [
+                "reason",
+                "should_compact",
+                "effective_trigger_chars",
+                "effective_target_chars",
+                "emergency_chars",
+                "min_new_chars",
+                "min_turns",
+                "growth",
+            ]
+            if key in policy_decision
+        }
+
+    operations = data.get("operations")
+    if isinstance(operations, list):
+        summary["operations_count"] = len(operations)
+        summary["operations_tail"] = operations[-20:]
 
     return summary
 
@@ -12391,6 +12852,12 @@ def _runtime_payload_guard_report_snapshot(
             "retained_recent_policy",
             "compact_audit",
             "compact_audit_generation",
+            "type_enum_version",
+            "token_first_trim_dry_run",
+            "item_type_summary",
+            "protected_message_indexes",
+            "protected_static_blocks",
+            "image_first_protection",
         ]
         snapshot = {
             "exists": True,

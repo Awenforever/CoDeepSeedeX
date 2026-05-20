@@ -91,6 +91,33 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
                 "max_context_chars": 22222,
                 "max_tool_output_chars": 333,
                 "keep_recent_messages": 7,
+                "type_enum_version": 1,
+                "token_first_trim_dry_run": {
+                    "available": True,
+                    "mode": "dry_run",
+                    "applied": False,
+                    "unit": "tokens",
+                    "estimated_payload_tokens": 123,
+                    "would_trim": False,
+                    "raw_content_exposed": False,
+                },
+                "item_type_summary": {
+                    "type_enum_version": 1,
+                    "type_counts": {"tool_result": 1},
+                    "raw_content_exposed": False,
+                    "redacted": True,
+                },
+                "protected_static_blocks": {
+                    "available": True,
+                    "protected_static_message_indexes": [0],
+                    "raw_content_exposed": False,
+                },
+                "image_first_protection": {
+                    "available": False,
+                    "first_image_index": None,
+                    "protected": False,
+                    "raw_image_content_exposed": False,
+                },
             },
             ensure_ascii=False,
         ),
@@ -185,6 +212,11 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     assert trimming["last_report"]["exists"] is True
     assert trimming["last_report"]["trimmed"] is False
     assert trimming["last_report"]["chars_removed"] == 0
+    assert trimming["last_report"]["type_enum_version"] == 1
+    assert trimming["last_report"]["token_first_trim_dry_run"]["available"] is True
+    assert trimming["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
+    assert trimming["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
+    assert trimming["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
 
 
 @pytest.mark.asyncio

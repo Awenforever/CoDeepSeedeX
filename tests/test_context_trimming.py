@@ -149,3 +149,75 @@ async def test_deepseek_client_writes_context_trimming_report(tmp_path, monkeypa
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["trimmed"] is True
     assert report["max_tool_output_chars"] == 200
+
+
+def test_context_trim_token_first_dry_run_enumerates_types_and_protects_first_image(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "240")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS", "10")
+
+    first_image = "data:image/png;base64," + ("A" * 5000)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": first_image},
+            {"role": "user", "content": "old log " + ("B" * 5000)},
+            {"role": "assistant", "content": "ok"},
+        ],
+        "stream": False,
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    assert report["token_first_trim_dry_run"]["available"] is True
+    assert report["token_first_trim_dry_run"]["unit"] == "tokens"
+    assert report["token_first_trim_dry_run"]["mode"] == "dry_run"
+    assert report["token_first_trim_dry_run"]["applied"] is False
+    assert report["token_first_trim_dry_run"]["would_trim"] is True
+    assert report["token_first_trim_dry_run"]["type_counts"]["image_payload"] == 1
+    assert report["image_first_protection"]["first_image_index"] == 0
+    assert report["image_first_protection"]["protected"] is True
+    assert 0 in report["protected_message_indexes"]
+
+    assert trimmed["messages"][0]["content"] == first_image
+    assert "context trimmed" in trimmed["messages"][1]["content"]
+    serialized_report = json.dumps(report, ensure_ascii=False)
+    assert first_image not in serialized_report
+    assert '"raw_content_exposed": true' not in serialized_report.lower()
+
+
+def test_context_trim_protects_latest_static_blocks_without_raw_content(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "200")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+
+    old_agents = "AGENTS.md old copy " + ("A" * 4000)
+    latest_agents = "AGENTS.md current copy " + ("B" * 4000)
+    environment = "<environment_context> current env " + ("C" * 4000)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": old_agents},
+            {"role": "user", "content": latest_agents},
+            {"role": "user", "content": environment},
+            {"role": "user", "content": "final request"},
+        ],
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    static = report["protected_static_blocks"]
+    assert static["available"] is True
+    assert static["latest_static_indexes"]["static_agents"] == 1
+    assert static["latest_static_indexes"]["static_environment"] == 2
+    assert 1 in static["protected_static_message_indexes"]
+    assert 2 in static["protected_static_message_indexes"]
+    assert "context trimmed" in trimmed["messages"][0]["content"]
+    assert trimmed["messages"][1]["content"] == latest_agents
+    assert trimmed["messages"][2]["content"] == environment
+
+    serialized_report = json.dumps(report, ensure_ascii=False)
+    assert latest_agents not in serialized_report
+    assert environment not in serialized_report
+    assert '"raw_content_exposed": true' not in serialized_report.lower()

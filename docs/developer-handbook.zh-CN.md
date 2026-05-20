@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a88-http-weclaw-compact-audit-e2e`，准确提交用`git rev-parse --short p2.10a88-http-weclaw-compact-audit-e2e^{}`解析
-- 最新闭合文档同步检查点：`p2.10a88-http-weclaw-compact-audit-e2e`
+- 当前内部开发检查点：`p2.10a89-trim-type-enum-image-first-token-dryrun`，准确提交用`git rev-parse --short p2.10a89-trim-type-enum-image-first-token-dryrun^{}`解析
+- 最新闭合文档同步检查点：`p2.10a89-trim-type-enum-image-first-token-dryrun`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1378,3 +1378,18 @@ p2.10a88把p2.10a88运行态审计固化为HTTP端到端回归测试。
 4. 普通未触发compaction的请求必须暴露`compact_audit.available=true`、`mode=dry_run`、`applied=false`和脱敏fingerprint metadata。
 5. status payload不能暴露raw prompt或raw compact material。
 6. 本节点不移动公开`v0.3.9-alpha`。
+
+## p2.10a89 TRIM type enum, first-image protection, and token dry-run
+
+p2.10a89回到原始TRIM清单主线。
+
+规则：
+
+1. `_compact_deepseek_payload_context()`现在输出脱敏`token_first_trim_dry_run`报告。
+2. dry-run报告`unit=tokens`、显式类型枚举、item类型计数、类型token估算、候选裁剪目标和保护metadata。
+3. 本节点中，生产context trimming仍保持现有char级硬保护；token-based trimming尚未实际启用。
+4. message列表中观察到的第一个image payload会被保护，不参与context TRIM和最后兜底aggressive shrinking。
+5. system、developer、AGENTS、environment和protocol类别的当前/最新静态块会被识别并保护；旧副本可在后续type-aware TRIM中处理。
+6. status/report snapshot暴露`token_first_trim_dry_run`、`item_type_summary`、`protected_static_blocks`和`image_first_protection`。
+7. dry-run metadata不得暴露raw message content、raw image payload或raw static block文本。
+8. 本节点不启用semantic payload compaction，不启用token-based runtime trimming，也不移动公开`v0.3.9-alpha`。

@@ -206,6 +206,33 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
         "message_count_after": 5,
         "observed_at": "2026-05-17T10:00:00Z",
         "source": "live_request_payload",
+        "type_enum_version": 1,
+        "token_first_trim_dry_run": {
+            "available": True,
+            "mode": "dry_run",
+            "applied": False,
+            "unit": "tokens",
+            "estimated_payload_tokens": 123,
+            "would_trim": False,
+            "raw_content_exposed": False,
+        },
+        "item_type_summary": {
+            "type_enum_version": 1,
+            "type_counts": {"tool_result": 1},
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
+        "protected_static_blocks": {
+            "available": True,
+            "protected_static_message_indexes": [0],
+            "raw_content_exposed": False,
+        },
+        "image_first_protection": {
+            "available": False,
+            "first_image_index": None,
+            "protected": False,
+            "raw_image_content_exposed": False,
+        },
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -260,6 +287,11 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["trimming"]["remaining_chars"] == 1487655
     assert guard["trimming"]["status"] == "not_triggered"
     assert guard["trimming"]["last_report"]["exists"] is True
+    assert guard["trimming"]["last_report"]["type_enum_version"] == 1
+    assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["available"] is True
+    assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
+    assert guard["trimming"]["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
+    assert guard["trimming"]["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
     assert data["context_window"]["runtime"]["payload_guard"]["current_chars"] == 12345
     assert data["compaction"]["runtime_payload_guard"]["current_chars"] == 12345
 
