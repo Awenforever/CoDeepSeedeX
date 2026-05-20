@@ -221,3 +221,71 @@ def test_context_trim_protects_latest_static_blocks_without_raw_content(monkeypa
     assert latest_agents not in serialized_report
     assert environment not in serialized_report
     assert '"raw_content_exposed": true' not in serialized_report.lower()
+
+
+def test_type_aware_trim_applies_low_risk_limits_without_leaking_raw_content(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "60000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TRIM_LOG_CHARS", "1200")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TRIM_TRACEBACK_CHARS", "1500")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TRIM_TOOL_CALL_ARGUMENTS_CHARS", "900")
+
+    raw_log = "stdout\nrun_ok=1\n" + ("L" * 5000)
+    raw_traceback = "Traceback (most recent call last):\n" + ("T" * 5000)
+    raw_arguments = json.dumps({"cmd": "python", "payload": "A" * 5000}, ensure_ascii=False)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": raw_log},
+            {"role": "assistant", "content": "calling tool", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "shell", "arguments": raw_arguments}}]},
+            {"role": "user", "content": raw_traceback},
+            {"role": "user", "content": "final request"},
+        ],
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    assert report["trimmed"] is True
+    assert report["type_aware_trim"]["enabled"] is True
+    assert report["type_aware_trim"]["mode"] == "enabled"
+    assert report["type_aware_trim"]["applied"] is True
+    assert report["type_aware_trim"]["applied_by_type"]["log"]["trimmed_field_count"] == 1
+    assert report["type_aware_trim"]["applied_by_type"]["tool_call_arguments"]["trimmed_field_count"] == 1
+    assert report["type_aware_trim"]["applied_by_type"]["traceback"]["trimmed_field_count"] == 1
+    assert report["type_aware_trim"]["limits"]["log"] == 1200
+    assert report["type_aware_trim"]["limits"]["traceback"] == 1500
+
+    assert "context trimmed" in trimmed["messages"][0]["content"]
+    assert "context trimmed" in trimmed["messages"][1]["tool_calls"][0]["function"]["arguments"]
+    assert "context trimmed" in trimmed["messages"][2]["content"]
+
+    serialized_report = json.dumps(report, ensure_ascii=False)
+    assert raw_log not in serialized_report
+    assert raw_traceback not in serialized_report
+    assert raw_arguments not in serialized_report
+    assert '"raw_content_exposed": true' not in serialized_report.lower()
+
+
+def test_type_aware_trim_can_be_disabled_without_disabling_dry_run(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_TYPE_AWARE_TRIM", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "60000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_TRIM_LOG_CHARS", "1200")
+
+    raw_log = "stdout\nrun_ok=1\n" + ("L" * 5000)
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "user", "content": raw_log},
+            {"role": "user", "content": "final request"},
+        ],
+    }
+
+    trimmed, report = _compact_deepseek_payload_context(payload)
+
+    assert report["token_first_trim_dry_run"]["available"] is True
+    assert report["type_aware_trim"]["enabled"] is False
+    assert report["type_aware_trim"]["applied"] is False
+    assert trimmed["messages"][0]["content"] == raw_log

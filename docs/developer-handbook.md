@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a89-trim-type-enum-image-first-token-dryrun` (resolve the exact commit with `git rev-parse --short p2.10a89-trim-type-enum-image-first-token-dryrun^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a89-trim-type-enum-image-first-token-dryrun`
+- Current internal development checkpoint: `p2.10a90-type-aware-trim-enablement` (resolve the exact commit with `git rev-parse --short p2.10a90-type-aware-trim-enablement^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a90-type-aware-trim-enablement`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1438,3 +1438,18 @@ Rules:
 6. Status/report snapshots expose `token_first_trim_dry_run`, `item_type_summary`, `protected_static_blocks`, and `image_first_protection`.
 7. No raw message content, raw image payload, or raw static block text may be exposed through the dry-run metadata.
 8. This node does not enable semantic payload compaction, does not enable token-based runtime trimming, and does not move public `v0.3.9-alpha`.
+
+## p2.10a90 Type-aware TRIM enablement
+
+p2.10a90 enables the first production batch of type-aware context TRIM.
+
+Rules:
+
+1. `token_first_trim_dry_run` remains available and redacted.
+2. Production TRIM now applies type-specific character limits for low-risk text-bearing payloads: `tool_result`, `log`, `pytest`, `traceback`, `diff`, `json`, old text, tool-call arguments, and reasoning content.
+3. First image payloads remain protected from normal TRIM, old-prefix compaction, and aggressive shrinking.
+4. Current system/developer blocks and latest AGENTS/environment/protocol blocks remain protected.
+5. The status surface exposes `type_aware_trim` with applied counts, applied-by-type summaries, limits, and redaction flags.
+6. Raw message content, image payloads, static block text, and tool arguments must not be exposed through metadata.
+7. `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0` disables production type-aware trimming without disabling dry-run metadata.
+8. Public `v0.3.9-alpha` remains frozen until the full checklist is complete.

@@ -233,6 +233,16 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
             "protected": False,
             "raw_image_content_exposed": False,
         },
+        "type_aware_trim": {
+            "available": True,
+            "enabled": True,
+            "mode": "enabled",
+            "applied": True,
+            "applied_count": 1,
+            "applied_by_type": {"tool_result": {"trimmed_field_count": 1, "chars_removed": 10}},
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -292,6 +302,9 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
     assert guard["trimming"]["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
     assert guard["trimming"]["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
+    assert guard["trimming"]["last_report"]["type_aware_trim"]["enabled"] is True
+    assert guard["trimming"]["last_report"]["type_aware_trim"]["applied"] is True
+    assert guard["trimming"]["last_report"]["type_aware_trim"]["applied_by_type"]["tool_result"]["trimmed_field_count"] == 1
     assert data["context_window"]["runtime"]["payload_guard"]["current_chars"] == 12345
     assert data["compaction"]["runtime_payload_guard"]["current_chars"] == 12345
 

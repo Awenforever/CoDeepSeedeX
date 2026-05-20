@@ -118,6 +118,16 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
                     "protected": False,
                     "raw_image_content_exposed": False,
                 },
+                "type_aware_trim": {
+                    "available": True,
+                    "enabled": True,
+                    "mode": "enabled",
+                    "applied": True,
+                    "applied_count": 1,
+                    "applied_by_type": {"tool_result": {"trimmed_field_count": 1, "chars_removed": 10}},
+                    "raw_content_exposed": False,
+                    "redacted": True,
+                },
             },
             ensure_ascii=False,
         ),
@@ -217,6 +227,9 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     assert trimming["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
     assert trimming["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
     assert trimming["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
+    assert trimming["last_report"]["type_aware_trim"]["enabled"] is True
+    assert trimming["last_report"]["type_aware_trim"]["applied"] is True
+    assert trimming["last_report"]["type_aware_trim"]["applied_by_type"]["tool_result"]["trimmed_field_count"] == 1
 
 
 @pytest.mark.asyncio

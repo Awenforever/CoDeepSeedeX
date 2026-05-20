@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a89-trim-type-enum-image-first-token-dryrun`，准确提交用`git rev-parse --short p2.10a89-trim-type-enum-image-first-token-dryrun^{}`解析
-- 最新闭合文档同步检查点：`p2.10a89-trim-type-enum-image-first-token-dryrun`
+- 当前内部开发检查点：`p2.10a90-type-aware-trim-enablement`，准确提交用`git rev-parse --short p2.10a90-type-aware-trim-enablement^{}`解析
+- 最新闭合文档同步检查点：`p2.10a90-type-aware-trim-enablement`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1393,3 +1393,18 @@ p2.10a89回到原始TRIM清单主线。
 6. status/report snapshot暴露`token_first_trim_dry_run`、`item_type_summary`、`protected_static_blocks`和`image_first_protection`。
 7. dry-run metadata不得暴露raw message content、raw image payload或raw static block文本。
 8. 本节点不启用semantic payload compaction，不启用token-based runtime trimming，也不移动公开`v0.3.9-alpha`。
+
+## p2.10a90 Type-aware TRIM enablement
+
+p2.10a90启用第一批生产类型感知context TRIM。
+
+规则：
+
+1. `token_first_trim_dry_run`继续可用且保持脱敏。
+2. 生产TRIM现在对低风险文本payload应用类型级字符限制：`tool_result`、`log`、`pytest`、`traceback`、`diff`、`json`、旧文本、tool-call arguments和reasoning content。
+3. 第一个image payload继续受保护，不参与普通TRIM、old-prefix compaction和aggressive shrinking。
+4. 当前system/developer块，以及最新AGENTS/environment/protocol块继续受保护。
+5. 状态面暴露`type_aware_trim`，包含applied计数、按类型汇总、limit和脱敏标记。
+6. metadata不得暴露raw message content、image payload、static block文本或tool arguments。
+7. `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0`可以关闭生产类型感知TRIM，但不关闭dry-run metadata。
+8. 公开`v0.3.9-alpha`在完整清单完成前继续冻结。

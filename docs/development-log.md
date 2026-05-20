@@ -1057,3 +1057,21 @@ Boundary:
 - No semantic payload compaction enablement.
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update or Release asset rebuild.
+
+## p2.10a90 Type-aware TRIM enablement
+
+Date: 2026-05-20
+
+Scope:
+
+- Enabled the first production batch of type-aware context TRIM using the p2.10a89 dry-run classifier and protection metadata.
+- Added type-specific limits for tool outputs, logs, pytest output, tracebacks, diffs, JSON payloads, old text, tool-call arguments, and reasoning content.
+- Preserved first-image and current/latest static block protections across normal TRIM, prefix compaction, and aggressive shrinking.
+- Added `type_aware_trim` status/report metadata with redacted applied-by-type summaries and no raw content exposure.
+- Added regression coverage for type-aware trimming, opt-out behavior, redaction, and status propagation.
+
+Boundary:
+
+- This node does not enable semantic payload compaction.
+- This node does not implement image semantic envelopes.
+- Public `v0.3.9-alpha` remains unmoved.

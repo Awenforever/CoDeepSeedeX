@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a89-trim-type-enum-image-first-token-dryrun"
+PROXY_INTERNAL_VERSION = "p2.10a90-type-aware-trim-enablement"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5145,10 +5145,21 @@ def _truncate_middle_text(text: str, limit: int) -> tuple[str, bool]:
 
 
 def _context_trim_env_config() -> dict[str, int]:
+    max_tool_output_chars = _env_int("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", 60_000)
     return {
         "max_context_chars": _env_int("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", 1_500_000),
-        "max_tool_output_chars": _env_int("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", 60_000),
+        "max_tool_output_chars": max_tool_output_chars,
         "keep_recent_messages": _env_int("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", 24),
+        "type_aware_trim_enabled": 1 if _env_bool("DEEPSEEK_PROXY_TYPE_AWARE_TRIM", True) else 0,
+        "trim_tool_result_chars": _env_int("DEEPSEEK_PROXY_TRIM_TOOL_RESULT_CHARS", max_tool_output_chars),
+        "trim_log_chars": _env_int("DEEPSEEK_PROXY_TRIM_LOG_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_pytest_chars": _env_int("DEEPSEEK_PROXY_TRIM_PYTEST_CHARS", min(max_tool_output_chars, 6_000)),
+        "trim_traceback_chars": _env_int("DEEPSEEK_PROXY_TRIM_TRACEBACK_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_diff_chars": _env_int("DEEPSEEK_PROXY_TRIM_DIFF_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_json_chars": _env_int("DEEPSEEK_PROXY_TRIM_JSON_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_tool_call_arguments_chars": _env_int("DEEPSEEK_PROXY_TRIM_TOOL_CALL_ARGUMENTS_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_reasoning_chars": _env_int("DEEPSEEK_PROXY_TRIM_REASONING_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_old_text_chars": _env_int("DEEPSEEK_PROXY_TRIM_OLD_TEXT_CHARS", max_tool_output_chars),
     }
 
 
@@ -5387,6 +5398,107 @@ def _context_trim_item_meta(
     }
 
 
+def _context_trim_type_aware_limits(config: dict[str, int]) -> dict[str, int]:
+    return {
+        "tool_result": max(128, int(config.get("trim_tool_result_chars") or config.get("max_tool_output_chars") or 60_000)),
+        "log": max(128, int(config.get("trim_log_chars") or 8_000)),
+        "pytest": max(128, int(config.get("trim_pytest_chars") or 6_000)),
+        "traceback": max(128, int(config.get("trim_traceback_chars") or 8_000)),
+        "diff": max(128, int(config.get("trim_diff_chars") or 12_000)),
+        "json": max(128, int(config.get("trim_json_chars") or 12_000)),
+        "tool_call_arguments": max(128, int(config.get("trim_tool_call_arguments_chars") or 8_000)),
+        "reasoning_content": max(128, int(config.get("trim_reasoning_chars") or 12_000)),
+        "old_text": max(128, int(config.get("trim_old_text_chars") or config.get("max_tool_output_chars") or 60_000)),
+    }
+
+
+def _context_trim_type_aware_limit(
+    item_type: str,
+    *,
+    field: str,
+    is_recent: bool,
+    config: dict[str, int],
+) -> tuple[int, str, str]:
+    limits = _context_trim_type_aware_limits(config)
+    max_tool_output_chars = max(128, int(config.get("max_tool_output_chars") or 60_000))
+
+    if field == "reasoning_content":
+        return limits["reasoning_content"], "reasoning_content", "DEEPSEEK_PROXY_TRIM_REASONING_CHARS"
+
+    if field == "tool_call_arguments":
+        return limits["tool_call_arguments"], "tool_call_arguments", "DEEPSEEK_PROXY_TRIM_TOOL_CALL_ARGUMENTS_CHARS"
+
+    if item_type == "tool_result":
+        return limits["tool_result"], "tool_result", "DEEPSEEK_PROXY_TRIM_TOOL_RESULT_CHARS"
+
+    if item_type in {"log", "pytest", "traceback", "diff", "json"}:
+        env_key = {
+            "log": "DEEPSEEK_PROXY_TRIM_LOG_CHARS",
+            "pytest": "DEEPSEEK_PROXY_TRIM_PYTEST_CHARS",
+            "traceback": "DEEPSEEK_PROXY_TRIM_TRACEBACK_CHARS",
+            "diff": "DEEPSEEK_PROXY_TRIM_DIFF_CHARS",
+            "json": "DEEPSEEK_PROXY_TRIM_JSON_CHARS",
+        }[item_type]
+        return limits[item_type], item_type, env_key
+
+    if not is_recent:
+        return limits["old_text"], "old_text", "DEEPSEEK_PROXY_TRIM_OLD_TEXT_CHARS"
+
+    return max_tool_output_chars, "default_recent_text", "DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS"
+
+
+def _context_trim_type_aware_report(config: dict[str, int]) -> dict[str, Any]:
+    limits = _context_trim_type_aware_limits(config)
+    return {
+        "available": True,
+        "enabled": bool(config.get("type_aware_trim_enabled", 1)),
+        "mode": "enabled",
+        "unit": "chars",
+        "limit_source": "env_with_safe_defaults",
+        "limits": limits,
+        "applied": False,
+        "applied_count": 0,
+        "applied_by_type": {},
+        "raw_content_exposed": False,
+        "redacted": True,
+        "notes": [
+            "Type-aware TRIM is enabled only for text-bearing fields.",
+            "First image payload and current/latest static blocks remain protected.",
+            "Metadata reports type, limits, indexes, hashes, and counts; raw content is not exposed.",
+        ],
+    }
+
+
+def _context_trim_record_type_aware_application(
+    report: dict[str, Any],
+    *,
+    item_type: str,
+    limit_key: str,
+    original_chars: int,
+    trimmed_chars: int,
+) -> None:
+    type_aware = report.setdefault("type_aware_trim", {})
+    type_aware["applied"] = True
+    type_aware["applied_count"] = int(type_aware.get("applied_count") or 0) + 1
+    applied_by_type = type_aware.setdefault("applied_by_type", {})
+    item = applied_by_type.setdefault(
+        item_type,
+        {
+            "trimmed_field_count": 0,
+            "original_chars": 0,
+            "trimmed_chars": 0,
+            "chars_removed": 0,
+            "limit_keys": [],
+        },
+    )
+    item["trimmed_field_count"] = int(item.get("trimmed_field_count") or 0) + 1
+    item["original_chars"] = int(item.get("original_chars") or 0) + int(original_chars)
+    item["trimmed_chars"] = int(item.get("trimmed_chars") or 0) + int(trimmed_chars)
+    item["chars_removed"] = int(item.get("chars_removed") or 0) + max(0, int(original_chars) - int(trimmed_chars))
+    limit_keys = item.setdefault("limit_keys", [])
+    if limit_key not in limit_keys:
+        limit_keys.append(limit_key)
+
 def _context_trim_token_first_dry_run(
     payload: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -5532,6 +5644,9 @@ def _trim_message_text_field(
     limit: int,
     location: str,
     report: dict[str, Any],
+    item_type: str | None = None,
+    limit_key: str | None = None,
+    type_aware: bool = False,
 ) -> bool:
     value = container.get(key)
     if not isinstance(value, str):
@@ -5544,16 +5659,28 @@ def _trim_message_text_field(
     container[key] = trimmed_value
     report["trimmed"] = True
     report["trimmed_fields"] = int(report.get("trimmed_fields", 0)) + 1
-    _append_context_trim_operation(
-        report,
-        {
-            "kind": "truncate_text_field",
-            "location": location,
-            "original_chars": len(value),
-            "trimmed_chars": len(trimmed_value),
-            "limit": limit,
-        },
-    )
+    operation = {
+        "kind": "type_aware_truncate_text_field" if type_aware else "truncate_text_field",
+        "location": location,
+        "message_type": item_type,
+        "original_chars": len(value),
+        "trimmed_chars": len(trimmed_value),
+        "chars_removed": max(0, len(value) - len(trimmed_value)),
+        "limit": limit,
+        "limit_key": limit_key,
+        "type_aware": bool(type_aware),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+    _append_context_trim_operation(report, operation)
+    if type_aware and item_type:
+        _context_trim_record_type_aware_application(
+            report,
+            item_type=item_type,
+            limit_key=str(limit_key or "unknown"),
+            original_chars=len(value),
+            trimmed_chars=len(trimmed_value),
+        )
     return True
 
 
@@ -5567,10 +5694,13 @@ def _trim_message_for_context(
     item_type: str | None = None,
     protected: bool = False,
     protection_reasons: list[str] | None = None,
+    config: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     trimmed = deepcopy(message)
     role = trimmed.get("role")
     item_type_value = item_type or _context_trim_content_shape_type(trimmed)
+    config = config or {"max_tool_output_chars": max_tool_output_chars, "type_aware_trim_enabled": 0}
+    type_aware_enabled = bool(config.get("type_aware_trim_enabled", 1))
 
     if protected:
         _append_context_trim_operation(
@@ -5586,40 +5716,54 @@ def _trim_message_for_context(
         )
         return trimmed
 
-    # Tool outputs are the dominant source of Codex context explosions. Trim them
-    # even in recent turns, while preserving role, tool_call_id, and ordering.
+    content_limit, content_limit_key, content_limit_source = _context_trim_type_aware_limit(
+        item_type_value,
+        field="content",
+        is_recent=is_recent,
+        config=config,
+    )
+    reasoning_limit, reasoning_limit_key, reasoning_limit_source = _context_trim_type_aware_limit(
+        item_type_value,
+        field="reasoning_content",
+        is_recent=is_recent,
+        config=config,
+    )
+
     if role == "tool":
         _trim_message_text_field(
             trimmed,
             "content",
-            limit=max_tool_output_chars,
+            limit=content_limit if type_aware_enabled else max_tool_output_chars,
             location=f"messages[{index}].content",
             report=report,
+            item_type=item_type_value,
+            limit_key=content_limit_key if type_aware_enabled else content_limit_source,
+            type_aware=type_aware_enabled,
         )
 
-    # Older plain-text content can also grow without bound. Keep recent content
-    # mostly intact, but compact older non-system messages.
     if role not in {"system", "developer", "tool"} and not is_recent:
         _trim_message_text_field(
             trimmed,
             "content",
-            limit=max_tool_output_chars,
+            limit=content_limit if type_aware_enabled else max_tool_output_chars,
             location=f"messages[{index}].content",
             report=report,
+            item_type=item_type_value,
+            limit_key=content_limit_key if type_aware_enabled else content_limit_source,
+            type_aware=type_aware_enabled,
         )
 
-    # DeepSeek thinking history can accumulate large hidden reasoning payloads.
-    # Preserve the field but cap its size.
     _trim_message_text_field(
         trimmed,
         "reasoning_content",
-        limit=max_tool_output_chars,
+        limit=reasoning_limit if type_aware_enabled else max_tool_output_chars,
         location=f"messages[{index}].reasoning_content",
         report=report,
+        item_type="reasoning_content",
+        limit_key=reasoning_limit_key if type_aware_enabled else reasoning_limit_source,
+        type_aware=type_aware_enabled,
     )
 
-    # Function-call arguments can become large for apply_patch or shell-like
-    # tools. Only trim old arguments so active/recent tool calls keep fidelity.
     if not is_recent:
         tool_calls = trimmed.get("tool_calls") or []
         if isinstance(tool_calls, list):
@@ -5629,12 +5773,21 @@ def _trim_message_for_context(
                 function = tool_call.get("function") or {}
                 if not isinstance(function, dict):
                     continue
+                arguments_limit, arguments_limit_key, arguments_limit_source = _context_trim_type_aware_limit(
+                    item_type_value,
+                    field="tool_call_arguments",
+                    is_recent=is_recent,
+                    config=config,
+                )
                 _trim_message_text_field(
                     function,
                     "arguments",
-                    limit=max_tool_output_chars,
+                    limit=arguments_limit if type_aware_enabled else max_tool_output_chars,
                     location=f"messages[{index}].tool_calls[{tool_index}].function.arguments",
                     report=report,
+                    item_type="tool_call_arguments",
+                    limit_key=arguments_limit_key if type_aware_enabled else arguments_limit_source,
+                    type_aware=type_aware_enabled,
                 )
 
     return trimmed
@@ -5826,6 +5979,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         "message_count_after": len(messages) if isinstance(messages, list) else None,
         "operations": [],
         "type_enum_version": CONTEXT_TRIM_TYPE_ENUM_VERSION,
+        "type_aware_trim": _context_trim_type_aware_report(config),
     }
 
     if not isinstance(messages, list):
@@ -5900,6 +6054,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
                     str(reason)
                     for reason in (item_meta.get("protection_reasons") or [])
                 ],
+                config=config,
             )
         )
     trimmed_payload["messages"] = new_messages
@@ -5923,6 +6078,14 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
     final_messages = trimmed_payload.get("messages")
     report["message_count_after"] = len(final_messages) if isinstance(final_messages, list) else None
     report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
+    type_aware = report.get("type_aware_trim")
+    if isinstance(type_aware, dict):
+        type_aware["applied"] = bool(type_aware.get("applied_count"))
+        type_aware["chars_removed"] = sum(
+            int(item.get("chars_removed") or 0)
+            for item in (type_aware.get("applied_by_type") or {}).values()
+            if isinstance(item, dict)
+        )
 
     return trimmed_payload, report
 
@@ -12697,6 +12860,7 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
         "protected_message_indexes",
         "protected_static_blocks",
         "image_first_protection",
+        "type_aware_trim",
         "compact_audit_generation",
         "aggressive_trimmed_fields",
         "compacted_message_count",
@@ -12858,6 +13022,7 @@ def _runtime_payload_guard_report_snapshot(
             "protected_message_indexes",
             "protected_static_blocks",
             "image_first_protection",
+            "type_aware_trim",
         ]
         snapshot = {
             "exists": True,
