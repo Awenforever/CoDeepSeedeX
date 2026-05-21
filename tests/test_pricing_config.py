@@ -109,6 +109,9 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert pricing["source_url"] is None
     assert pricing["source_kind"] == "external_config"
     assert "ttl_seconds" in pricing
+    assert "requires_refresh" in pricing
+    assert "refresh_action" in pricing
+    assert pricing["pricing_source_state"]["requires_refresh"] is True
     assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
     assert pricing["refresh"]["write_cache_requires_flag"] == "--write-cache"

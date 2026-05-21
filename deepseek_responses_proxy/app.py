@@ -57,9 +57,11 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a96-release-notes-final-sync"
+PROXY_INTERNAL_VERSION = "p2.10a97-weclaw-contract-stabilization"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
+MANAGED_AUTO_COMPACT_RATIO = 0.90
+AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -5456,9 +5458,14 @@ def _runtime_token_first_profile_name_for_payload(payload: dict[str, Any] | None
     return "deepseek-thinking" if _thinking_enabled() else "deepseek"
 
 
-def _runtime_token_first_context_contract_for_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+
+def _runtime_token_first_context_contract_for_payload(
+    payload: dict[str, Any] | None = None,
+    *,
+    active_profile: str | None = None,
+) -> dict[str, Any]:
     payload = payload or {}
-    profile = _runtime_token_first_profile_name_for_payload(payload)
+    profile = active_profile or _runtime_token_first_profile_name_for_payload(payload)
     sections = _runtime_parse_simple_toml_sections(_runtime_codex_config_path())
     profile_section = sections.get(f"profiles.{profile}", {})
     if not isinstance(profile_section, dict):
@@ -5469,9 +5476,9 @@ def _runtime_token_first_context_contract_for_payload(payload: dict[str, Any] | 
         _env_int("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", 0)
         or _env_int("DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT", 0)
     )
-    ratio = _env_float("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", 0.90)
+    ratio = _env_float("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", MANAGED_AUTO_COMPACT_RATIO)
     if ratio <= 0 or ratio > 1:
-        ratio = 0.90
+        ratio = MANAGED_AUTO_COMPACT_RATIO
 
     profile_model_context = _runtime_int_or_zero(profile_section.get("model_context_window"))
     profile_auto_threshold = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
@@ -5502,10 +5509,16 @@ def _runtime_token_first_context_contract_for_payload(payload: dict[str, Any] | 
     else:
         context_source = "managed_default.deepseek_context_window_tokens"
 
+    auto_compact_policy = _auto_compact_policy_contract(
+        model_context_window=model_context_window_tokens,
+        auto_compact_token_limit=auto_compact_threshold_tokens,
+    )
+
     return {
         "available": auto_compact_threshold_tokens > 0,
         "unit": "tokens",
         "profile": profile,
+        "profile_source": "active_route" if active_profile else "runtime_profile_detection",
         "codex_config": str(_runtime_codex_config_path()),
         "profile_found": bool(profile_section),
         "model": str((payload or {}).get("model") or DEFAULT_MODEL),
@@ -5517,10 +5530,10 @@ def _runtime_token_first_context_contract_for_payload(payload: dict[str, Any] | 
         "auto_compact_threshold_source": threshold_source,
         "auto_compact_ratio": auto_compact_ratio,
         "auto_compact_ratio_source": "derived:auto_compact_threshold_tokens/model_context_window_tokens" if auto_compact_ratio is not None else None,
+        "auto_compact_policy": auto_compact_policy,
         "runtime_trigger_source": "token_first_profile_context_contract",
         "char_fallback_scope": "emergency_safety_only",
     }
-
 
 def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict[str, Any]:
     tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
@@ -5538,10 +5551,11 @@ def _runtime_token_first_compaction_budget(
     messages: list[dict[str, Any]],
     request_payload: dict[str, Any] | None,
     config: dict[str, Any],
+    active_profile: str | None = None,
 ) -> dict[str, Any]:
     payload = dict(request_payload or {})
     payload["messages"] = messages
-    context_contract = _runtime_token_first_context_contract_for_payload(payload)
+    context_contract = _runtime_token_first_context_contract_for_payload(payload, active_profile=active_profile)
     token_estimate = _runtime_token_first_payload_token_estimate(payload)
 
     threshold = int(context_contract.get("auto_compact_threshold_tokens") or 0)
@@ -5563,6 +5577,7 @@ def _runtime_token_first_compaction_budget(
         "auto_compact_threshold_source": context_contract.get("auto_compact_threshold_source"),
         "model_auto_compact_token_limit": context_contract.get("model_auto_compact_token_limit"),
         "auto_compact_ratio": context_contract.get("auto_compact_ratio"),
+        "auto_compact_policy": context_contract.get("auto_compact_policy"),
         "tokens_to_auto_compact": tokens_to_auto_compact,
         "profile": context_contract.get("profile"),
         "profile_found": context_contract.get("profile_found"),
@@ -5973,6 +5988,7 @@ def _context_trim_token_first_dry_run(
     config: dict[str, int],
     *,
     recent_start: int,
+    active_profile: str | None = None,
 ) -> dict[str, Any]:
     tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
     first_image_index = _context_trim_first_image_index(messages)
@@ -6522,7 +6538,7 @@ def _aggressively_shrink_payload_to_token_limit(
     return payload
 
 
-def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _compact_deepseek_payload_context(payload: dict[str, Any], *, active_profile: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     config = _context_trim_env_config()
     max_context_chars = config["max_context_chars"]
     max_tool_output_chars = config["max_tool_output_chars"]
@@ -6574,6 +6590,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         trimmed_messages,
         config,
         recent_start=recent_start,
+        active_profile=active_profile,
     )
     protected_message_indexes = {
         int(index)
@@ -6650,6 +6667,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         "tokens_removed": 0,
         "max_context_tokens": max_context_tokens or None,
         "max_context_tokens_source": token_dry_run.get("max_context_tokens_source"),
+        "runtime_context": token_dry_run.get("runtime_context"),
         "target_met": max_context_tokens <= 0 or before_runtime_tokens <= max_context_tokens,
         "char_fallback_scope": "emergency_safety_only",
         "raw_content_exposed": False,
@@ -6972,6 +6990,9 @@ def _resolve_compaction_budget_policy(
                 "auto_compact_threshold_tokens": threshold_tokens,
                 "model_auto_compact_token_limit": token_budget.get("model_auto_compact_token_limit"),
                 "auto_compact_ratio": token_budget.get("auto_compact_ratio"),
+                "auto_compact_policy": token_budget.get("auto_compact_policy"),
+                "profile": token_budget.get("profile"),
+                "profile_found": token_budget.get("profile_found"),
                 "tokens_to_auto_compact": tokens_to_auto_compact,
                 "token_budget": token_budget,
                 "char_fallback_scope": "emergency_safety_only",
@@ -8025,7 +8046,12 @@ class DeepSeekClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload, context_trimming_report = _compact_deepseek_payload_context(payload)
+        active_profile = None
+        if isinstance(trace_metadata, dict):
+            active_profile = trace_metadata.get("active_profile")
+            if not active_profile and trace_metadata.get("thinking_enabled") is not None:
+                active_profile = "deepseek-thinking" if bool(trace_metadata.get("thinking_enabled")) else "deepseek"
+        payload, context_trimming_report = _compact_deepseek_payload_context(payload, active_profile=str(active_profile) if active_profile else None)
         context_trimming_report["observed_at"] = _runtime_payload_guard_observed_at()
         context_trimming_report["source"] = "live_request_payload"
         context_trimming_report["current_chars_source"] = "live_request_payload"
@@ -8145,6 +8171,7 @@ async def _chat_completions_with_usage(
             "requested_model": requested_model,
             "effective_model": effective_model,
             "thinking_enabled": thinking_enabled,
+            "active_profile": "deepseek-thinking" if thinking_enabled else "deepseek",
             "session_id": session_id,
         }
         chat_completions = deepseek_client.chat_completions
@@ -13857,6 +13884,127 @@ def _runtime_payload_guard_status(
     return "not_triggered"
 
 
+
+def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "available": False,
+            "unit": "tokens",
+            "status": "unavailable",
+            "reason": "no_runtime_compaction_report_observed",
+            "action": "send a model request through this dsproxy route, then re-check status",
+            "source": "runtime_context_builder",
+        }
+
+    before_tokens = _runtime_payload_guard_int(report.get("estimated_context_tokens"))
+    after_tokens = _runtime_payload_guard_int(report.get("after_estimated_context_tokens"))
+    if before_tokens is not None and after_tokens is None:
+        after_tokens = before_tokens
+    trigger_tokens = _runtime_payload_guard_int(report.get("auto_compact_threshold_tokens") or report.get("model_auto_compact_token_limit"))
+    target_tokens = _runtime_payload_guard_int(report.get("target_tokens") or report.get("effective_target_tokens"))
+    compacted = bool(report.get("compacted"))
+    try:
+        tokens_to_auto_compact_value = int(report.get("tokens_to_auto_compact")) if report.get("tokens_to_auto_compact") is not None else None
+    except (TypeError, ValueError):
+        tokens_to_auto_compact_value = None
+
+    if compacted:
+        status = "compacted"
+    elif before_tokens is None:
+        status = "unavailable"
+    elif tokens_to_auto_compact_value is not None and tokens_to_auto_compact_value <= 0:
+        status = "triggered"
+    else:
+        status = "not_triggered"
+
+    retention_ratio = None
+    if before_tokens is not None and before_tokens > 0 and after_tokens is not None:
+        retention_ratio = min(1.0, max(0.0, after_tokens / before_tokens))
+
+    policy_decision = report.get("policy_decision")
+    token_budget = policy_decision.get("token_budget") if isinstance(policy_decision, dict) else None
+    tokenizer = token_budget.get("tokenizer") if isinstance(token_budget, dict) else None
+    target_available = target_tokens is not None
+
+    return {
+        "available": before_tokens is not None,
+        "unit": "tokens",
+        "mode": "production",
+        "status": status,
+        "compacted": compacted,
+        "reason": report.get("reason"),
+        "source": "dsproxy_runtime_token_first_compaction_report",
+        "observed_at": report.get("observed_at"),
+        "runtime_trigger_source": report.get("runtime_trigger_source"),
+        "profile": report.get("profile"),
+        "model_context_window_tokens": report.get("model_context_window_tokens"),
+        "auto_compact_ratio": report.get("auto_compact_ratio"),
+        "auto_compact_policy": report.get("auto_compact_policy"),
+        "trigger_tokens": trigger_tokens,
+        "trigger_source": report.get("auto_compact_threshold_source"),
+        "auto_compact_threshold_tokens": trigger_tokens,
+        "model_auto_compact_token_limit": report.get("model_auto_compact_token_limit"),
+        "target_tokens": target_tokens,
+        "effective_target_tokens": target_tokens,
+        "target_available": target_available,
+        "target_source": report.get("target_source"),
+        "target_reason": None if target_available else "explicit_token_compact_target_not_configured",
+        "target_action": None if target_available else "do not display a Compact target; display trigger and retention until dsproxy exposes an explicit token target",
+        "before_tokens": before_tokens,
+        "after_tokens": after_tokens,
+        "estimated_context_tokens": before_tokens,
+        "after_estimated_context_tokens": after_tokens,
+        "tokens_removed": _runtime_payload_guard_int(report.get("tokens_removed")) if compacted else 0,
+        "tokens_to_auto_compact": tokens_to_auto_compact_value,
+        "retention_numerator_tokens": after_tokens,
+        "retention_denominator_tokens": before_tokens,
+        "retention_ratio": retention_ratio,
+        "retention_basis": "post_compaction_estimated_tokens_over_raw_uncompacted_estimated_tokens",
+        "progress_numerator_tokens": after_tokens,
+        "progress_denominator_tokens": before_tokens,
+        "progress_ratio": retention_ratio,
+        "progress_basis": "post_compaction_estimated_tokens_over_raw_uncompacted_estimated_tokens",
+        "raw_uncompacted_tokens": before_tokens,
+        "post_compaction_tokens": after_tokens,
+        "precision": report.get("estimated_context_tokens_precision") or "local_profile_tokenizer_estimate",
+        "tokenizer": tokenizer,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+
+def _route_scoped_trimming_report(report: Any, *, profile: str) -> Any:
+    if not isinstance(report, dict):
+        return report
+    token_plan = report.get("token_first_trim_dry_run")
+    runtime_context = token_plan.get("runtime_context") if isinstance(token_plan, dict) else None
+    observed_profile = runtime_context.get("profile") if isinstance(runtime_context, dict) else report.get("profile")
+    if observed_profile and str(observed_profile) != str(profile):
+        return {
+            "version": report.get("version"),
+            "enabled": report.get("enabled"),
+            "trimmed": False,
+            "available": False,
+            "reason": "runtime_trimming_report_profile_mismatch",
+            "requested_profile": profile,
+            "observed_profile": observed_profile,
+            "source": "profile_scoped_runtime_status_guard",
+            "observed_at": report.get("observed_at"),
+            "action": "send a primary model request through the requested route/profile, then re-check dsproxy status --weclaw-json",
+            "token_first_trim_dry_run": {
+                "available": False,
+                "unit": "tokens",
+                "reason": "runtime_trimming_report_profile_mismatch",
+                "requested_profile": profile,
+                "observed_profile": observed_profile,
+                "source": "profile_scoped_runtime_status_guard",
+                "action": "do not display stale token-first TRIM runtime_context for a different profile",
+            },
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+    return report
+
 def _runtime_payload_guard_report_snapshot(
     report: Any,
     *,
@@ -13896,6 +14044,12 @@ def _runtime_payload_guard_report_snapshot(
             "codex_summary_prefix",
             "type_enum_version",
             "token_first_trim_dry_run",
+            "token_first_runtime_trim",
+            "available",
+            "requested_profile",
+            "observed_profile",
+            "action",
+            "redacted",
             "item_type_summary",
             "protected_message_indexes",
             "protected_static_blocks",
@@ -13957,6 +14111,7 @@ def _runtime_payload_guard_report_snapshot(
 
 
 
+
 def _runtime_payload_guard_contract(
     context_status: dict[str, Any],
     *,
@@ -14003,6 +14158,7 @@ def _runtime_payload_guard_contract(
     if not isinstance(policy_decision, dict):
         policy_decision = {}
 
+    token_compaction_contract = _runtime_token_first_compaction_contract(compaction_report_dict)
     trigger_chars = _runtime_payload_guard_int(policy_decision.get("effective_trigger_chars") or (compaction_report_dict or {}).get("effective_trigger_chars") or (compaction_report_dict or {}).get("trigger_chars") or compaction_config.get("trigger_chars"))
     target_chars = _runtime_payload_guard_int(policy_decision.get("effective_target_chars") or (compaction_report_dict or {}).get("effective_target_chars") or (compaction_report_dict or {}).get("target_chars") or compaction_config.get("target_chars"))
     max_context_chars = _runtime_payload_guard_int((trimming_report_dict or {}).get("max_context_chars") or trimming_config.get("max_context_chars"))
@@ -14047,6 +14203,8 @@ def _runtime_payload_guard_contract(
         "status": _runtime_payload_guard_status(current_chars=compaction_raw, limit_chars=trigger_chars, terminal=bool((compaction_report_dict or {}).get("compacted")), terminal_status="compacted"),
         "last_report": _runtime_payload_guard_report_snapshot(compaction_report_dict, kind="compaction", fallback_last_report=compaction_last_report),
         "compact_audit": _compaction_audit_metadata_from_report(compaction_report_dict or compaction_last_report),
+        "token_first": token_compaction_contract,
+        "token_contract": token_compaction_contract,
         "reason": None if compaction_available else "current_compaction_chars_unavailable",
         "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -14080,6 +14238,7 @@ def _runtime_payload_guard_contract(
         "remaining_chars": max(0, max_context_chars - trimming_raw) if trimming_raw is not None and max_context_chars is not None else None,
         "status": _runtime_payload_guard_status(current_chars=trimming_raw, limit_chars=max_context_chars, terminal=bool((trimming_report_dict or {}).get("trimmed")), terminal_status="trimmed"),
         "last_report": _runtime_payload_guard_report_snapshot(trimming_report_dict, kind="trimming", fallback_last_report=trimming_last_report),
+        "token_first_runtime_trim": (trimming_report_dict or {}).get("token_first_runtime_trim") if trimming_report_dict else None,
         "reason": None if trimming_available else "current_trimming_chars_unavailable",
         "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -14099,8 +14258,8 @@ def _runtime_payload_guard_contract(
         "action": None if available else "send a model request through this dsproxy route, then re-check status",
         "compaction": compaction_section,
         "trimming": trimming_section,
+        "token_first_compaction": token_compaction_contract,
     }
-
 
 def _tool_bridge_status() -> dict[str, Any]:
     web_provider = _web_search_provider()
@@ -14889,6 +15048,60 @@ def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
     }
 
 
+
+def _auto_compact_policy_contract(
+    *,
+    model_context_window: int,
+    auto_compact_token_limit: int,
+) -> dict[str, Any]:
+    expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
+    observed_ratio = (
+        round(auto_compact_token_limit / model_context_window, 6)
+        if model_context_window > 0 and auto_compact_token_limit > 0
+        else None
+    )
+    compliant = bool(expected_threshold is not None and auto_compact_token_limit == expected_threshold)
+    if observed_ratio is not None:
+        compliant = compliant or abs(float(observed_ratio) - expected_ratio) <= AUTO_COMPACT_RATIO_TOLERANCE
+
+    if model_context_window <= 0 or auto_compact_token_limit <= 0:
+        status = "unavailable"
+        reason = "model_context_window_or_auto_compact_threshold_missing"
+        action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
+        needs_migration = True
+    elif compliant:
+        status = "managed_expected_ratio"
+        reason = None
+        action = None
+        needs_migration = False
+    else:
+        status = "legacy_or_custom_profile_needs_migration"
+        reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
+        action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
+        needs_migration = True
+
+    return {
+        "available": model_context_window > 0 and auto_compact_token_limit > 0,
+        "unit": "tokens",
+        "managed_expected_auto_compact_ratio": expected_ratio,
+        "managed_expected_auto_compact_threshold_tokens": expected_threshold,
+        "observed_auto_compact_ratio": observed_ratio,
+        "observed_auto_compact_threshold_tokens": auto_compact_token_limit or None,
+        "compliant_with_managed_ratio": compliant,
+        "needs_migration": needs_migration,
+        "status": status,
+        "reason": reason,
+        "action": action,
+        "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
+        "notes": [
+            "The context denominator remains model_context_window_tokens.",
+            "The auto-compact threshold is a trigger threshold, not the context denominator.",
+            "Managed CoDeepSeedeX profiles derive the threshold from auto_compact_ratio=0.90; legacy/custom profiles may expose a different observed ratio and must be labeled instead of silently rewritten by WeClaw.",
+        ],
+    }
+
+
 def _weclaw_context_limit_explanation(
     *,
     model_context_window: int,
@@ -14907,6 +15120,11 @@ def _weclaw_context_limit_explanation(
     if model_context_window > 0 and auto_compact_token_limit > 0:
         auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6)
 
+    auto_compact_policy = _auto_compact_policy_contract(
+        model_context_window=model_context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
+    )
+
     if model_context_window > 0:
         display_source = "codex_profile.model_context_window"
         display_reason = "declared_model_context_window"
@@ -14919,6 +15137,16 @@ def _weclaw_context_limit_explanation(
     else:
         display_source = "unavailable"
         display_reason = "unavailable"
+
+    if auto_compact_policy.get("compliant_with_managed_ratio"):
+        auto_limit_explanation = "The Codex profile threshold where Codex may compact before the full model context window is reached. Managed profiles derive it from auto_compact_ratio=0.90."
+        auto_ratio_explanation = "The ratio auto_compact_token_limit/model_context_window. This active profile matches the managed 0.90 ratio."
+    elif auto_compact_policy.get("available"):
+        auto_limit_explanation = "The Codex profile threshold where Codex may compact before the full model context window is reached. This active profile does not match the managed 0.90 ratio and is reported as legacy/custom instead of being rewritten by status display."
+        auto_ratio_explanation = "The observed ratio auto_compact_token_limit/model_context_window for the active profile. When it differs from 0.90, status must expose migration diagnostics and WeClaw must not silently replace it."
+    else:
+        auto_limit_explanation = "The auto-compact threshold is unavailable because the active profile is missing context-window or threshold fields."
+        auto_ratio_explanation = "The auto-compact ratio is unavailable until both model_context_window and model_auto_compact_token_limit are present."
 
     return {
         "unit": "tokens",
@@ -14933,22 +15161,23 @@ def _weclaw_context_limit_explanation(
         "auto_compact_threshold_source": "codex_profile.model_auto_compact_token_limit" if auto_compact_token_limit > 0 else None,
         "auto_compact_ratio": auto_compact_ratio,
         "auto_compact_ratio_source": "derived:auto_compact_token_limit/model_context_window" if auto_compact_ratio is not None else None,
+        "auto_compact_policy": auto_compact_policy,
         "model_catalog_context_window_tokens": catalog_tokens,
         "model_catalog_source": catalog_source,
         "value_explanations": {
             "display_limit_tokens": "The denominator WeClaw should display for the active profile. It is the real declared model context window when available.",
             "model_context_window_tokens": "The declared model context window in the managed Codex profile.",
-            "auto_compact_token_limit": "The Codex profile threshold where Codex may compact before the full model context window is reached. CoDeepSeedeX managed profiles derive it from the 0.90 auto compact ratio.",
-            "auto_compact_ratio": "The ratio auto_compact_token_limit/model_context_window. Managed profiles use 0.90 unless a legacy profile is being inspected.",
+            "auto_compact_token_limit": auto_limit_explanation,
+            "auto_compact_ratio": auto_ratio_explanation,
             "model_catalog_context_window_tokens": "The dsproxy model-catalog context-window declaration, used for consistency diagnostics and not as a replacement for the active profile declaration.",
         },
         "notes": [
             "WeClaw should display the full model context window as the context denominator.",
             "The auto-compact threshold is a separate trigger value, not the context-window size.",
             "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and are not token denominators.",
+            "If auto_compact_policy.needs_migration is true, surface the provided action instead of hard-coding a replacement threshold in WeClaw.",
         ],
     }
-
 
 def _weclaw_catalog_context_tokens(value: Any) -> int | None:
     if isinstance(value, dict):
@@ -15294,12 +15523,17 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
     }
 
 
+
 def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
     model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
     display_limit_tokens = model_context_window or auto_compact_token_limit or 0
     auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
+    auto_compact_policy = _auto_compact_policy_contract(
+        model_context_window=model_context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
+    )
     conflicts: list[dict[str, Any]] = []
     catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
     if (
@@ -15317,6 +15551,19 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "user_visible": False,
             }
         )
+    if auto_compact_policy.get("needs_migration"):
+        conflicts.append(
+            {
+                "field": "model_auto_compact_token_limit",
+                "codex_profile_value": auto_compact_token_limit,
+                "expected_managed_value": auto_compact_policy.get("managed_expected_auto_compact_threshold_tokens"),
+                "observed_auto_compact_ratio": auto_compact_policy.get("observed_auto_compact_ratio"),
+                "expected_auto_compact_ratio": auto_compact_policy.get("managed_expected_auto_compact_ratio"),
+                "resolution": "repair_managed_profile_to_derive_threshold_from_ratio",
+                "action": auto_compact_policy.get("action"),
+                "user_visible": True,
+            }
+        )
     limit_explanation = _weclaw_context_limit_explanation(
         model_context_window=model_context_window,
         auto_compact_token_limit=auto_compact_token_limit,
@@ -15329,6 +15576,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
         "auto_compact_token_limit": auto_compact_token_limit,
         "auto_compact_threshold_tokens": auto_compact_token_limit,
         "auto_compact_ratio": auto_compact_ratio,
+        "auto_compact_policy": auto_compact_policy,
         "effective_safe_window_tokens": display_limit_tokens,
         **_weclaw_context_used_tokens_unavailable_contract(),
         "source": limit_explanation["display_limit_source"],
@@ -15338,6 +15586,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
             "auto_compact_token_limit": auto_compact_token_limit,
             "auto_compact_threshold_tokens": auto_compact_token_limit,
             "auto_compact_ratio": auto_compact_ratio,
+            "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
@@ -15352,10 +15601,10 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while auto_compact_token_limit is only the auto-compact trigger threshold.",
             "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and must not be treated as equivalent token denominators.",
+            "If auto_compact_policy.needs_migration is true, surface the provided repair action instead of replacing the active profile values in WeClaw.",
         ],
         "conflicts": conflicts,
     }
-
 
 def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str, Any]:
     codex_model = profile_section.get("model")
@@ -16206,8 +16455,30 @@ def _weclaw_prompt_split_with_provider_coverage(
         "message_protocol_overhead",
         "provider_residual",
     ]
+    origin_non_residual_tokens = sum(
+        abs(_weclaw_usage_int(component.get("tokens")))
+        for name, component in details_origin_components.items()
+        if name != "provider_residual" and isinstance(component, dict)
+    )
+    details_origin_available = bool(normalized.get("available")) and origin_non_residual_tokens > 0
+    details_origin_unavailable_reason = None
+    details_origin_action = None
+    if not details_origin_available:
+        details_origin_unavailable_reason = str(
+            normalized.get("reason")
+            or "local_prompt_origin_breakdown_unavailable"
+        )
+        details_origin_action = str(
+            normalized.get("action")
+            or "verify profile tokenizer availability and send one primary model request through this route/session"
+        )
+
     details_origin_breakdown = {
-        "available": True,
+        "available": details_origin_available,
+        "reason": details_origin_unavailable_reason,
+        "action": details_origin_action,
+        "origin_non_residual_tokens": origin_non_residual_tokens,
+        "provider_residual_display_allowed": details_origin_available,
         "unit": "tokens",
         "scope": "current_session" if session_id else normalized.get("scope"),
         "session_id": session_id or normalized.get("session_id"),
@@ -16894,6 +17165,12 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         else "project_default_config"
     )
     official_price_available = bool(official_cache and fetched_at)
+    requires_refresh = bool((is_stale is True) or not official_price_available)
+    refresh_action = (
+        "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json"
+        if requires_refresh
+        else None
+    )
 
     source_currency = str(metadata.get("currency") or "CNY").upper()
     target_currency = _pricing_display_currency({"currency": display_currency} if display_currency else None)
@@ -16939,6 +17216,8 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "updated_at": updated_at,
         "expires_at": metadata.get("expires_at"),
         "ttl_seconds": ttl_seconds,
+        "requires_refresh": requires_refresh,
+        "refresh_action": refresh_action,
         "prices": effective_prices,
         "current_prices": effective_prices,
         "effective_prices": effective_prices,
@@ -16988,9 +17267,9 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "expires_at": metadata.get("expires_at"),
             "ttl_seconds": ttl_seconds,
             "is_stale": is_stale if official_cache else None,
-            "requires_refresh": not official_price_available,
-            "reason": None if official_price_available else "official_pricing_cache_not_available_for_active_status",
-            "action": None if official_price_available else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
+            "requires_refresh": requires_refresh,
+            "reason": None if not requires_refresh else ("official_pricing_cache_stale" if is_stale is True else "official_pricing_cache_not_available_for_active_status"),
+            "action": refresh_action,
         },
         "pricing_source_state": {
             "current_prices_are_official_live_cache": official_price_available,
@@ -17000,6 +17279,8 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "cost_uses_current_prices": bool(model_prices),
             "must_display_source_label": True,
             "discount_metadata_available": bool(model_metadata),
+            "requires_refresh": requires_refresh,
+            "refresh_action": refresh_action,
         },
         "refresh": {
             "available": True,
@@ -17010,6 +17291,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "requires_live_network": True,
             "writes_cache": False,
             "write_cache_requires_flag": "--write-cache",
+            "current_status_requires_refresh": requires_refresh,
         },
     }
 
@@ -17341,10 +17623,14 @@ def _runtime_weclaw_status(
     cost["balance"] = balance_contract
 
     context_status = _proxy_context_status()
+    trimming_report = _route_scoped_trimming_report(
+        getattr(deepseek_client, "last_context_trimming_report", None),
+        profile=profile,
+    )
     runtime_payload_guard = _runtime_payload_guard_contract(
         context_status,
         compaction_report=last_context_compaction_report,
-        trimming_report=getattr(deepseek_client, "last_context_trimming_report", None),
+        trimming_report=trimming_report,
     )
     semantic_status = _weclaw_enrich_semantic_compaction_status(_semantic_compaction_runtime_status())
     context_window = _weclaw_context_window_with_usage_estimate(
@@ -17393,6 +17679,8 @@ def _runtime_weclaw_status(
             "unit": "chars",
             "runtime_context": context_status,
             "runtime_payload_guard": runtime_payload_guard,
+            "token_first": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
+            "token_contract": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
             "compact_audit": (
                 runtime_payload_guard.get("compaction", {}).get("compact_audit")
                 if isinstance(runtime_payload_guard.get("compaction"), dict)

@@ -389,3 +389,42 @@ def test_details_origin_breakdown_exposes_sources_without_classified_subtotal(tm
     assert reconciliation["root_cause_status"] == "tool_schema_and_message_protocol_overhead"
     assert reconciliation["dominant_observable_delta_source"] == "tools_schema"
     assert reconciliation["is_accounting_suspect"] is False
+
+
+def test_details_origin_breakdown_unavailable_when_only_provider_residual_exists(tmp_path: Path) -> None:
+    store = proxy_app.SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    _record_primary_usage(store, prompt_tokens=21600, total_tokens=21700)
+
+    report = {
+        "available": True,
+        "session_id": "s1",
+        "scope": "current_session",
+        "tokenizer": {"available": True, "source_kind": "managed", "tokenizer_kind": "deepseek_official_current", "source": "test"},
+        "summary": {"available": False, "reason": "no_observed_prompt"},
+        "prompt_subcategory_split": {
+            "available": False,
+            "scope": "current_session",
+            "session_id": "s1",
+            "unit": "tokens",
+            "precision": "local_profile_tokenizer_estimate",
+            "reason": "profile_tokenizer_available_but_no_observed_prompt",
+            "action": "send one model request through this route",
+            "categories": {},
+        },
+    }
+
+    tokens = proxy_app._weclaw_tokens_contract(
+        store,
+        profile="deepseek-thinking",
+        profile_tokenizer_report=report,
+        profile_model="deepseek-v4-pro",
+        provider="deepseek",
+        session_id="s1",
+    )
+
+    origin = tokens["prompt_reconciliation"]["details_origin_breakdown"]
+    assert origin["available"] is False
+    assert origin["reason"] == "profile_tokenizer_available_but_no_observed_prompt"
+    assert origin["provider_residual_display_allowed"] is False
+    assert origin["origin_non_residual_tokens"] == 0
+    assert origin["components"]["provider_residual"]["tokens"] == 21600

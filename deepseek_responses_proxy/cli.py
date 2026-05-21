@@ -28,6 +28,8 @@ APP_NAME = "deepseek-responses-proxy"
 
 DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000
 DEFAULT_AUTO_COMPACT_RATIO = 0.90
+MANAGED_AUTO_COMPACT_RATIO = DEFAULT_AUTO_COMPACT_RATIO
+AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
 
 
 def _normalize_auto_compact_ratio(value: object) -> float:
@@ -54,6 +56,52 @@ def _derive_auto_compact_token_limit(
     return max(1, int(context_tokens * safe_ratio))
 
 
+
+
+def _auto_compact_policy_contract(
+    *,
+    model_context_window: int,
+    auto_compact_token_limit: int,
+) -> dict[str, object]:
+    expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
+    observed_ratio = (
+        round(auto_compact_token_limit / model_context_window, 6)
+        if model_context_window > 0 and auto_compact_token_limit > 0
+        else None
+    )
+    compliant = bool(expected_threshold is not None and auto_compact_token_limit == expected_threshold)
+    if observed_ratio is not None:
+        compliant = compliant or abs(float(observed_ratio) - expected_ratio) <= AUTO_COMPACT_RATIO_TOLERANCE
+    if model_context_window <= 0 or auto_compact_token_limit <= 0:
+        status = "unavailable"
+        reason = "model_context_window_or_auto_compact_threshold_missing"
+        action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
+        needs_migration = True
+    elif compliant:
+        status = "managed_expected_ratio"
+        reason = None
+        action = None
+        needs_migration = False
+    else:
+        status = "legacy_or_custom_profile_needs_migration"
+        reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
+        action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
+        needs_migration = True
+    return {
+        "available": model_context_window > 0 and auto_compact_token_limit > 0,
+        "unit": "tokens",
+        "managed_expected_auto_compact_ratio": expected_ratio,
+        "managed_expected_auto_compact_threshold_tokens": expected_threshold,
+        "observed_auto_compact_ratio": observed_ratio,
+        "observed_auto_compact_threshold_tokens": auto_compact_token_limit or None,
+        "compliant_with_managed_ratio": compliant,
+        "needs_migration": needs_migration,
+        "status": status,
+        "reason": reason,
+        "action": action,
+        "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
+    }
 
 def _repo_root_for_version_metadata() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -837,12 +885,17 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
     }
 
 
+
 def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, object]:
     model_context_window = _int_or_zero(profile_section.get("model_context_window"))
     auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
     display_limit_tokens = model_context_window or auto_compact_token_limit or 0
     auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
+    auto_compact_policy = _auto_compact_policy_contract(
+        model_context_window=model_context_window,
+        auto_compact_token_limit=auto_compact_token_limit,
+    )
     conflicts: list[dict[str, object]] = []
     catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
     if (
@@ -860,6 +913,19 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "user_visible": False,
             }
         )
+    if auto_compact_policy.get("needs_migration"):
+        conflicts.append(
+            {
+                "field": "model_auto_compact_token_limit",
+                "codex_profile_value": auto_compact_token_limit,
+                "expected_managed_value": auto_compact_policy.get("managed_expected_auto_compact_threshold_tokens"),
+                "observed_auto_compact_ratio": auto_compact_policy.get("observed_auto_compact_ratio"),
+                "expected_auto_compact_ratio": auto_compact_policy.get("managed_expected_auto_compact_ratio"),
+                "resolution": "repair_managed_profile_to_derive_threshold_from_ratio",
+                "action": auto_compact_policy.get("action"),
+                "user_visible": True,
+            }
+        )
 
     display_source = "codex_profile.model_context_window" if model_context_window > 0 else "codex_profile.model_auto_compact_token_limit"
     return {
@@ -868,6 +934,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
         "auto_compact_token_limit": auto_compact_token_limit,
         "auto_compact_threshold_tokens": auto_compact_token_limit,
         "auto_compact_ratio": auto_compact_ratio,
+        "auto_compact_policy": auto_compact_policy,
         "effective_safe_window_tokens": display_limit_tokens,
         **_weclaw_context_used_tokens_unavailable_contract(),
         "source": display_source,
@@ -877,6 +944,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "auto_compact_token_limit": auto_compact_token_limit,
             "auto_compact_threshold_tokens": auto_compact_token_limit,
             "auto_compact_ratio": auto_compact_ratio,
+            "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
             "source": "codex_config.profiles.<profile>",
         },
@@ -896,9 +964,9 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while auto_compact_token_limit is only the auto-compact trigger threshold.",
             "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and must not be treated as equivalent token denominators.",
+            "If auto_compact_policy.needs_migration is true, surface the provided repair action instead of replacing the active profile values in WeClaw.",
         ],
     }
-
 
 def _merge_runtime_context_contract(context_window: dict[str, object], runtime_status: dict[str, object] | None) -> dict[str, object]:
     merged = dict(context_window)

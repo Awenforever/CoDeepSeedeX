@@ -1162,3 +1162,23 @@ Boundary:
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update.
 - No Release asset upload.
+
+
+## p2.10a97 WeClaw contract stabilization
+
+Date: 2026-05-21
+
+Scope:
+
+- Stabilize dsproxy-owned WeClaw status contracts after `v0.3.9-alpha=282e059`.
+- Add explicit auto-compact policy diagnostics when an active profile still exposes a legacy/custom threshold such as 750k/0.75 instead of the managed 0.90 ratio.
+- Add a stable token-first Compact contract with trigger, target availability, before/after token estimates, retention ratio, source, reason, and observed timestamp.
+- Guard token-first TRIM status against stale runtime reports from a different route/profile.
+- Mark Details origin breakdown unavailable when local origin components are missing so provider residual is not displayed as a fabricated origin split.
+- Expose top-level pricing refresh/stale metadata for WeClaw display.
+
+Boundary:
+
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset rebuild.

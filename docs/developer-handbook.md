@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a92-codex-native-compact-source-alignment` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a92-codex-native-compact-source-alignment`
+- Current internal development checkpoint: `p2.10a97-weclaw-contract-stabilization` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a97-weclaw-contract-stabilization`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1516,3 +1516,19 @@ Runtime rules:
 4. Production TRIM reports `token_first_runtime_trim` with before/after token estimates, removed tokens, and target status.
 5. Char-level Compact/TRIM controls remain as emergency safety fallback and must not be used as the primary context-window or trigger denominator.
 6. This node must not move public `v0.3.9-alpha`, update the GitHub Release, or upload Release assets.
+
+
+## p2.10a97 WeClaw contract stabilization
+
+p2.10a97 stabilizes WeClaw-facing status fields after `v0.3.9-alpha=282e059` without moving the public Release.
+
+Rules:
+
+1. `context_window.auto_compact_policy` must explicitly report whether the active profile matches the managed `auto_compact_ratio=0.90`. Legacy/custom values such as `750000/1000000=0.75` are reported with `needs_migration=true` and a repair action instead of being silently rewritten by WeClaw.
+2. Token-first Compact status must expose a stable token contract with trigger, target availability, before/after token estimates, retention ratio, status, source, reason, and observed timestamp.
+3. If no explicit token Compact target is configured, dsproxy reports `target_available=false` and tells WeClaw not to display a fabricated target.
+4. Token-first TRIM status must be scoped to the requested route/profile. A stale report from another profile is marked unavailable with `runtime_trimming_report_profile_mismatch`.
+5. Details origin breakdown must not degrade into all-zero origins plus provider residual. If local segmentation/origin data is unavailable, `details_origin_breakdown.available=false` with reason/action.
+6. Pricing status exposes top-level refresh/stale fields: `requires_refresh`, `refresh_action`, `fetched_at`, `updated_at`, `expires_at`, `ttl_seconds`, `source_kind`, and `source_url`.
+
+Release boundary: this node does not move `v0.3.9-alpha`, update the GitHub Release, or rebuild Release assets.

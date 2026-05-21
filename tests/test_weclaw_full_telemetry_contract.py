@@ -162,7 +162,27 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
         "policy_decision": {
             "effective_trigger_chars": 900000,
             "effective_target_chars": 280000,
+            "runtime_trigger_source": "token_first",
+            "unit": "tokens",
+            "estimated_context_tokens": 123,
+            "estimated_context_tokens_precision": "local_profile_tokenizer_estimate",
+            "model_context_window_tokens": 1000000,
+            "auto_compact_threshold_tokens": 900000,
+            "auto_compact_threshold_source": "codex_profile.model_auto_compact_token_limit",
+            "model_auto_compact_token_limit": 900000,
+            "auto_compact_ratio": 0.9,
+            "tokens_to_auto_compact": 899877,
         },
+        "runtime_trigger_source": "token_first",
+        "unit": "tokens",
+        "estimated_context_tokens": 123,
+        "estimated_context_tokens_precision": "local_profile_tokenizer_estimate",
+        "model_context_window_tokens": 1000000,
+        "auto_compact_threshold_tokens": 900000,
+        "auto_compact_threshold_source": "codex_profile.model_auto_compact_token_limit",
+        "model_auto_compact_token_limit": 900000,
+        "auto_compact_ratio": 0.9,
+        "tokens_to_auto_compact": 899877,
         "observed_at": "2026-05-17T10:00:00Z",
         "source": "runtime_context_builder",
         "material": {
@@ -215,6 +235,12 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
             "estimated_payload_tokens": 123,
             "would_trim": False,
             "raw_content_exposed": False,
+            "runtime_context": {
+                "profile": "deepseek-thinking",
+                "model": "deepseek-v4-flash",
+                "model_context_window_tokens": 1000000,
+                "auto_compact_threshold_tokens": 900000,
+            },
         },
         "item_type_summary": {
             "type_enum_version": 1,
@@ -296,6 +322,15 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["compaction"]["capacity_progress_ratio"] == pytest.approx(12345 / 900000)
     assert guard["compaction"]["remaining_chars"] == 887655
     assert guard["compaction"]["status"] == "not_triggered"
+    token_compaction = guard["compaction"]["token_first"]
+    assert token_compaction["unit"] == "tokens"
+    assert token_compaction["trigger_tokens"] == 900000
+    assert token_compaction["target_available"] is False
+    assert token_compaction["target_reason"] == "explicit_token_compact_target_not_configured"
+    assert isinstance(token_compaction["before_tokens"], int)
+    assert token_compaction["after_tokens"] == token_compaction["before_tokens"]
+    assert token_compaction["retention_ratio"] == 1.0
+    assert data["compaction"]["token_first"]["trigger_tokens"] == 900000
     assert guard["compaction"]["last_report"]["exists"] is True
     assert guard["compaction"]["compact_audit"]["available"] is True
     assert guard["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "c" * 64
@@ -315,6 +350,7 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["trimming"]["last_report"]["type_enum_version"] == 1
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["available"] is True
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
+    assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["runtime_context"]["profile"] == "deepseek-thinking"
     assert guard["trimming"]["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
     assert guard["trimming"]["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
     assert guard["trimming"]["last_report"]["image_semantic_envelope"]["enabled"] is True
@@ -789,3 +825,42 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
     assert "Reply OK exactly. Do not leak this raw user sentence through Compact audit metadata." not in serialized_status
     assert '"raw_prompt_exposed": true' not in serialized_status.lower()
     assert '"raw_material_exposed": true' not in serialized_status.lower()
+
+
+@pytest.mark.asyncio
+async def test_weclaw_status_marks_mismatched_trim_report_unavailable(tmp_path, monkeypatch):
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    app = create_app(deepseek_client=WeClawBalanceClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
+    app.state.deepseek_client.last_context_trimming_report = {
+        "version": "v0.3.9-alpha",
+        "enabled": True,
+        "trimmed": False,
+        "before_chars": 100,
+        "after_chars": 100,
+        "observed_at": "2026-05-21T10:00:00Z",
+        "token_first_trim_dry_run": {
+            "available": True,
+            "unit": "tokens",
+            "runtime_context": {
+                "profile": "deepseek",
+                "model": "deepseek-v4-pro",
+                "auto_compact_threshold_tokens": 750000,
+            },
+        },
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+
+    assert response.status_code == 200
+    trimming = response.json()["runtime_payload_guard"]["trimming"]
+    assert trimming["available"] is False
+    assert trimming["last_report"]["reason"] == "runtime_trimming_report_profile_mismatch"
+    assert trimming["last_report"]["requested_profile"] == "deepseek-thinking"
+    assert trimming["last_report"]["observed_profile"] == "deepseek"
+    assert trimming["last_report"]["token_first_trim_dry_run"]["available"] is False

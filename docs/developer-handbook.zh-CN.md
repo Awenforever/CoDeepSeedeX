@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a92-codex-native-compact-source-alignment`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a97-weclaw-contract-stabilization`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1471,3 +1471,19 @@ p2.10a95闭合剩余的C1/D1计划阻断项。
 4. 生产TRIM报告`token_first_runtime_trim`，包含before/after token估算、removed tokens和target状态。
 5. char级Compact/TRIM控制只保留为emergency safety fallback，不得再作为主context window或触发分母。
 6. 本节点不得移动公开`v0.3.9-alpha`，不得更新GitHub Release，不得上传Release资产。
+
+
+## p2.10a97 WeClaw契约稳定化
+
+p2.10a97在不移动公开Release的前提下稳定WeClaw-facing status契约。
+
+规则：
+
+1. `context_window.auto_compact_policy`必须显式报告active profile是否匹配受管`auto_compact_ratio=0.90`。如果出现`750000/1000000=0.75`这类legacy/custom值，必须返回`needs_migration=true`和修复action，而不是让WeClaw静默改写。
+2. token-first Compact状态必须暴露稳定token契约，包括trigger、target可用性、before/after token估算、retention ratio、status、source、reason和observed timestamp。
+3. 如果没有显式token Compact target，dsproxy返回`target_available=false`，并要求WeClaw不要显示伪造target。
+4. token-first TRIM状态必须绑定请求的route/profile。来自其他profile的旧报告必须以`runtime_trimming_report_profile_mismatch`标记为不可用。
+5. Details origin breakdown不能退化成全零origin加provider residual；如果本地segmentation/origin不可用，应返回`details_origin_breakdown.available=false`和reason/action。
+6. Pricing状态暴露顶层refresh/stale字段：`requires_refresh`、`refresh_action`、`fetched_at`、`updated_at`、`expires_at`、`ttl_seconds`、`source_kind`和`source_url`。
+
+Release边界：本节点不移动`v0.3.9-alpha`，不更新GitHub Release，不重建Release资产。
