@@ -1146,3 +1146,19 @@ Boundary:
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update.
 - No Release asset rebuild.
+
+## p2.10a96 release notes final sync
+
+Date: 2026-05-21
+
+Scope:
+
+- Refresh `docs/release-notes-v0.3.9-alpha.md` after p2.10a94 and p2.10a95.
+- Include token-first production Compact/TRIM runtime closure, semantic payload token estimates, image summary-unavailable metadata, retained-recent booleans, and release boundary notes.
+- Update runtime internal version metadata for the final public `v0.3.9-alpha` candidate.
+
+Boundary:
+
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset upload.

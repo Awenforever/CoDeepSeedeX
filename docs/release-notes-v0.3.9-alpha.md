@@ -2,7 +2,7 @@
 
 ## Highlights since v0.3.8-alpha
 
-Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeClaw builds can consume the latest p2.10a75-p2.10a92 status, token, Compact, TRIM, and payload-safety contracts.
+Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeClaw builds can consume the latest p2.10a75-p2.10a95 status, token, Compact, TRIM, and payload-safety contracts.
 
 ### WeClaw /status telemetry and Details
 
@@ -21,13 +21,23 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - Managed DeepSeek V4 Codex profiles keep `model_context_window_tokens = 1000000`.
 - Managed profiles derive `model_auto_compact_token_limit` from the single managed `auto_compact_ratio = 0.90`; the default `auto_compact_threshold_tokens` is therefore `900000`.
 - `model_auto_compact_token_limit` and `auto_compact_threshold_tokens` are trigger thresholds, not context-window denominators.
-- Char-level Compact, TRIM, and `runtime_payload_guard` fields remain available as `unit=chars` fallback/debug payload guards, but they are not the token-level context denominator and must not be merged into the token progress bar.
+- Runtime status separates token-first context-window fields from char-level payload guard fields.
+
+### Token-first runtime Compact and TRIM
+
+- Closes the remaining C1/D1 plan blockers by making production COMPACT and production TRIM token-first at runtime.
+- COMPACT now estimates assembled request context tokens and triggers on `auto_compact_threshold_tokens` / `model_auto_compact_token_limit`.
+- COMPACT reports `estimated_context_tokens`, `tokens_to_auto_compact`, `model_context_window_tokens`, `auto_compact_threshold_tokens`, `model_auto_compact_token_limit`, and `runtime_trigger_source=token_first`.
+- TRIM now uses the active profile auto-compact token limit as the default production token target, with `DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS` available as an explicit diagnostic override.
+- TRIM reports `token_first_runtime_trim` with before/after token estimates, removed tokens, target status, and runtime application state.
+- char-level Compact/TRIM limits remain only as emergency safety fallback after token-first runtime processing; char fields are no longer the primary context-window or trigger denominator.
 
 ### Compact audit and Codex-native local prompt alignment
 
 - Adds redacted `compaction_prompt_fingerprint` metadata for Codex-like local Compact prompts and material boundaries.
 - Adds `compact_material_classifier_dry_run` so static protocol blocks, leading system/developer material, retained recent messages, and summary candidates can be audited without mutating payloads.
 - Adds `retained_recent_policy` metadata, including the effective boundary and assistant tool-call/tool-result rewind behavior.
+- Adds explicit retained-recent booleans for latest incoming user preservation, recent user/assistant preservation, active tool-chain detection, and active tool-chain preservation.
 - Exposes display-safe `compact_audit` metadata through runtime status, `runtime_payload_guard`, debug budget output, CLI fallback, and the `weclaw/status` HTTP path.
 - Compact audit is available even when compaction is skipped because the policy is not triggered; skipped audit remains `dry_run`, `applied=false`, `raw_prompt_exposed=false`, and `raw_material_exposed=false`.
 - Adds `codex_native_source_evidence`, `compact_prompt_alignment`, and `codex_summary_prefix` for source-backed local Compact prompt alignment.
@@ -37,16 +47,21 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - The release does not implement a local remote `responses/compact` endpoint and does not claim native remote compaction support for the DeepSeek custom-provider path.
 - Raw prompt and raw material remain redacted from all normal status metadata.
 
-### TRIM and payload safety
+### TRIM, semantic payload compaction, and payload safety
 
-- Adds redacted `token_first_trim_dry_run` metadata for context trimming analysis.
+- Adds token-first runtime TRIM while preserving char-level emergency fallback for final safety.
+- Adds redacted `token_first_trim_dry_run` / runtime-plan metadata for context trimming analysis.
 - Adds `type_enum_version` and type-aware item classification for text, image payloads, tool call/result content, JSON, diff, pytest output, traceback, logs, and static system/developer/AGENTS/environment/protocol blocks.
 - Adds `first_image` / first-image protection: the first observed image payload is not context-trimmed or aggressively shrunk.
 - Adds `protected_static_blocks` so the current/latest system, developer, AGENTS, environment, and protocol blocks remain protected while older duplicates can be handled separately.
 - Enables the first production batch of `type_aware_trim` for low-risk text-bearing payloads such as tool results, logs, pytest output, tracebacks, diffs, JSON payloads, old text, tool-call arguments, and reasoning content.
-- `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0` disables production type-aware trimming while keeping dry-run metadata available.
+- `DEEPSEEK_PROXY_TYPE_AWARE_TRIM=0` disables production type-aware trimming while keeping audit metadata available.
+- Adds semantic payload compaction plan-level type aliases such as `pytest_success`, `pytest_failure`, `git_diff`, and `api_response_json`.
+- Adds semantic payload token estimate fields including `tokens_before`, `tokens_after`, `tokens_removed`, `estimated_tokens_before`, `estimated_tokens_after`, and `estimated_tokens_removed`.
+- Keeps semantic payload compaction protected by canary/enablement guards; high-risk payloads remain preserved.
 - Adds `image_semantic_envelope` for display-safe handling of non-protected older image messages after the first image has already been preserved.
-- Image envelopes expose only metadata such as message index, role, image count, media-type hints, source shape, byte estimate, and sha256.
+- Image envelopes expose only metadata such as message index, role, image count, media-type hints, source shape, byte estimate, sha256, and semantic-summary availability flags.
+- `semantic_summary_unavailable=true` means no OCR, caption, or external vision summary is claimed.
 - `raw_image_content_exposed=false`: raw image payloads, base64 strings, data URLs, raw message content, static block text, and tool arguments are not exposed through metadata.
 - This release does not add OCR, external vision analysis, or fabricated image summaries.
 
