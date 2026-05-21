@@ -94,6 +94,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "3000")
+        monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "5000")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "1")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
@@ -110,6 +111,9 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
         second_body = second.json()
 
         assert fake.compaction_calls == 1
+        assert app.state.last_context_compaction_report["runtime_trigger_source"] == "token_first"
+        assert app.state.last_context_compaction_report["reason"] == "token_first_auto_compact_triggered"
+        assert app.state.last_context_compaction_report["tokens_to_auto_compact"] <= 0
         assert fake.normal_calls == 2
 
         second_normal_payload = fake.payloads[-1]
@@ -143,6 +147,7 @@ async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "2000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "6000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "10000")
@@ -180,6 +185,11 @@ async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
     )
 
     assert report["compacted"] is True
+    assert report["runtime_trigger_source"] == "token_first"
+    assert report["reason"] == "token_first_auto_compact_triggered"
+    assert report["estimated_context_tokens"] >= report["auto_compact_threshold_tokens"]
+    assert report["tokens_to_auto_compact"] <= 0
+    assert report["tokens_removed"] > 0
     assistant_index = next(
         i
         for i, message in enumerate(compacted)
@@ -194,6 +204,7 @@ async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
     assert report["compact_material_classifier_dry_run"]["mode"] == "dry_run"
     assert report["compact_material_classifier_dry_run"]["applied"] is False
     assert report["retained_recent_policy"]["retained_recent_message_count"] >= 2
+
 
 
 
@@ -259,6 +270,7 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(m
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
 
@@ -290,7 +302,9 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(m
 
     assert compacted == messages
     assert report["compacted"] is False
-    assert report["reason"] == "not_triggered"
+    assert report["runtime_trigger_source"] == "token_first"
+    assert report["reason"] == "token_first_below_auto_compact_threshold"
+    assert report["tokens_to_auto_compact"] > 0
     assert report["compact_audit_generation"]["available"] is True
     assert report["compact_audit_generation"]["mode"] == "dry_run"
     assert report["compact_audit_generation"]["applied"] is False
@@ -315,11 +329,13 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(m
     assert "latest instruction" not in serialized_report
 
 
+
 @pytest.mark.asyncio
 async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "10000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", "2000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", "8000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "1000")
@@ -351,11 +367,16 @@ async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
 
     assert report["policy"] == "adaptive"
     assert report["compacted"] is True
-    assert report["reason"] in {"adaptive_triggered", "adaptive_emergency_triggered"}
+    assert report["runtime_trigger_source"] == "token_first"
+    assert report["reason"] == "token_first_auto_compact_triggered"
+    assert report["estimated_context_tokens"] >= report["auto_compact_threshold_tokens"]
+    assert report["tokens_to_auto_compact"] <= 0
+    assert report["tokens_removed"] > 0
     assert report["effective_trigger_chars"] > 0
     assert 2000 <= report["effective_target_chars"] <= 8000
     assert report["policy_decision"]["growth"]["recent_growth_chars_per_turn"] > 0
     assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+
 
 
 @pytest.mark.asyncio
@@ -363,6 +384,7 @@ async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(mon
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "20000")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "15000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "15000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "20000")
@@ -390,8 +412,11 @@ async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(mon
 
     assert compacted == messages
     assert report["compacted"] is False
-    assert report["reason"] == "adaptive_cooldown"
+    assert report["runtime_trigger_source"] == "token_first"
+    assert report["reason"] == "token_first_cooldown"
+    assert report["estimated_context_tokens"] >= report["auto_compact_threshold_tokens"]
     assert fake.compaction_calls == 0
+
 
 
 def test_codex_native_compact_source_alignment_contract():

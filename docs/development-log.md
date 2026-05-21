@@ -1121,7 +1121,25 @@ Scope:
 - Add explicit retained-recent Compact booleans for latest incoming user, recent user/assistant turns, and active tool-chain preservation.
 - Add semantic payload compaction token estimate fields and plan-level type aliases such as `pytest_success`, `pytest_failure`, `git_diff`, and `api_response_json`.
 - Add explicit image-envelope `semantic_summary_unavailable` metadata so metadata-only image envelopes cannot be mistaken for OCR, captioning, or vision summaries.
-- Keep production Compact/TRIM trigger semantics unchanged: runtime hard guards remain char-based while token-first TRIM remains dry-run/observability unless a later high-risk node changes runtime triggering.
+- Superseded by p2.10a95: production Compact/TRIM now use token-first runtime thresholds; char-level controls are emergency safety fallback.
+
+Boundary:
+
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset rebuild.
+
+## p2.10a95 token-first runtime closure
+
+Date: 2026-05-21
+
+Scope:
+
+- Close the remaining C1/D1 plan blockers by making production COMPACT and production TRIM token-first at runtime.
+- COMPACT now estimates context tokens for the assembled request payload and triggers on `auto_compact_threshold_tokens` / `model_auto_compact_token_limit`.
+- TRIM now uses the active profile auto-compact token limit as the production token target unless `DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS` explicitly overrides it.
+- Char-level limits remain only as emergency safety fallback after token-first runtime processing.
+- Runtime reports expose `estimated_context_tokens`, `tokens_to_auto_compact`, `token_first_runtime_trim`, token removal fields, and char fallback scope.
 
 Boundary:
 

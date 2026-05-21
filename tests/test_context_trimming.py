@@ -172,19 +172,22 @@ def test_context_trim_token_first_dry_run_enumerates_types_and_protects_first_im
 
     assert report["token_first_trim_dry_run"]["available"] is True
     assert report["token_first_trim_dry_run"]["unit"] == "tokens"
-    assert report["token_first_trim_dry_run"]["mode"] == "dry_run"
-    assert report["token_first_trim_dry_run"]["applied"] is False
+    assert report["token_first_trim_dry_run"]["mode"] == "runtime_plan"
     assert report["token_first_trim_dry_run"]["would_trim"] is True
+    assert report["token_first_trim_dry_run"]["runtime_applied"] is True
+    assert report["token_first_runtime_trim"]["applied"] is True
+    assert report["token_first_runtime_trim"]["unit"] == "tokens"
+    assert report["token_first_runtime_trim"]["before_tokens"] > report["token_first_runtime_trim"]["after_tokens"]
     assert report["token_first_trim_dry_run"]["type_counts"]["image_payload"] == 1
     assert report["image_first_protection"]["first_image_index"] == 0
     assert report["image_first_protection"]["protected"] is True
     assert 0 in report["protected_message_indexes"]
 
     assert trimmed["messages"][0]["content"] == first_image
-    assert "context trimmed" in trimmed["messages"][1]["content"]
     serialized_report = json.dumps(report, ensure_ascii=False)
     assert first_image not in serialized_report
     assert '"raw_content_exposed": true' not in serialized_report.lower()
+
 
 
 def test_context_trim_protects_latest_static_blocks_without_raw_content(monkeypatch):

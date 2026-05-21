@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a94-plan-closure-contract"
+PROXY_INTERNAL_VERSION = "p2.10a95-token-first-runtime-closure"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -5445,6 +5445,131 @@ def _context_trim_count_tokens(value: Any, tokenizer: Any | None) -> tuple[int, 
     return max(1, (len(text) + 3) // 4), "char_heuristic_4_chars_per_token"
 
 
+def _runtime_token_first_profile_name_for_payload(payload: dict[str, Any] | None = None) -> str:
+    explicit = (
+        os.environ.get("DEEPSEEK_PROXY_CODEX_PROFILE")
+        or os.environ.get("DEEPSEEK_PROXY_ACTIVE_PROFILE")
+        or os.environ.get("CODEEPSEEDEX_ACTIVE_PROFILE")
+    )
+    if explicit and explicit.strip():
+        return explicit.strip()
+    return "deepseek-thinking" if _thinking_enabled() else "deepseek"
+
+
+def _runtime_token_first_context_contract_for_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    profile = _runtime_token_first_profile_name_for_payload(payload)
+    sections = _runtime_parse_simple_toml_sections(_runtime_codex_config_path())
+    profile_section = sections.get(f"profiles.{profile}", {})
+    if not isinstance(profile_section, dict):
+        profile_section = {}
+
+    env_model_context = _env_int("DEEPSEEK_PROXY_MODEL_CONTEXT_WINDOW_TOKENS", 0)
+    env_auto_threshold = (
+        _env_int("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", 0)
+        or _env_int("DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT", 0)
+    )
+    ratio = _env_float("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", 0.90)
+    if ratio <= 0 or ratio > 1:
+        ratio = 0.90
+
+    profile_model_context = _runtime_int_or_zero(profile_section.get("model_context_window"))
+    profile_auto_threshold = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+
+    model_context_window_tokens = env_model_context or profile_model_context or 1_000_000
+    auto_compact_threshold_tokens = (
+        env_auto_threshold
+        or profile_auto_threshold
+        or int(model_context_window_tokens * ratio)
+    )
+    auto_compact_ratio = (
+        round(auto_compact_threshold_tokens / model_context_window_tokens, 6)
+        if model_context_window_tokens > 0 and auto_compact_threshold_tokens > 0
+        else None
+    )
+
+    if env_auto_threshold > 0:
+        threshold_source = "env.DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS"
+    elif profile_auto_threshold > 0:
+        threshold_source = "codex_profile.model_auto_compact_token_limit"
+    else:
+        threshold_source = "derived_from_model_context_window_tokens_and_auto_compact_ratio"
+
+    if env_model_context > 0:
+        context_source = "env.DEEPSEEK_PROXY_MODEL_CONTEXT_WINDOW_TOKENS"
+    elif profile_model_context > 0:
+        context_source = "codex_profile.model_context_window"
+    else:
+        context_source = "managed_default.deepseek_context_window_tokens"
+
+    return {
+        "available": auto_compact_threshold_tokens > 0,
+        "unit": "tokens",
+        "profile": profile,
+        "codex_config": str(_runtime_codex_config_path()),
+        "profile_found": bool(profile_section),
+        "model": str((payload or {}).get("model") or DEFAULT_MODEL),
+        "model_context_window_tokens": model_context_window_tokens,
+        "model_context_window_source": context_source,
+        "auto_compact_threshold_tokens": auto_compact_threshold_tokens,
+        "model_auto_compact_token_limit": auto_compact_threshold_tokens,
+        "auto_compact_token_limit": auto_compact_threshold_tokens,
+        "auto_compact_threshold_source": threshold_source,
+        "auto_compact_ratio": auto_compact_ratio,
+        "auto_compact_ratio_source": "derived:auto_compact_threshold_tokens/model_context_window_tokens" if auto_compact_ratio is not None else None,
+        "runtime_trigger_source": "token_first_profile_context_contract",
+        "char_fallback_scope": "emergency_safety_only",
+    }
+
+
+def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict[str, Any]:
+    tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
+    tokens, source = _context_trim_count_tokens(payload, tokenizer)
+    return {
+        "estimated_tokens": int(tokens),
+        "estimated_tokens_source": source,
+        "precision": "local_profile_tokenizer_estimate" if tokenizer is not None else "char_heuristic_estimate",
+        "tokenizer": tokenizer_contract,
+    }
+
+
+def _runtime_token_first_compaction_budget(
+    *,
+    messages: list[dict[str, Any]],
+    request_payload: dict[str, Any] | None,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    payload = dict(request_payload or {})
+    payload["messages"] = messages
+    context_contract = _runtime_token_first_context_contract_for_payload(payload)
+    token_estimate = _runtime_token_first_payload_token_estimate(payload)
+
+    threshold = int(context_contract.get("auto_compact_threshold_tokens") or 0)
+    estimated = int(token_estimate.get("estimated_tokens") or 0)
+    tokens_to_auto_compact = threshold - estimated if threshold > 0 else None
+
+    return {
+        "available": bool(context_contract.get("available")) and threshold > 0,
+        "unit": "tokens",
+        "mode": "production",
+        "runtime_trigger_source": "token_first",
+        "estimated_context_tokens": estimated,
+        "estimated_context_tokens_source": token_estimate.get("estimated_tokens_source"),
+        "estimated_context_tokens_precision": token_estimate.get("precision"),
+        "tokenizer": token_estimate.get("tokenizer"),
+        "model_context_window_tokens": context_contract.get("model_context_window_tokens"),
+        "model_context_window_source": context_contract.get("model_context_window_source"),
+        "auto_compact_threshold_tokens": threshold,
+        "auto_compact_threshold_source": context_contract.get("auto_compact_threshold_source"),
+        "model_auto_compact_token_limit": context_contract.get("model_auto_compact_token_limit"),
+        "auto_compact_ratio": context_contract.get("auto_compact_ratio"),
+        "tokens_to_auto_compact": tokens_to_auto_compact,
+        "profile": context_contract.get("profile"),
+        "profile_found": context_contract.get("profile_found"),
+        "char_fallback_scope": "emergency_safety_only",
+    }
+
+
 def _context_trim_item_meta(
     message: dict[str, Any],
     *,
@@ -5884,7 +6009,16 @@ def _context_trim_token_first_dry_run(
 
     payload_tokens, payload_token_source = _context_trim_count_tokens(payload, tokenizer)
     messages_tokens = sum(int(item.get("estimated_tokens") or 0) for item in items)
-    max_context_tokens = max(0, _env_int("DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS", 0))
+
+    context_contract = _runtime_token_first_context_contract_for_payload(payload)
+    env_target = _env_int("DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS", 0)
+    contract_target = int(context_contract.get("auto_compact_threshold_tokens") or 0)
+    max_context_tokens = env_target or contract_target
+    max_context_tokens_source = (
+        "env.DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS"
+        if env_target > 0
+        else context_contract.get("auto_compact_threshold_source")
+    )
     would_trim = bool(max_context_tokens > 0 and payload_tokens > max_context_tokens)
 
     candidate_items = [
@@ -5906,24 +6040,26 @@ def _context_trim_token_first_dry_run(
 
     return {
         "available": True,
-        "mode": "dry_run",
+        "mode": "runtime_plan",
         "applied": False,
         "unit": "tokens",
         "type_enum_version": CONTEXT_TRIM_TYPE_ENUM_VERSION,
-        "source": "context_trim_token_first_dry_run",
+        "source": "context_trim_token_first_runtime_plan",
         "precision": "local_profile_tokenizer_estimate" if tokenizer is not None else "char_heuristic_estimate",
         "tokenizer": tokenizer_contract,
+        "runtime_context": context_contract,
         "estimated_payload_tokens": payload_tokens,
         "estimated_payload_tokens_source": payload_token_source,
         "estimated_message_tokens": messages_tokens,
         "max_context_tokens": max_context_tokens or None,
-        "max_context_tokens_source": "DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS" if max_context_tokens > 0 else None,
+        "max_context_tokens_source": max_context_tokens_source if max_context_tokens > 0 else None,
         "would_trim": would_trim,
         "would_trim_reason": (
-            "estimated_payload_tokens_exceed_max_context_tokens"
+            "estimated_payload_tokens_exceed_token_first_runtime_limit"
             if would_trim
-            else ("token_target_not_configured" if max_context_tokens <= 0 else "estimated_payload_tokens_within_limit")
+            else ("token_target_not_configured" if max_context_tokens <= 0 else "estimated_payload_tokens_within_token_first_runtime_limit")
         ),
+        "tokens_to_trim": max(0, payload_tokens - max_context_tokens) if max_context_tokens > 0 else None,
         "items": items,
         "items_tail": items[-30:],
         "candidate_items": candidate_items,
@@ -5947,11 +6083,12 @@ def _context_trim_token_first_dry_run(
             "raw_content_exposed": False,
         },
         "notes": [
-            "This is dry-run metadata only; it does not apply token-based runtime trimming.",
-            "Current production payload trimming remains the existing char-level hard guard.",
+            "This token-first plan drives production runtime trimming when estimated_payload_tokens exceeds max_context_tokens.",
+            "Char-level trimming remains only as an emergency fallback/safety valve after token-first runtime trimming.",
             "Raw message content, raw image payloads, and raw static blocks are not exposed in this report.",
         ],
     }
+
 
 
 def _context_trim_summary_from_token_dry_run(dry_run: dict[str, Any]) -> dict[str, Any]:
@@ -5962,11 +6099,16 @@ def _context_trim_summary_from_token_dry_run(dry_run: dict[str, Any]) -> dict[st
         "unit": "tokens",
         "type_enum_version": dry_run.get("type_enum_version"),
         "precision": dry_run.get("precision"),
+        "source": dry_run.get("source"),
         "estimated_payload_tokens": dry_run.get("estimated_payload_tokens"),
+        "estimated_payload_tokens_source": dry_run.get("estimated_payload_tokens_source"),
         "estimated_message_tokens": dry_run.get("estimated_message_tokens"),
         "max_context_tokens": dry_run.get("max_context_tokens"),
+        "max_context_tokens_source": dry_run.get("max_context_tokens_source"),
         "would_trim": dry_run.get("would_trim"),
         "would_trim_reason": dry_run.get("would_trim_reason"),
+        "tokens_to_trim": dry_run.get("tokens_to_trim"),
+        "runtime_context": dry_run.get("runtime_context"),
         "type_counts": dry_run.get("type_counts"),
         "type_tokens": dry_run.get("type_tokens"),
         "protected_message_indexes": dry_run.get("protected_message_indexes"),
@@ -5979,6 +6121,7 @@ def _context_trim_summary_from_token_dry_run(dry_run: dict[str, Any]) -> dict[st
         "raw_content_exposed": False,
         "redacted": True,
     }
+
 
 def _trim_message_text_field(
     container: dict[str, Any],
@@ -6301,6 +6444,84 @@ def _aggressively_shrink_payload_to_limit(
     return payload
 
 
+def _aggressively_shrink_payload_to_token_limit(
+    payload: dict[str, Any],
+    *,
+    max_context_tokens: int,
+    tokenizer: Any | None,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    protected_message_indexes = {
+        int(index)
+        for index in (report.get("protected_message_indexes") or [])
+        if isinstance(index, int)
+    }
+
+    for _ in range(100):
+        current_tokens, token_source = _context_trim_count_tokens(payload, tokenizer)
+        if current_tokens <= max_context_tokens:
+            return payload
+
+        fields = list(_iter_payload_string_fields(payload, protected_message_indexes=protected_message_indexes) or [])
+        filtered_fields = []
+        messages = payload.get("messages")
+        for field in fields:
+            location, container, key, current_len = field
+            message_index = None
+            match = re.match(r"messages\[(\d+)\]", str(location))
+            if match:
+                message_index = int(match.group(1))
+            if isinstance(messages, list) and message_index is not None and 0 <= message_index < len(messages):
+                message = messages[message_index]
+                if isinstance(message, dict):
+                    if _context_trim_contains_image_value(message):
+                        continue
+                    if _context_trim_static_type_for_message(message):
+                        continue
+            filtered_fields.append(field)
+
+        if not filtered_fields:
+            return payload
+
+        location, container, key, current_len = max(filtered_fields, key=lambda item: item[3])
+        if current_len <= 256:
+            return payload
+
+        excess_tokens = current_tokens - max_context_tokens
+        new_limit = max(128, current_len - max(excess_tokens * 4 + 512, current_len // 2))
+        old_value = container[key]
+        if not isinstance(old_value, str):
+            return payload
+
+        new_value, changed = _truncate_middle_text(old_value, new_limit)
+        if not changed:
+            return payload
+
+        container[key] = new_value
+        report["trimmed"] = True
+        report["token_first_aggressive_trimmed_fields"] = int(report.get("token_first_aggressive_trimmed_fields", 0)) + 1
+        new_tokens, _new_source = _context_trim_count_tokens(payload, tokenizer)
+        _append_context_trim_operation(
+            report,
+            {
+                "kind": "token_first_aggressive_truncate_text_field",
+                "location": location,
+                "original_chars": current_len,
+                "trimmed_chars": len(new_value),
+                "tokens_before": current_tokens,
+                "tokens_after": new_tokens,
+                "tokens_removed": max(0, current_tokens - new_tokens),
+                "target_payload_tokens": max_context_tokens,
+                "token_source": token_source,
+                "protected_message_indexes": sorted(protected_message_indexes),
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        )
+
+    return payload
+
+
 def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     config = _context_trim_env_config()
     max_context_chars = config["max_context_chars"]
@@ -6330,7 +6551,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
             "available": False,
             "reason": "payload_messages_not_list",
             "unit": "tokens",
-            "mode": "dry_run",
+            "mode": "runtime_plan",
             "applied": False,
         }
         return payload, report
@@ -6342,7 +6563,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
             "available": False,
             "reason": "trimmed_payload_messages_not_list",
             "unit": "tokens",
-            "mode": "dry_run",
+            "mode": "runtime_plan",
             "applied": False,
         }
         return payload, report
@@ -6413,20 +6634,95 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         )
     trimmed_payload["messages"] = new_messages
 
+    runtime_tokenizer, runtime_tokenizer_contract = _context_trim_tokenizer_for_payload(trimmed_payload)
+    before_runtime_tokens, before_runtime_token_source = _context_trim_count_tokens(trimmed_payload, runtime_tokenizer)
+    max_context_tokens = int(token_dry_run.get("max_context_tokens") or 0)
+
+    runtime_trim_report: dict[str, Any] = {
+        "available": max_context_tokens > 0,
+        "mode": "production",
+        "applied": False,
+        "unit": "tokens",
+        "source": "token_first_runtime_trim",
+        "tokenizer": runtime_tokenizer_contract,
+        "before_tokens": before_runtime_tokens,
+        "after_tokens": before_runtime_tokens,
+        "tokens_removed": 0,
+        "max_context_tokens": max_context_tokens or None,
+        "max_context_tokens_source": token_dry_run.get("max_context_tokens_source"),
+        "target_met": max_context_tokens <= 0 or before_runtime_tokens <= max_context_tokens,
+        "char_fallback_scope": "emergency_safety_only",
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+    if max_context_tokens > 0 and before_runtime_tokens > max_context_tokens:
+        report["trimmed"] = True
+        runtime_trim_report["applied"] = True
+        runtime_trim_report["reason"] = "estimated_payload_tokens_exceed_token_first_runtime_limit"
+        _append_context_trim_operation(
+            report,
+            {
+                "kind": "token_first_runtime_compact_old_message_prefix",
+                "tokens_before": before_runtime_tokens,
+                "target_payload_tokens": max_context_tokens,
+                "protected_message_indexes": sorted(protected_message_indexes),
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        )
+        if isinstance(trimmed_payload.get("messages"), list):
+            trimmed_payload["messages"] = _compact_old_message_prefix(
+                trimmed_payload["messages"],
+                keep_recent_messages=keep_recent_messages,
+                report=report,
+                protected_message_indexes=protected_message_indexes,
+            )
+        after_prefix_tokens, _after_prefix_source = _context_trim_count_tokens(trimmed_payload, runtime_tokenizer)
+        if after_prefix_tokens > max_context_tokens:
+            trimmed_payload = _aggressively_shrink_payload_to_token_limit(
+                trimmed_payload,
+                max_context_tokens=max_context_tokens,
+                tokenizer=runtime_tokenizer,
+                report=report,
+            )
+        after_runtime_tokens, _after_runtime_source = _context_trim_count_tokens(trimmed_payload, runtime_tokenizer)
+        runtime_trim_report["after_tokens"] = after_runtime_tokens
+        runtime_trim_report["tokens_removed"] = max(0, before_runtime_tokens - after_runtime_tokens)
+        runtime_trim_report["target_met"] = after_runtime_tokens <= max_context_tokens
+    else:
+        runtime_trim_report["reason"] = (
+            "token_target_not_configured"
+            if max_context_tokens <= 0
+            else "estimated_payload_tokens_within_token_first_runtime_limit"
+        )
+
+    report["token_first_runtime_trim"] = runtime_trim_report
+    if isinstance(report.get("token_first_trim_dry_run"), dict):
+        report["token_first_trim_dry_run"]["runtime_applied"] = bool(runtime_trim_report.get("applied"))
+        report["token_first_trim_dry_run"]["runtime_after_tokens"] = runtime_trim_report.get("after_tokens")
+        report["token_first_trim_dry_run"]["runtime_tokens_removed"] = runtime_trim_report.get("tokens_removed")
+
     if _json_char_size(trimmed_payload) > max_context_chars:
+        report["char_emergency_fallback_applied"] = True
         trimmed_payload["messages"] = _compact_old_message_prefix(
             trimmed_payload["messages"],
             keep_recent_messages=keep_recent_messages,
             report=report,
             protected_message_indexes=protected_message_indexes,
         )
+    else:
+        report["char_emergency_fallback_applied"] = False
 
     if _json_char_size(trimmed_payload) > max_context_chars:
+        report["char_aggressive_fallback_applied"] = True
         trimmed_payload = _aggressively_shrink_payload_to_limit(
             trimmed_payload,
             max_context_chars=max_context_chars,
             report=report,
         )
+    else:
+        report["char_aggressive_fallback_applied"] = False
 
     report["after_chars"] = _json_char_size(trimmed_payload)
     final_messages = trimmed_payload.get("messages")
@@ -6442,6 +6738,7 @@ def _compact_deepseek_payload_context(payload: dict[str, Any]) -> tuple[dict[str
         )
 
     return trimmed_payload, report
+
 
 
 def _context_compaction_env_config() -> dict[str, Any]:
@@ -6527,103 +6824,171 @@ def _resolve_compaction_budget_policy(
     messages: list[dict[str, Any]],
     before_chars: int,
     config: dict[str, Any],
+    token_budget: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     policy = str(config.get("policy") or "adaptive")
     fixed_trigger = max(1, int(config["trigger_chars"]))
     fixed_target = max(1, int(config["target_chars"]))
 
+    growth = _recent_growth_stats_for_compaction(
+        messages,
+        recent_growth_messages=int(config["recent_growth_messages"]),
+    )
+
     if policy == "fixed":
-        should_compact = before_chars > fixed_trigger
-        return {
+        char_should_compact = before_chars > fixed_trigger
+        char_reason = "fixed_triggered" if char_should_compact else "not_triggered"
+        base = {
             "policy": "fixed",
-            "should_compact": should_compact,
-            "reason": "fixed_triggered" if should_compact else "not_triggered",
+            "should_compact": char_should_compact,
+            "reason": char_reason,
             "effective_trigger_chars": fixed_trigger,
             "effective_target_chars": fixed_target,
             "emergency_chars": None,
             "reserve_before_send": None,
             "reserve_after_compact": None,
-            "growth": _recent_growth_stats_for_compaction(
-                messages,
-                recent_growth_messages=int(config["recent_growth_messages"]),
-            ),
+            "growth": growth,
+            "char_policy": {
+                "should_compact": char_should_compact,
+                "reason": char_reason,
+                "scope": "emergency_fallback_only_when_token_budget_unavailable",
+            },
         }
+    else:
+        max_context_chars = max(1, int(config["max_context_chars"]))
+        min_target_chars = max(1, int(config["min_target_chars"]))
+        max_target_chars = max(min_target_chars, int(config["max_target_chars"]))
+        emergency_ratio = float(config["emergency_ratio"])
+        if emergency_ratio <= 0 or emergency_ratio > 1:
+            emergency_ratio = 0.92
 
-    max_context_chars = max(1, int(config["max_context_chars"]))
-    min_target_chars = max(1, int(config["min_target_chars"]))
-    max_target_chars = max(min_target_chars, int(config["max_target_chars"]))
-    emergency_ratio = float(config["emergency_ratio"])
-    if emergency_ratio <= 0 or emergency_ratio > 1:
-        emergency_ratio = 0.92
-
-    growth = _recent_growth_stats_for_compaction(
-        messages,
-        recent_growth_messages=int(config["recent_growth_messages"]),
-    )
-    growth_per_turn = max(1, int(growth["recent_growth_chars_per_turn"]))
-
-    reserve_before_send = _clamp_int(
-        4 * growth_per_turn,
-        int(config["reserve_before_min_chars"]),
-        int(config["reserve_before_max_chars"]),
-    )
-    reserve_after_compact = _clamp_int(
-        int(config["expected_growth_turns"]) * growth_per_turn,
-        int(config["reserve_after_min_chars"]),
-        int(config["reserve_after_max_chars"]),
-    )
-
-    adaptive_trigger = max(1, max_context_chars - reserve_before_send)
-    if "DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS" in os.environ:
-        adaptive_trigger = min(adaptive_trigger, fixed_trigger)
-
-    adaptive_target = _clamp_int(
-        max_context_chars - reserve_after_compact,
-        min_target_chars,
-        max_target_chars,
-    )
-    if "DEEPSEEK_PROXY_COMPACT_TARGET_CHARS" in os.environ:
-        adaptive_target = _clamp_int(
-            min(adaptive_target, fixed_target),
-            1,
-            max_target_chars,
+        growth_per_turn = max(1, int(growth["recent_growth_chars_per_turn"]))
+        reserve_before_send = _clamp_int(
+            4 * growth_per_turn,
+            int(config["reserve_before_min_chars"]),
+            int(config["reserve_before_max_chars"]),
+        )
+        reserve_after_compact = _clamp_int(
+            int(config["expected_growth_turns"]) * growth_per_turn,
+            int(config["reserve_after_min_chars"]),
+            int(config["reserve_after_max_chars"]),
         )
 
-    emergency_chars = max(1, int(max_context_chars * emergency_ratio))
-    is_emergency = before_chars >= emergency_chars
+        adaptive_trigger = max(1, max_context_chars - reserve_before_send)
+        if "DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS" in os.environ:
+            adaptive_trigger = min(adaptive_trigger, fixed_trigger)
 
-    new_chars = int(growth["new_chars_since_last_compaction"])
-    turns_since = int(growth["turns_since_last_compaction"])
-    min_new_chars = int(config["min_new_chars"])
-    min_turns = int(config["min_turns"])
-    has_previous_compaction = growth["last_compaction_summary_index"] is not None
+        adaptive_target = _clamp_int(
+            max_context_chars - reserve_after_compact,
+            min_target_chars,
+            max_target_chars,
+        )
+        if "DEEPSEEK_PROXY_COMPACT_TARGET_CHARS" in os.environ:
+            adaptive_target = _clamp_int(
+                min(adaptive_target, fixed_target),
+                1,
+                max_target_chars,
+            )
 
-    if before_chars <= adaptive_trigger and not is_emergency:
-        should_compact = False
-        reason = "not_triggered"
-    elif is_emergency:
-        should_compact = True
-        reason = "adaptive_emergency_triggered"
-    elif has_previous_compaction and new_chars < min_new_chars and turns_since < min_turns:
-        should_compact = False
-        reason = "adaptive_cooldown"
-    else:
-        should_compact = True
-        reason = "adaptive_triggered"
+        emergency_chars = max(1, int(max_context_chars * emergency_ratio))
+        is_emergency = before_chars >= emergency_chars
+        new_chars = int(growth["new_chars_since_last_compaction"])
+        turns_since = int(growth["turns_since_last_compaction"])
+        min_new_chars = int(config["min_new_chars"])
+        min_turns = int(config["min_turns"])
+        has_previous_compaction = growth["last_compaction_summary_index"] is not None
 
-    return {
-        "policy": "adaptive",
-        "should_compact": should_compact,
-        "reason": reason,
-        "effective_trigger_chars": adaptive_trigger,
-        "effective_target_chars": adaptive_target,
-        "emergency_chars": emergency_chars,
-        "reserve_before_send": reserve_before_send,
-        "reserve_after_compact": reserve_after_compact,
-        "min_new_chars": min_new_chars,
-        "min_turns": min_turns,
-        "growth": growth,
-    }
+        if before_chars <= adaptive_trigger and not is_emergency:
+            char_should_compact = False
+            char_reason = "not_triggered"
+        elif is_emergency:
+            char_should_compact = True
+            char_reason = "adaptive_emergency_triggered"
+        elif has_previous_compaction and new_chars < min_new_chars and turns_since < min_turns:
+            char_should_compact = False
+            char_reason = "adaptive_cooldown"
+        else:
+            char_should_compact = True
+            char_reason = "adaptive_triggered"
+
+        base = {
+            "policy": "adaptive",
+            "should_compact": char_should_compact,
+            "reason": char_reason,
+            "effective_trigger_chars": adaptive_trigger,
+            "effective_target_chars": adaptive_target,
+            "emergency_chars": emergency_chars,
+            "reserve_before_send": reserve_before_send,
+            "reserve_after_compact": reserve_after_compact,
+            "min_new_chars": min_new_chars,
+            "min_turns": min_turns,
+            "growth": growth,
+            "char_policy": {
+                "should_compact": char_should_compact,
+                "reason": char_reason,
+                "scope": "emergency_safety_fallback",
+            },
+        }
+
+    if isinstance(token_budget, dict) and bool(token_budget.get("available")):
+        estimated_context_tokens = int(token_budget.get("estimated_context_tokens") or 0)
+        threshold_tokens = int(token_budget.get("auto_compact_threshold_tokens") or 0)
+        tokens_to_auto_compact = threshold_tokens - estimated_context_tokens if threshold_tokens > 0 else None
+
+        has_previous_compaction = growth["last_compaction_summary_index"] is not None
+        cooldown_applies = (
+            policy == "adaptive"
+            and has_previous_compaction
+            and int(growth["new_chars_since_last_compaction"]) < int(config["min_new_chars"])
+            and int(growth["turns_since_last_compaction"]) < int(config["min_turns"])
+        )
+
+        char_emergency = bool(base.get("emergency_chars") and before_chars >= int(base["emergency_chars"]))
+
+        if threshold_tokens > 0 and estimated_context_tokens >= threshold_tokens:
+            if cooldown_applies:
+                should_compact = False
+                reason = "token_first_cooldown"
+            else:
+                should_compact = True
+                reason = "token_first_auto_compact_triggered"
+        elif char_emergency:
+            should_compact = True
+            reason = "char_emergency_fallback_triggered"
+        else:
+            should_compact = False
+            reason = "token_first_below_auto_compact_threshold"
+
+        base.update(
+            {
+                "should_compact": should_compact,
+                "reason": reason,
+                "runtime_trigger_source": "token_first" if reason.startswith("token_first") else "char_emergency_fallback",
+                "unit": "tokens",
+                "estimated_context_tokens": estimated_context_tokens,
+                "estimated_context_tokens_source": token_budget.get("estimated_context_tokens_source"),
+                "estimated_context_tokens_precision": token_budget.get("estimated_context_tokens_precision"),
+                "model_context_window_tokens": token_budget.get("model_context_window_tokens"),
+                "auto_compact_threshold_tokens": threshold_tokens,
+                "model_auto_compact_token_limit": token_budget.get("model_auto_compact_token_limit"),
+                "auto_compact_ratio": token_budget.get("auto_compact_ratio"),
+                "tokens_to_auto_compact": tokens_to_auto_compact,
+                "token_budget": token_budget,
+                "char_fallback_scope": "emergency_safety_only",
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "runtime_trigger_source": "char_fallback_token_budget_unavailable",
+            "unit": "chars",
+            "token_budget": token_budget if isinstance(token_budget, dict) else None,
+            "char_fallback_scope": "token_budget_unavailable",
+        }
+    )
+    return base
+
 
 
 def _extract_deepseek_message_text(deepseek_response: dict[str, Any]) -> str:
@@ -7242,10 +7607,16 @@ async def _compact_chat_history_for_codex_like_persistence(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     config = _context_compaction_env_config()
     before_chars = _json_char_size({"messages": messages})
+    token_budget = _runtime_token_first_compaction_budget(
+        messages=messages,
+        request_payload=request_payload,
+        config=config,
+    )
     policy_decision = _resolve_compaction_budget_policy(
         messages=messages,
         before_chars=before_chars,
         config=config,
+        token_budget=token_budget,
     )
     effective_trigger_chars = int(policy_decision["effective_trigger_chars"])
     effective_target_chars = int(policy_decision["effective_target_chars"])
@@ -7271,6 +7642,17 @@ async def _compact_chat_history_for_codex_like_persistence(
         "message_count_after": len(messages),
         "summary_source": None,
         "policy_decision": policy_decision,
+        "runtime_trigger_source": policy_decision.get("runtime_trigger_source"),
+        "unit": policy_decision.get("unit"),
+        "estimated_context_tokens": policy_decision.get("estimated_context_tokens"),
+        "estimated_context_tokens_source": policy_decision.get("estimated_context_tokens_source"),
+        "estimated_context_tokens_precision": policy_decision.get("estimated_context_tokens_precision"),
+        "model_context_window_tokens": policy_decision.get("model_context_window_tokens"),
+        "auto_compact_threshold_tokens": policy_decision.get("auto_compact_threshold_tokens"),
+        "model_auto_compact_token_limit": policy_decision.get("model_auto_compact_token_limit"),
+        "auto_compact_ratio": policy_decision.get("auto_compact_ratio"),
+        "tokens_to_auto_compact": policy_decision.get("tokens_to_auto_compact"),
+        "char_fallback_scope": policy_decision.get("char_fallback_scope"),
     }
 
     if not config["enabled"]:
@@ -7364,11 +7746,20 @@ async def _compact_chat_history_for_codex_like_persistence(
     report["compacted"] = True
     report["reason"] = str(policy_decision["reason"])
     report["after_chars"] = _json_char_size({"messages": compacted_messages})
+    after_token_payload = dict(request_payload or {})
+    after_token_payload["messages"] = compacted_messages
+    after_token_estimate = _runtime_token_first_payload_token_estimate(after_token_payload)
+    report["after_estimated_context_tokens"] = after_token_estimate.get("estimated_tokens")
+    report["tokens_removed"] = max(
+        0,
+        int(report.get("estimated_context_tokens") or 0) - int(report.get("after_estimated_context_tokens") or 0),
+    )
     report["message_count_after"] = len(compacted_messages)
     report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
     report["build"] = build_report
 
     return compacted_messages, report
+
 
 
 def _write_context_compaction_report(report: dict[str, Any]) -> None:

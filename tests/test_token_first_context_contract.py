@@ -88,3 +88,33 @@ def test_cli_legacy_auto_compact_token_limit_argument_is_ignored_in_favor_of_rat
     assert result["auto_compact_token_limit"] == 900_000
     assert result["ignored_legacy_auto_compact_token_limit"] == 750_000
     assert "model_auto_compact_token_limit = 900000" in result["config_preview"]
+
+
+def test_runtime_token_first_compaction_budget_uses_profile_threshold(tmp_path: Path, monkeypatch) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = 1000
+model_auto_compact_token_limit = 900
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.delenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", raising=False)
+    budget = proxy_app._runtime_token_first_compaction_budget(
+        messages=[{"role": "user", "content": "hello " * 100}],
+        request_payload={"model": "deepseek-v4-flash"},
+        config={},
+    )
+
+    assert budget["available"] is True
+    assert budget["unit"] == "tokens"
+    assert budget["runtime_trigger_source"] == "token_first"
+    assert budget["model_context_window_tokens"] == 1000
+    assert budget["auto_compact_threshold_tokens"] == 900
+    assert isinstance(budget["estimated_context_tokens"], int)
+    assert budget["tokens_to_auto_compact"] == 900 - budget["estimated_context_tokens"]

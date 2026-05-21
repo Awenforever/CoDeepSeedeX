@@ -1501,5 +1501,18 @@ Rules:
 2. Semantic payload compaction must expose token estimate fields in addition to char fields, with a clear estimate source and precision.
 3. Semantic payload compaction must expose plan-level type aliases such as `pytest_success`, `pytest_failure`, `git_diff`, and `api_response_json`; these are contract labels and do not make high-risk payloads eligible for mutation.
 4. Image semantic envelopes are metadata-only. They must expose `semantic_summary_unavailable=true` and must not claim OCR, captioning, or external vision summaries.
-5. Production Compact and TRIM trigger semantics remain unchanged in this node: char-level hard guards remain the runtime safety path, while token-first TRIM remains dry-run/observability.
+5. Superseded by p2.10a95: production Compact and TRIM now use token-first runtime thresholds, while char-level controls remain emergency safety fallback.
+6. This node must not move public `v0.3.9-alpha`, update the GitHub Release, or upload Release assets.
+
+## p2.10a95 token-first runtime closure
+
+p2.10a95 closes the remaining C1/D1 plan blockers.
+
+Runtime rules:
+
+1. Production COMPACT uses token-first runtime triggering. The trigger threshold is `auto_compact_threshold_tokens`, sourced from the active profile `model_auto_compact_token_limit`, an explicit env override, or the managed 0.90 ratio fallback.
+2. Production COMPACT reports `estimated_context_tokens`, `tokens_to_auto_compact`, `model_context_window_tokens`, `auto_compact_threshold_tokens`, and `runtime_trigger_source=token_first`.
+3. Production TRIM uses the active profile auto-compact token limit as its default token target. `DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS` can override the target for tests or diagnostics.
+4. Production TRIM reports `token_first_runtime_trim` with before/after token estimates, removed tokens, and target status.
+5. Char-level Compact/TRIM controls remain as emergency safety fallback and must not be used as the primary context-window or trigger denominator.
 6. This node must not move public `v0.3.9-alpha`, update the GitHub Release, or upload Release assets.

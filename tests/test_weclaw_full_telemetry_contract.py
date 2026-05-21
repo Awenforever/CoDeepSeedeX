@@ -738,7 +738,9 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
     assert app.state.last_context_compaction_report is not None
     report = app.state.last_context_compaction_report
     assert report["compacted"] is False
-    assert report["reason"] == "not_triggered"
+    assert report["runtime_trigger_source"] == "token_first"
+    assert report["reason"] == "token_first_below_auto_compact_threshold"
+    assert report["tokens_to_auto_compact"] > 0
     assert report["compact_audit_generation"]["available"] is True
     assert report["compact_audit_generation"]["mode"] == "dry_run"
     assert report["compact_audit_generation"]["applied"] is False
