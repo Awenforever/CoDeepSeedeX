@@ -1218,3 +1218,28 @@ Scope:
 - Tests were updated so `750000` is only a legacy input/negative marker, never the current correct value.
 
 Strict rule: no Plan item is considered complete unless tests and runtime gates pass with exact values.
+
+
+## p2.10a100 Token-first field contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Close Plan items B1, B2, C1, and D1 using strict binary acceptance.
+- Add exact Plan field names for COMPACT:
+  - `estimated_tokens_before_compact`
+  - `estimated_tokens_after_compact`
+  - `estimated_tokens_removed_by_compact`
+- Add exact Plan field names for TRIM:
+  - `estimated_tokens_before_trim`
+  - `estimated_tokens_after_trim`
+  - `estimated_tokens_removed_by_trim`
+- Mark Compact/Trim token reports with `primary_control_unit=tokens`.
+- Mark char fields with `char_control_scope=fallback_debug_safety_only`.
+- Preserve the p2.10a99 rule that managed Compact/Trim thresholds derive from `model_context_window_tokens * 0.90`.
+
+Boundary:
+
+- Does not close C2/C4/D2/D3/D4/D5/E/F/G.
+- Does not update public `v0.3.9-alpha`.

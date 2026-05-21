@@ -400,3 +400,53 @@ model_auto_compact_token_limit = 750
     assert runtime_context["model_context_window_tokens"] == 1000
     assert runtime_context["auto_compact_threshold_tokens"] == 900
     assert runtime_context["auto_compact_ratio"] == 0.9
+
+
+def test_trim_dry_run_and_runtime_reports_expose_strict_plan_token_field_names(tmp_path, monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek-thinking]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-thinking-proxy"
+model_context_window = 1000
+model_auto_compact_token_limit = 900
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+
+    payload = {
+        "model": "deepseek-v4-flash",
+        "messages": [{"role": "user", "content": "hello " * 10}],
+    }
+    dry_run = proxy_app._context_trim_token_first_dry_run(
+        payload,
+        payload["messages"],
+        proxy_app._context_trim_env_config(),
+        recent_start=0,
+        active_profile="deepseek-thinking",
+    )
+
+    assert dry_run["primary_control_unit"] == "tokens"
+    assert dry_run["char_control_scope"] == "fallback_debug_safety_only"
+    assert dry_run["estimated_tokens_before_trim"] == dry_run["estimated_payload_tokens"]
+    assert dry_run["estimated_tokens_after_trim"] == dry_run["estimated_payload_tokens"]
+    assert dry_run["estimated_tokens_removed_by_trim"] == 0
+    assert dry_run["max_context_tokens"] == 900
+
+    _trimmed, report = proxy_app._compact_deepseek_payload_context(
+        payload,
+        active_profile="deepseek-thinking",
+    )
+    runtime = report["token_first_runtime_trim"]
+
+    assert runtime["primary_control_unit"] == "tokens"
+    assert runtime["char_control_scope"] == "fallback_debug_safety_only"
+    assert runtime["estimated_tokens_before_trim"] == runtime["before_tokens"]
+    assert runtime["estimated_tokens_after_trim"] == runtime["after_tokens"]
+    assert runtime["estimated_tokens_removed_by_trim"] == runtime["tokens_removed"]

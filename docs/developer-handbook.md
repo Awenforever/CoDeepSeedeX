@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a99-plan-full-closure` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a99-plan-full-closure`
+- Current internal development checkpoint: `p2.10a100-token-first-field-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a100-token-first-field-contract`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1562,3 +1562,23 @@ p2.10a99 enforces the strict Plan semantics:
 6. `dsproxy profile repair --managed-only --json` repairs generated profile drift.
 7. chars/bytes remain fallback/debug/safety metadata and are not the user-facing context denominator or primary Compact/Trim trigger.
 8. Compact and Trim use token-first gates; char emergency fallback is allowed only as safety fallback.
+
+
+## p2.10a100 Token-first field contract
+
+p2.10a100 closes Plan items B1/B2/C1/D1 under strict binary acceptance.
+
+Required fields:
+
+- COMPACT reports must expose:
+  - `estimated_tokens_before_compact`
+  - `estimated_tokens_after_compact`
+  - `estimated_tokens_removed_by_compact`
+- TRIM reports must expose:
+  - `estimated_tokens_before_trim`
+  - `estimated_tokens_after_trim`
+  - `estimated_tokens_removed_by_trim`
+- Token-first sections must expose `primary_control_unit=tokens`.
+- Char-level sections must expose `char_control_scope=fallback_debug_safety_only`.
+
+This node does not close material filtering, Codex prompt alignment, type-aware TRIM expansion, image final validation, semantic payload compaction, or final release documentation.

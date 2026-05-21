@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a99-plan-full-closure`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a100-token-first-field-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1517,3 +1517,23 @@ p2.10a99强制执行Plan语义：
 6. `dsproxy profile repair --managed-only --json`必须修复生成型profile漂移。
 7. chars/bytes只能作为fallback/debug/safety元数据，不能作为用户可见context分母或Compact/Trim主触发口径。
 8. Compact和Trim使用token-first gate；char emergency fallback只作为安全兜底。
+
+
+## p2.10a100 Token-first字段契约
+
+p2.10a100在二元验收口径下关闭Plan中的B1/B2/C1/D1。
+
+必要字段：
+
+- COMPACT报告必须暴露：
+  - `estimated_tokens_before_compact`
+  - `estimated_tokens_after_compact`
+  - `estimated_tokens_removed_by_compact`
+- TRIM报告必须暴露：
+  - `estimated_tokens_before_trim`
+  - `estimated_tokens_after_trim`
+  - `estimated_tokens_removed_by_trim`
+- token-first段必须暴露`primary_control_unit=tokens`。
+- char级段必须暴露`char_control_scope=fallback_debug_safety_only`。
+
+本节点不关闭材料过滤、Codex prompt对齐、类型感知TRIM扩展、图像最终验证、semantic payload compaction或最终Release文档。

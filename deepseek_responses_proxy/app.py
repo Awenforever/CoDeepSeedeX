@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a99-plan-full-closure"
+PROXY_INTERNAL_VERSION = "p2.10a100-token-first-field-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -5658,6 +5658,8 @@ def _runtime_token_first_context_contract_for_payload(
         "legacy_absolute_limit_ignored": ignored_absolute_limit,
         "runtime_trigger_source": "token_first_profile_context_contract",
         "char_fallback_scope": "emergency_safety_only",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
     }
 
 def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict[str, Any]:
@@ -5693,6 +5695,9 @@ def _runtime_token_first_compaction_budget(
         "mode": "production",
         "runtime_trigger_source": "token_first",
         "estimated_context_tokens": estimated,
+        "estimated_tokens_before_compact": estimated,
+        "estimated_tokens_after_compact": estimated,
+        "estimated_tokens_removed_by_compact": 0,
         "estimated_context_tokens_source": token_estimate.get("estimated_tokens_source"),
         "estimated_context_tokens_precision": token_estimate.get("precision"),
         "tokenizer": token_estimate.get("tokenizer"),
@@ -5707,6 +5712,8 @@ def _runtime_token_first_compaction_budget(
         "profile": context_contract.get("profile"),
         "profile_found": context_contract.get("profile_found"),
         "char_fallback_scope": "emergency_safety_only",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
     }
 
 
@@ -6190,6 +6197,9 @@ def _context_trim_token_first_dry_run(
         "tokenizer": tokenizer_contract,
         "runtime_context": context_contract,
         "estimated_payload_tokens": payload_tokens,
+        "estimated_tokens_before_trim": payload_tokens,
+        "estimated_tokens_after_trim": payload_tokens,
+        "estimated_tokens_removed_by_trim": 0,
         "estimated_payload_tokens_source": payload_token_source,
         "estimated_message_tokens": messages_tokens,
         "max_context_tokens": max_context_tokens or None,
@@ -6204,6 +6214,8 @@ def _context_trim_token_first_dry_run(
         "items": items,
         "items_tail": items[-30:],
         "candidate_items": candidate_items,
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "type_counts": dict(sorted(type_counts.items())),
         "type_tokens": dict(sorted(type_tokens.items())),
         "protected_message_indexes": protected_indexes,
@@ -6790,11 +6802,16 @@ def _compact_deepseek_payload_context(payload: dict[str, Any], *, active_profile
         "before_tokens": before_runtime_tokens,
         "after_tokens": before_runtime_tokens,
         "tokens_removed": 0,
+        "estimated_tokens_before_trim": before_runtime_tokens,
+        "estimated_tokens_after_trim": before_runtime_tokens,
+        "estimated_tokens_removed_by_trim": 0,
         "max_context_tokens": max_context_tokens or None,
         "max_context_tokens_source": token_dry_run.get("max_context_tokens_source"),
         "runtime_context": token_dry_run.get("runtime_context"),
         "target_met": max_context_tokens <= 0 or before_runtime_tokens <= max_context_tokens,
         "char_fallback_scope": "emergency_safety_only",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "raw_content_exposed": False,
         "redacted": True,
     }
@@ -6832,6 +6849,8 @@ def _compact_deepseek_payload_context(payload: dict[str, Any], *, active_profile
         after_runtime_tokens, _after_runtime_source = _context_trim_count_tokens(trimmed_payload, runtime_tokenizer)
         runtime_trim_report["after_tokens"] = after_runtime_tokens
         runtime_trim_report["tokens_removed"] = max(0, before_runtime_tokens - after_runtime_tokens)
+        runtime_trim_report["estimated_tokens_after_trim"] = after_runtime_tokens
+        runtime_trim_report["estimated_tokens_removed_by_trim"] = runtime_trim_report["tokens_removed"]
         runtime_trim_report["target_met"] = after_runtime_tokens <= max_context_tokens
     else:
         runtime_trim_report["reason"] = (
@@ -6845,6 +6864,8 @@ def _compact_deepseek_payload_context(payload: dict[str, Any], *, active_profile
         report["token_first_trim_dry_run"]["runtime_applied"] = bool(runtime_trim_report.get("applied"))
         report["token_first_trim_dry_run"]["runtime_after_tokens"] = runtime_trim_report.get("after_tokens")
         report["token_first_trim_dry_run"]["runtime_tokens_removed"] = runtime_trim_report.get("tokens_removed")
+        report["token_first_trim_dry_run"]["estimated_tokens_after_trim"] = runtime_trim_report.get("estimated_tokens_after_trim")
+        report["token_first_trim_dry_run"]["estimated_tokens_removed_by_trim"] = runtime_trim_report.get("estimated_tokens_removed_by_trim")
 
     if _json_char_size(trimmed_payload) > max_context_chars:
         report["char_emergency_fallback_applied"] = True
@@ -7791,6 +7812,9 @@ async def _compact_chat_history_for_codex_like_persistence(
         "runtime_trigger_source": policy_decision.get("runtime_trigger_source"),
         "unit": policy_decision.get("unit"),
         "estimated_context_tokens": policy_decision.get("estimated_context_tokens"),
+        "estimated_tokens_before_compact": policy_decision.get("estimated_tokens_before_compact") or policy_decision.get("estimated_context_tokens"),
+        "estimated_tokens_after_compact": policy_decision.get("estimated_tokens_after_compact") or policy_decision.get("estimated_context_tokens"),
+        "estimated_tokens_removed_by_compact": policy_decision.get("estimated_tokens_removed_by_compact") or 0,
         "estimated_context_tokens_source": policy_decision.get("estimated_context_tokens_source"),
         "estimated_context_tokens_precision": policy_decision.get("estimated_context_tokens_precision"),
         "model_context_window_tokens": policy_decision.get("model_context_window_tokens"),
@@ -7799,6 +7823,8 @@ async def _compact_chat_history_for_codex_like_persistence(
         "auto_compact_ratio": policy_decision.get("auto_compact_ratio"),
         "tokens_to_auto_compact": policy_decision.get("tokens_to_auto_compact"),
         "char_fallback_scope": policy_decision.get("char_fallback_scope"),
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
     }
 
     if not config["enabled"]:
@@ -7896,10 +7922,12 @@ async def _compact_chat_history_for_codex_like_persistence(
     after_token_payload["messages"] = compacted_messages
     after_token_estimate = _runtime_token_first_payload_token_estimate(after_token_payload)
     report["after_estimated_context_tokens"] = after_token_estimate.get("estimated_tokens")
+    report["estimated_tokens_after_compact"] = report["after_estimated_context_tokens"]
     report["tokens_removed"] = max(
         0,
         int(report.get("estimated_context_tokens") or 0) - int(report.get("after_estimated_context_tokens") or 0),
     )
+    report["estimated_tokens_removed_by_compact"] = report["tokens_removed"]
     report["message_count_after"] = len(compacted_messages)
     report["chars_removed"] = max(0, before_chars - int(report["after_chars"]))
     report["build"] = build_report
@@ -14015,19 +14043,34 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         return {
             "available": False,
             "unit": "tokens",
+            "primary_control_unit": "tokens",
+            "char_control_scope": "fallback_debug_safety_only",
             "status": "unavailable",
             "reason": "no_runtime_compaction_report_observed",
             "action": "send a model request through this dsproxy route, then re-check status",
             "source": "runtime_context_builder",
         }
 
-    before_tokens = _runtime_payload_guard_int(report.get("estimated_context_tokens"))
-    after_tokens = _runtime_payload_guard_int(report.get("after_estimated_context_tokens"))
+    before_tokens = _runtime_payload_guard_int(
+        report.get("estimated_tokens_before_compact")
+        or report.get("estimated_context_tokens")
+    )
+    after_tokens = _runtime_payload_guard_int(
+        report.get("estimated_tokens_after_compact")
+        or report.get("after_estimated_context_tokens")
+    )
     if before_tokens is not None and after_tokens is None:
         after_tokens = before_tokens
     trigger_tokens = _runtime_payload_guard_int(report.get("auto_compact_threshold_tokens") or report.get("model_auto_compact_token_limit"))
     target_tokens = _runtime_payload_guard_int(report.get("target_tokens") or report.get("effective_target_tokens"))
     compacted = bool(report.get("compacted"))
+    removed_tokens = _runtime_payload_guard_int(
+        report.get("estimated_tokens_removed_by_compact")
+        if report.get("estimated_tokens_removed_by_compact") is not None
+        else report.get("tokens_removed")
+    )
+    if removed_tokens is None:
+        removed_tokens = max(0, int(before_tokens or 0) - int(after_tokens or 0)) if before_tokens is not None and after_tokens is not None else 0
     try:
         tokens_to_auto_compact_value = int(report.get("tokens_to_auto_compact")) if report.get("tokens_to_auto_compact") is not None else None
     except (TypeError, ValueError):
@@ -14054,6 +14097,8 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
     return {
         "available": before_tokens is not None,
         "unit": "tokens",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "mode": "production",
         "status": status,
         "compacted": compacted,
@@ -14079,7 +14124,10 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         "after_tokens": after_tokens,
         "estimated_context_tokens": before_tokens,
         "after_estimated_context_tokens": after_tokens,
-        "tokens_removed": _runtime_payload_guard_int(report.get("tokens_removed")) if compacted else 0,
+        "tokens_removed": removed_tokens,
+        "estimated_tokens_before_compact": before_tokens,
+        "estimated_tokens_after_compact": after_tokens,
+        "estimated_tokens_removed_by_compact": removed_tokens,
         "tokens_to_auto_compact": tokens_to_auto_compact_value,
         "retention_numerator_tokens": after_tokens,
         "retention_denominator_tokens": before_tokens,
@@ -14096,7 +14144,6 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         "raw_content_exposed": False,
         "redacted": True,
     }
-
 
 def _route_scoped_trimming_report(report: Any, *, profile: str) -> Any:
     if not isinstance(report, dict):
@@ -14170,6 +14217,14 @@ def _runtime_payload_guard_report_snapshot(
             "type_enum_version",
             "token_first_trim_dry_run",
             "token_first_runtime_trim",
+            "estimated_tokens_before_compact",
+            "estimated_tokens_after_compact",
+            "estimated_tokens_removed_by_compact",
+            "estimated_tokens_before_trim",
+            "estimated_tokens_after_trim",
+            "estimated_tokens_removed_by_trim",
+            "primary_control_unit",
+            "char_control_scope",
             "available",
             "requested_profile",
             "observed_profile",
@@ -14330,9 +14385,56 @@ def _runtime_payload_guard_contract(
         "compact_audit": _compaction_audit_metadata_from_report(compaction_report_dict or compaction_last_report),
         "token_first": token_compaction_contract,
         "token_contract": token_compaction_contract,
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "reason": None if compaction_available else "current_compaction_chars_unavailable",
         "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
     }
+
+    token_first_runtime_trim = (trimming_report_dict or {}).get("token_first_runtime_trim") if trimming_report_dict else None
+    if token_first_runtime_trim is None and trimming_report_dict:
+        dry_run = trimming_report_dict.get("token_first_trim_dry_run")
+        if isinstance(dry_run, dict) and dry_run.get("available"):
+            before_tokens = _runtime_payload_guard_int(
+                dry_run.get("estimated_tokens_before_trim")
+                if dry_run.get("estimated_tokens_before_trim") is not None
+                else dry_run.get("estimated_payload_tokens")
+                if dry_run.get("estimated_payload_tokens") is not None
+                else dry_run.get("runtime_before_tokens")
+            )
+            after_tokens = _runtime_payload_guard_int(
+                dry_run.get("estimated_tokens_after_trim")
+                if dry_run.get("estimated_tokens_after_trim") is not None
+                else dry_run.get("runtime_after_tokens")
+                if dry_run.get("runtime_after_tokens") is not None
+                else before_tokens
+            )
+            removed_tokens = _runtime_payload_guard_int(
+                dry_run.get("estimated_tokens_removed_by_trim")
+                if dry_run.get("estimated_tokens_removed_by_trim") is not None
+                else dry_run.get("runtime_tokens_removed")
+            )
+            if removed_tokens is None and before_tokens is not None and after_tokens is not None:
+                removed_tokens = max(0, before_tokens - after_tokens)
+            token_first_runtime_trim = dict(dry_run)
+            token_first_runtime_trim.update(
+                {
+                    "available": True,
+                    "unit": "tokens",
+                    "mode": "dry_run_fallback_from_token_first_trim_dry_run",
+                    "primary_control_unit": "tokens",
+                    "char_control_scope": "fallback_debug_safety_only",
+                    "before_tokens": before_tokens,
+                    "after_tokens": after_tokens,
+                    "tokens_removed": removed_tokens or 0,
+                    "estimated_tokens_before_trim": before_tokens,
+                    "estimated_tokens_after_trim": after_tokens,
+                    "estimated_tokens_removed_by_trim": removed_tokens or 0,
+                    "source": "token_first_trim_dry_run_fallback",
+                    "raw_content_exposed": False,
+                    "redacted": True,
+                }
+            )
 
     trimming_section = {
         "available": trimming_available,
@@ -14363,7 +14465,9 @@ def _runtime_payload_guard_contract(
         "remaining_chars": max(0, max_context_chars - trimming_raw) if trimming_raw is not None and max_context_chars is not None else None,
         "status": _runtime_payload_guard_status(current_chars=trimming_raw, limit_chars=max_context_chars, terminal=bool((trimming_report_dict or {}).get("trimmed")), terminal_status="trimmed"),
         "last_report": _runtime_payload_guard_report_snapshot(trimming_report_dict, kind="trimming", fallback_last_report=trimming_last_report),
-        "token_first_runtime_trim": (trimming_report_dict or {}).get("token_first_runtime_trim") if trimming_report_dict else None,
+        "token_first_runtime_trim": token_first_runtime_trim,
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "reason": None if trimming_available else "current_trimming_chars_unavailable",
         "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
     }
@@ -14379,6 +14483,8 @@ def _runtime_payload_guard_contract(
         "current_chars_observed_at": observed_at,
         "source": "in_memory_runtime_payload_guard_snapshot",
         "precision": current_precision,
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
         "reason": None if available else "no_live_runtime_payload_guard_observation_yet",
         "action": None if available else "send a model request through this dsproxy route, then re-check status",
         "compaction": compaction_section,

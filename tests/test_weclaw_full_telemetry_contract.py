@@ -324,6 +324,11 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["compaction"]["status"] == "not_triggered"
     token_compaction = guard["compaction"]["token_first"]
     assert token_compaction["unit"] == "tokens"
+    assert token_compaction["primary_control_unit"] == "tokens"
+    assert token_compaction["char_control_scope"] == "fallback_debug_safety_only"
+    assert token_compaction["estimated_tokens_before_compact"] == token_compaction["before_tokens"]
+    assert token_compaction["estimated_tokens_after_compact"] == token_compaction["after_tokens"]
+    assert token_compaction["estimated_tokens_removed_by_compact"] == token_compaction["tokens_removed"]
     assert token_compaction["trigger_tokens"] == 900000
     assert token_compaction["target_available"] is False
     assert token_compaction["target_reason"] == "explicit_token_compact_target_not_configured"
@@ -350,6 +355,12 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["trimming"]["last_report"]["type_enum_version"] == 1
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["available"] is True
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
+    runtime_trim = guard["trimming"]["token_first_runtime_trim"]
+    assert runtime_trim["primary_control_unit"] == "tokens"
+    assert runtime_trim["char_control_scope"] == "fallback_debug_safety_only"
+    assert runtime_trim["estimated_tokens_before_trim"] == runtime_trim["before_tokens"]
+    assert runtime_trim["estimated_tokens_after_trim"] == runtime_trim["after_tokens"]
+    assert runtime_trim["estimated_tokens_removed_by_trim"] == runtime_trim["tokens_removed"]
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["runtime_context"]["profile"] == "deepseek-thinking"
     assert guard["trimming"]["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
     assert guard["trimming"]["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False

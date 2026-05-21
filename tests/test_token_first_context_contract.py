@@ -169,3 +169,59 @@ model_auto_compact_token_limit = 750000
     assert context["auto_compact_ratio"] == 0.9
     assert context["auto_compact_policy"]["status"] == "managed_expected_ratio"
     assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 750_000
+
+
+def test_compaction_budget_exposes_strict_plan_token_field_names(tmp_path: Path, monkeypatch) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = 1000
+model_auto_compact_token_limit = 900
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+
+    budget = proxy_app._runtime_token_first_compaction_budget(
+        messages=[{"role": "user", "content": "hello " * 30}],
+        request_payload={"model": "deepseek-v4-flash"},
+        config={},
+        active_profile="deepseek",
+    )
+
+    assert budget["primary_control_unit"] == "tokens"
+    assert budget["char_control_scope"] == "fallback_debug_safety_only"
+    assert budget["estimated_tokens_before_compact"] == budget["estimated_context_tokens"]
+    assert budget["estimated_tokens_after_compact"] == budget["estimated_context_tokens"]
+    assert budget["estimated_tokens_removed_by_compact"] == 0
+    assert budget["auto_compact_threshold_tokens"] == 900
+
+
+def test_compaction_contract_exposes_strict_plan_token_field_names() -> None:
+    report = {
+        "compacted": True,
+        "reason": "token_first_triggered",
+        "estimated_context_tokens": 950,
+        "after_estimated_context_tokens": 500,
+        "tokens_removed": 450,
+        "auto_compact_threshold_tokens": 900,
+        "model_auto_compact_token_limit": 900,
+        "model_context_window_tokens": 1000,
+        "auto_compact_ratio": 0.9,
+        "runtime_trigger_source": "token_first",
+        "policy_decision": {"token_budget": {"tokenizer": {"available": True}}},
+    }
+
+    contract = proxy_app._runtime_token_first_compaction_contract(report)
+
+    assert contract["primary_control_unit"] == "tokens"
+    assert contract["char_control_scope"] == "fallback_debug_safety_only"
+    assert contract["estimated_tokens_before_compact"] == 950
+    assert contract["estimated_tokens_after_compact"] == 500
+    assert contract["estimated_tokens_removed_by_compact"] == 450
+    assert contract["trigger_tokens"] == 900
+    assert contract["retention_ratio"] == 500 / 950
