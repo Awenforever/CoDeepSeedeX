@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a98-weclaw-resume-details-pricing-lifecycle`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a99-plan-full-closure`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1503,3 +1503,17 @@ p2.10a98稳定WeClaw resume场景下的Details和Pricing展示语义。
 6. auto-compact policy诊断暴露短展示字段，例如`display_label=legacy 75%→90%`和`short_action=repair profile`。
 
 Release边界：本节点不移动`v0.3.9-alpha`，不更新GitHub Release，不重建Release资产。
+
+
+## p2.10a99 Plan完整闭环
+
+p2.10a99强制执行Plan语义：
+
+1. 受管profile只有一个auto-compact来源：`auto_compact_ratio=0.90`。
+2. `model_auto_compact_token_limit`是派生值：`floor(model_context_window_tokens * 0.90)`。
+3. 1M token DeepSeek受管profile运行时必须输出`model_context_window_tokens=1000000`、`auto_compact_ratio=0.90`、`model_auto_compact_token_limit=900000`。
+4. `750000`这类legacy绝对值不能作为当前运行阈值。
+5. `750000`只能作为legacy/负例测试输入或历史记录出现。
+6. `dsproxy profile repair --managed-only --json`必须修复生成型profile漂移。
+7. chars/bytes只能作为fallback/debug/safety元数据，不能作为用户可见context分母或Compact/Trim主触发口径。
+8. Compact和Trim使用token-first gate；char emergency fallback只作为安全兜底。

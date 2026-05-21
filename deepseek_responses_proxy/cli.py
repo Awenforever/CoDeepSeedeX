@@ -901,8 +901,9 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
 
 
 def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, object]:
-    model_context_window = _int_or_zero(profile_section.get("model_context_window"))
-    auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+    model_context_window = _int_or_zero(profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
+    legacy_auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+    auto_compact_token_limit = _derive_auto_compact_token_limit(model_context_window, DEFAULT_AUTO_COMPACT_RATIO)
     display_limit_tokens = model_context_window or auto_compact_token_limit or 0
     auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
@@ -927,28 +928,38 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "user_visible": False,
             }
         )
-    if auto_compact_policy.get("needs_migration"):
+    if legacy_auto_compact_token_limit and legacy_auto_compact_token_limit != auto_compact_token_limit:
         conflicts.append(
             {
                 "field": "model_auto_compact_token_limit",
-                "codex_profile_value": auto_compact_token_limit,
-                "expected_managed_value": auto_compact_policy.get("managed_expected_auto_compact_threshold_tokens"),
-                "observed_auto_compact_ratio": auto_compact_policy.get("observed_auto_compact_ratio"),
-                "expected_auto_compact_ratio": auto_compact_policy.get("managed_expected_auto_compact_ratio"),
-                "resolution": "repair_managed_profile_to_derive_threshold_from_ratio",
-                "action": auto_compact_policy.get("action"),
+                "codex_profile_value": legacy_auto_compact_token_limit,
+                "derived_managed_value": auto_compact_token_limit,
+                "expected_auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+                "resolution": "managed_runtime_uses_ratio_derived_threshold_and_profile_repair_rewrites_generated_value",
+                "action": "run dsproxy profile repair --managed-only --json",
                 "user_visible": True,
             }
         )
 
-    display_source = "codex_profile.model_context_window" if model_context_window > 0 else "codex_profile.model_auto_compact_token_limit"
+    display_source = "codex_profile.model_context_window" if model_context_window > 0 else "managed_auto_compact_ratio"
     return {
         "display_limit_tokens": display_limit_tokens,
         "model_context_window_tokens": model_context_window,
         "auto_compact_token_limit": auto_compact_token_limit,
         "auto_compact_threshold_tokens": auto_compact_token_limit,
+        "model_auto_compact_token_limit": auto_compact_token_limit,
         "auto_compact_ratio": auto_compact_ratio,
         "auto_compact_policy": auto_compact_policy,
+        "legacy_absolute_limit_ignored": (
+            {
+                "ignored_value": legacy_auto_compact_token_limit,
+                "derived_value": auto_compact_token_limit,
+                "reason": "managed_profiles_derive_auto_compact_threshold_from_ratio_only",
+                "action": "run dsproxy profile repair --managed-only --json",
+            }
+            if legacy_auto_compact_token_limit and legacy_auto_compact_token_limit != auto_compact_token_limit
+            else None
+        ),
         "effective_safe_window_tokens": display_limit_tokens,
         **_weclaw_context_used_tokens_unavailable_contract(),
         "source": display_source,
@@ -957,6 +968,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "model_context_window_tokens": model_context_window,
             "auto_compact_token_limit": auto_compact_token_limit,
             "auto_compact_threshold_tokens": auto_compact_token_limit,
+            "model_auto_compact_token_limit": auto_compact_token_limit,
             "auto_compact_ratio": auto_compact_ratio,
             "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
@@ -976,9 +988,9 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
         "conflicts": conflicts,
         "notes": [
             "Codex profile values are token-level declarations.",
-            "The displayed context denominator is model_context_window_tokens, while auto_compact_token_limit is only the auto-compact trigger threshold.",
-            "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and must not be treated as equivalent token denominators.",
-            "If auto_compact_policy.needs_migration is true, surface the provided repair action instead of replacing the active profile values in WeClaw.",
+            "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
+            "Managed CoDeepSeedeX profiles use auto_compact_ratio=0.90 as the only configuration source for auto-compact threshold.",
+            "Char-level compaction and trimming values are fallback/debug/safety controls and must not be treated as equivalent token denominators.",
         ],
     }
 
@@ -1451,13 +1463,23 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
             })
             continue
 
+        profile_section = sections_before.get(f"profiles.{profile_name}", {})
+        model_context_window = _int_or_zero(profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
+        expected_auto_compact_token_limit = _derive_auto_compact_token_limit(
+            model_context_window,
+            DEFAULT_AUTO_COMPACT_RATIO,
+        )
+        current_auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+
         model_needs_patch = codex_model != effective_model
         effort_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("model_reasoning_effort") != expected_effort
         plan_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("plan_mode_reasoning_effort") != "high"
+        auto_compact_needs_patch = current_auto_compact_token_limit != expected_auto_compact_token_limit
 
         model_patched = False
         effort_patched = False
         plan_patched = False
+        auto_compact_patched = False
         if not dry_run:
             if model_needs_patch:
                 model_patched = _patch_codex_profile_value(codex_path, profile_name, "model", effective_model)
@@ -1465,8 +1487,15 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
                 effort_patched = _patch_codex_profile_value(codex_path, profile_name, "model_reasoning_effort", expected_effort)
             if plan_needs_patch:
                 plan_patched = _patch_codex_profile_value(codex_path, profile_name, "plan_mode_reasoning_effort", "high")
+            if auto_compact_needs_patch:
+                auto_compact_patched = _patch_codex_profile_value(
+                    codex_path,
+                    profile_name,
+                    "model_auto_compact_token_limit",
+                    str(expected_auto_compact_token_limit),
+                )
 
-        if model_needs_patch or effort_needs_patch or plan_needs_patch:
+        if model_needs_patch or effort_needs_patch or plan_needs_patch or auto_compact_needs_patch:
             updated_profiles.append(profile_name)
 
         profile_results.append({
@@ -1484,6 +1513,12 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
             "plan_mode_reasoning_effort": "high",
             "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
             "plan_mode_reasoning_effort_patched": plan_patched,
+            "model_context_window_tokens": model_context_window,
+            "auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+            "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
+            "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
+            "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
+            "model_auto_compact_token_limit_patched": auto_compact_patched,
         })
 
     health = _codex_config_health(codex_path)

@@ -12,6 +12,23 @@ from deepseek_responses_proxy.app import (
 )
 
 
+def _write_compaction_test_codex_config(tmp_path: Path, monkeypatch, *, context_window: int = 1200) -> Path:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        f"""
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = {context_window}
+model_auto_compact_token_limit = {int(context_window * 0.90)}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    return codex_config
+
+
 class FakeDeepSeekClient:
     def __init__(self):
         self.payloads = []
@@ -94,7 +111,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "3000")
-        monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
+        _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "5000")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "1")
         monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
@@ -143,11 +160,11 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
 
 @pytest.mark.asyncio
-async def test_compaction_helper_preserves_recent_tool_pair(monkeypatch):
+async def test_compaction_helper_preserves_recent_tool_pair(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
+    _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "6000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "10000")
@@ -266,11 +283,11 @@ def test_compaction_prompt_metadata_is_fingerprinted_redacted_and_classified():
 
 
 @pytest.mark.asyncio
-async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(monkeypatch):
+async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000000")
+    _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1000000)
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
 
@@ -331,11 +348,11 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(m
 
 
 @pytest.mark.asyncio
-async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
+async def test_adaptive_compaction_reports_policy_decision(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "10000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
+    _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", "2000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", "8000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "1000")
@@ -380,11 +397,11 @@ async def test_adaptive_compaction_reports_policy_decision(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(monkeypatch):
+async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "20000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "1000")
+    _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "15000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "15000")
     monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "20000")

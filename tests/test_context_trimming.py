@@ -366,3 +366,37 @@ def test_image_semantic_envelope_transform_can_be_disabled(monkeypatch):
     assert report["image_semantic_envelope"]["applied"] is False
     assert report["image_semantic_envelope"]["transformed_count"] == 0
     assert trimmed["messages"][1]["content"] == second_image
+
+
+def test_trim_token_first_dry_run_uses_active_profile_for_managed_ratio(tmp_path, monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek-thinking]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-thinking-proxy"
+model_context_window = 1000
+model_auto_compact_token_limit = 750
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    payload = {"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": "hello"}]}
+    report = proxy_app._context_trim_token_first_dry_run(
+        payload,
+        payload["messages"],
+        proxy_app._context_trim_env_config(),
+        recent_start=0,
+        active_profile="deepseek-thinking",
+    )
+
+    runtime_context = report["runtime_context"]
+    assert runtime_context["profile"] == "deepseek-thinking"
+    assert runtime_context["model_context_window_tokens"] == 1000
+    assert runtime_context["auto_compact_threshold_tokens"] == 900
+    assert runtime_context["auto_compact_ratio"] == 0.9

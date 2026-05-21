@@ -120,7 +120,7 @@ model_auto_compact_token_limit = 900
     assert budget["tokens_to_auto_compact"] == 900 - budget["estimated_context_tokens"]
 
 
-def test_context_contract_flags_legacy_auto_compact_ratio() -> None:
+def test_context_contract_ignores_legacy_absolute_auto_compact_limit_and_derives_ratio() -> None:
     context = proxy_app._runtime_profile_context_contract(
         {
             "model_context_window": "1000000",
@@ -130,12 +130,42 @@ def test_context_contract_flags_legacy_auto_compact_ratio() -> None:
     )
 
     policy = context["auto_compact_policy"]
-    assert context["auto_compact_ratio"] == 0.75
-    assert policy["needs_migration"] is True
-    assert policy["observed_auto_compact_ratio"] == 0.75
-    assert policy["managed_expected_auto_compact_threshold_tokens"] == 900000
-    assert policy["display_label"] == "legacy 75%→90%"
-    assert policy["short_action"] == "repair profile"
-    assert policy["action"]
-    assert context["limit_explanation"]["auto_compact_policy"]["needs_migration"] is True
-    assert any(item["field"] == "model_auto_compact_token_limit" for item in context["conflicts"])
+    assert context["display_limit_tokens"] == 1_000_000
+    assert context["model_context_window_tokens"] == 1_000_000
+    assert context["model_auto_compact_token_limit"] == 900_000
+    assert context["auto_compact_threshold_tokens"] == 900_000
+    assert context["auto_compact_ratio"] == 0.9
+    assert policy["needs_migration"] is False
+    assert policy["status"] == "managed_expected_ratio"
+    assert policy["observed_auto_compact_ratio"] == 0.9
+    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 750_000
+    assert context["legacy_absolute_limit_ignored"]["derived_value"] == 900_000
+    assert context["limit_explanation"]["auto_compact_policy"]["needs_migration"] is False
+
+
+def test_runtime_context_contract_ignores_absolute_env_threshold(monkeypatch, tmp_path: Path) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = 1000000
+model_auto_compact_token_limit = 750000
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "750000")
+    context = proxy_app._runtime_token_first_context_contract_for_payload(
+        {"model": "deepseek-v4-flash"},
+        active_profile="deepseek",
+    )
+
+    assert context["model_context_window_tokens"] == 1_000_000
+    assert context["auto_compact_threshold_tokens"] == 900_000
+    assert context["model_auto_compact_token_limit"] == 900_000
+    assert context["auto_compact_ratio"] == 0.9
+    assert context["auto_compact_policy"]["status"] == "managed_expected_ratio"
+    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 750_000

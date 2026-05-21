@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a98-weclaw-resume-details-pricing-lifecycle` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a98-weclaw-resume-details-pricing-lifecycle`
+- Current internal development checkpoint: `p2.10a99-plan-full-closure` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a99-plan-full-closure`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1548,3 +1548,17 @@ Rules:
 6. Auto-compact policy diagnostics expose short display fields such as `display_label=legacy 75%→90%` and `short_action=repair profile`.
 
 Release boundary: this node does not move `v0.3.9-alpha`, update the GitHub Release, or rebuild Release assets.
+
+
+## p2.10a99 Plan full closure
+
+p2.10a99 enforces the strict Plan semantics:
+
+1. Managed profiles have one auto-compact source: `auto_compact_ratio=0.90`.
+2. `model_auto_compact_token_limit` is a generated value: `floor(model_context_window_tokens * 0.90)`.
+3. Runtime status must expose `model_context_window_tokens=1000000`, `auto_compact_ratio=0.90`, and `model_auto_compact_token_limit=900000` for managed 1M-token DeepSeek profiles.
+4. Legacy absolute values such as `750000` are not accepted as current runtime thresholds.
+5. `750000` may appear only as a legacy/negative test input or historical record.
+6. `dsproxy profile repair --managed-only --json` repairs generated profile drift.
+7. chars/bytes remain fallback/debug/safety metadata and are not the user-facing context denominator or primary Compact/Trim trigger.
+8. Compact and Trim use token-first gates; char emergency fallback is allowed only as safety fallback.

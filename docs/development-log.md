@@ -1201,3 +1201,20 @@ Boundary:
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update.
 - No Release asset rebuild.
+
+
+## p2.10a99 Plan full closure
+
+Date: 2026-05-22
+
+Scope:
+
+- Enforce the strict Plan rule that managed CoDeepSeedeX profiles use `auto_compact_ratio=0.90` as the only auto-compact threshold source.
+- Runtime status, CLI profile status, Compact, and Trim now derive `model_auto_compact_token_limit` from `model_context_window_tokens * 0.90`.
+- Legacy absolute values such as `750000` are ignored as current runtime thresholds and are surfaced only as generated-profile drift requiring repair.
+- `dsproxy profile repair --managed-only --json` now repairs `model_auto_compact_token_limit` to the ratio-derived value.
+- Current user Codex profiles were backed up and repaired so `deepseek` and `deepseek-thinking` use `900000` for a `1000000` token window.
+- TRIM dry-run now uses the explicit active profile when deriving the token-first runtime target.
+- Tests were updated so `750000` is only a legacy input/negative marker, never the current correct value.
+
+Strict rule: no Plan item is considered complete unless tests and runtime gates pass with exact values.
