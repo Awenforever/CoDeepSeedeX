@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a92-codex-native-compact-source-alignment"
+PROXY_INTERNAL_VERSION = "p2.10a94-plan-closure-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 
@@ -1119,30 +1119,16 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
         return {"present": False}
 
     keys = [
-        "event",
-        "enabled",
-        "mode",
-        "applied",
-        "reason",
-        "strategy",
-        "message_count",
-        "message_count_before",
-        "message_count_after",
-        "flattened_message_count",
-        "candidate_count",
-        "eligible_compaction_count",
-        "eligible_policy_count",
-        "structure_only_count",
-        "preserve_count",
-        "skipped_policy_count",
-        "retained_recent_flattened_count",
-        "compacted_count",
-        "would_compact",
-        "would_compact_count",
-        "would_remove_chars_estimate",
-        "chars_before",
-        "chars_after",
-        "chars_removed",
+        "event", "enabled", "mode", "applied", "reason", "strategy",
+        "message_count", "message_count_before", "message_count_after",
+        "flattened_message_count", "candidate_count", "eligible_compaction_count",
+        "eligible_policy_count", "structure_only_count", "preserve_count",
+        "skipped_policy_count", "retained_recent_flattened_count", "compacted_count",
+        "would_compact", "would_compact_count", "would_remove_chars_estimate",
+        "would_remove_tokens_estimate", "chars_before", "chars_after", "chars_removed",
+        "tokens_before", "tokens_after", "tokens_removed",
+        "estimated_tokens_before", "estimated_tokens_after", "estimated_tokens_removed",
+        "token_estimation_source", "token_estimation_precision", "semantic_plan_types",
     ]
     summary: dict[str, Any] = {"present": True}
     for key in keys:
@@ -1156,14 +1142,19 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
             summary["top_target"] = {
                 "index": targets[0].get("index"),
                 "semantic_type": targets[0].get("semantic_type"),
+                "semantic_plan_type": targets[0].get("semantic_plan_type"),
                 "semantic_risk": targets[0].get("semantic_risk"),
+                "risk_level": targets[0].get("risk_level"),
                 "policy_decision": targets[0].get("policy_decision"),
                 "recommended_action": targets[0].get("recommended_action"),
                 "compression_strategy": targets[0].get("compression_strategy"),
                 "estimated_remove_chars": targets[0].get("estimated_remove_chars"),
+                "estimated_tokens_removed": targets[0].get("estimated_tokens_removed"),
+                "tokens_removed": targets[0].get("tokens_removed"),
                 "reason": targets[0].get("reason"),
             }
     return summary
+
 
 
 def _semantic_compaction_rollout_assessment(
@@ -3397,13 +3388,47 @@ def _flattened_tool_transcript_semantic_risk(
     return "medium"
 
 
+def _semantic_payload_plan_type_alias(
+    semantic_type: str,
+    retention_markers: list[Any],
+    text: str = "",
+) -> str:
+    marker_set = {str(marker) for marker in retention_markers}
+    lowered = text.lower()
+
+    if semantic_type == "test_output":
+        if {"ERROR", "FAILED", "Traceback", "AssertionError"} & marker_set or " failed in " in lowered:
+            return "pytest_failure"
+        return "pytest_success"
+    if semantic_type == "diff_output":
+        return "git_diff"
+    if semantic_type == "json_payload":
+        if "api" in lowered or "response" in lowered or "status_code" in lowered or "error" in lowered:
+            return "api_response_json"
+        return "json_payload"
+    if semantic_type == "stacktrace":
+        return "traceback"
+    if semantic_type == "shell_log":
+        if "install" in lowered or "installer" in lowered or "bootstrap" in lowered:
+            return "install_log"
+        if "http" in lowered or "tls" in lowered or "connection" in lowered or "network" in lowered:
+            return "network_log"
+        return "shell_log"
+    return semantic_type
+
+
+def _semantic_payload_token_estimate(value: Any) -> tuple[int, str, str]:
+    try:
+        text = _context_trim_json_text(value)
+    except Exception:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    return max(1, (len(text) + 3) // 4), "char_heuristic_4_chars_per_token", "estimated"
+
+
 def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
     enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
     enabled = enabled_env not in {"0", "false", "off", "no"}
-    max_targets = max(
-        1,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12),
-    )
+    max_targets = max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12))
 
     report: dict[str, Any] = {
         "enabled": enabled,
@@ -3414,6 +3439,7 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
         "flattened_message_count": 0,
         "flattened_message_chars": 0,
         "semantic_types": {},
+        "semantic_plan_types": {},
         "semantic_risks": {},
         "retention_marker_counts": {},
         "low_risk_count": 0,
@@ -3426,7 +3452,6 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
         return report
 
     targets: list[dict[str, Any]] = []
-
     for index, message in enumerate(messages):
         category = _classify_history_message_for_audit(message)
         if category != "flattened_tool_transcript":
@@ -3447,6 +3472,11 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
             retention_markers,
             text_chars=text_chars,
         )
+        semantic_plan_type = _semantic_payload_plan_type_alias(
+            semantic_type,
+            retention_markers,
+            content,
+        )
 
         report["flattened_message_count"] = int(report["flattened_message_count"]) + 1
         report["flattened_message_chars"] = int(report["flattened_message_chars"]) + message_chars
@@ -3454,6 +3484,10 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
         type_bucket = report["semantic_types"].setdefault(semantic_type, {"count": 0, "chars": 0})
         type_bucket["count"] += 1
         type_bucket["chars"] += message_chars
+
+        plan_bucket = report["semantic_plan_types"].setdefault(semantic_plan_type, {"count": 0, "chars": 0})
+        plan_bucket["count"] += 1
+        plan_bucket["chars"] += message_chars
 
         risk_bucket = report["semantic_risks"].setdefault(semantic_risk, {"count": 0, "chars": 0})
         risk_bucket["count"] += 1
@@ -3473,7 +3507,9 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
                 "chars": message_chars,
                 "text_chars": text_chars,
                 "semantic_type": semantic_type,
+                "semantic_plan_type": semantic_plan_type,
                 "semantic_risk": semantic_risk,
+                "risk_level": semantic_risk,
                 "retention_markers": retention_markers,
             }
         )
@@ -3487,6 +3523,7 @@ def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
     )
     report["targets"] = targets[:max_targets]
     return report
+
 
 
 def _history_growth_breakdown(
@@ -3576,19 +3613,20 @@ def _semantic_compaction_policy_for_flattened_tool_target(
     retention_markers = target.get("retention_markers") or []
     if not isinstance(retention_markers, list):
         retention_markers = []
+    semantic_plan_type = str(
+        target.get("semantic_plan_type")
+        or _semantic_payload_plan_type_alias(semantic_type, retention_markers)
+    )
 
     marker_set = {str(marker) for marker in retention_markers}
     hard_markers = {
-        "ERROR",
-        "FAILED",
-        "Traceback",
-        "AssertionError",
-        "git hash",
-        "commit",
-        "modified files",
-        "exit code",
+        "ERROR", "FAILED", "Traceback", "AssertionError",
+        "git hash", "commit", "modified files", "exit code",
     }
     chars = max(0, int(target.get("chars") or 0))
+    estimated_tokens_before = max(1, (chars + 3) // 4)
+    token_source = "char_heuristic_4_chars_per_token"
+    token_precision = "estimated"
 
     decision: dict[str, Any] = {
         "index": target.get("index"),
@@ -3596,7 +3634,9 @@ def _semantic_compaction_policy_for_flattened_tool_target(
         "history_category": target.get("history_category"),
         "chars": chars,
         "semantic_type": semantic_type,
+        "semantic_plan_type": semantic_plan_type,
         "semantic_risk": semantic_risk,
+        "risk_level": semantic_risk,
         "retention_markers": [str(marker) for marker in retention_markers],
         "eligible_for_compaction": False,
         "policy_decision": "preserve",
@@ -3604,12 +3644,22 @@ def _semantic_compaction_policy_for_flattened_tool_target(
         "compression_strategy": "none",
         "estimated_after_chars": chars,
         "estimated_remove_chars": 0,
+        "estimated_tokens_before": estimated_tokens_before,
+        "estimated_tokens_after": estimated_tokens_before,
+        "estimated_tokens_removed": 0,
+        "tokens_before": estimated_tokens_before,
+        "tokens_after": estimated_tokens_before,
+        "tokens_removed": 0,
+        "token_estimation_source": token_source,
+        "token_estimation_precision": token_precision,
         "reason": "default_preserve",
     }
 
     if semantic_risk == "low" and semantic_type == "test_output" and "pytest summary" in marker_set:
         estimated_after = min(chars, max(128, int(summary_chars)))
         estimated_remove = max(0, chars - estimated_after)
+        estimated_tokens_after = max(1, (estimated_after + 3) // 4)
+        estimated_tokens_removed = max(0, estimated_tokens_before - estimated_tokens_after)
         decision.update(
             {
                 "eligible_for_compaction": estimated_remove > 0,
@@ -3618,6 +3668,10 @@ def _semantic_compaction_policy_for_flattened_tool_target(
                 "compression_strategy": "pytest_passed_summary_with_tail",
                 "estimated_after_chars": estimated_after,
                 "estimated_remove_chars": estimated_remove,
+                "estimated_tokens_after": estimated_tokens_after,
+                "estimated_tokens_removed": estimated_tokens_removed,
+                "tokens_after": estimated_tokens_after,
+                "tokens_removed": estimated_tokens_removed,
                 "reason": "low_risk_passed_test_output",
             }
         )
@@ -3660,17 +3714,13 @@ def _semantic_compaction_policy_for_flattened_tool_target(
     return decision
 
 
+
 def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any) -> dict[str, Any]:
     enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
     enabled = enabled_env not in {"0", "false", "off", "no"}
-    max_targets = max(
-        1,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12),
-    )
-    summary_chars = max(
-        128,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700),
-    )
+    max_targets = max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12))
+    summary_chars = max(128, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700))
+    before_tokens = _semantic_payload_token_estimate({"messages": messages})[0] if isinstance(messages, list) else 0
 
     report: dict[str, Any] = {
         "enabled": enabled,
@@ -3687,9 +3737,16 @@ def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any)
         "would_compact": False,
         "would_compact_count": 0,
         "would_remove_chars_estimate": 0,
+        "would_remove_tokens_estimate": 0,
         "estimated_messages_chars_before": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
         "estimated_messages_chars_after": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
+        "estimated_tokens_before": before_tokens,
+        "estimated_tokens_after": before_tokens,
+        "estimated_tokens_removed": 0,
+        "token_estimation_source": "char_heuristic_4_chars_per_token",
+        "token_estimation_precision": "estimated",
         "policy_decisions": {},
+        "semantic_plan_types": {},
         "targets": [],
     }
 
@@ -3697,25 +3754,19 @@ def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any)
         return report
 
     semantic_report = _flattened_tool_transcript_semantic_audit(messages)
-    semantic_targets = semantic_report.get("targets") or []
-    if not isinstance(semantic_targets, list):
-        semantic_targets = []
-
     decisions: list[dict[str, Any]] = []
-    for target in semantic_targets:
+
+    for target in semantic_report.get("targets") or []:
         if not isinstance(target, dict):
             continue
-
-        decision = _semantic_compaction_policy_for_flattened_tool_target(
-            target,
-            summary_chars=summary_chars,
-        )
+        report["candidate_count"] = int(report["candidate_count"]) + 1
+        decision = _semantic_compaction_policy_for_flattened_tool_target(target, summary_chars=summary_chars)
         decisions.append(decision)
 
-        report["candidate_count"] = int(report["candidate_count"]) + 1
         policy_decision = str(decision.get("policy_decision") or "preserve")
         report["policy_decisions"][policy_decision] = int(report["policy_decisions"].get(policy_decision, 0)) + 1
-
+        plan_type = str(decision.get("semantic_plan_type") or "unknown")
+        report["semantic_plan_types"][plan_type] = int(report["semantic_plan_types"].get(plan_type, 0)) + 1
         if bool(decision.get("eligible_for_compaction")):
             report["eligible_compaction_count"] = int(report["eligible_compaction_count"]) + 1
         elif policy_decision == "structure_only":
@@ -3727,8 +3778,10 @@ def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any)
 
     eligible = [item for item in decisions if bool(item.get("eligible_for_compaction"))]
     would_remove = sum(int(item.get("estimated_remove_chars") or 0) for item in eligible)
+    would_remove_tokens = sum(int(item.get("estimated_tokens_removed") or 0) for item in eligible)
     before = int(report["estimated_messages_chars_before"])
     after = max(0, before - would_remove)
+    after_tokens = max(0, before_tokens - would_remove_tokens)
 
     decision_order = {"compact": 0, "structure_only": 1, "preserve": 2}
     risk_order = {"high": 0, "medium": 1, "low": 2}
@@ -3746,11 +3799,16 @@ def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any)
             "would_compact": bool(eligible),
             "would_compact_count": len(eligible),
             "would_remove_chars_estimate": would_remove,
+            "would_remove_tokens_estimate": would_remove_tokens,
             "estimated_messages_chars_after": after,
+            "estimated_tokens_after": after_tokens,
+            "estimated_tokens_removed": would_remove_tokens,
+            "semantic_plan_types": dict(sorted(report["semantic_plan_types"].items())),
             "targets": decisions[:max_targets],
         }
     )
     return report
+
 
 
 def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, Any]:
@@ -4042,11 +4100,10 @@ def _build_semantic_test_output_payload_compaction_text(
     return compacted
 
 
-def _apply_flattened_tool_transcript_semantic_payload_compaction(
-    messages: Any,
-) -> tuple[Any, dict[str, Any]]:
+def _apply_flattened_tool_transcript_semantic_payload_compaction(messages: Any) -> tuple[Any, dict[str, Any]]:
     config = _flattened_tool_semantic_payload_compaction_env_config()
     mode = str(config["mode"])
+    before_tokens = _semantic_payload_token_estimate({"messages": messages})[0] if isinstance(messages, list) else 0
 
     report: dict[str, Any] = {
         "mode": mode,
@@ -4069,6 +4126,15 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
         "chars_before": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
         "chars_after": _debug_trace_json_chars({"messages": messages}) if isinstance(messages, list) else 0,
         "chars_removed": 0,
+        "tokens_before": before_tokens,
+        "tokens_after": before_tokens,
+        "tokens_removed": 0,
+        "estimated_tokens_before": before_tokens,
+        "estimated_tokens_after": before_tokens,
+        "estimated_tokens_removed": 0,
+        "token_estimation_source": "char_heuristic_4_chars_per_token",
+        "token_estimation_precision": "estimated",
+        "semantic_plan_types": {},
         "targets": [],
         "error": None,
     }
@@ -4108,13 +4174,10 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
             if index >= cutoff:
                 report["retained_recent_flattened_count"] = int(report["retained_recent_flattened_count"]) + 1
                 continue
-
             if message_chars < int(config["min_message_chars"]):
                 continue
-
             if not isinstance(message, dict):
                 continue
-
             content = message.get("content")
             if not isinstance(content, str):
                 continue
@@ -4128,6 +4191,7 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                 retention_markers,
                 text_chars=len(content),
             )
+            semantic_plan_type = _semantic_payload_plan_type_alias(semantic_type, retention_markers, content)
             policy_target = {
                 "index": index,
                 "role": str(message.get("role") or "unknown"),
@@ -4135,7 +4199,9 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                 "chars": message_chars,
                 "text_chars": len(content),
                 "semantic_type": semantic_type,
+                "semantic_plan_type": semantic_plan_type,
                 "semantic_risk": semantic_risk,
+                "risk_level": semantic_risk,
                 "retention_markers": retention_markers,
             }
             decision = _semantic_compaction_policy_for_flattened_tool_target(
@@ -4143,10 +4209,12 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                 summary_chars=int(config["summary_chars"]),
             )
 
+            plan_type = str(decision.get("semantic_plan_type") or semantic_plan_type or "unknown")
+            report["semantic_plan_types"][plan_type] = int(report["semantic_plan_types"].get(plan_type, 0)) + 1
+
             if not bool(decision.get("eligible_for_compaction")):
                 report["skipped_policy_count"] = int(report["skipped_policy_count"]) + 1
                 continue
-
             if decision.get("recommended_action") != "compact_test_output_summary":
                 report["skipped_policy_count"] = int(report["skipped_policy_count"]) + 1
                 continue
@@ -4164,9 +4232,12 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                 continue
 
             before_message_chars = _debug_trace_json_chars(message)
+            before_message_tokens, token_source, token_precision = _semantic_payload_token_estimate(message)
             message["content"] = compacted_content
             after_message_chars = _debug_trace_json_chars(message)
+            after_message_tokens, _after_token_source, _after_token_precision = _semantic_payload_token_estimate(message)
             removed = max(0, before_message_chars - after_message_chars)
+            removed_tokens = max(0, before_message_tokens - after_message_tokens)
             if removed <= 0:
                 message["content"] = content
                 continue
@@ -4181,6 +4252,16 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                     "chars": before_message_chars,
                     "estimated_after_chars": after_message_chars,
                     "estimated_remove_chars": removed,
+                    "tokens_before": before_message_tokens,
+                    "tokens_after": after_message_tokens,
+                    "tokens_removed": removed_tokens,
+                    "estimated_tokens_before": before_message_tokens,
+                    "estimated_tokens_after": after_message_tokens,
+                    "estimated_tokens_removed": removed_tokens,
+                    "token_estimation_source": token_source,
+                    "token_estimation_precision": token_precision,
+                    "semantic_plan_type": plan_type,
+                    "risk_level": semantic_risk,
                     "reason": "semantic_payload_enabled_low_risk_test_output",
                 }
             )
@@ -4195,6 +4276,9 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
             report["chars_after"] = after
             return messages, report
 
+        after_tokens = _semantic_payload_token_estimate({"messages": compacted_messages})[0]
+        removed_tokens_total = max(0, before_tokens - after_tokens)
+
         report.update(
             {
                 "applied": True,
@@ -4202,6 +4286,11 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
                 "message_count_after": len(compacted_messages),
                 "chars_after": after,
                 "chars_removed": removed_total,
+                "tokens_after": after_tokens,
+                "tokens_removed": removed_tokens_total,
+                "estimated_tokens_after": after_tokens,
+                "estimated_tokens_removed": removed_tokens_total,
+                "semantic_plan_types": dict(sorted(report["semantic_plan_types"].items())),
                 "targets": targets[: int(config["trace_targets"])],
             }
         )
@@ -4213,8 +4302,13 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(
         report["applied"] = False
         report["chars_after"] = report["chars_before"]
         report["chars_removed"] = 0
+        report["tokens_after"] = report.get("tokens_before", 0)
+        report["tokens_removed"] = 0
+        report["estimated_tokens_after"] = report.get("estimated_tokens_before", 0)
+        report["estimated_tokens_removed"] = 0
         report["targets"] = []
         return messages, report
+
 
 
 def _apply_flattened_tool_transcript_payload_compaction(
@@ -5592,8 +5686,11 @@ def _context_image_semantic_envelope_text(item: dict[str, Any]) -> str:
             f"media_types: {json.dumps(media_types, ensure_ascii=False)}",
             f"source_shapes: {json.dumps(source_shapes, ensure_ascii=False)}",
             f"original_message_sha256: {item.get('sha256')}",
+            "semantic_summary_available: false",
+            "semantic_summary_unavailable: true",
+            "semantic_summary_unavailable_reason: no_vision_caption_or_ocr_available",
             "raw_image_content_exposed: false",
-            "note: Raw image payload was replaced by display-safe semantic metadata. The first observed image payload is preserved verbatim separately.",
+            "note: Raw image payload was replaced by display-safe metadata only. No OCR, caption, or vision summary was generated; the first observed image payload is preserved verbatim separately.",
         ]
     )
 
@@ -5646,6 +5743,9 @@ def _context_image_semantic_envelope_report(
                 "byte_estimate": sum(byte_estimates) if byte_estimates else None,
                 "char_count": _json_char_size(message),
                 "sha256": hashlib.sha256(_context_trim_json_text(message).encode("utf-8", errors="replace")).hexdigest(),
+                "semantic_summary_available": False,
+                "semantic_summary_unavailable": True,
+                "semantic_summary_unavailable_reason": "no_vision_caption_or_ocr_available",
                 "raw_image_content_exposed": False,
                 "raw_content_exposed": False,
                 "redacted": True,
@@ -5667,13 +5767,17 @@ def _context_image_semantic_envelope_report(
         "protected_count": protected_count,
         "transformed_count": transformed_count if enabled and transform_enabled else 0,
         "items": items[:max_items],
+        "semantic_summary_available": False,
+        "semantic_summary_unavailable": bool(items),
+        "semantic_summary_unavailable_reason": "no_vision_caption_or_ocr_available" if items else None,
         "raw_image_content_exposed": False,
         "raw_content_exposed": False,
         "redacted": True,
         "notes": [
             "This report exposes display-safe image metadata only.",
             "The first observed image payload remains protected and verbatim.",
-            "Non-protected image messages can be replaced with semantic envelope text to reduce raw image payload pressure.",
+            "Non-protected image messages can be replaced with metadata-only semantic envelopes to reduce raw image payload pressure.",
+            "semantic_summary_unavailable=true means no OCR, caption, or external vision summary is claimed.",
         ],
     }
 
@@ -5722,6 +5826,9 @@ def _apply_context_image_semantic_envelopes(
                 "original_chars": item.get("char_count"),
                 "replacement_chars": len(envelope_text),
                 "sha256": item.get("sha256"),
+                "semantic_summary_available": False,
+                "semantic_summary_unavailable": True,
+                "semantic_summary_unavailable_reason": "no_vision_caption_or_ocr_available",
                 "raw_image_content_exposed": False,
                 "raw_content_exposed": False,
                 "redacted": True,
@@ -6676,7 +6783,34 @@ def _retained_recent_turns_policy(
     recent_start: int,
 ) -> dict[str, Any]:
     nominal_recent_start = max(0, len(messages) - max(1, int(keep_recent_messages or 1)))
+    retained_messages = messages[recent_start:]
     retained_stats = _compact_message_section_stats(messages, start=recent_start, end=len(messages))
+
+    latest_user_index = None
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if isinstance(message, dict) and message.get("role") == "user":
+            latest_user_index = index
+            break
+
+    assistant_tool_call_ids: set[str] = set()
+    tool_result_ids: set[str] = set()
+    for message in retained_messages:
+        if not isinstance(message, dict):
+            continue
+        if isinstance(message.get("tool_calls"), list):
+            for call in message.get("tool_calls") or []:
+                if isinstance(call, dict) and call.get("id"):
+                    assistant_tool_call_ids.add(str(call.get("id")))
+        if message.get("role") == "tool" and message.get("tool_call_id"):
+            tool_result_ids.add(str(message.get("tool_call_id")))
+
+    active_tool_chain_detected = bool(assistant_tool_call_ids or tool_result_ids)
+    orphaned_tool_results = sorted(tool_result_ids - assistant_tool_call_ids)
+    pending_tool_calls = sorted(assistant_tool_call_ids - tool_result_ids)
+    active_tool_chain_preserved = not orphaned_tool_results
+
+    role_counts = retained_stats["role_counts"] if isinstance(retained_stats.get("role_counts"), dict) else {}
     return {
         "available": True,
         "unit": "messages",
@@ -6691,11 +6825,25 @@ def _retained_recent_turns_policy(
         "retained_recent_chars": retained_stats["chars"],
         "first_retained_index": retained_stats["first_index"],
         "last_retained_index": retained_stats["last_index"],
+        "latest_incoming_user_index": latest_user_index,
+        "latest_incoming_user_preserved": latest_user_index is None or latest_user_index >= recent_start,
+        "recent_user_messages_preserved": int(role_counts.get("user") or 0) > 0,
+        "recent_assistant_messages_preserved": int(role_counts.get("assistant") or 0) > 0,
+        "active_tool_chain_detected": active_tool_chain_detected,
+        "active_tool_chain_preserved": active_tool_chain_preserved,
+        "assistant_tool_call_ids_sha256": hashlib.sha256(",".join(sorted(assistant_tool_call_ids)).encode("utf-8")).hexdigest() if assistant_tool_call_ids else None,
+        "tool_result_ids_sha256": hashlib.sha256(",".join(sorted(tool_result_ids)).encode("utf-8")).hexdigest() if tool_result_ids else None,
+        "pending_tool_call_count": len(pending_tool_calls),
+        "orphaned_tool_result_count": len(orphaned_tool_results),
+        "raw_content_exposed": False,
+        "redacted": True,
         "notes": [
             "The retained recent tail stays verbatim after the compacted summary.",
             "If the nominal boundary lands on a tool result, dsproxy rewinds to keep the assistant tool_call with its tool output.",
+            "latest_incoming_user_preserved and active_tool_chain_preserved are explicit audit booleans; raw recent message content is not exposed.",
         ],
     }
+
 
 
 def _compact_material_classifier_dry_run(

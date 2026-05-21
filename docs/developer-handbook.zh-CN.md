@@ -1445,3 +1445,16 @@ p2.10a92将dsproxy本地Compact prompt对齐到Codex GitHub源码模板，并记
 4. dsproxy不得声称第三方DeepSeek route具备Codex原生remote compaction能力。
 5. status metadata继续不暴露raw prompt和raw material。
 6. 公开`v0.3.9-alpha`继续冻结。
+
+## p2.10a94 Plan closure contract
+
+p2.10a94是在公开更新`v0.3.9-alpha`之前的计划闭合契约节点。它只补齐低风险审计缺口，不改变高风险运行时触发模型。
+
+规则：
+
+1. Compact的retained recent元数据必须显式暴露latest incoming user、recent user/assistant消息和active tool-chain边界是否被保留。
+2. semantic payload compaction除chars字段外，必须暴露token估算字段，并标明估算来源和精度。
+3. semantic payload compaction必须暴露`pytest_success`、`pytest_failure`、`git_diff`、`api_response_json`等计划级类型别名；这些是契约标签，不代表高风险payload可以被改写。
+4. image semantic envelope只是metadata-only封套。必须暴露`semantic_summary_unavailable=true`，不得声称已经完成OCR、caption或外部视觉摘要。
+5. 本节点不改变生产Compact/TRIM触发语义：运行时硬保护仍是char级，token-first TRIM仍是dry-run/observability。
+6. 本节点不得移动公开`v0.3.9-alpha`，不得更新GitHub Release，不得上传Release资产。

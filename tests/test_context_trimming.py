@@ -319,10 +319,17 @@ def test_image_semantic_envelope_transforms_non_first_image_without_raw_leak(mon
     assert envelope["transformed_count"] == 1
     assert envelope["items"][0]["protected"] is True
     assert envelope["items"][0]["raw_image_content_exposed"] is False
+    assert envelope["items"][0]["semantic_summary_unavailable"] is True
     assert envelope["items"][1]["transformed"] is True
+    assert envelope["items"][1]["semantic_summary_available"] is False
+    assert envelope["items"][1]["semantic_summary_unavailable_reason"] == "no_vision_caption_or_ocr_available"
+    assert envelope["semantic_summary_available"] is False
+    assert envelope["semantic_summary_unavailable"] is True
 
     assert trimmed["messages"][0]["content"] == first_image
     assert "[deepseek-proxy image semantic envelope]" in trimmed["messages"][1]["content"]
+    assert "semantic_summary_unavailable: true" in trimmed["messages"][1]["content"]
+    assert "semantic_summary_unavailable_reason: no_vision_caption_or_ocr_available" in trimmed["messages"][1]["content"]
     assert "raw_image_content_exposed: false" in trimmed["messages"][1]["content"]
 
     serialized_report = json.dumps(report, ensure_ascii=False)

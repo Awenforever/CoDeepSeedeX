@@ -1490,3 +1490,16 @@ Runtime contract:
 4. dsproxy must not claim native remote compaction for the third-party DeepSeek route.
 5. Raw prompt and raw material remain redacted from status metadata.
 6. Public `v0.3.9-alpha` remains frozen.
+
+## p2.10a94 Plan closure contract
+
+p2.10a94 is a plan-closure contract node before any public `v0.3.9-alpha` Release update. It closes low-risk audit gaps without changing the high-risk runtime trigger model.
+
+Rules:
+
+1. Compact retained-recent metadata must explicitly expose whether the latest incoming user, recent user/assistant messages, and active tool-chain boundaries are preserved.
+2. Semantic payload compaction must expose token estimate fields in addition to char fields, with a clear estimate source and precision.
+3. Semantic payload compaction must expose plan-level type aliases such as `pytest_success`, `pytest_failure`, `git_diff`, and `api_response_json`; these are contract labels and do not make high-risk payloads eligible for mutation.
+4. Image semantic envelopes are metadata-only. They must expose `semantic_summary_unavailable=true` and must not claim OCR, captioning, or external vision summaries.
+5. Production Compact and TRIM trigger semantics remain unchanged in this node: char-level hard guards remain the runtime safety path, while token-first TRIM remains dry-run/observability.
+6. This node must not move public `v0.3.9-alpha`, update the GitHub Release, or upload Release assets.

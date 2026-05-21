@@ -303,6 +303,12 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(m
     assert report["compact_material_classifier_dry_run"]["applied"] is False
     assert report["retained_recent_policy"]["available"] is True
     assert report["retained_recent_policy"]["adjusted_for_tool_result_boundary"] is True
+    assert report["retained_recent_policy"]["latest_incoming_user_preserved"] is True
+    assert report["retained_recent_policy"]["recent_user_messages_preserved"] is True
+    assert report["retained_recent_policy"]["recent_assistant_messages_preserved"] is True
+    assert report["retained_recent_policy"]["active_tool_chain_detected"] is True
+    assert report["retained_recent_policy"]["active_tool_chain_preserved"] is True
+    assert report["retained_recent_policy"]["raw_content_exposed"] is False
 
     serialized_report = json.dumps(report, ensure_ascii=False)
     assert "old user requirement that must not leak through audit metadata" not in serialized_report

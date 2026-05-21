@@ -1200,6 +1200,8 @@ def test_flattened_tool_transcript_semantic_audit_classifies_types_and_risks(mon
     assert report["semantic_types"]["test_output"]["count"] == 1
     assert report["semantic_types"]["stacktrace"]["count"] == 1
     assert report["semantic_types"]["chatty_terminal"]["count"] == 1
+    assert report["semantic_plan_types"]["pytest_success"]["count"] == 1
+    assert report["semantic_plan_types"]["traceback"]["count"] == 1
     assert report["semantic_risks"]["low"]["count"] == 1
     assert report["semantic_risks"]["medium"]["count"] == 1
     assert report["semantic_risks"]["high"]["count"] == 1
@@ -1316,8 +1318,16 @@ def test_flattened_tool_transcript_semantic_policy_dry_run_recommends_actions(mo
     assert report["policy_decisions"]["compact"] == 1
     assert report["policy_decisions"]["structure_only"] == 1
     assert report["policy_decisions"]["preserve"] == 1
+    assert report["would_remove_tokens_estimate"] > 0
+    assert report["estimated_tokens_removed"] > 0
+    assert report["semantic_plan_types"]["pytest_success"] == 1
+    assert report["semantic_plan_types"]["traceback"] == 1
     assert report["targets"][0]["recommended_action"] == "compact_test_output_summary"
+    assert report["targets"][0]["semantic_plan_type"] == "pytest_success"
+    assert report["targets"][0]["risk_level"] == "low"
+    assert report["targets"][0]["estimated_tokens_removed"] > 0
     assert report["targets"][1]["recommended_action"] == "structure_preserving_summary_dry_run_only"
+    assert report["targets"][1]["semantic_plan_type"] == "traceback"
     assert report["targets"][2]["recommended_action"] == "preserve_high_risk_transcript"
 
 
@@ -1585,6 +1595,9 @@ def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_ri
     assert report["retained_recent_flattened_count"] == 1
     assert report["compacted_count"] == 1
     assert report["chars_removed"] > 0
+    assert report["tokens_removed"] > 0
+    assert report["estimated_tokens_removed"] > 0
+    assert report["semantic_plan_types"]["pytest_success"] == 1
 
     assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
     assert "recommended_action: compact_test_output_summary" in compacted[1]["content"]
@@ -1595,7 +1608,10 @@ def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_ri
 
     assert report["targets"][0]["recommended_action"] == "compact_test_output_summary"
     assert report["targets"][0]["semantic_type"] == "test_output"
+    assert report["targets"][0]["semantic_plan_type"] == "pytest_success"
     assert report["targets"][0]["semantic_risk"] == "low"
+    assert report["targets"][0]["risk_level"] == "low"
+    assert report["targets"][0]["tokens_removed"] > 0
 
 
 def test_flattened_tool_semantic_payload_compaction_non_list_fallback(monkeypatch):

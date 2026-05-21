@@ -1110,3 +1110,21 @@ Boundary:
 - This node does not implement the remote `responses/compact` endpoint locally.
 - This node does not claim DeepSeek route native remote compaction support.
 - Public `v0.3.9-alpha` remains unmoved.
+
+## p2.10a94 Plan closure contract
+
+Date: 2026-05-21
+
+Scope:
+
+- Close low-risk plan-audit gaps before any public `v0.3.9-alpha` Release update.
+- Add explicit retained-recent Compact booleans for latest incoming user, recent user/assistant turns, and active tool-chain preservation.
+- Add semantic payload compaction token estimate fields and plan-level type aliases such as `pytest_success`, `pytest_failure`, `git_diff`, and `api_response_json`.
+- Add explicit image-envelope `semantic_summary_unavailable` metadata so metadata-only image envelopes cannot be mistaken for OCR, captioning, or vision summaries.
+- Keep production Compact/TRIM trigger semantics unchanged: runtime hard guards remain char-based while token-first TRIM remains dry-run/observability unless a later high-risk node changes runtime triggering.
+
+Boundary:
+
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset rebuild.
