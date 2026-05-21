@@ -111,7 +111,8 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert "ttl_seconds" in pricing
     assert "requires_refresh" in pricing
     assert "refresh_action" in pricing
-    assert pricing["pricing_source_state"]["requires_refresh"] is True
+    assert pricing["pricing_source_state"]["requires_refresh"] is False
+    assert pricing["pricing_source_state"]["refresh_recommended"] is False
     assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
     assert pricing["refresh"]["write_cache_requires_flag"] == "--write-cache"
@@ -193,6 +194,9 @@ def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(cache_path))
     pricing = app_module._weclaw_pricing_contract("deepseek-v4-pro")
     assert pricing["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+    assert pricing["requires_refresh"] is False
+    assert pricing["refresh_recommended"] is False
+    assert pricing["pricing_lifecycle"]["status"] == "official_cache_fresh"
     assert pricing["prices"]["output"] == 0.87
     assert pricing["refresh"]["available"] is True
 
@@ -334,4 +338,22 @@ def test_parse_deepseek_official_pricing_html_zh_cny_models():
     assert parsed["deepseek-v4-flash"]["output"] == 2.0
     assert parsed["deepseek-v4-pro"]["input_cache_hit"] == 0.025
     assert parsed["deepseek-v4-pro"]["input_cache_miss"] == 3.0
+    assert parsed["deepseek-v4-pro"]["output"] == 6.0
+
+
+def test_parse_deepseek_official_pricing_html_skips_output_length_capability_row():
+    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+
+    html = """
+    <table>
+    <tr><td>模型</td><td>deepseek-v4-flash</td><td>deepseek-v4-pro</td></tr>
+    <tr><td>输出长度</td><td>最大 384K</td></tr>
+    <tr><td>价格</td><td>百万tokens输入（缓存命中）</td><td>0.02元</td><td>0.025元（2.5折）<del>0.1元</del></td></tr>
+    <tr><td></td><td>百万tokens输入（缓存未命中）</td><td>1元</td><td>3元</td></tr>
+    <tr><td></td><td>百万tokens输出</td><td>2元</td><td>6元</td></tr>
+    </table>
+    """
+
+    parsed = _parse_deepseek_official_pricing_html(html)
+    assert parsed["deepseek-v4-flash"]["output"] == 2.0
     assert parsed["deepseek-v4-pro"]["output"] == 6.0

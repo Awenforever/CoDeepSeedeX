@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a97-weclaw-contract-stabilization`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a98-weclaw-resume-details-pricing-lifecycle`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1485,5 +1485,21 @@ p2.10a97在不移动公开Release的前提下稳定WeClaw-facing status契约。
 4. token-first TRIM状态必须绑定请求的route/profile。来自其他profile的旧报告必须以`runtime_trimming_report_profile_mismatch`标记为不可用。
 5. Details origin breakdown不能退化成全零origin加provider residual；如果本地segmentation/origin不可用，应返回`details_origin_breakdown.available=false`和reason/action。
 6. Pricing状态暴露顶层refresh/stale字段：`requires_refresh`、`refresh_action`、`fetched_at`、`updated_at`、`expires_at`、`ttl_seconds`、`source_kind`和`source_url`。
+
+Release边界：本节点不移动`v0.3.9-alpha`，不更新GitHub Release，不重建Release资产。
+
+
+## p2.10a98 WeClaw resume Details与Pricing生命周期
+
+p2.10a98稳定WeClaw resume场景下的Details和Pricing展示语义。
+
+规则：
+
+1. profile tokenizer report必须持久化到dsproxy SQLite store。runtime status可以按`profile + session_id`在resume或进程重启后恢复。
+2. 恢复得到的Details origin breakdown必须暴露`restored_from_persistence=true`、`source=sqlite_profile_tokenizer_report_store`以及session/request标识。
+3. Pricing生命周期区分required refresh和recommended refresh。bundled official snapshot是有效兜底价格数据，不应强制WeClaw显示`refresh needed`；可以显示`refresh_recommended=true`。
+4. 只有过期的official-docs cache才是`requires_refresh=true`。
+5. 官方价格parser必须忽略`输出长度 / 最大 384K`这类非价格能力行。
+6. auto-compact policy诊断暴露短展示字段，例如`display_label=legacy 75%→90%`和`short_action=repair profile`。
 
 Release边界：本节点不移动`v0.3.9-alpha`，不更新GitHub Release，不重建Release资产。

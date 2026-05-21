@@ -1182,3 +1182,22 @@ Boundary:
 - No public `v0.3.9-alpha` tag movement.
 - No GitHub Release update.
 - No Release asset rebuild.
+
+
+## p2.10a98 WeClaw resume Details and Pricing lifecycle
+
+Date: 2026-05-21
+
+Scope:
+
+- Persist profile tokenizer reports so `dsproxy status thinking --weclaw-json --session-id <session>` can restore Details origin breakdown after resume or process restart.
+- Mark restored Details origin data with `restored_from_persistence=true` and `source=sqlite_profile_tokenizer_report_store`.
+- Make Pricing lifecycle explicit: bundled official snapshots are active fallback data and should be shown as refresh-recommended, not refresh-required. Only stale official cache is refresh-required.
+- Harden the DeepSeek official pricing HTML parser against capability rows such as `输出长度 / 最大 384K`.
+- Add short display fields for auto-compact policy diagnostics: `display_label` and `short_action`.
+
+Boundary:
+
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset rebuild.

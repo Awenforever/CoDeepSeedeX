@@ -864,3 +864,99 @@ async def test_weclaw_status_marks_mismatched_trim_report_unavailable(tmp_path, 
     assert trimming["last_report"]["requested_profile"] == "deepseek-thinking"
     assert trimming["last_report"]["observed_profile"] == "deepseek"
     assert trimming["last_report"]["token_first_trim_dry_run"]["available"] is False
+
+
+@pytest.mark.asyncio
+async def test_weclaw_status_restores_profile_tokenizer_report_from_sqlite_for_resumed_session(tmp_path, monkeypatch):
+    codex_config = tmp_path / "codex.toml"
+    _write_codex_config(codex_config)
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+
+    store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
+    store.record_usage(
+        response_id="resp_restore",
+        previous_response_id=None,
+        model="deepseek-v4-flash",
+        thinking_enabled=True,
+        usage_numbers={
+            "prompt_tokens": 10,
+            "completion_tokens": 2,
+            "total_tokens": 12,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+        },
+        estimated_cost_usd=0.0,
+        purpose="primary",
+        call_index=0,
+        request_id="resp_restore",
+        session_id="sess-resume",
+        requested_model="deepseek-v4-flash",
+        effective_model="deepseek-v4-flash",
+        upstream_model="deepseek-v4-flash",
+    )
+    store.save_profile_tokenizer_report(
+        {
+            "available": True,
+            "profile": "deepseek-thinking",
+            "session_id": "sess-resume",
+            "request_id": "resp_restore",
+            "response_id": "resp_restore",
+            "model": "deepseek-v4-flash",
+            "provider": "deepseek",
+            "tokenizer": {
+                "available": True,
+                "source_kind": "managed",
+                "tokenizer_kind": "deepseek_official_current",
+                "source": "test",
+            },
+            "summary": {"available": True, "total_content_tokens": 10},
+            "prompt_subcategory_split": {
+                "available": True,
+                "scope": "current_session",
+                "session_id": "sess-resume",
+                "unit": "tokens",
+                "is_estimated": True,
+                "precision": "local_profile_tokenizer_estimate",
+                "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+                "categories": {
+                    "user": {"tokens": 4},
+                    "system": {"tokens": 6},
+                    "assistant_history": {"tokens": 0},
+                    "user_history": {"tokens": 0},
+                    "tool_output": {"tokens": 0},
+                    "environment": {"tokens": 0},
+                    "developer": {"tokens": 0},
+                    "compaction_summary": {"tokens": 0},
+                    "runtime_injected": {"tokens": 0},
+                    "other_prompt": {"tokens": 0},
+                },
+                "total_tokens": 10,
+                "latest_prompt_segmentation": {
+                    "available": True,
+                    "session_id": "sess-resume",
+                    "total_prompt_tokens_profile_tokenizer": 10,
+                    "segments": [
+                        {"index": 0, "category": "system", "source": "system", "role": "system", "char_count": 10, "token_count": 6, "sha256": "s", "preview": "sys"},
+                        {"index": 1, "category": "user", "source": "codex_request", "role": "user", "char_count": 2, "token_count": 4, "sha256": "u", "preview": "ok"},
+                    ],
+                },
+            },
+        }
+    )
+
+    app = create_app(deepseek_client=WeClawBalanceClient(), store=store)
+    app.state.last_profile_tokenizer_report_by_profile = {}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&session_id=sess-resume&include_balance=false")
+
+    assert response.status_code == 200
+    data = response.json()
+    origin = data["tokens"]["prompt_reconciliation"]["details_origin_breakdown"]
+    assert origin["available"] is True
+    assert origin["restored_from_persistence"] is True
+    assert origin["source"] == "sqlite_profile_tokenizer_report_store"
+    assert origin["components"]["user"]["tokens"] == 4
+    assert origin["components"]["system"]["tokens"] == 6

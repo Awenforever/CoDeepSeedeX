@@ -64,12 +64,14 @@ def _auto_compact_policy_contract(
     auto_compact_token_limit: int,
 ) -> dict[str, object]:
     expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_percent = int(round(expected_ratio * 100))
     expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
     observed_ratio = (
         round(auto_compact_token_limit / model_context_window, 6)
         if model_context_window > 0 and auto_compact_token_limit > 0
         else None
     )
+    observed_percent = int(round(float(observed_ratio) * 100)) if observed_ratio is not None else None
     compliant = bool(expected_threshold is not None and auto_compact_token_limit == expected_threshold)
     if observed_ratio is not None:
         compliant = compliant or abs(float(observed_ratio) - expected_ratio) <= AUTO_COMPACT_RATIO_TOLERANCE
@@ -78,16 +80,26 @@ def _auto_compact_policy_contract(
         reason = "model_context_window_or_auto_compact_threshold_missing"
         action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
         needs_migration = True
+        display_label = "auto-compact unavailable"
+        short_action = "repair profile"
     elif compliant:
         status = "managed_expected_ratio"
         reason = None
         action = None
         needs_migration = False
+        display_label = f"managed {expected_percent}%"
+        short_action = "ok"
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
         action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
         needs_migration = True
+        display_label = (
+            f"legacy {observed_percent}%→{expected_percent}%"
+            if observed_percent is not None
+            else f"legacy profile→{expected_percent}%"
+        )
+        short_action = "repair profile"
     return {
         "available": model_context_window > 0 and auto_compact_token_limit > 0,
         "unit": "tokens",
@@ -100,6 +112,8 @@ def _auto_compact_policy_contract(
         "status": status,
         "reason": reason,
         "action": action,
+        "display_label": display_label,
+        "short_action": short_action,
         "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
     }
 

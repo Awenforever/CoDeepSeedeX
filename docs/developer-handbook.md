@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a97-weclaw-contract-stabilization` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a97-weclaw-contract-stabilization`
+- Current internal development checkpoint: `p2.10a98-weclaw-resume-details-pricing-lifecycle` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a98-weclaw-resume-details-pricing-lifecycle`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1530,5 +1530,21 @@ Rules:
 4. Token-first TRIM status must be scoped to the requested route/profile. A stale report from another profile is marked unavailable with `runtime_trimming_report_profile_mismatch`.
 5. Details origin breakdown must not degrade into all-zero origins plus provider residual. If local segmentation/origin data is unavailable, `details_origin_breakdown.available=false` with reason/action.
 6. Pricing status exposes top-level refresh/stale fields: `requires_refresh`, `refresh_action`, `fetched_at`, `updated_at`, `expires_at`, `ttl_seconds`, `source_kind`, and `source_url`.
+
+Release boundary: this node does not move `v0.3.9-alpha`, update the GitHub Release, or rebuild Release assets.
+
+
+## p2.10a98 WeClaw resume Details and Pricing lifecycle
+
+p2.10a98 stabilizes resume-time Details and Pricing display semantics for WeClaw.
+
+Rules:
+
+1. Profile tokenizer reports are persisted to the dsproxy SQLite store. Runtime status may restore them by `profile + session_id` after resume or process restart.
+2. Restored Details origin breakdown must expose `restored_from_persistence=true`, `source=sqlite_profile_tokenizer_report_store`, and the session/request identifiers.
+3. Pricing lifecycle separates required refresh from recommended refresh. Bundled official snapshots are active fallback pricing data and should not force a WeClaw `refresh needed` warning; they may expose `refresh_recommended=true`.
+4. Only stale official-docs cache is `requires_refresh=true`.
+5. The official pricing parser must ignore non-price capability rows such as `输出长度 / 最大 384K`.
+6. Auto-compact policy diagnostics expose short display fields such as `display_label=legacy 75%→90%` and `short_action=repair profile`.
 
 Release boundary: this node does not move `v0.3.9-alpha`, update the GitHub Release, or rebuild Release assets.

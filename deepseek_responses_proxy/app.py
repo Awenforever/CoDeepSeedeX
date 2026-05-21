@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a97-weclaw-contract-stabilization"
+PROXY_INTERNAL_VERSION = "p2.10a98-weclaw-resume-details-pricing-lifecycle"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -553,7 +553,12 @@ def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool =
     for row in table_rows:
         joined = " ".join(row).upper()
         joined_raw = " ".join(row)
-        if "MAX OUTPUT" in joined or "MAXIMUM" in joined or "最大输出" in joined_raw:
+        if (
+            "MAX OUTPUT" in joined
+            or "MAXIMUM" in joined
+            or "最大输出" in joined_raw
+            or "输出长度" in joined_raw
+        ):
             continue
 
         key = None
@@ -582,7 +587,11 @@ def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool =
                 continue
 
         if len(details_list) < 2:
-            raise ValueError(f"pricing row for {key} does not expose both model prices: {row!r}")
+            # Official docs may include capability rows such as
+            # "输出长度 / 最大 384K" in the same table. These rows can contain
+            # output-like labels but no prices, so skip them and let the final
+            # required-key validation fail only if a real price row is missing.
+            continue
 
         for model, details in zip(["deepseek-v4-flash", "deepseek-v4-pro"], details_list[:2]):
             prices[model][key] = float(details["effective_price"])
@@ -4729,6 +4738,7 @@ class StoredResponse:
 class InMemoryResponseStore:
     def __init__(self) -> None:
         self._responses: dict[str, StoredResponse] = {}
+        self._profile_tokenizer_reports: list[dict[str, Any]] = []
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         self._responses[response["id"]] = StoredResponse(
@@ -4742,6 +4752,29 @@ class InMemoryResponseStore:
             return None
         return StoredResponse(response=deepcopy(stored.response), chat_messages=deepcopy(stored.chat_messages))
 
+    def save_profile_tokenizer_report(self, report: dict[str, Any]) -> None:
+        if not isinstance(report, dict):
+            return
+        self._profile_tokenizer_reports.append(deepcopy(report))
+        self._profile_tokenizer_reports = self._profile_tokenizer_reports[-100:]
+
+    def profile_tokenizer_report(self, profile: str, *, session_id: str | None = None) -> dict[str, Any] | None:
+        for report in reversed(self._profile_tokenizer_reports):
+            if str(report.get("profile") or "") != str(profile):
+                continue
+            if session_id and report.get("session_id") != session_id:
+                continue
+            restored = deepcopy(report)
+            restored["restored_from_persistence"] = True
+            restored["source"] = "in_memory_profile_tokenizer_report_store"
+            restored["persistence_source"] = "InMemoryResponseStore.profile_tokenizer_report"
+            split = restored.get("prompt_subcategory_split")
+            if isinstance(split, dict):
+                split.setdefault("restored_from_persistence", True)
+                split.setdefault("source", "in_memory_profile_tokenizer_report_store")
+                split.setdefault("persistence_source", "InMemoryResponseStore.profile_tokenizer_report")
+            return restored
+        return None
 
 class SQLiteResponseStore:
     """Persistent response store backed by SQLite.
@@ -4801,6 +4834,25 @@ class SQLiteResponseStore:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_usage_events_response_id ON usage_events(response_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profile_tokenizer_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    profile TEXT NOT NULL,
+                    session_id TEXT,
+                    request_id TEXT,
+                    response_id TEXT,
+                    report_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_profile_tokenizer_reports_profile_session ON profile_tokenizer_reports(profile, session_id, created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_profile_tokenizer_reports_request_id ON profile_tokenizer_reports(request_id)"
             )
             self._migrate_usage_events_schema(conn)
             conn.execute(
@@ -4892,6 +4944,74 @@ class SQLiteResponseStore:
             response=json.loads(row["response_json"]),
             chat_messages=json.loads(row["chat_messages_json"]),
         )
+
+
+    def save_profile_tokenizer_report(self, report: dict[str, Any]) -> None:
+        if not isinstance(report, dict):
+            return
+        profile = str(report.get("profile") or "").strip()
+        if not profile:
+            return
+        session_id = str(report.get("session_id") or "").strip() or None
+        request_id = str(report.get("request_id") or report.get("response_id") or "").strip() or None
+        response_id = str(report.get("response_id") or report.get("request_id") or "").strip() or None
+        payload = json.dumps(report, ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO profile_tokenizer_reports (
+                    created_at,
+                    profile,
+                    session_id,
+                    request_id,
+                    response_id,
+                    report_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (_now(), profile, session_id, request_id, response_id, payload),
+            )
+
+    def profile_tokenizer_report(self, profile: str, *, session_id: str | None = None) -> dict[str, Any] | None:
+        clauses = ["profile = ?"]
+        params: list[Any] = [str(profile)]
+        if session_id:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+        where_sql = " AND ".join(clauses)
+        with self._connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT report_json
+                FROM profile_tokenizer_reports
+                WHERE {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                params,
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            restored = json.loads(row["report_json"])
+        except Exception:
+            return None
+        if not isinstance(restored, dict):
+            return None
+        restored["restored_from_persistence"] = True
+        restored["source"] = "sqlite_profile_tokenizer_report_store"
+        restored["persistence_source"] = "SQLiteResponseStore.profile_tokenizer_report"
+        split = restored.get("prompt_subcategory_split")
+        if isinstance(split, dict):
+            split.setdefault("restored_from_persistence", True)
+            split.setdefault("source", "sqlite_profile_tokenizer_report_store")
+            split.setdefault("persistence_source", "SQLiteResponseStore.profile_tokenizer_report")
+        latest = restored.get("latest_prompt_segmentation")
+        if isinstance(latest, dict):
+            latest.setdefault("restored_from_persistence", True)
+            latest.setdefault("source", "sqlite_profile_tokenizer_report_store")
+            latest.setdefault("persistence_source", "SQLiteResponseStore.profile_tokenizer_report")
+        return restored
 
 
     def record_usage(
@@ -15055,12 +15175,14 @@ def _auto_compact_policy_contract(
     auto_compact_token_limit: int,
 ) -> dict[str, Any]:
     expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_percent = int(round(expected_ratio * 100))
     expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
     observed_ratio = (
         round(auto_compact_token_limit / model_context_window, 6)
         if model_context_window > 0 and auto_compact_token_limit > 0
         else None
     )
+    observed_percent = int(round(float(observed_ratio) * 100)) if observed_ratio is not None else None
     compliant = bool(expected_threshold is not None and auto_compact_token_limit == expected_threshold)
     if observed_ratio is not None:
         compliant = compliant or abs(float(observed_ratio) - expected_ratio) <= AUTO_COMPACT_RATIO_TOLERANCE
@@ -15070,16 +15192,26 @@ def _auto_compact_policy_contract(
         reason = "model_context_window_or_auto_compact_threshold_missing"
         action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
         needs_migration = True
+        display_label = "auto-compact unavailable"
+        short_action = "repair profile"
     elif compliant:
         status = "managed_expected_ratio"
         reason = None
         action = None
         needs_migration = False
+        display_label = f"managed {expected_percent}%"
+        short_action = "ok"
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
         action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
         needs_migration = True
+        display_label = (
+            f"legacy {observed_percent}%→{expected_percent}%"
+            if observed_percent is not None
+            else f"legacy profile→{expected_percent}%"
+        )
+        short_action = "repair profile"
 
     return {
         "available": model_context_window > 0 and auto_compact_token_limit > 0,
@@ -15093,6 +15225,8 @@ def _auto_compact_policy_contract(
         "status": status,
         "reason": reason,
         "action": action,
+        "display_label": display_label,
+        "short_action": short_action,
         "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
         "notes": [
             "The context denominator remains model_context_window_tokens.",
@@ -15100,7 +15234,6 @@ def _auto_compact_policy_contract(
             "Managed CoDeepSeedeX profiles derive the threshold from auto_compact_ratio=0.90; legacy/custom profiles may expose a different observed ratio and must be labeled instead of silently rewritten by WeClaw.",
         ],
     }
-
 
 def _weclaw_context_limit_explanation(
     *,
@@ -16483,6 +16616,10 @@ def _weclaw_prompt_split_with_provider_coverage(
         "scope": "current_session" if session_id else normalized.get("scope"),
         "session_id": session_id or normalized.get("session_id"),
         "request_id": request_id,
+        "source": normalized.get("source"),
+        "restored_from_persistence": bool(normalized.get("restored_from_persistence")),
+        "restorable_from_persistence": bool(normalized.get("restorable_from_persistence")),
+        "persistence_source": normalized.get("persistence_source"),
         "display_semantics": "token_origin_breakdown_not_classified_total",
         "display_order": details_origin_display_order,
         "components": details_origin_components,
@@ -16735,6 +16872,11 @@ def _weclaw_tokens_contract(
         prompt_subcategory_split = dict(prompt_subcategory_split)
         prompt_subcategory_split.setdefault("scope", "current_session")
         prompt_subcategory_split.setdefault("session_id", session_id)
+    if isinstance(profile_tokenizer_section, dict):
+        prompt_subcategory_split = dict(prompt_subcategory_split)
+        for key in ("source", "restored_from_persistence", "restorable_from_persistence", "persistence_source", "request_id", "response_id"):
+            if key in profile_tokenizer_section and key not in prompt_subcategory_split:
+                prompt_subcategory_split[key] = profile_tokenizer_section.get(key)
 
     attribution = _weclaw_token_attribution_contract(profile_tokenizer_section, tokenizer_contract=tokenizer_contract)
     prompt_split_precision = (
@@ -17165,12 +17307,32 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         else "project_default_config"
     )
     official_price_available = bool(official_cache and fetched_at)
-    requires_refresh = bool((is_stale is True) or not official_price_available)
-    refresh_action = (
+    official_cache_stale = bool(official_cache and is_stale is True)
+    refresh_recommended = bool((not official_price_available) and bundled_snapshot)
+    requires_refresh = official_cache_stale
+    refresh_required_action = (
         "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json"
         if requires_refresh
         else None
     )
+    refresh_recommended_action = (
+        "optional: run dsproxy pricing refresh --write-cache --json to replace the bundled snapshot with a live official-docs cache"
+        if refresh_recommended
+        else None
+    )
+    refresh_action = refresh_required_action
+    if official_cache:
+        pricing_lifecycle_status = "official_cache_stale" if official_cache_stale else "official_cache_fresh"
+        pricing_lifecycle_reason = "official_pricing_cache_stale" if official_cache_stale else None
+    elif bundled_snapshot:
+        pricing_lifecycle_status = "bundled_official_snapshot_active"
+        pricing_lifecycle_reason = "official_live_cache_not_present_using_bundled_official_snapshot"
+    elif externally_configured:
+        pricing_lifecycle_status = "external_config_user_managed"
+        pricing_lifecycle_reason = "external_pricing_config_is_user_managed"
+    else:
+        pricing_lifecycle_status = "project_default_pricing_config"
+        pricing_lifecycle_reason = "project_default_pricing_config_active"
 
     source_currency = str(metadata.get("currency") or "CNY").upper()
     target_currency = _pricing_display_currency({"currency": display_currency} if display_currency else None)
@@ -17217,7 +17379,19 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "expires_at": metadata.get("expires_at"),
         "ttl_seconds": ttl_seconds,
         "requires_refresh": requires_refresh,
+        "refresh_recommended": refresh_recommended,
         "refresh_action": refresh_action,
+        "refresh_required_action": refresh_required_action,
+        "refresh_recommended_action": refresh_recommended_action,
+        "pricing_lifecycle": {
+            "status": pricing_lifecycle_status,
+            "reason": pricing_lifecycle_reason,
+            "requires_refresh": requires_refresh,
+            "refresh_recommended": refresh_recommended,
+            "action": refresh_required_action or refresh_recommended_action,
+            "source_kind": source_kind,
+            "source_trust": source_trust,
+        },
         "prices": effective_prices,
         "current_prices": effective_prices,
         "effective_prices": effective_prices,
@@ -17268,8 +17442,15 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "ttl_seconds": ttl_seconds,
             "is_stale": is_stale if official_cache else None,
             "requires_refresh": requires_refresh,
-            "reason": None if not requires_refresh else ("official_pricing_cache_stale" if is_stale is True else "official_pricing_cache_not_available_for_active_status"),
-            "action": refresh_action,
+            "refresh_recommended": refresh_recommended,
+            "reason": (
+                "official_pricing_cache_stale"
+                if requires_refresh
+                else "official_pricing_cache_not_available_using_bundled_snapshot"
+                if refresh_recommended
+                else None
+            ),
+            "action": refresh_required_action or refresh_recommended_action,
         },
         "pricing_source_state": {
             "current_prices_are_official_live_cache": official_price_available,
@@ -17280,7 +17461,11 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "must_display_source_label": True,
             "discount_metadata_available": bool(model_metadata),
             "requires_refresh": requires_refresh,
+            "refresh_recommended": refresh_recommended,
             "refresh_action": refresh_action,
+            "refresh_required_action": refresh_required_action,
+            "refresh_recommended_action": refresh_recommended_action,
+            "lifecycle_status": pricing_lifecycle_status,
         },
         "refresh": {
             "available": True,
@@ -17292,6 +17477,8 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "writes_cache": False,
             "write_cache_requires_flag": "--write-cache",
             "current_status_requires_refresh": requires_refresh,
+            "current_status_refresh_recommended": refresh_recommended,
+            "current_status_lifecycle": pricing_lifecycle_status,
         },
     }
 
@@ -17747,13 +17934,32 @@ def create_app(
             deepseek_client=app.state.deepseek_client,
             include_balance=include_balance,
         )
+        profile_tokenizer_report = getattr(app.state, "last_profile_tokenizer_report_by_profile", {}).get(profile)
+        if (
+            session_id
+            and isinstance(profile_tokenizer_report, dict)
+            and profile_tokenizer_report.get("session_id") != session_id
+        ):
+            profile_tokenizer_report = None
+        if (
+            not isinstance(profile_tokenizer_report, dict)
+            and hasattr(app.state.store, "profile_tokenizer_report")
+        ):
+            try:
+                profile_tokenizer_report = app.state.store.profile_tokenizer_report(
+                    profile,
+                    session_id=session_id,
+                )
+            except Exception:
+                profile_tokenizer_report = None
+
         return _runtime_weclaw_status(
             profile,
             store=app.state.store,
             balance=balance,
             deepseek_client=app.state.deepseek_client,
             last_context_compaction_report=getattr(app.state, "last_context_compaction_report", None),
-            profile_tokenizer_report=getattr(app.state, "last_profile_tokenizer_report_by_profile", {}).get(profile),
+            profile_tokenizer_report=profile_tokenizer_report,
             session_id=session_id,
         )
 
@@ -18162,15 +18368,36 @@ def create_app(
             request_payload=payload,
         )
         profile_name = "deepseek-thinking" if _thinking_enabled() else "deepseek"
+        session_id_for_report = _session_id_from_request_payload(payload)
         profile_tokenizer_report = _profile_tokenizer_report_for_messages(
             messages_for_deepseek,
             profile=profile_name,
             model=model,
             provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
-            session_id=_session_id_from_request_payload(payload),
+            session_id=session_id_for_report,
             payload=chat_payload,
         )
+        profile_tokenizer_report["request_id"] = response_id
+        profile_tokenizer_report["response_id"] = response_id
+        profile_tokenizer_report["observed_at"] = _pricing_now_iso()
+        profile_tokenizer_report["restorable_from_persistence"] = True
+        split_for_report = profile_tokenizer_report.get("prompt_subcategory_split")
+        if isinstance(split_for_report, dict):
+            split_for_report.setdefault("request_id", response_id)
+            split_for_report.setdefault("response_id", response_id)
+            split_for_report.setdefault("restorable_from_persistence", True)
         app.state.last_profile_tokenizer_report_by_profile[profile_name] = profile_tokenizer_report
+        if hasattr(app.state.store, "save_profile_tokenizer_report"):
+            try:
+                app.state.store.save_profile_tokenizer_report(profile_tokenizer_report)
+            except Exception as exc:
+                _debug_trace_event(
+                    response_id,
+                    "profile_tokenizer_report_persistence_failed",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:500],
+                    session_id=session_id_for_report,
+                )
         _debug_trace_event(
             response_id,
             "profile_tokenizer_accounting",

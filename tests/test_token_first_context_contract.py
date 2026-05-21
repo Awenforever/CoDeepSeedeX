@@ -134,6 +134,8 @@ def test_context_contract_flags_legacy_auto_compact_ratio() -> None:
     assert policy["needs_migration"] is True
     assert policy["observed_auto_compact_ratio"] == 0.75
     assert policy["managed_expected_auto_compact_threshold_tokens"] == 900000
+    assert policy["display_label"] == "legacy 75%→90%"
+    assert policy["short_action"] == "repair profile"
     assert policy["action"]
     assert context["limit_explanation"]["auto_compact_policy"]["needs_migration"] is True
     assert any(item["field"] == "model_auto_compact_token_limit" for item in context["conflicts"])
