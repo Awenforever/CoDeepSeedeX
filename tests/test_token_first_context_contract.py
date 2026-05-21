@@ -225,3 +225,20 @@ def test_compaction_contract_exposes_strict_plan_token_field_names() -> None:
     assert contract["estimated_tokens_removed_by_compact"] == 450
     assert contract["trigger_tokens"] == 900
     assert contract["retention_ratio"] == 500 / 950
+
+
+def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_names() -> None:
+    contract = proxy_app._runtime_token_first_compaction_contract(None)
+
+    assert contract["available"] is False
+    assert contract["unit"] == "tokens"
+    assert contract["primary_control_unit"] == "tokens"
+    assert contract["char_control_scope"] == "fallback_debug_safety_only"
+    assert contract["estimated_tokens_before_compact"] is None
+    assert contract["estimated_tokens_after_compact"] is None
+    assert contract["estimated_tokens_removed_by_compact"] == 0
+    assert contract["before_tokens"] is None
+    assert contract["after_tokens"] is None
+    assert contract["tokens_removed"] == 0
+    assert contract["raw_content_exposed"] is False
+    assert contract["redacted"] is True

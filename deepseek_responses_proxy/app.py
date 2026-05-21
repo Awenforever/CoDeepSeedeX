@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a100-token-first-field-contract"
+PROXY_INTERNAL_VERSION = "p2.10a101-token-first-unavailable-field-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -14049,6 +14049,22 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
             "reason": "no_runtime_compaction_report_observed",
             "action": "send a model request through this dsproxy route, then re-check status",
             "source": "runtime_context_builder",
+            "before_tokens": None,
+            "after_tokens": None,
+            "tokens_removed": 0,
+            "estimated_context_tokens": None,
+            "after_estimated_context_tokens": None,
+            "estimated_tokens_before_compact": None,
+            "estimated_tokens_after_compact": None,
+            "estimated_tokens_removed_by_compact": 0,
+            "tokens_to_auto_compact": None,
+            "trigger_tokens": None,
+            "auto_compact_threshold_tokens": None,
+            "model_auto_compact_token_limit": None,
+            "retention_ratio": None,
+            "progress_ratio": None,
+            "raw_content_exposed": False,
+            "redacted": True,
         }
 
     before_tokens = _runtime_payload_guard_int(

@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a100-token-first-field-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a100-token-first-field-contract`
+- Current internal development checkpoint: `p2.10a101-token-first-unavailable-field-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a101-token-first-unavailable-field-contract`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1582,3 +1582,16 @@ Required fields:
 - Char-level sections must expose `char_control_scope=fallback_debug_safety_only`.
 
 This node does not close material filtering, Codex prompt alignment, type-aware TRIM expansion, image final validation, semantic payload compaction, or final release documentation.
+
+
+## p2.10a101 Token-first unavailable field contract
+
+When a token-first Compact report is unavailable, the contract must still expose the Plan field names. Missing fields are not allowed under strict binary acceptance.
+
+Required unavailable values:
+
+- `estimated_tokens_before_compact = null`
+- `estimated_tokens_after_compact = null`
+- `estimated_tokens_removed_by_compact = 0`
+- `primary_control_unit = tokens`
+- `char_control_scope = fallback_debug_safety_only`

@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a100-token-first-field-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a101-token-first-unavailable-field-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1537,3 +1537,16 @@ p2.10a100在二元验收口径下关闭Plan中的B1/B2/C1/D1。
 - char级段必须暴露`char_control_scope=fallback_debug_safety_only`。
 
 本节点不关闭材料过滤、Codex prompt对齐、类型感知TRIM扩展、图像最终验证、semantic payload compaction或最终Release文档。
+
+
+## p2.10a101 Token-first unavailable字段契约
+
+当token-first Compact报告不可用时，契约仍必须暴露Plan字段名。严格二元验收下不允许缺字段。
+
+不可用状态的必要值：
+
+- `estimated_tokens_before_compact = null`
+- `estimated_tokens_after_compact = null`
+- `estimated_tokens_removed_by_compact = 0`
+- `primary_control_unit = tokens`
+- `char_control_scope = fallback_debug_safety_only`

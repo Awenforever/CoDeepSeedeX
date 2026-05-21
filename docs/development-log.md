@@ -1243,3 +1243,18 @@ Boundary:
 
 - Does not close C2/C4/D2/D3/D4/D5/E/F/G.
 - Does not update public `v0.3.9-alpha`.
+
+
+## p2.10a101 Token-first unavailable field contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Close the p2.10a100 strict runtime gate failure.
+- Ensure `runtime_payload_guard.compaction.token_first` exposes Plan field names even when no live runtime compaction report has been observed:
+  - `estimated_tokens_before_compact`
+  - `estimated_tokens_after_compact`
+  - `estimated_tokens_removed_by_compact`
+- Unavailable token-first sections now return `None` for unavailable before/after estimates and `0` for removed tokens.
+- This node does not close later Plan items C2/C4/D2/D3/D4/D5/E/F/G.
