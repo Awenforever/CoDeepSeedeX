@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.11a1-semantic-payload-safety-core"
+PROXY_INTERNAL_VERSION = "p2.11a2-semantic-payload-enabled-runtime-status"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -1300,7 +1300,7 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
         "estimated_tokens_before", "estimated_tokens_after", "estimated_tokens_removed",
         "token_estimation_source", "token_estimation_precision", "semantic_plan_types",
         "semantic_type_counts", "risk_counts", "policy_decisions", "skip_reasons",
-        "safety_core_version", "safety_core",
+        "safety_core_version", "safety_core", "canary_guard", "error",
     ]
     summary: dict[str, Any] = {"present": True}
     for key in keys:
@@ -1323,6 +1323,9 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
                 "estimated_remove_chars": targets[0].get("estimated_remove_chars"),
                 "estimated_tokens_removed": targets[0].get("estimated_tokens_removed"),
                 "tokens_removed": targets[0].get("tokens_removed"),
+                "safe_payload_mutation_allowed": targets[0].get("safe_payload_mutation_allowed"),
+                "safety_core_version": targets[0].get("safety_core_version"),
+                "source": targets[0].get("source"),
                 "reason": targets[0].get("reason"),
             }
     return summary
@@ -1356,6 +1359,7 @@ def _semantic_compaction_events_from_runtime_snapshot(snapshot: Any) -> dict[str
     return result
 
 
+
 def _semantic_compaction_rollout_assessment(
     *,
     config: dict[str, Any],
@@ -1380,11 +1384,6 @@ def _semantic_compaction_rollout_assessment(
     blockers: list[str] = []
     warnings: list[str] = []
 
-    if mode == "enabled":
-        warnings.append("semantic_payload_compaction_already_enabled")
-    elif mode != "dry_run":
-        blockers.append("semantic_payload_compaction_not_in_dry_run")
-
     if not bool(audit.get("present")):
         blockers.append("semantic_audit_event_missing")
     if not bool(policy.get("present")):
@@ -1392,23 +1391,63 @@ def _semantic_compaction_rollout_assessment(
     if not bool(payload.get("present")):
         blockers.append("semantic_payload_compaction_event_missing")
 
-    if bool(policy.get("present")) and not bool(policy.get("would_compact")):
-        warnings.append("no_semantic_compaction_candidate_seen")
-    if bool(payload.get("present")) and payload.get("mode") == "enabled" and payload.get("applied") is not False:
-        warnings.append("latest_payload_event_not_dry_run")
-
-    safe_to_enable = mode == "dry_run" and not blockers
+    payload_mode = str(payload.get("mode") or "")
+    payload_effective_mode = str(payload.get("effective_mode") or payload_mode or "")
+    payload_reason = str(payload.get("reason") or "")
+    payload_error = payload.get("error")
+    payload_canary = payload.get("canary_guard")
+    payload_canary_allowed = None
+    if isinstance(payload_canary, dict):
+        payload_canary_allowed = bool(payload_canary.get("allowed"))
 
     if mode == "enabled":
+        warnings.append("semantic_payload_compaction_enabled_monitoring_active")
+        if bool(payload.get("present")):
+            if payload_mode != "enabled":
+                blockers.append("semantic_payload_enabled_runtime_event_not_enabled")
+            if payload_effective_mode not in {"enabled", ""}:
+                blockers.append("semantic_payload_enabled_effective_mode_not_enabled")
+            if payload_canary_allowed is False:
+                blockers.append("semantic_payload_enabled_canary_not_allowed")
+            if payload_reason == "exception_fallback_to_original_messages" or payload_error:
+                blockers.append("semantic_payload_enabled_runtime_fallback")
+    elif mode == "dry_run":
+        pass
+    elif mode == "off":
+        blockers.append("semantic_payload_compaction_off")
+    else:
+        blockers.append("semantic_payload_compaction_unknown_mode")
+
+    if bool(policy.get("present")) and not bool(policy.get("would_compact")):
+        warnings.append("no_semantic_compaction_candidate_seen")
+
+    safe_to_enable = mode == "dry_run" and not blockers
+    enabled_monitoring_healthy = mode == "enabled" and not blockers
+
+    if enabled_monitoring_healthy:
+        runtime_state = "enabled_monitoring"
         recommendation = "monitor_enabled_rollout"
     elif safe_to_enable:
+        runtime_state = "dry_run_ready"
         recommendation = "safe_to_enable_for_limited_session"
+    elif mode == "off":
+        runtime_state = "off"
+        recommendation = "enable_dry_run_before_payload_compaction"
     else:
-        recommendation = "keep_dry_run_until_blockers_clear"
+        runtime_state = "dry_run_blocked" if mode == "dry_run" else "enabled_blocked"
+        recommendation = "keep_dry_run_until_blockers_clear" if mode != "enabled" else "disable_enabled_mode_or_fix_blockers"
 
     return {
         "safe_to_enable_payload_compaction": safe_to_enable,
+        "enabled_monitoring_healthy": enabled_monitoring_healthy,
+        "runtime_state": runtime_state,
         "current_payload_mode": mode,
+        "latest_payload_mode": payload_mode or None,
+        "latest_payload_effective_mode": payload_effective_mode or None,
+        "latest_payload_reason": payload_reason or None,
+        "latest_payload_applied": payload.get("applied") if isinstance(payload, dict) else None,
+        "latest_payload_error": payload_error,
+        "latest_payload_canary_allowed": payload_canary_allowed,
         "blockers": blockers,
         "warnings": warnings,
         "recommendation": recommendation,
@@ -16049,15 +16088,19 @@ def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
     semantic = payload.get("semantic_compaction")
     if isinstance(semantic, dict):
         rollout = semantic.get("rollout")
-        if isinstance(rollout, dict) and rollout.get("safe_to_enable_payload_compaction") is False:
-            degraded_fields.append(
-                _weclaw_degraded_field(
-                    "semantic_compaction.rollout",
-                    rollout,
-                    default_reason="semantic_payload_compaction_not_safe_to_enable",
-                    default_action="keep semantic payload compaction disabled until blockers clear",
+        if isinstance(rollout, dict):
+            rollout_blockers = [str(item) for item in (rollout.get("blockers") or [])]
+            runtime_state = str(rollout.get("runtime_state") or "")
+            degraded_runtime_state = runtime_state in {"dry_run_blocked", "enabled_blocked", "off"}
+            if rollout_blockers or degraded_runtime_state:
+                degraded_fields.append(
+                    _weclaw_degraded_field(
+                        "semantic_compaction.rollout",
+                        rollout,
+                        default_reason="semantic_payload_compaction_rollout_blocked",
+                        default_action="keep semantic payload compaction in dry-run or fix enabled-mode blockers before relying on payload mutation",
+                    )
                 )
-            )
 
     for item in degraded_fields:
         action = item.get("action")

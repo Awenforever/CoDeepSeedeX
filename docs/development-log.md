@@ -1372,3 +1372,19 @@ Scope:
 Release boundary:
 
 - Public `v0.3.9-alpha` is not moved in this node.
+
+## p2.11a2 Semantic payload enabled runtime status
+
+Date: 2026-05-22
+
+Scope:
+
+- Separate dry-run readiness from enabled-mode runtime health for semantic payload compaction.
+- Add `runtime_state`, `enabled_monitoring_healthy`, latest payload mode/effective mode/reason/error/canary status to rollout assessment.
+- Preserve `safe_to_enable_payload_compaction` as a dry-run-only readiness signal.
+- Avoid WeClaw degraded diagnostics when enabled mode is healthy and actively monitored.
+- Keep explicit blockers for missing events, non-enabled runtime payload events, canary rejection, and fallback/error.
+
+Release boundary:
+
+- Public `v0.3.9-alpha` is not moved in this node.

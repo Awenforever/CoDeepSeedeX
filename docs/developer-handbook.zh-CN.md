@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.11a1-semantic-payload-safety-core`
-- 最新闭合文档同步检查点：`p2.11a1-semantic-payload-safety-core`
+- 当前内部开发检查点：`p2.11a2-semantic-payload-enabled-runtime-status`
+- 最新闭合文档同步检查点：`p2.11a2-semantic-payload-enabled-runtime-status`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1638,4 +1638,16 @@ p2.11a1开启p2.11线，因为p2.10原A-G计划已经闭合，p2.10a115只是补
 2. system/developer消息、recent flattened transcript、medium-risk transcript、high-risk transcript、diff/patch/traceback/json/search/shell日志和unknown transcript必须preserve或仅作为structure-only元数据处理。
 3. safety report必须暴露safety_core_version、semantic type counts、risk counts、policy decisions、skip reasons、token estimates和display-safe target metadata。
 4. enabled模式必须保留canary gate和fallback-to-original行为。
+5. 本节点不更新公开`v0.3.9-alpha`Release。
+
+## p2.11a2 Semantic payload enabled runtime status
+
+p2.11a2将dry-run启用准备度和enabled模式运行健康状态分开。
+
+规则：
+
+1. `safe_to_enable_payload_compaction`只表示dry-run证据是否足以进入有限会话启用。
+2. 一旦mode为`enabled`，若最新runtime事件也是enabled、canary允许且没有fallback/error阻塞，status必须报告`runtime_state=enabled_monitoring`。
+3. WeClaw diagnostics不能仅因为`safe_to_enable_payload_compaction=false`就把enabled监控状态标记为degraded。
+4. enabled模式阻塞仍必须明确暴露：semantic事件缺失、payload事件不是enabled、canary拒绝、fallback或error。
 5. 本节点不更新公开`v0.3.9-alpha`Release。

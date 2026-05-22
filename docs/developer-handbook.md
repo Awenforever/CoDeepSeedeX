@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.11a1-semantic-payload-safety-core`
-- Latest closed documentation sync checkpoint: `p2.11a1-semantic-payload-safety-core`
+- Current internal development checkpoint: `p2.11a2-semantic-payload-enabled-runtime-status`
+- Latest closed documentation sync checkpoint: `p2.11a2-semantic-payload-enabled-runtime-status`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1683,4 +1683,16 @@ Rules:
 2. System/developer messages, recent flattened transcripts, medium-risk transcripts, high-risk transcripts, diff/patch/traceback/json/search/shell logs, and unknown transcripts must be preserved or treated as structure-only metadata.
 3. Safety reporting must expose safety_core_version, semantic type counts, risk counts, policy decisions, skip reasons, token estimates, and display-safe target metadata.
 4. Enabled mode must keep the canary gate and fallback-to-original behavior.
+5. This node does not update the public `v0.3.9-alpha` Release.
+
+## p2.11a2 Semantic payload enabled runtime status
+
+p2.11a2 separates dry-run readiness from enabled-mode runtime health.
+
+Rules:
+
+1. `safe_to_enable_payload_compaction` only answers whether dry-run evidence is sufficient to enable a limited session.
+2. Once mode is `enabled`, status must report `runtime_state=enabled_monitoring` when the latest runtime event is enabled, canary-allowed, and has no fallback/error blockers.
+3. WeClaw diagnostics must not mark enabled monitoring as degraded merely because `safe_to_enable_payload_compaction=false`.
+4. Enabled-mode blockers remain explicit: missing semantic events, non-enabled payload event, canary rejection, or fallback/error.
 5. This node does not update the public `v0.3.9-alpha` Release.

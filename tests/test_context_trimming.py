@@ -660,3 +660,66 @@ def test_semantic_payload_compaction_canary_blocks_enabled_without_allow_env(mon
     assert report["canary_guard"]["allowed"] is False
     assert "semantic_payload_canary_allow_enabled_not_set" in report["canary_guard"]["blockers"]
     assert report["canary_guard"]["config"]["allow_env_var"] == "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED"
+
+
+def test_semantic_payload_rollout_distinguishes_dry_run_ready_and_enabled_monitoring(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    messages = proxy_app._semantic_compaction_selftest_messages()
+    audit_report = proxy_app._flattened_tool_transcript_semantic_audit(messages)
+    policy_report = proxy_app._flattened_tool_transcript_semantic_compaction_policy_dry_run(messages)
+
+    dry_payload = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)[1]
+    dry_latest = {
+        "semantic_audit": proxy_app._semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_audit", **audit_report}
+        ),
+        "semantic_policy_dry_run": proxy_app._semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_policy_dry_run", **policy_report}
+        ),
+        "semantic_payload_compaction": proxy_app._semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_payload_compaction_applied", **dry_payload}
+        ),
+    }
+    dry_rollout = proxy_app._semantic_compaction_rollout_assessment(
+        config={"semantic_payload_compaction": {"mode": "dry_run"}},
+        latest=dry_latest,
+    )
+    assert dry_rollout["runtime_state"] == "dry_run_ready"
+    assert dry_rollout["safe_to_enable_payload_compaction"] is True
+    assert dry_rollout["enabled_monitoring_healthy"] is False
+    assert dry_rollout["blockers"] == []
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    enabled_payload = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)[1]
+    enabled_latest = {
+        "semantic_audit": dry_latest["semantic_audit"],
+        "semantic_policy_dry_run": dry_latest["semantic_policy_dry_run"],
+        "semantic_payload_compaction": proxy_app._semantic_compaction_event_summary(
+            {"event": "flattened_tool_transcript_semantic_payload_compaction_applied", **enabled_payload}
+        ),
+    }
+    enabled_rollout = proxy_app._semantic_compaction_rollout_assessment(
+        config={"semantic_payload_compaction": {"mode": "enabled"}},
+        latest=enabled_latest,
+    )
+    assert enabled_rollout["runtime_state"] == "enabled_monitoring"
+    assert enabled_rollout["safe_to_enable_payload_compaction"] is False
+    assert enabled_rollout["enabled_monitoring_healthy"] is True
+    assert enabled_rollout["latest_payload_canary_allowed"] is True
+    assert enabled_rollout["latest_payload_mode"] == "enabled"
+    assert enabled_rollout["blockers"] == []
+    assert "semantic_payload_compaction_enabled_monitoring_active" in enabled_rollout["warnings"]
+
+    diagnostics = proxy_app._weclaw_diagnostics_contract(
+        {"semantic_compaction": {"rollout": enabled_rollout}}
+    )
+    assert all(
+        item["path"] != "semantic_compaction.rollout"
+        for item in diagnostics["degraded_fields"]
+    )
