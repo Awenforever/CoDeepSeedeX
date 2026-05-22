@@ -97,3 +97,11 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - `provider_residual` must not be merged into `other_prompt`; hide it when it is within the reported tolerance.
 - Token-first context-window fields and char-level payload guard fields are intentionally separate.
 - Raw prompt, raw material, and raw image content remain redacted from normal status surfaces.
+
+
+### Final Plan closure / tests and docs contract
+
+- Adds final strict-binary Plan closure for A/B/C/D/E/F/G.
+- Confirms 750k is retained only as a legacy or negative-test marker, not as a live runtime threshold.
+- Confirms the live managed context contract: 1M context window, 900k auto-compact threshold, and `auto_compact_ratio=0.90`.
+- Confirms semantic payload compaction test coverage, Codex native Compact alignment evidence, and WeClaw/status field ownership.

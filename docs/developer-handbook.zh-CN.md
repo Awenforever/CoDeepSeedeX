@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a108-semantic-payload-compaction-tests`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a110-final-tests-docs-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1564,3 +1564,19 @@ p2.10a108关闭Plan中的E项。semantic payload compaction仍与主对话COMPAC
 - semantic type与risk字段；
 - canary gate；
 - observe、dry-run、canary、validation分阶段启用标记。
+
+
+## p2.10a110最终测试与文档契约
+
+p2.10a110关闭Plan中的G项。
+
+最终契约：
+
+- `750000`只能作为历史、legacy或负例测试输入出现。
+- 当前受管context契约为：
+  - `model_context_window_tokens = 1000000`
+  - `auto_compact_ratio = 0.90`
+  - `model_auto_compact_token_limit = 900000`
+  - `auto_compact_threshold_tokens = 900000`
+- full tests必须在清理本地`DEEPSEEK_*`和provider key变量后的环境中执行。如果raw本地环境失败而sanitized full tests通过，应归类为外部环境污染。
+- WeClaw/status客户端必须直接消费dsproxy字段，不得自行重构context、Compact、Trim、pricing、token分类或payload-safety策略。

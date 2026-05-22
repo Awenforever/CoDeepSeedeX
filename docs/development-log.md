@@ -1215,7 +1215,7 @@ Scope:
 - `dsproxy profile repair --managed-only --json` now repairs `model_auto_compact_token_limit` to the ratio-derived value.
 - Current user Codex profiles were backed up and repaired so `deepseek` and `deepseek-thinking` use `900000` for a `1000000` token window.
 - TRIM dry-run now uses the explicit active profile when deriving the token-first runtime target.
-- Tests were updated so `750000` is only a legacy input/negative marker, never the current correct value.
+- Tests were updated so `750000` is only a legacy input/negative marker, never a live runtime threshold.
 
 Strict rule: no Plan item is considered complete unless tests and runtime gates pass with exact values.
 
@@ -1281,3 +1281,24 @@ Scope:
   - canary gating,
   - staged enablement markers.
 - Does not close F or G.
+
+
+## p2.10a110 Final tests and docs contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Close Plan item G under strict binary acceptance.
+- Confirm tests cover the completed A/B/C/D/E/F rules.
+- Keep `750000` only as historical, legacy, or negative-test input; it is not a live runtime threshold.
+- Record the managed context contract:
+  - `model_context_window_tokens = 1000000`
+  - `auto_compact_ratio = 0.90`
+  - `model_auto_compact_token_limit = 900000`
+  - `auto_compact_threshold_tokens = 900000`
+- Validate full tests under sanitized environment. The p2.10a110 read-only audit showed raw-environment failures from local environment leakage:
+  - `DEEPSEEK_PROXY_MODEL` affected model-default assertions.
+  - image-provider environment affected provider mock tests.
+  Sanitized full tests are the authoritative CI-style gate for this node.
+- Public `v0.3.9-alpha` is not moved by this internal node.
