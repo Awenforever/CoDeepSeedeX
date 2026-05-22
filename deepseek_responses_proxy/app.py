@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a4-auto-compact-ratio-only-contract"
+PROXY_INTERNAL_VERSION = "p2.12a5-token-compact-status-semantics"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -6184,6 +6184,7 @@ def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict
     }
 
 
+
 def _runtime_token_first_compaction_budget(
     *,
     messages: list[dict[str, Any]],
@@ -6198,7 +6199,9 @@ def _runtime_token_first_compaction_budget(
 
     threshold = int(context_contract.get("auto_compact_threshold_tokens") or 0)
     estimated = int(token_estimate.get("estimated_tokens") or 0)
-    tokens_to_auto_compact = threshold - estimated if threshold > 0 else None
+    threshold_exceeded = bool(threshold > 0 and estimated >= threshold)
+    tokens_until_auto_compact = max(0, threshold - estimated) if threshold > 0 else None
+    tokens_over_auto_compact_threshold = max(0, estimated - threshold) if threshold > 0 else 0
 
     return {
         "available": bool(context_contract.get("available")) and threshold > 0,
@@ -6219,7 +6222,10 @@ def _runtime_token_first_compaction_budget(
         "model_auto_compact_token_limit": context_contract.get("model_auto_compact_token_limit"),
         "auto_compact_ratio": context_contract.get("auto_compact_ratio"),
         "auto_compact_policy": context_contract.get("auto_compact_policy"),
-        "tokens_to_auto_compact": tokens_to_auto_compact,
+        "tokens_to_auto_compact": tokens_until_auto_compact,
+        "tokens_until_auto_compact_threshold": tokens_until_auto_compact,
+        "tokens_over_auto_compact_threshold": tokens_over_auto_compact_threshold,
+        "threshold_exceeded": threshold_exceeded,
         "profile": context_contract.get("profile"),
         "profile_found": context_contract.get("profile_found"),
         "char_fallback_scope": "emergency_safety_only",
@@ -7608,7 +7614,9 @@ def _resolve_compaction_budget_policy(
     if isinstance(token_budget, dict) and bool(token_budget.get("available")):
         estimated_context_tokens = int(token_budget.get("estimated_context_tokens") or 0)
         threshold_tokens = int(token_budget.get("auto_compact_threshold_tokens") or 0)
-        tokens_to_auto_compact = threshold_tokens - estimated_context_tokens if threshold_tokens > 0 else None
+        threshold_exceeded = bool(threshold_tokens > 0 and estimated_context_tokens >= threshold_tokens)
+        tokens_to_auto_compact = max(0, threshold_tokens - estimated_context_tokens) if threshold_tokens > 0 else None
+        tokens_over_auto_compact_threshold = max(0, estimated_context_tokens - threshold_tokens) if threshold_tokens > 0 else 0
 
         has_previous_compaction = growth["last_compaction_summary_index"] is not None
         cooldown_applies = (
@@ -7651,6 +7659,9 @@ def _resolve_compaction_budget_policy(
                 "profile": token_budget.get("profile"),
                 "profile_found": token_budget.get("profile_found"),
                 "tokens_to_auto_compact": tokens_to_auto_compact,
+                "tokens_until_auto_compact_threshold": tokens_to_auto_compact,
+                "tokens_over_auto_compact_threshold": tokens_over_auto_compact_threshold,
+                "threshold_exceeded": threshold_exceeded,
                 "token_budget": token_budget,
                 "char_fallback_scope": "emergency_safety_only",
             }
@@ -14549,6 +14560,7 @@ def _runtime_payload_guard_status(
 
 
 
+
 def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
     if not isinstance(report, dict):
         return {
@@ -14569,6 +14581,9 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
             "estimated_tokens_after_compact": None,
             "estimated_tokens_removed_by_compact": 0,
             "tokens_to_auto_compact": None,
+            "tokens_until_auto_compact_threshold": None,
+            "tokens_over_auto_compact_threshold": 0,
+            "threshold_exceeded": False,
             "trigger_tokens": None,
             "auto_compact_threshold_tokens": None,
             "model_auto_compact_token_limit": None,
@@ -14598,19 +14613,31 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
     )
     if removed_tokens is None:
         removed_tokens = max(0, int(before_tokens or 0) - int(after_tokens or 0)) if before_tokens is not None and after_tokens is not None else 0
-    try:
-        tokens_to_auto_compact_value = int(report.get("tokens_to_auto_compact")) if report.get("tokens_to_auto_compact") is not None else None
-    except (TypeError, ValueError):
-        tokens_to_auto_compact_value = None
 
+    threshold_exceeded = bool(trigger_tokens is not None and before_tokens is not None and before_tokens >= trigger_tokens)
+    raw_tokens_to_auto_compact = _runtime_payload_guard_int(report.get("tokens_to_auto_compact"))
+    tokens_until_auto_compact = raw_tokens_to_auto_compact
+    if tokens_until_auto_compact is None and trigger_tokens is not None and before_tokens is not None:
+        tokens_until_auto_compact = trigger_tokens - before_tokens
+    if tokens_until_auto_compact is not None:
+        tokens_until_auto_compact = max(0, tokens_until_auto_compact)
+    tokens_over_auto_compact_threshold = _runtime_payload_guard_int(report.get("tokens_over_auto_compact_threshold"))
+    if tokens_over_auto_compact_threshold is None:
+        tokens_over_auto_compact_threshold = max(0, before_tokens - trigger_tokens) if before_tokens is not None and trigger_tokens is not None else 0
+
+    reason = report.get("reason")
     if compacted:
         status = "compacted"
+        action = None
     elif before_tokens is None:
         status = "unavailable"
-    elif tokens_to_auto_compact_value is not None and tokens_to_auto_compact_value <= 0:
-        status = "triggered"
+        action = "send a model request through this dsproxy route, then re-check status"
+    elif threshold_exceeded:
+        status = "skipped"
+        action = "Compact threshold was exceeded, but runtime did not compact because the reported reason prevented mutation"
     else:
         status = "not_triggered"
+        action = None
 
     retention_ratio = None
     if before_tokens is not None and before_tokens > 0 and after_tokens is not None:
@@ -14629,7 +14656,9 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         "mode": "production",
         "status": status,
         "compacted": compacted,
-        "reason": report.get("reason"),
+        "threshold_exceeded": threshold_exceeded,
+        "reason": reason,
+        "action": action,
         "source": "dsproxy_runtime_token_first_compaction_report",
         "observed_at": report.get("observed_at"),
         "runtime_trigger_source": report.get("runtime_trigger_source"),
@@ -14655,7 +14684,9 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         "estimated_tokens_before_compact": before_tokens,
         "estimated_tokens_after_compact": after_tokens,
         "estimated_tokens_removed_by_compact": removed_tokens,
-        "tokens_to_auto_compact": tokens_to_auto_compact_value,
+        "tokens_to_auto_compact": tokens_until_auto_compact,
+        "tokens_until_auto_compact_threshold": tokens_until_auto_compact,
+        "tokens_over_auto_compact_threshold": tokens_over_auto_compact_threshold,
         "retention_numerator_tokens": after_tokens,
         "retention_denominator_tokens": before_tokens,
         "retention_ratio": retention_ratio,
@@ -14924,8 +14955,12 @@ def _runtime_payload_guard_contract(
     compaction_after_tokens = _runtime_payload_guard_int(token_compaction_contract.get("after_tokens"))
     compaction_trigger_tokens = _runtime_payload_guard_int(token_compaction_contract.get("trigger_tokens") or token_compaction_contract.get("auto_compact_threshold_tokens"))
     compaction_tokens_to_trigger = None
+    compaction_tokens_over_threshold = 0
+    compaction_threshold_exceeded = False
     if compaction_before_tokens is not None and compaction_trigger_tokens is not None:
         compaction_tokens_to_trigger = max(0, compaction_trigger_tokens - compaction_before_tokens)
+        compaction_tokens_over_threshold = max(0, compaction_before_tokens - compaction_trigger_tokens)
+        compaction_threshold_exceeded = compaction_before_tokens >= compaction_trigger_tokens
     compaction_capacity_ratio = _token_ratio(compaction_before_tokens, compaction_trigger_tokens)
 
     trim_before_tokens = _runtime_payload_guard_int(
@@ -15018,6 +15053,9 @@ def _runtime_payload_guard_contract(
         "model_context_window_tokens": token_compaction_contract.get("model_context_window_tokens"),
         "target_tokens": token_compaction_contract.get("target_tokens"),
         "tokens_to_auto_compact": token_compaction_contract.get("tokens_to_auto_compact") if token_compaction_contract.get("tokens_to_auto_compact") is not None else compaction_tokens_to_trigger,
+        "tokens_until_auto_compact_threshold": token_compaction_contract.get("tokens_until_auto_compact_threshold") if token_compaction_contract.get("tokens_until_auto_compact_threshold") is not None else compaction_tokens_to_trigger,
+        "tokens_over_auto_compact_threshold": token_compaction_contract.get("tokens_over_auto_compact_threshold") if token_compaction_contract.get("tokens_over_auto_compact_threshold") is not None else compaction_tokens_over_threshold,
+        "threshold_exceeded": bool(token_compaction_contract.get("threshold_exceeded")) if token_compaction_contract.get("threshold_exceeded") is not None else compaction_threshold_exceeded,
         "usage_ratio": compaction_capacity_ratio,
         "capacity_progress_ratio": compaction_capacity_ratio,
         "capacity_progress_basis": "estimated_context_tokens_over_auto_compact_threshold_tokens",
@@ -15499,6 +15537,68 @@ def _profile_tokenizer_message_text(message: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
+
+def _runtime_token_first_status_context(
+    context_status: dict[str, Any],
+    runtime_payload_guard: dict[str, Any],
+) -> dict[str, Any]:
+    compaction = runtime_payload_guard.get("compaction") if isinstance(runtime_payload_guard, dict) else {}
+    trimming = runtime_payload_guard.get("trimming") if isinstance(runtime_payload_guard, dict) else {}
+    compaction_context = context_status.get("compaction") if isinstance(context_status, dict) else {}
+    trimming_context = context_status.get("trimming") if isinstance(context_status, dict) else {}
+    return {
+        "available": True,
+        "unit": "tokens",
+        "source": "dsproxy_runtime.token_first_contracts",
+        "compaction": {
+            "available": bool(compaction.get("available")) if isinstance(compaction, dict) else False,
+            "unit": "tokens",
+            "status": compaction.get("status") if isinstance(compaction, dict) else "unavailable",
+            "reason": compaction.get("reason") if isinstance(compaction, dict) else None,
+            "current_tokens": compaction.get("current_tokens") if isinstance(compaction, dict) else None,
+            "trigger_tokens": compaction.get("trigger_tokens") if isinstance(compaction, dict) else None,
+            "threshold_exceeded": bool(compaction.get("threshold_exceeded")) if isinstance(compaction, dict) else False,
+            "tokens_to_auto_compact": compaction.get("tokens_to_auto_compact") if isinstance(compaction, dict) else None,
+            "tokens_until_auto_compact_threshold": compaction.get("tokens_until_auto_compact_threshold") if isinstance(compaction, dict) else None,
+            "tokens_over_auto_compact_threshold": compaction.get("tokens_over_auto_compact_threshold") if isinstance(compaction, dict) else 0,
+            "legacy_char_debug": {
+                "available": isinstance(compaction_context, dict) and bool(compaction_context.get("config")),
+                "scope": "diagnostic_only_not_a_runtime_trigger",
+                "config": compaction_context.get("config") if isinstance(compaction_context, dict) else None,
+                "last_report": compaction_context.get("last_report") if isinstance(compaction_context, dict) else None,
+                "control_disabled": True,
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        },
+        "trimming": {
+            "available": bool(trimming.get("available")) if isinstance(trimming, dict) else False,
+            "unit": "tokens",
+            "status": trimming.get("status") if isinstance(trimming, dict) else "unavailable",
+            "reason": trimming.get("reason") if isinstance(trimming, dict) else None,
+            "current_tokens": trimming.get("current_tokens") if isinstance(trimming, dict) else None,
+            "max_context_tokens": trimming.get("max_context_tokens") if isinstance(trimming, dict) else None,
+            "legacy_char_debug": {
+                "available": isinstance(trimming_context, dict) and bool(trimming_context.get("config")),
+                "scope": "diagnostic_only_not_a_runtime_trigger",
+                "config": trimming_context.get("config") if isinstance(trimming_context, dict) else None,
+                "last_report": trimming_context.get("last_report") if isinstance(trimming_context, dict) else None,
+                "control_disabled": True,
+                "raw_content_exposed": False,
+                "redacted": True,
+            },
+        },
+        "legacy_char_debug": {
+            "available": True,
+            "unit": "chars",
+            "scope": "diagnostic_only_not_a_runtime_trigger",
+            "context": context_status,
+            "control_disabled": True,
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
+    }
+
 def _profile_tokenizer_count_text(tokenizer: Any, text: str) -> int:
     if not text:
         return 0
@@ -15963,6 +16063,7 @@ def _auto_compact_policy_contract(
         ],
     }
 
+
 def _weclaw_context_limit_explanation(
     *,
     model_context_window: int,
@@ -15985,6 +16086,15 @@ def _weclaw_context_limit_explanation(
         model_context_window=model_context_window,
         auto_compact_token_limit=auto_compact_token_limit,
     )
+    managed_ratio = auto_compact_policy.get("managed_expected_auto_compact_ratio")
+    if managed_ratio is None:
+        managed_ratio = auto_compact_ratio if auto_compact_ratio is not None else _managed_auto_compact_ratio()
+    try:
+        managed_ratio_float = float(managed_ratio)
+    except (TypeError, ValueError):
+        managed_ratio_float = _managed_auto_compact_ratio()
+    managed_ratio_label = f"{managed_ratio_float:.6g}"
+    managed_percent_label = f"{managed_ratio_float * 100:.6g}%"
 
     if model_context_window > 0:
         display_source = "codex_profile.model_context_window"
@@ -16000,11 +16110,11 @@ def _weclaw_context_limit_explanation(
         display_reason = "unavailable"
 
     if auto_compact_policy.get("compliant_with_managed_ratio"):
-        auto_limit_explanation = "The Codex profile threshold where Codex may compact before the full model context window is reached. Managed profiles derive it from auto_compact_ratio=0.90."
-        auto_ratio_explanation = "The ratio auto_compact_token_limit/model_context_window. This active profile matches the managed 0.90 ratio."
+        auto_limit_explanation = f"The Codex profile threshold where Codex may compact before the full model context window is reached. Managed profiles derive it from auto_compact_ratio={managed_ratio_label}."
+        auto_ratio_explanation = f"The ratio auto_compact_token_limit/model_context_window. This active profile matches the managed {managed_percent_label} ratio."
     elif auto_compact_policy.get("available"):
-        auto_limit_explanation = "The Codex profile threshold where Codex may compact before the full model context window is reached. This active profile does not match the managed 0.90 ratio and is reported as legacy/custom instead of being rewritten by status display."
-        auto_ratio_explanation = "The observed ratio auto_compact_token_limit/model_context_window for the active profile. When it differs from 0.90, status must expose migration diagnostics and WeClaw must not silently replace it."
+        auto_limit_explanation = f"The Codex profile threshold where Codex may compact before the full model context window is reached. This active profile does not match the managed {managed_percent_label} ratio and is reported as legacy/custom instead of being rewritten by status display."
+        auto_ratio_explanation = f"The observed ratio auto_compact_token_limit/model_context_window for the active profile. When it differs from {managed_ratio_label}, status must expose migration diagnostics and WeClaw must not silently replace it."
     else:
         auto_limit_explanation = "The auto-compact threshold is unavailable because the active profile is missing context-window or threshold fields."
         auto_ratio_explanation = "The auto-compact ratio is unavailable until both model_context_window and model_auto_compact_token_limit are present."
@@ -16036,7 +16146,7 @@ def _weclaw_context_limit_explanation(
             "WeClaw should display the full model context window as the context denominator.",
             "The auto-compact threshold is a separate trigger value, not the context-window size.",
             "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and are not token denominators.",
-            "If auto_compact_policy.needs_migration is true, surface the provided action instead of hard-coding a replacement threshold in WeClaw.",
+            "If auto_compact_token_limit is lower than model_context_window, it is a compact trigger threshold only.",
         ],
     }
 
@@ -18592,25 +18702,18 @@ def _runtime_weclaw_status(
         dict(profile_status.get("context_window", {})),
         tokens,
     )
+    runtime_token_context = _runtime_token_first_status_context(context_status, runtime_payload_guard)
     context_window["runtime"] = {
         "available": True,
         "unit": "tokens",
         "source": "dsproxy_runtime.token_first_contracts",
-        "context": context_status,
+        "context": runtime_token_context,
         "payload_guard": runtime_payload_guard,
         "semantic_compaction": semantic_status,
-        "legacy_char_debug": {
-            "available": True,
-            "unit": "chars",
-            "scope": "diagnostic_only_not_a_runtime_trigger",
-            "context": context_status,
-            "control_disabled": True,
-            "raw_content_exposed": False,
-            "redacted": True,
-        },
+        "legacy_char_debug": runtime_token_context.get("legacy_char_debug"),
     }
-    context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
-    context_window["runtime_trimming"] = context_status.get("trimming") if isinstance(context_status, dict) else None
+    context_window["runtime_compaction"] = runtime_token_context.get("compaction")
+    context_window["runtime_trimming"] = runtime_token_context.get("trimming")
 
     payload = {
         "status": profile_status.get("status", "ok"),
@@ -18641,7 +18744,7 @@ def _runtime_weclaw_status(
             "is_estimated": True,
             "source": "dsproxy_runtime.token_first_compaction_contract",
             "unit": "tokens",
-            "runtime_context": context_status,
+            "runtime_context": runtime_token_context,
             "runtime_payload_guard": runtime_payload_guard,
             "token_first": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
             "token_contract": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,

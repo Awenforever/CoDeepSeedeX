@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a4-auto-compact-ratio-only-contract`
-- Latest closed documentation sync checkpoint: `p2.12a4-auto-compact-ratio-only-contract`
+- Current internal development checkpoint: `p2.12a5-token-compact-status-semantics`
+- Latest closed documentation sync checkpoint: `p2.12a5-token-compact-status-semantics`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1759,3 +1759,7 @@ Rules:
 2. `model_auto_compact_token_limit` is generated output: `floor(model_context_window * auto_compact_ratio)`.
 3. Low-trigger experiments must set `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` or pass `dsproxy profile repair --auto-compact-ratio`; they must not write absolute trigger tokens.
 4. Legacy absolute values such as `DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS` are ignored as configuration sources and surfaced only as diagnostics.
+
+## p2.12a5 Token Compact status semantics
+
+p2.12a5 fixes the status surface for token-first Compact observability. `tokens_to_auto_compact` is always a non-negative countdown; when the threshold is already exceeded, status exposes `tokens_over_auto_compact_threshold` and `threshold_exceeded=true`. If the threshold is exceeded but runtime cannot mutate the payload, such as `too_few_messages`, the visible status is `skipped`, not `triggered`. Ratio explanations must use the active managed ratio, and char-based runtime configs stay under diagnostic `legacy_char_debug` instead of primary token context fields.

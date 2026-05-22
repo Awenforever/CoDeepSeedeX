@@ -299,3 +299,70 @@ model_auto_compact_token_limit = 900000
     assert context["legacy_absolute_limit_ignored"]["derived_value"] == 20_000
     assert context["auto_compact_policy"]["managed_expected_auto_compact_ratio"] == 0.02
     assert context["auto_compact_policy"]["managed_expected_auto_compact_threshold_tokens"] == 20_000
+
+def test_runtime_token_compaction_status_reports_threshold_exceeded_skipped_without_negative_tokens() -> None:
+    contract = proxy_app._runtime_token_first_compaction_contract(
+        {
+            "compacted": False,
+            "reason": "too_few_messages",
+            "estimated_context_tokens": 42572,
+            "after_estimated_context_tokens": 42572,
+            "auto_compact_threshold_tokens": 20000,
+            "model_auto_compact_token_limit": 20000,
+            "auto_compact_ratio": 0.02,
+            "tokens_to_auto_compact": -22572,
+            "runtime_trigger_source": "token_first",
+        }
+    )
+    assert contract["status"] == "skipped"
+    assert contract["reason"] == "too_few_messages"
+    assert contract["threshold_exceeded"] is True
+    assert contract["tokens_to_auto_compact"] == 0
+    assert contract["tokens_until_auto_compact_threshold"] == 0
+    assert contract["tokens_over_auto_compact_threshold"] == 22572
+    assert contract["compacted"] is False
+
+
+def test_weclaw_context_limit_explanation_uses_active_managed_ratio_text(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
+    explanation = proxy_app._weclaw_context_limit_explanation(
+        model_context_window=1_000_000,
+        auto_compact_token_limit=20_000,
+        effective_safe_window=0,
+        model_catalog=None,
+    )
+    values = explanation["value_explanations"]
+    assert "auto_compact_ratio=0.02" in values["auto_compact_token_limit"]
+    assert "managed 2% ratio" in values["auto_compact_ratio"]
+    assert "0.90" not in values["auto_compact_token_limit"]
+    assert "0.90" not in values["auto_compact_ratio"]
+
+
+def test_runtime_token_status_context_hides_char_config_from_primary_context() -> None:
+    guard = proxy_app._runtime_payload_guard_contract(
+        {
+            "compaction": {"config": {"trigger_chars": 900000, "target_chars": 280000}, "last_report": {}},
+            "trimming": {"config": {"max_context_chars": 1500000}, "last_report": {}},
+        },
+        compaction_report={
+            "compacted": False,
+            "reason": "too_few_messages",
+            "estimated_context_tokens": 42572,
+            "after_estimated_context_tokens": 42572,
+            "auto_compact_threshold_tokens": 20000,
+            "tokens_to_auto_compact": -22572,
+        },
+    )
+    context = proxy_app._runtime_token_first_status_context(
+        {
+            "compaction": {"config": {"trigger_chars": 900000, "target_chars": 280000}, "last_report": {}},
+            "trimming": {"config": {"max_context_chars": 1500000}, "last_report": {}},
+        },
+        guard,
+    )
+    assert context["unit"] == "tokens"
+    assert "config" not in context["compaction"]
+    assert context["compaction"]["tokens_to_auto_compact"] == 0
+    assert context["compaction"]["tokens_over_auto_compact_threshold"] == 22572
+    assert context["compaction"]["legacy_char_debug"]["config"]["trigger_chars"] == 900000
+    assert context["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
