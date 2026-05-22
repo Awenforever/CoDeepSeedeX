@@ -309,23 +309,28 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
 
     guard = data["runtime_payload_guard"]
     assert guard["available"] is True
-    assert guard["unit"] == "chars"
-    assert guard["current_chars"] == 12345
-    assert guard["current_chars_available"] is True
-    assert guard["current_chars_source"] == "live_request_payload"
-    assert guard["current_chars_precision"] == "exact"
+    assert guard["unit"] == "tokens"
+    assert guard["current_tokens"] == 123
+    assert guard["current_tokens_available"] is True
+    assert guard["current_tokens_source"] == "token_first_runtime_trim"
+    assert guard["current_tokens_precision"] == "local_profile_tokenizer_estimate"
+    assert guard["primary_control_unit"] == "tokens"
+    assert guard["char_control_scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert guard["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert guard["legacy_char_debug"]["control_disabled"] is True
     assert guard["compaction"]["available"] is True
-    assert guard["compaction"]["trigger_chars"] == 900000
-    assert guard["compaction"]["target_chars"] == 280000
-    assert guard["compaction"]["current_chars"] == 12345
-    assert guard["compaction"]["usage_ratio"] == guard["compaction"]["progress_ratio"]
-    assert guard["compaction"]["capacity_progress_ratio"] == pytest.approx(12345 / 900000)
-    assert guard["compaction"]["remaining_chars"] == 887655
+    assert guard["compaction"]["unit"] == "tokens"
+    assert guard["compaction"]["trigger_tokens"] == 900000
+    assert guard["compaction"]["current_tokens"] == 123
+    assert guard["compaction"]["capacity_progress_ratio"] == pytest.approx(123 / 900000)
+    assert guard["compaction"]["remaining_tokens"] == 899877
     assert guard["compaction"]["status"] == "not_triggered"
+    assert guard["compaction"]["legacy_char_debug"]["legacy_trigger_chars"] == 900000
+    assert guard["compaction"]["legacy_char_debug"]["control_disabled"] is True
     token_compaction = guard["compaction"]["token_first"]
     assert token_compaction["unit"] == "tokens"
     assert token_compaction["primary_control_unit"] == "tokens"
-    assert token_compaction["char_control_scope"] == "fallback_debug_safety_only"
+    assert token_compaction["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert token_compaction["estimated_tokens_before_compact"] == token_compaction["before_tokens"]
     assert token_compaction["estimated_tokens_after_compact"] == token_compaction["after_tokens"]
     assert token_compaction["estimated_tokens_removed_by_compact"] == token_compaction["tokens_removed"]
@@ -345,19 +350,21 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert data["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "c" * 64
     assert data["context_window"]["runtime"]["payload_guard"]["compaction"]["compact_audit"]["available"] is True
     assert guard["trimming"]["available"] is True
-    assert guard["trimming"]["max_context_chars"] == 1500000
-    assert guard["trimming"]["current_chars"] == 12345
-    assert guard["trimming"]["usage_ratio"] == guard["trimming"]["progress_ratio"]
-    assert guard["trimming"]["capacity_progress_ratio"] == pytest.approx(12345 / 1500000)
-    assert guard["trimming"]["remaining_chars"] == 1487655
+    assert guard["trimming"]["unit"] == "tokens"
+    assert guard["trimming"]["current_tokens"] == 123
+    assert guard["trimming"]["max_context_tokens"] == 900000
+    assert guard["trimming"]["capacity_progress_ratio"] == pytest.approx(123 / 900000)
+    assert guard["trimming"]["remaining_tokens"] == 899877
     assert guard["trimming"]["status"] == "not_triggered"
+    assert guard["trimming"]["legacy_char_debug"]["legacy_max_context_chars"] == 1500000
+    assert guard["trimming"]["legacy_char_debug"]["control_disabled"] is True
     assert guard["trimming"]["last_report"]["exists"] is True
     assert guard["trimming"]["last_report"]["type_enum_version"] == 1
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["available"] is True
     assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["unit"] == "tokens"
     runtime_trim = guard["trimming"]["token_first_runtime_trim"]
     assert runtime_trim["primary_control_unit"] == "tokens"
-    assert runtime_trim["char_control_scope"] == "fallback_debug_safety_only"
+    assert runtime_trim["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert runtime_trim["estimated_tokens_before_trim"] == runtime_trim["before_tokens"]
     assert runtime_trim["estimated_tokens_after_trim"] == runtime_trim["after_tokens"]
     assert runtime_trim["estimated_tokens_removed_by_trim"] == runtime_trim["tokens_removed"]
@@ -370,8 +377,11 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert guard["trimming"]["last_report"]["type_aware_trim"]["enabled"] is True
     assert guard["trimming"]["last_report"]["type_aware_trim"]["applied"] is True
     assert guard["trimming"]["last_report"]["type_aware_trim"]["applied_by_type"]["tool_result"]["trimmed_field_count"] == 1
-    assert data["context_window"]["runtime"]["payload_guard"]["current_chars"] == 12345
-    assert data["compaction"]["runtime_payload_guard"]["current_chars"] == 12345
+    assert data["context_window"]["runtime"]["unit"] == "tokens"
+    assert data["context_window"]["runtime"]["payload_guard"]["current_tokens"] == 123
+    assert data["context_window"]["runtime"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert data["compaction"]["unit"] == "tokens"
+    assert data["compaction"]["runtime_payload_guard"]["current_tokens"] == 123
 
     last_turn = data["tokens"]["last_turn"]
     assert last_turn["available"] is True

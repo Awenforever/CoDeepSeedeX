@@ -82,9 +82,16 @@ def test_runtime_payload_guard_progress_fields() -> None:
         compaction_report={"before_chars": 120000, "after_chars": 80000, "chars_removed": 40000, "policy_decision": {"effective_trigger_chars": 900000}, "compacted": True},
         trimming_report={"before_chars": 95000, "after_chars": 90000, "chars_removed": 5000, "max_context_chars": 1500000, "trimmed": True},
     )
-    assert guard["compaction"]["progress_numerator_chars"] == 80000
-    assert guard["compaction"]["progress_denominator_chars"] == 120000
-    assert guard["compaction"]["progress_basis"] == "post_compaction_current_chars_over_raw_uncompressed_current_chars"
-    assert guard["trimming"]["progress_numerator_chars"] == 90000
-    assert guard["trimming"]["progress_denominator_chars"] == 95000
-    assert guard["trimming"]["progress_basis"] == "post_trim_current_chars_over_raw_uncompressed_current_chars"
+    assert guard["unit"] == "tokens"
+    assert guard["current_tokens"] is None
+    assert guard["compaction"]["unit"] == "tokens"
+    assert guard["compaction"]["available"] is False
+    assert guard["compaction"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert guard["compaction"]["legacy_char_debug"]["before_chars"] == 120000
+    assert guard["compaction"]["legacy_char_debug"]["after_chars"] == 80000
+    assert guard["compaction"]["legacy_char_debug"]["control_disabled"] is True
+    assert guard["trimming"]["unit"] == "tokens"
+    assert guard["trimming"]["available"] is False
+    assert guard["trimming"]["legacy_char_debug"]["before_chars"] == 95000
+    assert guard["trimming"]["legacy_char_debug"]["after_chars"] == 90000
+    assert guard["trimming"]["legacy_char_debug"]["control_disabled"] is True

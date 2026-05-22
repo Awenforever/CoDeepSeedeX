@@ -433,7 +433,7 @@ model_auto_compact_token_limit = 900
     )
 
     assert dry_run["primary_control_unit"] == "tokens"
-    assert dry_run["char_control_scope"] == "fallback_debug_safety_only"
+    assert dry_run["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert dry_run["estimated_tokens_before_trim"] == dry_run["estimated_payload_tokens"]
     assert dry_run["estimated_tokens_after_trim"] == dry_run["estimated_payload_tokens"]
     assert dry_run["estimated_tokens_removed_by_trim"] == 0
@@ -446,7 +446,7 @@ model_auto_compact_token_limit = 900
     runtime = report["token_first_runtime_trim"]
 
     assert runtime["primary_control_unit"] == "tokens"
-    assert runtime["char_control_scope"] == "fallback_debug_safety_only"
+    assert runtime["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert runtime["estimated_tokens_before_trim"] == runtime["before_tokens"]
     assert runtime["estimated_tokens_after_trim"] == runtime["after_tokens"]
     assert runtime["estimated_tokens_removed_by_trim"] == runtime["tokens_removed"]

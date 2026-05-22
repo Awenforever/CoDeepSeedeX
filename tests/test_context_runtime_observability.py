@@ -224,6 +224,9 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
     }
     runtime = proxy_app._runtime_payload_guard_contract({"compaction": {"config": {}}}, compaction_report=live_report)
     last_report = runtime["compaction"]["last_report"]
+    assert runtime["unit"] == "tokens"
+    assert runtime["compaction"]["unit"] == "tokens"
+    assert runtime["compaction"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
     assert runtime["compaction"]["compact_audit"]["available"] is True
     assert runtime["compaction"]["compact_audit"]["fingerprint"]["sha256"] == "a" * 64
     assert last_report["compact_audit"]["fingerprint"]["sha256"] == "a" * 64

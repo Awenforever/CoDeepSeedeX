@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a2-codex-profile-forward-compatible-repair`
-- 最新闭合文档同步检查点：`p2.12a2-codex-profile-forward-compatible-repair`
+- 当前内部开发检查点：`p2.12a3-token-only-compact-trim-runtime`
+- 最新闭合文档同步检查点：`p2.12a3-token-only-compact-trim-runtime`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1699,3 +1699,7 @@ p2.12a2加固跨Codex升级的托管profile契约。
 3. `dsproxy profile repair --managed-only --json`会从dsproxy契约重新生成托管provider/profile块。
 4. 托管`codex` wrapper会在启动前修复profile；如果修复后仍有`model_conflict=true`，则fail closed。
 5. 本节点不解决token-only Compact/Trim runtime迁移；该任务保留到下一个p2.12节点。
+
+## p2.12a3 Token-only Compact/Trim runtime
+
+p2.12a3将char值从可见运行时Compact/Trim控制平面中退役。runtime payload guard、WeClaw status和顶层compaction契约现在暴露`unit=tokens`、`current_tokens`、token阈值、token剩余/进度字段和token-first报告。字符计数只能保留在`legacy_char_debug`下，并标注`scope=diagnostic_only_not_a_runtime_trigger`；它们不是触发阈值、分母或用户可见进度来源。

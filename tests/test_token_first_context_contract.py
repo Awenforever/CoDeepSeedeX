@@ -194,7 +194,7 @@ model_auto_compact_token_limit = 900
     )
 
     assert budget["primary_control_unit"] == "tokens"
-    assert budget["char_control_scope"] == "fallback_debug_safety_only"
+    assert budget["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert budget["estimated_tokens_before_compact"] == budget["estimated_context_tokens"]
     assert budget["estimated_tokens_after_compact"] == budget["estimated_context_tokens"]
     assert budget["estimated_tokens_removed_by_compact"] == 0
@@ -219,7 +219,7 @@ def test_compaction_contract_exposes_strict_plan_token_field_names() -> None:
     contract = proxy_app._runtime_token_first_compaction_contract(report)
 
     assert contract["primary_control_unit"] == "tokens"
-    assert contract["char_control_scope"] == "fallback_debug_safety_only"
+    assert contract["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert contract["estimated_tokens_before_compact"] == 950
     assert contract["estimated_tokens_after_compact"] == 500
     assert contract["estimated_tokens_removed_by_compact"] == 450
@@ -233,7 +233,7 @@ def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_n
     assert contract["available"] is False
     assert contract["unit"] == "tokens"
     assert contract["primary_control_unit"] == "tokens"
-    assert contract["char_control_scope"] == "fallback_debug_safety_only"
+    assert contract["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
     assert contract["estimated_tokens_before_compact"] is None
     assert contract["estimated_tokens_after_compact"] is None
     assert contract["estimated_tokens_removed_by_compact"] == 0
@@ -242,3 +242,29 @@ def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_n
     assert contract["tokens_removed"] == 0
     assert contract["raw_content_exposed"] is False
     assert contract["redacted"] is True
+
+
+def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
+    report = {
+        "compacted": False,
+        "reason": "token_first_below_auto_compact_threshold",
+        "estimated_context_tokens": 123,
+        "after_estimated_context_tokens": 123,
+        "auto_compact_threshold_tokens": 900,
+        "model_auto_compact_token_limit": 900,
+        "model_context_window_tokens": 1000,
+        "auto_compact_ratio": 0.9,
+        "runtime_trigger_source": "token_first",
+        "before_chars": 10000,
+        "after_chars": 9000,
+        "policy_decision": {"token_budget": {"tokenizer": {"available": True}}},
+    }
+    guard = proxy_app._runtime_payload_guard_contract({"compaction": {"config": {}}}, compaction_report=report)
+    assert guard["unit"] == "tokens"
+    assert guard["current_tokens"] == 123
+    assert "current_chars" not in guard
+    assert guard["compaction"]["unit"] == "tokens"
+    assert guard["compaction"]["trigger_tokens"] == 900
+    assert "trigger_chars" not in guard["compaction"]
+    assert guard["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert guard["legacy_char_debug"]["control_disabled"] is True

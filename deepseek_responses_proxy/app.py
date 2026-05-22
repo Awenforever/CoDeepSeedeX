@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a2-codex-profile-forward-compatible-repair"
+PROXY_INTERNAL_VERSION = "p2.12a3-token-only-compact-trim-runtime"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -14821,83 +14821,7 @@ def _runtime_payload_guard_contract(
     compaction_report_dict = compaction_report if isinstance(compaction_report, dict) else None
     trimming_report_dict = trimming_report if isinstance(trimming_report, dict) else None
 
-    compaction_after = _runtime_payload_guard_int(compaction_report_dict.get("after_chars") if compaction_report_dict else None)
-    compaction_before = _runtime_payload_guard_int(compaction_report_dict.get("before_chars") if compaction_report_dict else None)
-    trimming_after = _runtime_payload_guard_int(trimming_report_dict.get("after_chars") if trimming_report_dict else None)
-    trimming_before = _runtime_payload_guard_int(trimming_report_dict.get("before_chars") if trimming_report_dict else None)
-
-    compaction_raw = compaction_before if compaction_before is not None else compaction_after
-    trimming_raw = trimming_before if trimming_before is not None else trimming_after
-    current_chars = trimming_after if trimming_after is not None else compaction_after
-
-    current_source = "unavailable"
-    current_precision = "unavailable"
-    observed_at = None
-    if trimming_after is not None:
-        current_source = "live_request_payload"
-        current_precision = "exact"
-        observed_at = trimming_report_dict.get("observed_at") if trimming_report_dict else None
-    elif compaction_after is not None:
-        current_source = "runtime_context_builder"
-        current_precision = "exact"
-        observed_at = compaction_report_dict.get("observed_at") if compaction_report_dict else None
-
-    policy_decision = compaction_report_dict.get("policy_decision") if compaction_report_dict else None
-    if not isinstance(policy_decision, dict):
-        policy_decision = {}
-
     token_compaction_contract = _runtime_token_first_compaction_contract(compaction_report_dict)
-    trigger_chars = _runtime_payload_guard_int(policy_decision.get("effective_trigger_chars") or (compaction_report_dict or {}).get("effective_trigger_chars") or (compaction_report_dict or {}).get("trigger_chars") or compaction_config.get("trigger_chars"))
-    target_chars = _runtime_payload_guard_int(policy_decision.get("effective_target_chars") or (compaction_report_dict or {}).get("effective_target_chars") or (compaction_report_dict or {}).get("target_chars") or compaction_config.get("target_chars"))
-    max_context_chars = _runtime_payload_guard_int((trimming_report_dict or {}).get("max_context_chars") or trimming_config.get("max_context_chars"))
-
-    compaction_retention_ratio = _runtime_payload_guard_ratio(compaction_after, compaction_raw)
-    trimming_retention_ratio = _runtime_payload_guard_ratio(trimming_after, trimming_raw)
-    compaction_capacity_ratio = _runtime_payload_guard_ratio(compaction_raw, trigger_chars)
-    trimming_capacity_ratio = _runtime_payload_guard_ratio(trimming_raw, max_context_chars)
-
-    compaction_available = bool(compaction_config.get("enabled", True)) and compaction_after is not None and compaction_raw is not None
-    trimming_available = trimming_after is not None and trimming_raw is not None
-
-    compaction_section = {
-        "available": compaction_available,
-        "policy": compaction_config.get("policy"),
-        "trigger_chars": trigger_chars,
-        "trigger_chars_source": "context_compaction_config.effective_trigger_chars_or_config_trigger_chars",
-        "target_chars": target_chars,
-        "target_chars_source": "context_compaction_config.effective_target_chars_or_config_target_chars",
-        "keep_recent_messages": _runtime_payload_guard_int(compaction_config.get("keep_recent_messages")),
-        "current_chars": compaction_after,
-        "current_chars_available": compaction_after is not None,
-        "current_chars_source": "runtime_context_builder" if compaction_after is not None else "unavailable",
-        "current_chars_precision": "exact" if compaction_after is not None else "unavailable",
-        "current_chars_observed_at": (compaction_report_dict or {}).get("observed_at") if compaction_report_dict else None,
-        "usage_ratio": compaction_retention_ratio,
-        "progress_numerator_chars": compaction_after,
-        "progress_denominator_chars": compaction_raw,
-        "progress_ratio": compaction_retention_ratio,
-        "progress_basis": "post_compaction_current_chars_over_raw_uncompressed_current_chars",
-        "raw_uncompressed_current_chars": compaction_raw,
-        "post_compaction_current_chars": compaction_after,
-        "retention_numerator_chars": compaction_after,
-        "retention_denominator_chars": compaction_raw,
-        "retention_ratio": compaction_retention_ratio,
-        "retention_basis": "post_compaction_current_chars_over_raw_uncompressed_current_chars",
-        "capacity_progress_numerator_chars": compaction_raw,
-        "capacity_progress_denominator_chars": trigger_chars,
-        "capacity_progress_ratio": compaction_capacity_ratio,
-        "capacity_progress_basis": "raw_uncompressed_current_chars_over_trigger_chars",
-        "remaining_chars": max(0, trigger_chars - compaction_raw) if compaction_raw is not None and trigger_chars is not None else None,
-        "status": _runtime_payload_guard_status(current_chars=compaction_raw, limit_chars=trigger_chars, terminal=bool((compaction_report_dict or {}).get("compacted")), terminal_status="compacted"),
-        "last_report": _runtime_payload_guard_report_snapshot(compaction_report_dict, kind="compaction", fallback_last_report=compaction_last_report),
-        "compact_audit": _compaction_audit_metadata_from_report(compaction_report_dict or compaction_last_report),
-        "token_first": token_compaction_contract,
-        "token_contract": token_compaction_contract,
-        "primary_control_unit": "tokens",
-        "char_control_scope": "fallback_debug_safety_only",
-        "reason": None if compaction_available else "current_compaction_chars_unavailable",
-        "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
-    }
 
     token_first_runtime_trim = (trimming_report_dict or {}).get("token_first_runtime_trim") if trimming_report_dict else None
     if token_first_runtime_trim is None and trimming_report_dict:
@@ -14931,7 +14855,7 @@ def _runtime_payload_guard_contract(
                     "unit": "tokens",
                     "mode": "dry_run_fallback_from_token_first_trim_dry_run",
                     "primary_control_unit": "tokens",
-                    "char_control_scope": "fallback_debug_safety_only",
+                    "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
                     "before_tokens": before_tokens,
                     "after_tokens": after_tokens,
                     "tokens_removed": removed_tokens or 0,
@@ -14943,61 +14867,223 @@ def _runtime_payload_guard_contract(
                     "redacted": True,
                 }
             )
+    if not isinstance(token_first_runtime_trim, dict):
+        token_first_runtime_trim = {
+            "available": False,
+            "unit": "tokens",
+            "primary_control_unit": "tokens",
+            "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+            "status": "unavailable",
+            "reason": "no_runtime_trimming_report_observed",
+            "action": "send a model request through this dsproxy route, then re-check status",
+            "source": "token_first_runtime_trim_unavailable",
+            "before_tokens": None,
+            "after_tokens": None,
+            "tokens_removed": 0,
+            "estimated_tokens_before_trim": None,
+            "estimated_tokens_after_trim": None,
+            "estimated_tokens_removed_by_trim": 0,
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+    else:
+        token_first_runtime_trim = dict(token_first_runtime_trim)
+        token_first_runtime_trim.setdefault("unit", "tokens")
+        token_first_runtime_trim.setdefault("primary_control_unit", "tokens")
+        token_first_runtime_trim["char_control_scope"] = "diagnostic_only_not_a_runtime_trigger"
+        token_first_runtime_trim.setdefault("raw_content_exposed", False)
+        token_first_runtime_trim.setdefault("redacted", True)
+
+    def _token_ratio(numerator: Any, denominator: Any) -> float | None:
+        num = _runtime_payload_guard_int(numerator)
+        den = _runtime_payload_guard_int(denominator)
+        if num is None or den is None or den <= 0:
+            return None
+        return min(1.0, max(0.0, num / den))
+
+    compaction_before_tokens = _runtime_payload_guard_int(token_compaction_contract.get("before_tokens"))
+    compaction_after_tokens = _runtime_payload_guard_int(token_compaction_contract.get("after_tokens"))
+    compaction_trigger_tokens = _runtime_payload_guard_int(token_compaction_contract.get("trigger_tokens") or token_compaction_contract.get("auto_compact_threshold_tokens"))
+    compaction_tokens_to_trigger = None
+    if compaction_before_tokens is not None and compaction_trigger_tokens is not None:
+        compaction_tokens_to_trigger = max(0, compaction_trigger_tokens - compaction_before_tokens)
+    compaction_capacity_ratio = _token_ratio(compaction_before_tokens, compaction_trigger_tokens)
+
+    trim_before_tokens = _runtime_payload_guard_int(
+        token_first_runtime_trim.get("before_tokens")
+        if token_first_runtime_trim.get("before_tokens") is not None
+        else token_first_runtime_trim.get("estimated_tokens_before_trim")
+    )
+    trim_after_tokens = _runtime_payload_guard_int(
+        token_first_runtime_trim.get("after_tokens")
+        if token_first_runtime_trim.get("after_tokens") is not None
+        else token_first_runtime_trim.get("estimated_tokens_after_trim")
+    )
+    trim_runtime_context = token_first_runtime_trim.get("runtime_context") if isinstance(token_first_runtime_trim, dict) else None
+    trim_limit_tokens = _runtime_payload_guard_int(
+        token_first_runtime_trim.get("max_context_tokens")
+        or (trim_runtime_context.get("auto_compact_threshold_tokens") if isinstance(trim_runtime_context, dict) else None)
+    )
+    trim_remaining_tokens = None
+    if trim_before_tokens is not None and trim_limit_tokens is not None:
+        trim_remaining_tokens = max(0, trim_limit_tokens - trim_before_tokens)
+    trim_capacity_ratio = _token_ratio(trim_before_tokens, trim_limit_tokens)
+
+    current_tokens = trim_after_tokens if trim_after_tokens is not None else compaction_after_tokens
+    current_source = "unavailable"
+    current_precision = "unavailable"
+    observed_at = None
+    if trim_after_tokens is not None:
+        current_source = "token_first_runtime_trim"
+        current_precision = token_first_runtime_trim.get("precision") or "local_profile_tokenizer_estimate"
+        observed_at = trimming_report_dict.get("observed_at") if trimming_report_dict else None
+    elif compaction_after_tokens is not None:
+        current_source = "token_first_runtime_compaction"
+        current_precision = token_compaction_contract.get("precision") or "local_profile_tokenizer_estimate"
+        observed_at = compaction_report_dict.get("observed_at") if compaction_report_dict else None
+
+    compaction_before_chars = _runtime_payload_guard_int(compaction_report_dict.get("before_chars") if compaction_report_dict else None)
+    compaction_after_chars = _runtime_payload_guard_int(compaction_report_dict.get("after_chars") if compaction_report_dict else None)
+    trimming_before_chars = _runtime_payload_guard_int(trimming_report_dict.get("before_chars") if trimming_report_dict else None)
+    trimming_after_chars = _runtime_payload_guard_int(trimming_report_dict.get("after_chars") if trimming_report_dict else None)
+    policy_decision = compaction_report_dict.get("policy_decision") if compaction_report_dict else None
+    if not isinstance(policy_decision, dict):
+        policy_decision = {}
+
+    compaction_char_debug = {
+        "available": compaction_before_chars is not None or compaction_after_chars is not None,
+        "unit": "chars",
+        "scope": "diagnostic_only_not_a_runtime_trigger",
+        "before_chars": compaction_before_chars,
+        "after_chars": compaction_after_chars,
+        "chars_removed": _runtime_payload_guard_int((compaction_report_dict or {}).get("chars_removed")),
+        "legacy_trigger_chars": _runtime_payload_guard_int(policy_decision.get("effective_trigger_chars") or (compaction_report_dict or {}).get("effective_trigger_chars") or (compaction_report_dict or {}).get("trigger_chars") or compaction_config.get("trigger_chars")),
+        "legacy_target_chars": _runtime_payload_guard_int(policy_decision.get("effective_target_chars") or (compaction_report_dict or {}).get("effective_target_chars") or (compaction_report_dict or {}).get("target_chars") or compaction_config.get("target_chars")),
+        "control_disabled": True,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+    trimming_char_debug = {
+        "available": trimming_before_chars is not None or trimming_after_chars is not None,
+        "unit": "chars",
+        "scope": "diagnostic_only_not_a_runtime_trigger",
+        "before_chars": trimming_before_chars,
+        "after_chars": trimming_after_chars,
+        "chars_removed": _runtime_payload_guard_int((trimming_report_dict or {}).get("chars_removed")),
+        "legacy_max_context_chars": _runtime_payload_guard_int((trimming_report_dict or {}).get("max_context_chars") or trimming_config.get("max_context_chars")),
+        "control_disabled": True,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+    compaction_available = bool(token_compaction_contract.get("available"))
+    trimming_available = bool(token_first_runtime_trim.get("available"))
+
+    compaction_section = {
+        "available": compaction_available,
+        "unit": "tokens",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+        "policy": compaction_config.get("policy"),
+        "status": token_compaction_contract.get("status"),
+        "reason": token_compaction_contract.get("reason") if compaction_available else "runtime_compaction_tokens_unavailable",
+        "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
+        "current_tokens": compaction_after_tokens,
+        "current_tokens_available": compaction_after_tokens is not None,
+        "current_tokens_source": "token_first_runtime_compaction" if compaction_after_tokens is not None else "unavailable",
+        "current_tokens_precision": token_compaction_contract.get("precision") if compaction_after_tokens is not None else "unavailable",
+        "current_tokens_observed_at": (compaction_report_dict or {}).get("observed_at") if compaction_report_dict else None,
+        "trigger_tokens": compaction_trigger_tokens,
+        "auto_compact_threshold_tokens": token_compaction_contract.get("auto_compact_threshold_tokens"),
+        "model_auto_compact_token_limit": token_compaction_contract.get("model_auto_compact_token_limit"),
+        "model_context_window_tokens": token_compaction_contract.get("model_context_window_tokens"),
+        "target_tokens": token_compaction_contract.get("target_tokens"),
+        "tokens_to_auto_compact": token_compaction_contract.get("tokens_to_auto_compact") if token_compaction_contract.get("tokens_to_auto_compact") is not None else compaction_tokens_to_trigger,
+        "usage_ratio": compaction_capacity_ratio,
+        "capacity_progress_ratio": compaction_capacity_ratio,
+        "capacity_progress_basis": "estimated_context_tokens_over_auto_compact_threshold_tokens",
+        "remaining_tokens": compaction_tokens_to_trigger,
+        "progress_numerator_tokens": compaction_after_tokens,
+        "progress_denominator_tokens": compaction_before_tokens,
+        "progress_ratio": token_compaction_contract.get("progress_ratio"),
+        "progress_basis": token_compaction_contract.get("progress_basis"),
+        "retention_numerator_tokens": token_compaction_contract.get("retention_numerator_tokens"),
+        "retention_denominator_tokens": token_compaction_contract.get("retention_denominator_tokens"),
+        "retention_ratio": token_compaction_contract.get("retention_ratio"),
+        "retention_basis": token_compaction_contract.get("retention_basis"),
+        "last_report": _runtime_payload_guard_report_snapshot(compaction_report_dict, kind="compaction", fallback_last_report=compaction_last_report),
+        "compact_audit": _compaction_audit_metadata_from_report(compaction_report_dict or compaction_last_report),
+        "token_first": token_compaction_contract,
+        "token_contract": token_compaction_contract,
+        "legacy_char_debug": compaction_char_debug,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
 
     trimming_section = {
         "available": trimming_available,
-        "max_context_chars": max_context_chars,
-        "max_context_chars_source": "context_trimming_config.max_context_chars",
-        "max_tool_output_chars": _runtime_payload_guard_int(trimming_config.get("max_tool_output_chars")),
-        "keep_recent_messages": _runtime_payload_guard_int(trimming_config.get("keep_recent_messages")),
-        "current_chars": trimming_after,
-        "current_chars_available": trimming_after is not None,
-        "current_chars_source": "live_request_payload" if trimming_after is not None else "unavailable",
-        "current_chars_precision": "exact" if trimming_after is not None else "unavailable",
-        "current_chars_observed_at": (trimming_report_dict or {}).get("observed_at") if trimming_report_dict else None,
-        "usage_ratio": trimming_retention_ratio,
-        "progress_numerator_chars": trimming_after,
-        "progress_denominator_chars": trimming_raw,
-        "progress_ratio": trimming_retention_ratio,
-        "progress_basis": "post_trim_current_chars_over_raw_uncompressed_current_chars",
-        "raw_uncompressed_current_chars": trimming_raw,
-        "post_trim_current_chars": trimming_after,
-        "retention_numerator_chars": trimming_after,
-        "retention_denominator_chars": trimming_raw,
-        "retention_ratio": trimming_retention_ratio,
-        "retention_basis": "post_trim_current_chars_over_raw_uncompressed_current_chars",
-        "capacity_progress_numerator_chars": trimming_raw,
-        "capacity_progress_denominator_chars": max_context_chars,
-        "capacity_progress_ratio": trimming_capacity_ratio,
-        "capacity_progress_basis": "raw_uncompressed_current_chars_over_max_context_chars",
-        "remaining_chars": max(0, max_context_chars - trimming_raw) if trimming_raw is not None and max_context_chars is not None else None,
-        "status": _runtime_payload_guard_status(current_chars=trimming_raw, limit_chars=max_context_chars, terminal=bool((trimming_report_dict or {}).get("trimmed")), terminal_status="trimmed"),
+        "unit": "tokens",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+        "status": token_first_runtime_trim.get("status") or ("trimmed" if token_first_runtime_trim.get("applied") else "not_triggered" if trimming_available else "unavailable"),
+        "reason": token_first_runtime_trim.get("reason") if trimming_available else "runtime_trimming_tokens_unavailable",
+        "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
+        "current_tokens": trim_after_tokens,
+        "current_tokens_available": trim_after_tokens is not None,
+        "current_tokens_source": "token_first_runtime_trim" if trim_after_tokens is not None else "unavailable",
+        "current_tokens_precision": token_first_runtime_trim.get("precision") if trim_after_tokens is not None else "unavailable",
+        "current_tokens_observed_at": (trimming_report_dict or {}).get("observed_at") if trimming_report_dict else None,
+        "max_context_tokens": trim_limit_tokens,
+        "max_context_tokens_source": token_first_runtime_trim.get("max_context_tokens_source"),
+        "tokens_to_trim": token_first_runtime_trim.get("tokens_to_trim"),
+        "remaining_tokens": trim_remaining_tokens,
+        "usage_ratio": trim_capacity_ratio,
+        "capacity_progress_ratio": trim_capacity_ratio,
+        "capacity_progress_basis": "estimated_payload_tokens_over_token_first_runtime_limit",
+        "progress_numerator_tokens": trim_after_tokens,
+        "progress_denominator_tokens": trim_before_tokens,
+        "progress_ratio": _token_ratio(trim_after_tokens, trim_before_tokens),
+        "progress_basis": "post_trim_estimated_tokens_over_raw_untrimmed_estimated_tokens",
+        "retention_numerator_tokens": trim_after_tokens,
+        "retention_denominator_tokens": trim_before_tokens,
+        "retention_ratio": _token_ratio(trim_after_tokens, trim_before_tokens),
+        "retention_basis": "post_trim_estimated_tokens_over_raw_untrimmed_estimated_tokens",
         "last_report": _runtime_payload_guard_report_snapshot(trimming_report_dict, kind="trimming", fallback_last_report=trimming_last_report),
         "token_first_runtime_trim": token_first_runtime_trim,
-        "primary_control_unit": "tokens",
-        "char_control_scope": "fallback_debug_safety_only",
-        "reason": None if trimming_available else "current_trimming_chars_unavailable",
-        "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
+        "legacy_char_debug": trimming_char_debug,
+        "raw_content_exposed": False,
+        "redacted": True,
     }
 
     available = bool(compaction_available or trimming_available)
     return {
         "available": available,
-        "unit": "chars",
-        "current_chars": current_chars,
-        "current_chars_available": current_chars is not None,
-        "current_chars_source": current_source,
-        "current_chars_precision": current_precision,
-        "current_chars_observed_at": observed_at,
-        "source": "in_memory_runtime_payload_guard_snapshot",
+        "unit": "tokens",
+        "current_tokens": current_tokens,
+        "current_tokens_available": current_tokens is not None,
+        "current_tokens_source": current_source,
+        "current_tokens_precision": current_precision,
+        "current_tokens_observed_at": observed_at,
+        "source": "in_memory_runtime_token_first_payload_guard_snapshot",
         "precision": current_precision,
         "primary_control_unit": "tokens",
-        "char_control_scope": "fallback_debug_safety_only",
-        "reason": None if available else "no_live_runtime_payload_guard_observation_yet",
+        "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+        "reason": None if available else "no_live_runtime_token_first_payload_guard_observation_yet",
         "action": None if available else "send a model request through this dsproxy route, then re-check status",
         "compaction": compaction_section,
         "trimming": trimming_section,
         "token_first_compaction": token_compaction_contract,
+        "token_first_runtime_trim": token_first_runtime_trim,
+        "legacy_char_debug": {
+            "available": compaction_char_debug["available"] or trimming_char_debug["available"],
+            "scope": "diagnostic_only_not_a_runtime_trigger",
+            "unit": "chars",
+            "compaction": compaction_char_debug,
+            "trimming": trimming_char_debug,
+            "control_disabled": True,
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
     }
 
 def _tool_bridge_status() -> dict[str, Any]:
@@ -18484,11 +18570,20 @@ def _runtime_weclaw_status(
     )
     context_window["runtime"] = {
         "available": True,
-        "unit": "chars",
-        "source": "dsproxy_runtime._proxy_context_status",
+        "unit": "tokens",
+        "source": "dsproxy_runtime.token_first_contracts",
         "context": context_status,
         "payload_guard": runtime_payload_guard,
         "semantic_compaction": semantic_status,
+        "legacy_char_debug": {
+            "available": True,
+            "unit": "chars",
+            "scope": "diagnostic_only_not_a_runtime_trigger",
+            "context": context_status,
+            "control_disabled": True,
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
     }
     context_window["runtime_compaction"] = context_status.get("compaction") if isinstance(context_status, dict) else None
     context_window["runtime_trimming"] = context_status.get("trimming") if isinstance(context_status, dict) else None
@@ -18519,9 +18614,9 @@ def _runtime_weclaw_status(
         "runtime_payload_guard": runtime_payload_guard,
         "compaction": {
             "available": True,
-            "is_estimated": False,
-            "source": "dsproxy_runtime._proxy_context_status",
-            "unit": "chars",
+            "is_estimated": True,
+            "source": "dsproxy_runtime.token_first_compaction_contract",
+            "unit": "tokens",
             "runtime_context": context_status,
             "runtime_payload_guard": runtime_payload_guard,
             "token_first": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
@@ -18532,6 +18627,7 @@ def _runtime_weclaw_status(
                 else _compaction_audit_metadata_from_report(last_context_compaction_report)
             ),
             "semantic_compaction": semantic_status,
+            "legacy_char_debug": runtime_payload_guard.get("legacy_char_debug") if isinstance(runtime_payload_guard, dict) else None,
             "missing": [],
         },
         "semantic_compaction": semantic_status,

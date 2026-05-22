@@ -668,12 +668,14 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
     assert data["context_window"]["used_tokens"] is None
     assert data["context_window"]["used_tokens_available"] is False
     assert data["context_window"]["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
-    assert data["context_window"]["runtime"]["unit"] == "chars"
+    assert data["context_window"]["runtime"]["unit"] == "tokens"
     assert data["context_window"]["runtime"]["available"] is True
     assert data["runtime_payload_guard"]["available"] is False
-    assert data["runtime_payload_guard"]["reason"] == "no_live_runtime_payload_guard_observation_yet"
-    assert data["runtime_payload_guard"]["compaction"]["trigger_chars"] == 900000
-    assert data["runtime_payload_guard"]["trimming"]["max_context_chars"] == 1500000
+    assert data["runtime_payload_guard"]["reason"] == "no_live_runtime_token_first_payload_guard_observation_yet"
+    assert data["runtime_payload_guard"]["compaction"]["unit"] == "tokens"
+    assert data["runtime_payload_guard"]["compaction"]["trigger_tokens"] is None
+    assert data["runtime_payload_guard"]["trimming"]["unit"] == "tokens"
+    assert data["runtime_payload_guard"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
     assert data["compaction"]["available"] is True
     assert "tokens" in data
     assert data["tokens"]["last_turn"]["available"] is False

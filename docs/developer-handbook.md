@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a2-codex-profile-forward-compatible-repair`
-- Latest closed documentation sync checkpoint: `p2.12a2-codex-profile-forward-compatible-repair`
+- Current internal development checkpoint: `p2.12a3-token-only-compact-trim-runtime`
+- Latest closed documentation sync checkpoint: `p2.12a3-token-only-compact-trim-runtime`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1744,3 +1744,7 @@ Rules:
 3. `dsproxy profile repair --managed-only --json` regenerates the managed provider/profile blocks from the dsproxy contract.
 4. The managed `codex` wrapper repairs profiles before launch and fails closed if `model_conflict=true` remains after repair.
 5. This node does not solve token-only Compact/Trim runtime migration; that stays in the next p2.12 node.
+
+## p2.12a3 Token-only Compact/Trim runtime
+
+p2.12a3 retires char values from the visible runtime Compact/Trim control plane. Runtime payload guard, WeClaw status, and top-level compaction contracts now expose `unit=tokens`, `current_tokens`, token thresholds, token remaining/progress fields, and token-first reports. Character counts may remain only under `legacy_char_debug` with `scope=diagnostic_only_not_a_runtime_trigger`; they are not a trigger, denominator, or user-facing progress source.
