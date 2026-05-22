@@ -519,6 +519,14 @@ def test_semantic_payload_compaction_enabled_compacts_low_risk_and_reports_token
     assert report["estimated_tokens_removed"] == report["tokens_removed"]
     assert report["token_estimation_source"] == "char_heuristic_4_chars_per_token"
     assert report["semantic_plan_types"]["pytest_success"] >= 1
+    assert report["safety_core_version"] == 1
+    assert report["safety_core"]["eligible_scope"] == "old_flattened_tool_transcript_low_risk_pytest_success_only"
+    assert report["semantic_type_counts"]["test_output"] >= 1
+    assert report["risk_counts"]["low"] >= 1
+    assert report["policy_decisions"]["compact"] >= 1
+    assert report["skip_reasons"]["medium_risk_requires_marker_preservation"] >= 1
+    assert report["skip_reasons"]["high_risk_semantic_context"] >= 1
+    assert report["skip_reasons"]["recent_flattened_tool_transcript_preserved"] >= 1
 
     assert report["targets"]
     target = report["targets"][0]
@@ -532,11 +540,104 @@ def test_semantic_payload_compaction_enabled_compacts_low_risk_and_reports_token
     assert target["estimated_tokens_removed"] == target["tokens_removed"]
     assert target["token_estimation_source"] == "char_heuristic_4_chars_per_token"
     assert target["reason"] == "semantic_payload_enabled_low_risk_test_output"
+    assert target["safe_payload_mutation_allowed"] is True
+    assert target["safety_core_version"] == 1
+    assert target["source"] == "semantic_payload_safety_core_v1"
 
     assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted_messages[1]["content"]
     assert compacted_messages[2] == messages[2]
     assert compacted_messages[3] == messages[3]
     assert compacted_messages[4] == messages[4]
+
+
+def test_semantic_payload_safety_core_preserves_static_medium_high_and_recent_transcripts(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    static_developer = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "9 passed in 0.01s\n"
+        + ("s" * 5000)
+    )
+    low_risk_old = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "12 passed in 0.20s\n"
+        + ("p" * 5000)
+    )
+    medium_stacktrace = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "Traceback (most recent call last):\n"
+        "AssertionError: expected true\n"
+        + ("t" * 5000)
+    )
+    medium_diff = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "diff --git a/file.py b/file.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+        + ("d" * 5000)
+    )
+    high_chatty = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "\n• Running cd repo && pytest\n"
+        "\n✔ You approved codex to always run commands\n"
+        + ("h" * 5000)
+    )
+    recent_low_risk = (
+        "assistant_requested_tool_calls:\n"
+        "tool_outputs:\n"
+        "===== pytest =====\n"
+        "1 passed in 0.01s\n"
+        + ("r" * 5000)
+    )
+
+    messages = [
+        {"role": "developer", "content": static_developer},
+        {"role": "user", "content": low_risk_old},
+        {"role": "user", "content": medium_stacktrace},
+        {"role": "user", "content": medium_diff},
+        {"role": "user", "content": high_chatty},
+        {"role": "user", "content": recent_low_risk},
+    ]
+    original = [dict(item) for item in messages]
+
+    compacted_messages, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert compacted_messages is not messages
+    assert report["applied"] is True
+    assert report["compacted_count"] == 1
+    assert report["eligible_policy_count"] == 1
+    assert report["safety_core"]["status"] == "limited_low_risk_only"
+    assert report["policy_decisions"]["compact"] == 1
+    assert report["policy_decisions"]["structure_only"] >= 2
+    assert report["policy_decisions"]["preserve"] >= 1
+    assert report["risk_counts"]["low"] >= 1
+    assert report["risk_counts"]["medium"] >= 2
+    assert report["risk_counts"]["high"] >= 1
+    assert report["skip_reasons"]["medium_risk_requires_marker_preservation"] >= 2
+    assert report["skip_reasons"]["high_risk_semantic_context"] >= 1
+    assert report["skip_reasons"]["recent_flattened_tool_transcript_preserved"] == 1
+
+    assert compacted_messages[0] == original[0]
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted_messages[1]["content"]
+    assert compacted_messages[2] == original[2]
+    assert compacted_messages[3] == original[3]
+    assert compacted_messages[4] == original[4]
+    assert compacted_messages[5] == original[5]
 
 
 def test_semantic_payload_compaction_canary_blocks_enabled_without_allow_env(monkeypatch):

@@ -1354,3 +1354,21 @@ Boundary:
 - Default semantic payload mode remains dry-run.
 - Enabled mode still requires the canary guard and local invariant checks.
 - This node does not update the GitHub Release or Release assets.
+
+## p2.11a1 Semantic payload safety core
+
+Date: 2026-05-22
+
+Scope:
+
+- Start the p2.11 line instead of continuing to stack p2.10a116+ after the p2.10 A-G plan had closed.
+- Document the version-semantic health rule in both developer handbooks.
+- Harden semantic payload safety core so enabled mutation is explicitly limited to old flattened tool transcripts classified as low-risk pytest-success output.
+- Preserve system/developer messages before flattened transcript classification.
+- Preserve recent flattened transcripts, medium/high-risk transcripts, diff/patch/traceback/json/search/shell logs, and unknown transcripts.
+- Add safety_core_version, safety_core metadata, semantic type counts, risk counts, policy decisions, skip reasons, and source metadata to semantic payload reports.
+- Keep canary-gated enabled mode and fallback-to-original behavior.
+
+Release boundary:
+
+- Public `v0.3.9-alpha` is not moved in this node.
