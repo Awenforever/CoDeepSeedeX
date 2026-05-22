@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.11a3-semantic-payload-real-route`
-- Latest closed documentation sync checkpoint: `p2.11a3-semantic-payload-real-route`
+- Current internal development checkpoint: `p2.11a4-semantic-payload-weclaw-contract`
+- Latest closed documentation sync checkpoint: `p2.11a4-semantic-payload-weclaw-contract`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1707,4 +1707,16 @@ Rules:
 2. Thinking-mode flattened tool transcripts must be eligible for semantic payload compaction only when the canary allows enabled mode.
 3. The upstream DeepSeek payload must contain the semantic compacted envelope and must not contain the original large low-risk pytest output body.
 4. `/v1/proxy/status` must expose the latest enabled runtime event with token/char savings, canary status, safety-core metadata, and `runtime_state=enabled_monitoring`.
+5. This node does not update the public `v0.3.9-alpha` Release.
+
+## p2.11a4 Semantic payload WeClaw contract
+
+p2.11a4 adds a stable WeClaw-facing semantic payload display contract.
+
+Rules:
+
+1. `semantic_compaction.display` is the WeClaw display surface; WeClaw must not derive semantic payload status from nested runtime events.
+2. The display contract exposes status, mode, effective mode, runtime state, applied/skipped counts, token/char savings, type counts, type actions, recommended actions, risk counts, skip reasons, last event metadata, blockers, and warnings.
+3. Raw payload content remains redacted; detailed evidence stays under `latest.semantic_payload_compaction`.
+4. Healthy enabled monitoring must not be degraded merely because dry-run readiness is false.
 5. This node does not update the public `v0.3.9-alpha` Release.

@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.11a3-semantic-payload-real-route`
-- 最新闭合文档同步检查点：`p2.11a3-semantic-payload-real-route`
+- 当前内部开发检查点：`p2.11a4-semantic-payload-weclaw-contract`
+- 最新闭合文档同步检查点：`p2.11a4-semantic-payload-weclaw-contract`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1662,4 +1662,16 @@ p2.11a3证明semantic payload compaction已经进入真实`/v1/responses`HTTP路
 2. thinking模式flattened tool transcript只有在canary允许enabled模式时才允许semantic payload compaction。
 3. 上游DeepSeek payload必须包含semantic compacted envelope，并且不能包含原始大体量低风险pytest输出正文。
 4. `/v1/proxy/status`必须暴露最新enabled runtime事件，包括token/char收益、canary状态、safety-core metadata和`runtime_state=enabled_monitoring`。
+5. 本节点不更新公开`v0.3.9-alpha`Release。
+
+## p2.11a4 Semantic payload WeClaw contract
+
+p2.11a4新增面向WeClaw的稳定semantic payload显示契约。
+
+规则：
+
+1. `semantic_compaction.display`是WeClaw显示面，WeClaw不得从嵌套runtime事件自行推导semantic payload状态。
+2. display契约暴露status、mode、effective mode、runtime state、applied/skipped计数、token/char收益、type counts、type actions、recommended actions、risk counts、skip reasons、last event metadata、blockers和warnings。
+3. 原始payload内容仍保持redacted；详细证据保留在`latest.semantic_payload_compaction`下。
+4. 健康enabled monitoring不能因为dry-run readiness为false而被标记为degraded。
 5. 本节点不更新公开`v0.3.9-alpha`Release。

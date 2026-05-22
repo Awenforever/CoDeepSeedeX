@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.11a3-semantic-payload-real-route"
+PROXY_INTERNAL_VERSION = "p2.11a4-semantic-payload-weclaw-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -1300,7 +1300,7 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
         "estimated_tokens_before", "estimated_tokens_after", "estimated_tokens_removed",
         "token_estimation_source", "token_estimation_precision", "semantic_plan_types",
         "semantic_type_counts", "risk_counts", "policy_decisions", "skip_reasons",
-        "safety_core_version", "safety_core", "canary_guard", "error",
+        "safety_core_version", "safety_core", "canary_guard", "error", "recommended_actions",
     ]
     summary: dict[str, Any] = {"present": True}
     for key in keys:
@@ -1774,8 +1774,11 @@ def _semantic_compaction_canary_check_report() -> dict[str, Any]:
         blockers.extend(str(item) for item in guard.get("blockers") or [])
 
     runtime_rollout = runtime_status.get("rollout") if isinstance(runtime_status, dict) else None
-    if isinstance(runtime_rollout, dict) and not bool(runtime_rollout.get("safe_to_enable_payload_compaction")):
-        warnings.append("runtime_rollout_not_yet_safe_based_on_live_trace")
+    if isinstance(runtime_rollout, dict):
+        enabled_monitoring_healthy = bool(runtime_rollout.get("enabled_monitoring_healthy"))
+        dry_run_ready = bool(runtime_rollout.get("safe_to_enable_payload_compaction"))
+        if not enabled_monitoring_healthy and not dry_run_ready:
+            warnings.append("runtime_rollout_not_yet_safe_based_on_live_trace")
 
     if payload_config.get("mode") == "enabled":
         warnings.append("semantic_payload_compaction_already_enabled")
@@ -1805,6 +1808,138 @@ def _semantic_compaction_canary_check_report() -> dict[str, Any]:
             "synthetic_rollout": selftest_report.get("synthetic_rollout"),
         },
         "runtime_rollout": runtime_rollout,
+    }
+
+
+def _semantic_payload_compaction_display_contract(status: Any) -> dict[str, Any]:
+    status_dict = status if isinstance(status, dict) else {}
+    latest = status_dict.get("latest")
+    if not isinstance(latest, dict):
+        latest = {}
+
+    rollout = status_dict.get("rollout")
+    if not isinstance(rollout, dict):
+        rollout = {}
+
+    payload = latest.get("semantic_payload_compaction")
+    if not isinstance(payload, dict):
+        payload = {"present": False}
+
+    policy = latest.get("semantic_policy_dry_run")
+    if not isinstance(policy, dict):
+        policy = {"present": False}
+
+    audit = latest.get("semantic_audit")
+    if not isinstance(audit, dict):
+        audit = {"present": False}
+
+    blockers = [str(item) for item in (rollout.get("blockers") or [])]
+    warnings = [str(item) for item in (rollout.get("warnings") or [])]
+    mode = str(payload.get("mode") or rollout.get("current_payload_mode") or "unknown")
+    effective_mode = str(payload.get("effective_mode") or rollout.get("latest_payload_effective_mode") or mode)
+    runtime_state = str(rollout.get("runtime_state") or "unavailable")
+    payload_present = bool(payload.get("present"))
+    applied = bool(payload.get("applied"))
+    reason = (
+        payload.get("reason")
+        or rollout.get("latest_payload_reason")
+        or ("semantic_payload_compaction_event_missing" if not payload_present else None)
+    )
+
+    if blockers:
+        display_status = "blocked"
+    elif applied:
+        display_status = "applied"
+    elif runtime_state in {"dry_run_ready", "enabled_monitoring", "off"}:
+        display_status = runtime_state
+    elif payload_present:
+        if reason == "no_semantic_payload_compaction_candidates":
+            display_status = "skipped"
+        elif reason == "semantic_payload_compaction_mode_not_enabled":
+            display_status = "dry_run_ready" if mode == "dry_run" else "skipped"
+        elif reason == "semantic_payload_canary_guard_blocked_enabled":
+            display_status = "blocked"
+        elif reason == "exception_fallback_to_original_messages":
+            display_status = "failed"
+        else:
+            display_status = "skipped"
+    else:
+        display_status = "unavailable"
+
+    skipped_count = 0
+    for key in ("skipped_policy_count", "retained_recent_flattened_count", "preserve_count", "structure_only_count"):
+        try:
+            skipped_count += int(payload.get(key) or 0)
+        except (TypeError, ValueError):
+            pass
+
+    type_counts = payload.get("semantic_type_counts")
+    if not isinstance(type_counts, dict) or not type_counts:
+        type_counts = policy.get("semantic_type_counts") if isinstance(policy.get("semantic_type_counts"), dict) else {}
+    risk_counts = payload.get("risk_counts")
+    if not isinstance(risk_counts, dict) or not risk_counts:
+        risk_counts = policy.get("risk_counts") if isinstance(policy.get("risk_counts"), dict) else {}
+    type_actions = payload.get("policy_decisions")
+    if not isinstance(type_actions, dict) or not type_actions:
+        type_actions = policy.get("policy_decisions") if isinstance(policy.get("policy_decisions"), dict) else {}
+    recommended_actions = payload.get("recommended_actions")
+    if not isinstance(recommended_actions, dict) or not recommended_actions:
+        recommended_actions = policy.get("recommended_actions") if isinstance(policy.get("recommended_actions"), dict) else {}
+    skip_reasons = payload.get("skip_reasons")
+    if not isinstance(skip_reasons, dict):
+        skip_reasons = {}
+
+    top_target = payload.get("top_target")
+    if not isinstance(top_target, dict):
+        top_target = {}
+
+    last_event = {
+        "reason": reason,
+        "action": payload.get("action") or rollout.get("recommendation"),
+        "source": payload.get("source"),
+        "observed_at": payload.get("observed_at"),
+        "top_target": top_target or None,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+    try:
+        applied_count = int(payload.get("compacted_count") or 0)
+    except (TypeError, ValueError):
+        applied_count = 0
+
+    return {
+        "available": bool(payload_present or rollout or policy.get("present") or audit.get("present")),
+        "display_contract_version": 1,
+        "status": display_status,
+        "mode": mode,
+        "effective_mode": effective_mode,
+        "runtime_state": runtime_state,
+        "enabled_monitoring_healthy": bool(rollout.get("enabled_monitoring_healthy")),
+        "safe_to_enable_payload_compaction": bool(rollout.get("safe_to_enable_payload_compaction")),
+        "applied": applied,
+        "applied_count": applied_count,
+        "skipped_count": skipped_count,
+        "tokens_before": payload.get("tokens_before"),
+        "tokens_after": payload.get("tokens_after"),
+        "tokens_removed": payload.get("tokens_removed"),
+        "chars_before": payload.get("chars_before"),
+        "chars_after": payload.get("chars_after"),
+        "chars_removed": payload.get("chars_removed"),
+        "type_counts": dict(sorted(type_counts.items())) if isinstance(type_counts, dict) else {},
+        "type_actions": dict(sorted(type_actions.items())) if isinstance(type_actions, dict) else {},
+        "recommended_actions": dict(sorted(recommended_actions.items())) if isinstance(recommended_actions, dict) else {},
+        "risk_counts": dict(sorted(risk_counts.items())) if isinstance(risk_counts, dict) else {},
+        "skip_reasons": dict(sorted(skip_reasons.items())) if isinstance(skip_reasons, dict) else {},
+        "last_event": last_event,
+        "blockers": blockers,
+        "warnings": warnings,
+        "raw_content_exposed": False,
+        "redacted": True,
+        "notes": [
+            "Display this summary instead of deriving semantic payload compaction state in WeClaw.",
+            "Detailed evidence remains available under latest.semantic_payload_compaction.",
+        ],
     }
 
 
@@ -1854,11 +1989,14 @@ def _semantic_compaction_runtime_status(runtime_events: Any | None = None) -> di
         "semantic_policy_dry_run": _semantic_compaction_event_summary(latest_policy),
         "semantic_payload_compaction": _semantic_compaction_event_summary(latest_payload),
     }
-    return {
+    rollout = _semantic_compaction_rollout_assessment(config=config, latest=latest)
+    status = {
         "config": config,
         "latest": latest,
-        "rollout": _semantic_compaction_rollout_assessment(config=config, latest=latest),
+        "rollout": rollout,
     }
+    status["display"] = _semantic_payload_compaction_display_contract(status)
+    return status
 
 
 def _long_session_observability_int(value: Any, default: int = 0) -> int:
@@ -4471,6 +4609,7 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(messages: Any) 
         "semantic_type_counts": {},
         "risk_counts": {},
         "policy_decisions": {},
+        "recommended_actions": {},
         "skip_reasons": {},
         "safety_core_version": safety_core["version"],
         "safety_core": safety_core,
@@ -4557,6 +4696,7 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(messages: Any) 
             _semantic_payload_increment_bucket(report, "semantic_type_counts", semantic_type)
             _semantic_payload_increment_bucket(report, "risk_counts", semantic_risk)
             _semantic_payload_increment_bucket(report, "policy_decisions", decision.get("policy_decision"))
+            _semantic_payload_increment_bucket(report, "recommended_actions", decision.get("recommended_action"))
 
             if not _semantic_payload_safety_core_allows_compaction(decision):
                 report["skipped_policy_count"] = int(report["skipped_policy_count"]) + 1
@@ -4630,6 +4770,7 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(messages: Any) 
             report["semantic_type_counts"] = dict(sorted(report["semantic_type_counts"].items()))
             report["risk_counts"] = dict(sorted(report["risk_counts"].items()))
             report["policy_decisions"] = dict(sorted(report["policy_decisions"].items()))
+            report["recommended_actions"] = dict(sorted(report["recommended_actions"].items()))
             report["skip_reasons"] = dict(sorted(report["skip_reasons"].items()))
             return messages, report
 
@@ -4651,6 +4792,7 @@ def _apply_flattened_tool_transcript_semantic_payload_compaction(messages: Any) 
                 "semantic_type_counts": dict(sorted(report["semantic_type_counts"].items())),
                 "risk_counts": dict(sorted(report["risk_counts"].items())),
                 "policy_decisions": dict(sorted(report["policy_decisions"].items())),
+                "recommended_actions": dict(sorted(report["recommended_actions"].items())),
                 "skip_reasons": dict(sorted(report["skip_reasons"].items())),
                 "targets": targets[: int(config["trace_targets"])],
             }
@@ -15942,6 +16084,7 @@ def _weclaw_model_catalog_contract(profile_section: dict[str, str], model: str |
     }
 
 
+
 def _weclaw_enrich_semantic_compaction_status(status: Any) -> dict[str, Any]:
     result = deepcopy(status) if isinstance(status, dict) else {}
     latest = result.get("latest")
@@ -15972,6 +16115,7 @@ def _weclaw_enrich_semantic_compaction_status(status: Any) -> dict[str, Any]:
         "keep semantic payload compaction disabled until blockers clear; use debug semantic selftest and canary checks for validation",
     )
     result["rollout"] = rollout
+    result["display"] = _semantic_payload_compaction_display_contract(result)
     return result
 
 

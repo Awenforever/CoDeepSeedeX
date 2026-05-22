@@ -1400,3 +1400,15 @@ Scope:
 - Verify the upstream request contains the semantic compacted envelope and no original large pytest body.
 - Verify `/v1/proxy/status` reads the runtime snapshot and reports enabled monitoring with savings and safety metadata.
 - Keep public `v0.3.9-alpha` unchanged.
+
+## p2.11a4 Semantic payload WeClaw contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Add `semantic_compaction.display` as the stable WeClaw-facing semantic payload display contract.
+- Expose mode/status/runtime_state, applied/skipped counts, token/char savings, type counts/actions, risk counts, skip reasons, last event metadata, blockers, and warnings.
+- Preserve redaction and keep raw payload details out of WeClaw display fields.
+- Keep healthy enabled monitoring out of degraded diagnostics.
+- Keep public `v0.3.9-alpha` unchanged.

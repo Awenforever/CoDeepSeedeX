@@ -857,6 +857,169 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
     assert '"raw_material_exposed": true' not in serialized_status.lower()
 
 
+def test_weclaw_semantic_payload_display_contract_exposes_mode_savings_and_safety_metadata():
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    status = {
+        "latest": {
+            "semantic_audit": {"present": True, "source": "in_memory_runtime_semantic_payload_snapshot"},
+            "semantic_policy_dry_run": {
+                "present": True,
+                "would_compact": True,
+                "semantic_type_counts": {"test_output": 2},
+                "risk_counts": {"low": 2},
+                "policy_decisions": {"compact": 2},
+                "recommended_actions": {"compact_test_output_summary": 2},
+            },
+            "semantic_payload_compaction": {
+                "present": True,
+                "source": "in_memory_runtime_semantic_payload_snapshot",
+                "observed_at": "2026-05-22T12:00:00Z",
+                "mode": "enabled",
+                "effective_mode": "enabled",
+                "applied": True,
+                "reason": "enabled",
+                "compacted_count": 2,
+                "skipped_policy_count": 1,
+                "retained_recent_flattened_count": 1,
+                "tokens_before": 1000,
+                "tokens_after": 400,
+                "tokens_removed": 600,
+                "chars_before": 4000,
+                "chars_after": 1600,
+                "chars_removed": 2400,
+                "semantic_type_counts": {"test_output": 2},
+                "risk_counts": {"low": 2, "medium": 1},
+                "policy_decisions": {"compact": 2, "structure_only": 1},
+                "recommended_actions": {"compact_test_output_summary": 2, "structure_preserving_summary_dry_run_only": 1},
+                "skip_reasons": {"medium_risk_requires_marker_preservation": 1},
+                "canary_guard": {"allowed": True},
+                "top_target": {
+                    "semantic_type": "test_output",
+                    "semantic_plan_type": "pytest_success",
+                    "semantic_risk": "low",
+                    "policy_decision": "compact",
+                    "safe_payload_mutation_allowed": True,
+                    "source": "semantic_payload_safety_core_v1",
+                    "tokens_removed": 300,
+                },
+            },
+        },
+        "rollout": {
+            "runtime_state": "enabled_monitoring",
+            "enabled_monitoring_healthy": True,
+            "safe_to_enable_payload_compaction": False,
+            "current_payload_mode": "enabled",
+            "latest_payload_mode": "enabled",
+            "latest_payload_effective_mode": "enabled",
+            "latest_payload_reason": "enabled",
+            "latest_payload_applied": True,
+            "latest_payload_canary_allowed": True,
+            "blockers": [],
+            "warnings": ["semantic_payload_compaction_enabled_monitoring_active"],
+            "recommendation": "monitor_enabled_rollout",
+        },
+    }
+
+    enriched = proxy_app._weclaw_enrich_semantic_compaction_status(status)
+    display = enriched["display"]
+
+    assert display["available"] is True
+    assert display["display_contract_version"] == 1
+    assert display["status"] == "applied"
+    assert display["mode"] == "enabled"
+    assert display["effective_mode"] == "enabled"
+    assert display["runtime_state"] == "enabled_monitoring"
+    assert display["enabled_monitoring_healthy"] is True
+    assert display["applied"] is True
+    assert display["applied_count"] == 2
+    assert display["skipped_count"] == 2
+    assert display["tokens_before"] == 1000
+    assert display["tokens_after"] == 400
+    assert display["tokens_removed"] == 600
+    assert display["chars_removed"] == 2400
+    assert display["type_counts"] == {"test_output": 2}
+    assert display["type_actions"] == {"compact": 2, "structure_only": 1}
+    assert display["recommended_actions"]["compact_test_output_summary"] == 2
+    assert display["risk_counts"]["medium"] == 1
+    assert display["skip_reasons"]["medium_risk_requires_marker_preservation"] == 1
+    assert display["last_event"]["reason"] == "enabled"
+    assert display["last_event"]["source"] == "in_memory_runtime_semantic_payload_snapshot"
+    assert display["last_event"]["top_target"]["safe_payload_mutation_allowed"] is True
+    assert display["raw_content_exposed"] is False
+    assert display["redacted"] is True
+
+    diagnostics = proxy_app._weclaw_diagnostics_contract({"semantic_compaction": enriched})
+    assert all(item["path"] != "semantic_compaction.rollout" for item in diagnostics["degraded_fields"])
+
+
+def test_semantic_payload_runtime_status_exposes_display_contract(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+
+    payload_event = {
+        "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
+        "source": "in_memory_runtime_semantic_payload_snapshot",
+        "mode": "enabled",
+        "effective_mode": "enabled",
+        "applied": True,
+        "reason": "enabled",
+        "compacted_count": 1,
+        "tokens_before": 100,
+        "tokens_after": 60,
+        "tokens_removed": 40,
+        "chars_before": 400,
+        "chars_after": 240,
+        "chars_removed": 160,
+        "semantic_type_counts": {"test_output": 1},
+        "risk_counts": {"low": 1},
+        "policy_decisions": {"compact": 1},
+        "recommended_actions": {"compact_test_output_summary": 1},
+        "canary_guard": {"allowed": True},
+        "targets": [
+            {
+                "index": 0,
+                "semantic_type": "test_output",
+                "semantic_plan_type": "pytest_success",
+                "semantic_risk": "low",
+                "risk_level": "low",
+                "policy_decision": "compact",
+                "recommended_action": "compact_test_output_summary",
+                "compression_strategy": "pytest_passed_summary_with_tail",
+                "safe_payload_mutation_allowed": True,
+                "safety_core_version": 1,
+                "source": "semantic_payload_safety_core_v1",
+                "reason": "semantic_payload_enabled_low_risk_test_output",
+                "tokens_removed": 40,
+            }
+        ],
+    }
+    runtime_status = proxy_app._semantic_compaction_runtime_status(
+        runtime_events={
+            "semantic_audit": {"event": "flattened_tool_transcript_semantic_audit", "source": "in_memory_runtime_semantic_payload_snapshot"},
+            "semantic_policy_dry_run": {
+                "event": "flattened_tool_transcript_semantic_policy_dry_run",
+                "source": "in_memory_runtime_semantic_payload_snapshot",
+                "would_compact": True,
+            },
+            "semantic_payload_compaction": payload_event,
+        }
+    )
+
+    display = runtime_status["display"]
+    assert display["status"] == "applied"
+    assert display["runtime_state"] == "enabled_monitoring"
+    assert display["tokens_removed"] == 40
+    assert display["type_counts"] == {"test_output": 1}
+    assert display["type_actions"] == {"compact": 1}
+    assert display["recommended_actions"] == {"compact_test_output_summary": 1}
+    assert display["last_event"]["top_target"]["source"] == "semantic_payload_safety_core_v1"
+
+
 @pytest.mark.asyncio
 async def test_weclaw_status_marks_mismatched_trim_report_unavailable(tmp_path, monkeypatch):
     codex_config = tmp_path / "codex.toml"
