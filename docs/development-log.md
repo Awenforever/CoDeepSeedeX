@@ -1388,3 +1388,15 @@ Scope:
 Release boundary:
 
 - Public `v0.3.9-alpha` is not moved in this node.
+
+## p2.11a3 Semantic payload real route
+
+Date: 2026-05-22
+
+Scope:
+
+- Add a route-level `/v1/responses` regression for enabled semantic payload compaction.
+- Verify thinking-mode flattened tool transcript payloads are compacted before the upstream DeepSeek request.
+- Verify the upstream request contains the semantic compacted envelope and no original large pytest body.
+- Verify `/v1/proxy/status` reads the runtime snapshot and reports enabled monitoring with savings and safety metadata.
+- Keep public `v0.3.9-alpha` unchanged.

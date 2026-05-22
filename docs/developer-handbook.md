@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.11a2-semantic-payload-enabled-runtime-status`
-- Latest closed documentation sync checkpoint: `p2.11a2-semantic-payload-enabled-runtime-status`
+- Current internal development checkpoint: `p2.11a3-semantic-payload-real-route`
+- Latest closed documentation sync checkpoint: `p2.11a3-semantic-payload-real-route`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1695,4 +1695,16 @@ Rules:
 2. Once mode is `enabled`, status must report `runtime_state=enabled_monitoring` when the latest runtime event is enabled, canary-allowed, and has no fallback/error blockers.
 3. WeClaw diagnostics must not mark enabled monitoring as degraded merely because `safe_to_enable_payload_compaction=false`.
 4. Enabled-mode blockers remain explicit: missing semantic events, non-enabled payload event, canary rejection, or fallback/error.
+5. This node does not update the public `v0.3.9-alpha` Release.
+
+## p2.11a3 Semantic payload real route
+
+p2.11a3 proves semantic payload compaction on the real `/v1/responses` HTTP path.
+
+Rules:
+
+1. The route-level regression must use a real ASGI request, not only direct helper calls.
+2. Thinking-mode flattened tool transcripts must be eligible for semantic payload compaction only when the canary allows enabled mode.
+3. The upstream DeepSeek payload must contain the semantic compacted envelope and must not contain the original large low-risk pytest output body.
+4. `/v1/proxy/status` must expose the latest enabled runtime event with token/char savings, canary status, safety-core metadata, and `runtime_state=enabled_monitoring`.
 5. This node does not update the public `v0.3.9-alpha` Release.

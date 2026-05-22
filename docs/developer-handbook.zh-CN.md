@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.11a2-semantic-payload-enabled-runtime-status`
-- 最新闭合文档同步检查点：`p2.11a2-semantic-payload-enabled-runtime-status`
+- 当前内部开发检查点：`p2.11a3-semantic-payload-real-route`
+- 最新闭合文档同步检查点：`p2.11a3-semantic-payload-real-route`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1650,4 +1650,16 @@ p2.11a2将dry-run启用准备度和enabled模式运行健康状态分开。
 2. 一旦mode为`enabled`，若最新runtime事件也是enabled、canary允许且没有fallback/error阻塞，status必须报告`runtime_state=enabled_monitoring`。
 3. WeClaw diagnostics不能仅因为`safe_to_enable_payload_compaction=false`就把enabled监控状态标记为degraded。
 4. enabled模式阻塞仍必须明确暴露：semantic事件缺失、payload事件不是enabled、canary拒绝、fallback或error。
+5. 本节点不更新公开`v0.3.9-alpha`Release。
+
+## p2.11a3 Semantic payload real route
+
+p2.11a3证明semantic payload compaction已经进入真实`/v1/responses`HTTP路径。
+
+规则：
+
+1. route级回归必须使用真实ASGI请求，不只调用helper函数。
+2. thinking模式flattened tool transcript只有在canary允许enabled模式时才允许semantic payload compaction。
+3. 上游DeepSeek payload必须包含semantic compacted envelope，并且不能包含原始大体量低风险pytest输出正文。
+4. `/v1/proxy/status`必须暴露最新enabled runtime事件，包括token/char收益、canary状态、safety-core metadata和`runtime_state=enabled_monitoring`。
 5. 本节点不更新公开`v0.3.9-alpha`Release。

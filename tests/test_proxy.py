@@ -199,6 +199,134 @@ async def test_previous_response_with_function_call_output_preserves_assistant_t
     }
 
 
+@pytest.mark.asyncio
+async def test_semantic_payload_enabled_compacts_real_responses_route_payload_and_status(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_semantic_tool",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_semantic",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "run_tests",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 6, "total_tokens": 14},
+            },
+            {
+                "id": "chatcmpl_semantic_final",
+                "choices": [{"message": {"role": "assistant", "content": "done"}}],
+                "usage": {"prompt_tokens": 14, "completion_tokens": 4, "total_tokens": 18},
+            },
+        ]
+    )
+
+    first = await client.post(
+        "/v1/responses",
+        json={
+            "input": "Run test suite",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "run_tests",
+                    "description": "Run tests",
+                    "parameters": {"type": "object", "properties": {}},
+                }
+            ],
+        },
+    )
+    assert first.status_code == 200
+    first_body = first.json()
+
+    long_pytest_output = (
+        "===== pytest =====\n"
+        "collected 123 items\n"
+        + ("." * 200)
+        + "\n123 passed in 0.42s\n"
+        + ("X" * 5000)
+    )
+    second = await client.post(
+        "/v1/responses",
+        json={
+            "previous_response_id": first_body["id"],
+            "input": [
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_semantic",
+                    "output": long_pytest_output,
+                }
+            ],
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["output_text"] == "done"
+
+    assert len(transport.requests) == 2
+    second_upstream_messages = transport.requests[1]["messages"]
+    second_upstream_serialized = json.dumps(second_upstream_messages, ensure_ascii=False)
+
+    assert transport.requests[1]["thinking"] == {"type": "enabled"}
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in second_upstream_serialized
+    assert "semantic_type: test_output" in second_upstream_serialized
+    assert "semantic_risk: low" in second_upstream_serialized
+    assert "123 passed in 0.42s" in second_upstream_serialized
+    assert "original SQLite history is unchanged" in second_upstream_serialized
+    assert "X" * 2000 not in second_upstream_serialized
+
+    status = await client.get("/v1/proxy/status")
+    assert status.status_code == 200
+    semantic = status.json()["semantic_compaction"]
+    payload_event = semantic["latest"]["semantic_payload_compaction"]
+
+    assert semantic["rollout"]["runtime_state"] == "enabled_monitoring"
+    assert semantic["rollout"]["enabled_monitoring_healthy"] is True
+    assert semantic["rollout"]["latest_payload_mode"] == "enabled"
+    assert semantic["rollout"]["latest_payload_applied"] is True
+    assert semantic["rollout"]["latest_payload_canary_allowed"] is True
+    assert semantic["rollout"]["blockers"] == []
+
+    assert payload_event["present"] is True
+    assert payload_event["mode"] == "enabled"
+    assert payload_event["effective_mode"] == "enabled"
+    assert payload_event["applied"] is True
+    assert payload_event["reason"] == "enabled"
+    assert payload_event["compacted_count"] == 1
+    assert payload_event["tokens_removed"] > 0
+    assert payload_event["chars_removed"] > 0
+    assert payload_event["semantic_type_counts"]["test_output"] == 1
+    assert payload_event["risk_counts"]["low"] == 1
+    assert payload_event["policy_decisions"]["compact"] == 1
+    assert payload_event["canary_guard"]["allowed"] is True
+
+    top_target = payload_event["top_target"]
+    assert top_target["semantic_type"] == "test_output"
+    assert top_target["semantic_plan_type"] == "pytest_success"
+    assert top_target["semantic_risk"] == "low"
+    assert top_target["policy_decision"] == "compact"
+    assert top_target["safe_payload_mutation_allowed"] is True
+    assert top_target["source"] == "semantic_payload_safety_core_v1"
+    assert top_target["tokens_removed"] > 0
+
+
 
 @pytest.mark.asyncio
 async def test_request_model_overrides_env_proxy_model_by_default(monkeypatch, client_factory):
