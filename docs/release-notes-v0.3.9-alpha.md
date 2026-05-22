@@ -117,6 +117,8 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 
 ### Pricing owned refresh contract
 
+Internal marker: `p2.10a112-pricing-owned-refresh-contract`.
+
 - Treats `DEEPSEEK_PROXY_PRICING_PATH` as a dsproxy-managed pricing file.
 - Applies daily official pricing refresh to configured pricing paths as well as the default managed cache.
 - Preserves previous pricing when official refresh fails and exposes `requires_refresh`, `reason`, and `action`.
