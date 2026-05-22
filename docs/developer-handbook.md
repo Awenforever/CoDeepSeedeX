@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.11a5-semantic-payload-production-validation`
-- Latest closed documentation sync checkpoint: `p2.11a5-semantic-payload-production-validation`
+- Current internal development checkpoint: `p2.12a2-codex-profile-forward-compatible-repair`
+- Latest closed documentation sync checkpoint: `p2.12a2-codex-profile-forward-compatible-repair`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1732,3 +1732,15 @@ Rules:
 3. WeClaw must be able to display mode, status, runtime state, token/char savings, type/risk/action counts, last-event safety metadata, blockers, and warnings without local derivation.
 4. Raw payload content must remain redacted in display fields.
 5. This node updates docs and Release notes but does not move the public `v0.3.9-alpha` Release; moving the public Release is a separate explicit step.
+
+## p2.12a2 Codex profile forward-compatible repair
+
+p2.12a2 hardens the managed Codex profile contract across Codex upgrades.
+
+Rules:
+
+1. Managed `deepseek` and `deepseek-thinking` profiles must expose the dsproxy effective upstream model directly to Codex.
+2. Stale `glm`, `qwen`, or custom model names inside managed profiles are profile drift, not harmless display details.
+3. `dsproxy profile repair --managed-only --json` regenerates the managed provider/profile blocks from the dsproxy contract.
+4. The managed `codex` wrapper repairs profiles before launch and fails closed if `model_conflict=true` remains after repair.
+5. This node does not solve token-only Compact/Trim runtime migration; that stays in the next p2.12 node.

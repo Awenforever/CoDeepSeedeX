@@ -622,9 +622,13 @@ def _codex_profile_blocks(
     provider_header = f"[model_providers.{provider_name}]"
     profile_header = f"[profiles.{profile_name}]"
 
+    provider_defaults = _managed_profile_provider_defaults(profile_name) or {}
+    provider_label = provider_defaults.get("provider_label") or (
+        "DeepSeek Thinking Responses Proxy" if "thinking" in profile_name else "DeepSeek Responses Proxy"
+    )
     provider_lines = [
         provider_header,
-        'name = "DeepSeek Thinking Responses Proxy"' if "thinking" in profile_name else 'name = "DeepSeek Responses Proxy"',
+        f"name = {_toml_quote(provider_label)}",
         f"base_url = {_toml_quote(base_url)}",
         'env_key = "DEEPSEEK_API_KEY"',
         'wire_api = "responses"',
@@ -720,6 +724,23 @@ def _canonical_cli_reasoning_effort(value: object) -> str | None:
 
 CODEX_MODEL_REASONING_EFFORT_ALLOWED = {"none", "minimal", "low", "medium", "high", "xhigh"}
 CODEEPSEEDEX_MANAGED_CODEX_PROFILES = ("deepseek", "deepseek-thinking")
+CODEEPSEEDEX_PROFILE_CONTRACT_VERSION = 2
+
+
+def _managed_profile_provider_defaults(profile_name: str) -> dict[str, str] | None:
+    if profile_name == "deepseek":
+        return {
+            "provider_name": "deepseek-proxy",
+            "provider_label": "DeepSeek Responses Proxy",
+            "base_url": "http://127.0.0.1:8000/v1",
+        }
+    if profile_name == "deepseek-thinking":
+        return {
+            "provider_name": "deepseek-thinking-proxy",
+            "provider_label": "DeepSeek Thinking Responses Proxy",
+            "base_url": "http://127.0.0.1:8001/v1",
+        }
+    return None
 
 
 def _codex_model_reasoning_effort_for_deepseek(deepseek_effort: str) -> str:
@@ -780,12 +801,11 @@ def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, v
     return True
 
 
-def _parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
-    if not path.exists():
-        return {}
+
+def _parse_simple_toml_sections_from_text(text: str) -> dict[str, dict[str, str]]:
     sections: dict[str, dict[str, str]] = {}
     current: str | None = None
-    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for raw_line in text.splitlines():
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -804,6 +824,14 @@ def _parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
                 value = value.split("#", 1)[0].strip()
             sections[current][key] = value
     return sections
+
+
+def _parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
+    if not path.exists():
+        return {}
+    return _parse_simple_toml_sections_from_text(
+        path.read_text(encoding="utf-8", errors="replace")
+    )
 
 
 def _codex_config_health(config_path: Path) -> dict[str, object]:
@@ -891,11 +919,20 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
         "source": source,
         "notes": (
             [
-                "Codex profile model differs from the effective upstream model. WeClaw should display effective_model and may show codex_model as a conflict detail."
+                "Codex profile model differs from the effective upstream model. Managed CoDeepSeedeX profile repair must rewrite the Codex-visible model before launch."
             ]
             if model_conflict
             else []
         ),
+        "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+        "managed_profile_contract": {
+            "available": True,
+            "status": "conflict" if model_conflict else "ok",
+            "fail_closed_recommended": bool(model_conflict),
+            "repair_command": "dsproxy profile repair --managed-only --json" if model_conflict else None,
+            "reason": "codex_profile_model_differs_from_effective_upstream_model" if model_conflict else None,
+            "future_compatibility_policy": "repair managed profile before launching Codex; fail closed if conflict remains after repair",
+        },
     }
 
 
@@ -1185,6 +1222,49 @@ stop_codeepseedex_terminal_title_keeper() {
   fi
 }
 
+repair_codeepseedex_managed_profile_contract() {
+  local profile_name="$1"
+
+  case "$profile_name" in
+    deepseek|deepseek-thinking)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if [ "${CODEEPSEEDEX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
+    return 0
+  fi
+
+  if [ ! -x "$DSPROXY" ]; then
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+    return 1
+  fi
+
+  if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
+    printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
+    printf 'Run for details: %s profile repair --managed-only --json\n' "$DSPROXY" >&2
+    return 1
+  fi
+
+  local status_json=""
+  if ! status_json="$($DSPROXY profile status "$profile_name" --json 2>/dev/null)"; then
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
+    return 1
+  fi
+
+  if printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
+    if [ "${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
+      return 0
+    fi
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$DSPROXY" "$profile_name" >&2
+    return 1
+  fi
+}
+
 start_dsproxy_profile() {
   local profile_name="$1"
   local start_args=()
@@ -1228,6 +1308,7 @@ start_dsproxy_profile() {
 run_codeepseedex_codex() {
   case "$profile" in
     deepseek|deepseek-thinking)
+      repair_codeepseedex_managed_profile_contract "$profile"
       start_dsproxy_profile "$profile"
       schedule_codeepseedex_terminal_title_refresh
       ;;
@@ -1432,22 +1513,30 @@ def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_p
 
 
 
+
 def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
     target_profiles = _managed_profile_targets("__managed__" if bool(getattr(args, "managed_only", False)) else getattr(args, "profile", "__managed__"))
     dry_run = bool(getattr(args, "dry_run", False))
 
+    original_text = codex_path.read_text(encoding="utf-8") if codex_path.exists() else ""
+    working_text = original_text
     profile_results: list[dict[str, object]] = []
     updated_profiles: list[str] = []
     skipped_profiles: list[str] = []
+    post_validation_errors: list[dict[str, object]] = []
 
-    sections_before = _parse_simple_toml_sections(codex_path)
     for profile_name in target_profiles:
+        provider_defaults = _managed_profile_provider_defaults(profile_name)
+        before_sections = _parse_simple_toml_sections_from_text(working_text)
+        before_profile_section = before_sections.get(f"profiles.{profile_name}", {})
+        before_provider_name = before_profile_section.get("model_provider") or (provider_defaults or {}).get("provider_name") or f"{profile_name}-proxy"
+        before_provider_section = before_sections.get(f"model_providers.{before_provider_name}", {})
+
         before_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
         model_info = before_payload.get("model", {}) if isinstance(before_payload, dict) else {}
         effective_model = str(model_info.get("effective_model") or "").strip()
         codex_model = str(model_info.get("codex_model") or "").strip()
-        provider_name = str(model_info.get("model_provider") or f"{profile_name}-proxy")
 
         effort_info = before_payload.get("effort", {}) if isinstance(before_payload, dict) else {}
         expected_effort = str(effort_info.get("expected_codex_model_reasoning_effort") or "").strip() or "high"
@@ -1460,71 +1549,179 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
                 "reason": "effective_model_unknown",
                 "codex_model_before": codex_model or None,
                 "effective_model": effective_model or None,
+                "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
             })
             continue
 
-        profile_section = sections_before.get(f"profiles.{profile_name}", {})
-        model_context_window = _int_or_zero(profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
+        model_context_window = _int_or_zero(before_profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
         expected_auto_compact_token_limit = _derive_auto_compact_token_limit(
             model_context_window,
             DEFAULT_AUTO_COMPACT_RATIO,
         )
-        current_auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
+        current_auto_compact_token_limit = _int_or_zero(before_profile_section.get("model_auto_compact_token_limit"))
+        tool_output_token_limit = _int_or_zero(before_profile_section.get("tool_output_token_limit")) or 12_000
+        model_catalog_json = before_profile_section.get("model_catalog_json")
 
+        if provider_defaults:
+            provider_name = provider_defaults["provider_name"]
+            base_url = provider_defaults["base_url"]
+            _provider_header, provider_block, _profile_header, profile_block = _codex_profile_blocks(
+                profile_name=profile_name,
+                provider_name=provider_name,
+                base_url=base_url,
+                model=effective_model,
+                reasoning_effort=expected_effort,
+                context_window=model_context_window,
+                auto_compact_token_limit=expected_auto_compact_token_limit,
+                tool_output_token_limit=tool_output_token_limit,
+                model_catalog_json=model_catalog_json,
+            )
+            provider_header = f"[model_providers.{provider_name}]"
+            profile_header = f"[profiles.{profile_name}]"
+            candidate_text, provider_existed = _upsert_toml_table(working_text, provider_header, provider_block)
+            candidate_text, profile_existed = _upsert_toml_table(candidate_text, profile_header, profile_block)
+            changed = candidate_text != working_text
+            working_text = candidate_text
+
+            after_sections = _parse_simple_toml_sections_from_text(working_text)
+            after_profile_section = after_sections.get(f"profiles.{profile_name}", {})
+            after_provider_section = after_sections.get(f"model_providers.{provider_name}", {})
+            provider_needs_patch = (
+                before_provider_name != provider_name
+                or before_provider_section.get("base_url") != base_url
+                or before_provider_section.get("wire_api") != "responses"
+                or before_provider_section.get("env_key") != "DEEPSEEK_API_KEY"
+            )
+            model_needs_patch = codex_model != effective_model
+            effort_needs_patch = before_profile_section.get("model_reasoning_effort") != expected_effort
+            plan_needs_patch = before_profile_section.get("plan_mode_reasoning_effort") != "high"
+            auto_compact_needs_patch = current_auto_compact_token_limit != expected_auto_compact_token_limit
+
+            if changed:
+                updated_profiles.append(profile_name)
+
+            profile_results.append({
+                "profile": profile_name,
+                "status": "ok",
+                "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+                "managed_profile": True,
+                "provider": provider_name,
+                "provider_before": before_provider_name,
+                "provider_existed": provider_existed,
+                "profile_existed": profile_existed,
+                "provider_needs_patch": provider_needs_patch,
+                "provider_patched": bool(changed and provider_needs_patch and not dry_run),
+                "provider_base_url": base_url,
+                "provider_base_url_after": after_provider_section.get("base_url"),
+                "wire_api_after": after_provider_section.get("wire_api"),
+                "env_key_after": after_provider_section.get("env_key"),
+                "codex_model_before": codex_model or None,
+                "effective_model": effective_model,
+                "codex_model_after": after_profile_section.get("model"),
+                "model_needs_patch": model_needs_patch,
+                "model_patched": bool(changed and model_needs_patch and not dry_run),
+                "model_reasoning_effort": expected_effort,
+                "model_reasoning_effort_after": after_profile_section.get("model_reasoning_effort"),
+                "model_reasoning_effort_needs_patch": effort_needs_patch,
+                "model_reasoning_effort_patched": bool(changed and effort_needs_patch and not dry_run),
+                "plan_mode_reasoning_effort": "high",
+                "plan_mode_reasoning_effort_after": after_profile_section.get("plan_mode_reasoning_effort"),
+                "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
+                "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
+                "model_context_window_tokens": model_context_window,
+                "auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+                "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
+                "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
+                "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
+                "model_auto_compact_token_limit_patched": bool(changed and auto_compact_needs_patch and not dry_run),
+                "future_compatibility_policy": "regenerate managed profile/provider from dsproxy contract and fail closed if the Codex-visible model still differs",
+            })
+            continue
+
+        provider_name = str(model_info.get("model_provider") or f"{profile_name}-proxy")
         model_needs_patch = codex_model != effective_model
-        effort_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("model_reasoning_effort") != expected_effort
-        plan_needs_patch = sections_before.get(f"profiles.{profile_name}", {}).get("plan_mode_reasoning_effort") != "high"
+        effort_needs_patch = before_profile_section.get("model_reasoning_effort") != expected_effort
+        plan_needs_patch = before_profile_section.get("plan_mode_reasoning_effort") != "high"
         auto_compact_needs_patch = current_auto_compact_token_limit != expected_auto_compact_token_limit
-
-        model_patched = False
-        effort_patched = False
-        plan_patched = False
-        auto_compact_patched = False
-        if not dry_run:
-            if model_needs_patch:
-                model_patched = _patch_codex_profile_value(codex_path, profile_name, "model", effective_model)
-            if effort_needs_patch:
-                effort_patched = _patch_codex_profile_value(codex_path, profile_name, "model_reasoning_effort", expected_effort)
-            if plan_needs_patch:
-                plan_patched = _patch_codex_profile_value(codex_path, profile_name, "plan_mode_reasoning_effort", "high")
-            if auto_compact_needs_patch:
-                auto_compact_patched = _patch_codex_profile_value(
-                    codex_path,
-                    profile_name,
-                    "model_auto_compact_token_limit",
-                    str(expected_auto_compact_token_limit),
-                )
-
-        if model_needs_patch or effort_needs_patch or plan_needs_patch or auto_compact_needs_patch:
+        changed = False
+        for key, value in [
+            ("model", effective_model),
+            ("model_reasoning_effort", expected_effort),
+            ("plan_mode_reasoning_effort", "high"),
+            ("model_auto_compact_token_limit", str(expected_auto_compact_token_limit)),
+        ]:
+            profile_header = f"[profiles.{profile_name}]"
+            table_range = _toml_table_range(working_text, profile_header)
+            if table_range is None:
+                continue
+            start, end = table_range
+            block = working_text[start:end]
+            lines = block.rstrip().splitlines()
+            out: list[str] = []
+            replaced = False
+            for line in lines:
+                if line.strip().startswith(f"{key} = "):
+                    out.append(f"{key} = {_toml_quote(value)}")
+                    replaced = True
+                else:
+                    out.append(line)
+            if not replaced:
+                out.append(f"{key} = {_toml_quote(value)}")
+            patched = "\n".join(out) + "\n"
+            new_text = working_text[:start] + patched + working_text[end:]
+            changed = changed or new_text != working_text
+            working_text = new_text
+        if changed:
             updated_profiles.append(profile_name)
-
         profile_results.append({
             "profile": profile_name,
             "status": "ok",
+            "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+            "managed_profile": False,
             "provider": provider_name,
             "codex_model_before": codex_model or None,
             "effective_model": effective_model,
             "codex_model_after": effective_model if model_needs_patch else codex_model,
             "model_needs_patch": model_needs_patch,
-            "model_patched": model_patched,
+            "model_patched": bool(changed and model_needs_patch and not dry_run),
             "model_reasoning_effort": expected_effort,
             "model_reasoning_effort_needs_patch": effort_needs_patch,
-            "model_reasoning_effort_patched": effort_patched,
+            "model_reasoning_effort_patched": bool(changed and effort_needs_patch and not dry_run),
             "plan_mode_reasoning_effort": "high",
             "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
-            "plan_mode_reasoning_effort_patched": plan_patched,
+            "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
             "model_context_window_tokens": model_context_window,
             "auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
             "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
             "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
             "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
-            "model_auto_compact_token_limit_patched": auto_compact_patched,
+            "model_auto_compact_token_limit_patched": bool(changed and auto_compact_needs_patch and not dry_run),
         })
+
+    if not dry_run and working_text != original_text:
+        codex_path.parent.mkdir(parents=True, exist_ok=True)
+        codex_path.write_text(working_text, encoding="utf-8")
+
+    if not dry_run:
+        for profile_name in target_profiles:
+            if profile_name not in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+                continue
+            post_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
+            model_info = post_payload.get("model", {}) if isinstance(post_payload, dict) else {}
+            if bool(model_info.get("model_conflict")):
+                post_validation_errors.append({
+                    "profile": profile_name,
+                    "reason": "managed_profile_model_conflict_after_repair",
+                    "codex_model": model_info.get("codex_model"),
+                    "effective_model": model_info.get("effective_model"),
+                    "action": "inspect Codex config schema changes before launching Codex",
+                })
 
     health = _codex_config_health(codex_path)
     output = {
-        "status": "ok" if health["codex_config_loadable"] else "error",
+        "status": "error" if post_validation_errors or not health["codex_config_loadable"] else "ok",
         "operation": "profile_repair",
+        "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
         "env_file": str(env_file),
         "codex_config": str(codex_path),
         "managed_only": bool(getattr(args, "managed_only", False)),
@@ -1532,10 +1729,13 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         "updated_profiles": updated_profiles,
         "skipped_profiles": skipped_profiles,
         "profile_results": profile_results,
+        "post_validation_errors": post_validation_errors,
         "codex_config_loadable": health["codex_config_loadable"],
         "invalid_profile_fields": health["invalid_profile_fields"],
         "dry_run": dry_run,
+        "config_preview": working_text if dry_run else None,
         "post_config_apply": None if dry_run else _post_config_apply(),
+        "future_compatibility_policy": "Managed CoDeepSeedeX profiles are regenerated from dsproxy contract before Codex launch; launch must fail closed if profile model conflict remains.",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if output["status"] == "ok" else 1

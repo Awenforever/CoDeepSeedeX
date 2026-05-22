@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.11a5-semantic-payload-production-validation`
-- 最新闭合文档同步检查点：`p2.11a5-semantic-payload-production-validation`
+- 当前内部开发检查点：`p2.12a2-codex-profile-forward-compatible-repair`
+- 最新闭合文档同步检查点：`p2.12a2-codex-profile-forward-compatible-repair`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1687,3 +1687,15 @@ p2.11a5在移动公开Release之前闭合semantic payload compaction生产化验
 3. WeClaw必须能直接显示mode、status、runtime state、token/char收益、type/risk/action计数、last-event安全元数据、blockers和warnings，不得本地推导。
 4. display字段必须保持原始payload内容redacted。
 5. 本节点更新文档和Release notes，但不移动公开`v0.3.9-alpha`Release；公开Release移动是单独显式步骤。
+
+## p2.12a2 Codex profile forward-compatible repair
+
+p2.12a2加固跨Codex升级的托管profile契约。
+
+规则：
+
+1. 托管`deepseek`和`deepseek-thinking` profile必须直接向Codex暴露dsproxy effective upstream model。
+2. 托管profile中残留`glm`、`qwen`或custom模型名属于profile漂移，不是无害显示细节。
+3. `dsproxy profile repair --managed-only --json`会从dsproxy契约重新生成托管provider/profile块。
+4. 托管`codex` wrapper会在启动前修复profile；如果修复后仍有`model_conflict=true`，则fail closed。
+5. 本节点不解决token-only Compact/Trim runtime迁移；该任务保留到下一个p2.12节点。

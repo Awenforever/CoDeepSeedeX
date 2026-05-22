@@ -2737,6 +2737,74 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
 
 
+def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_model_conflict(tmp_path, capsys, monkeypatch):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "name = \"Wrong Provider\"\n"
+        "base_url = \"http://127.0.0.1:9999/v1\"\n"
+        "wire_api = \"responses\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"glm-5.1\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 750000\n"
+        "tool_output_token_limit = 12000\n"
+        "model_reasoning_effort = \"medium\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+
+    assert main([
+        "profile",
+        "repair",
+        "--managed-only",
+        "--json",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["profile_contract_version"] == 2
+    assert result["post_validation_errors"] == []
+    repaired = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
+    assert repaired["codex_model_before"] == "glm-5.1"
+    assert repaired["codex_model_after"] == "deepseek-v4-flash"
+    assert repaired["model_needs_patch"] is True
+    assert repaired["model_patched"] is True
+    assert repaired["provider_base_url_after"] == "http://127.0.0.1:8001/v1"
+    assert repaired["model_auto_compact_token_limit_patched"] is True
+
+    text = config_path.read_text(encoding="utf-8")
+    assert '[model_providers.deepseek-thinking-proxy]' in text
+    assert 'name = "DeepSeek Thinking Responses Proxy"' in text
+    assert 'base_url = "http://127.0.0.1:8001/v1"' in text
+    assert 'env_key = "DEEPSEEK_API_KEY"' in text
+    assert 'wire_api = "responses"' in text
+    assert '[profiles.deepseek-thinking]' in text
+    assert 'model = "deepseek-v4-flash"' in text
+    assert 'model = "glm-5.1"' not in text
+    assert 'model_auto_compact_token_limit = 900000' in text
+    assert 'model_reasoning_effort = "xhigh"' in text
+    assert 'plan_mode_reasoning_effort = "high"' in text
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["model"]["codex_model"] == "deepseek-v4-flash"
+    assert status["model"]["effective_model"] == "deepseek-v4-flash"
+    assert status["model"]["model_conflict"] is False
+
+
 
 
 def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_path, capsys):
@@ -2789,6 +2857,46 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
     return_idx = text.index('return "$codex_rc"', cleanup_idx)
     assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
+
+
+def test_cli_profile_refresh_wrapper_repairs_and_fail_closes_managed_profiles_before_launch(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    dsproxy = bin_dir / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for item in (real_codex, dsproxy, wrapper):
+        item.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+
+    _result = json.loads(capsys.readouterr().out)
+    text = wrapper.read_text(encoding="utf-8")
+    assert "repair_codeepseedex_managed_profile_contract()" in text
+    assert 'profile repair --managed-only --json' in text
+    assert 'profile status "$profile_name" --json' in text
+    assert '"model_conflict"[[:space:]]*:[[:space:]]*true' in text
+    assert 'CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT' in text
+    assert 'Refusing to launch Codex with a stale or incompatible profile' in text
+    repair_idx = text.index('repair_codeepseedex_managed_profile_contract "$profile"')
+    start_idx = text.index('start_dsproxy_profile "$profile"')
+    real_idx = text.index('"$REAL_CODEX" "$@"')
+    assert repair_idx < start_idx < real_idx
 
 
 def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):

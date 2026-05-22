@@ -1428,3 +1428,15 @@ Scope:
 Release boundary:
 
 - Public `v0.3.9-alpha` is not moved in this node.
+
+## p2.12a2 Codex profile forward-compatible repair
+
+Date: 2026-05-22
+
+Scope:
+
+- Regenerate managed Codex provider/profile blocks during `dsproxy profile repair --managed-only --json`.
+- Clear stale `glm-5.1` model drift in `deepseek-thinking` by rewriting the Codex-visible profile model to the dsproxy effective upstream model.
+- Refresh the managed Codex wrapper so it repairs and verifies managed profiles before launching Codex.
+- Fail closed if a managed profile still has a model conflict after repair.
+- Keep token-only Compact/Trim runtime migration for the next node.

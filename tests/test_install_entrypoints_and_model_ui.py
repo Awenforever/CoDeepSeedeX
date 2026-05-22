@@ -221,6 +221,20 @@ def test_installer_gates_unknown_local_bin_overwrites() -> None:
     assert "DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER=1" in text
 
 
+
+
+def test_installer_codex_wrapper_repairs_managed_profile_before_launch() -> None:
+    body = _install_function_body("write_codex_wrapper", "uninstall")
+    assert "repair_codeepseedex_managed_profile_contract()" in body
+    assert "profile repair --managed-only --json" in body
+    assert r'profile status "\$profile_name" --json' in body
+    assert "CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT" in body
+    assert "Refusing to launch Codex with a stale or incompatible profile" in body
+    repair_idx = body.index(r'repair_codeepseedex_managed_profile_contract "\$profile"')
+    start_idx = body.index(r'start_dsproxy_profile "\$profile"')
+    real_idx = body.index(r'"\$REAL_CODEX" "\$@"')
+    assert repair_idx < start_idx < real_idx
+
 def test_installer_recognizes_only_codeepseedex_managed_local_bins() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|deepseek-responses-proxy|start_dsproxy_profile" in text

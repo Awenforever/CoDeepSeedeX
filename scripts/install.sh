@@ -1872,6 +1872,49 @@ stop_codeepseedex_terminal_title_keeper() {
   fi
 }
 
+repair_codeepseedex_managed_profile_contract() {
+  local profile_name="\$1"
+
+  case "\$profile_name" in
+    deepseek|deepseek-thinking)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if [ "\${CODEEPSEEDEX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
+    return 0
+  fi
+
+  if [ ! -x "\$DSPROXY" ]; then
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
+    return 1
+  fi
+
+  if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
+    printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
+    printf 'Run for details: %s profile repair --managed-only --json\n' "\$DSPROXY" >&2
+    return 1
+  fi
+
+  local status_json=""
+  if ! status_json="\$(\$DSPROXY profile status "\$profile_name" --json 2>/dev/null)"; then
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
+    return 1
+  fi
+
+  if printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
+    if [ "\${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
+      return 0
+    fi
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$DSPROXY" "\$profile_name" >&2
+    return 1
+  fi
+}
+
 start_dsproxy_profile() {
   local profile_name="\$1"
   local start_args=()
@@ -1915,6 +1958,7 @@ start_dsproxy_profile() {
 run_codeepseedex_codex() {
   case "\$profile" in
     deepseek|deepseek-thinking)
+      repair_codeepseedex_managed_profile_contract "\$profile"
       start_dsproxy_profile "\$profile"
       schedule_codeepseedex_terminal_title_refresh
       ;;
