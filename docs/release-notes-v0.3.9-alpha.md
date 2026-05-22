@@ -105,3 +105,12 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - Confirms 750k is retained only as a legacy or negative-test marker, not as a live runtime threshold.
 - Confirms the live managed context contract: 1M context window, 900k auto-compact threshold, and `auto_compact_ratio=0.90`.
 - Confirms semantic payload compaction test coverage, Codex native Compact alignment evidence, and WeClaw/status field ownership.
+
+
+### Pricing daily refresh contract
+
+- Adds dsproxy-managed daily pricing refresh after local midnight.
+- Status and WeClaw JSON no longer rely on a stale bundled pricing snapshot without an explicit refresh state.
+- If official pricing refresh succeeds, the managed cache is updated and `updated_at` / `fetched_at` move to the refreshed date.
+- If official pricing refresh fails, previous prices are preserved and status exposes `requires_refresh`, `daily_refresh.reason`, and `refresh_required_action`.
+- WeClaw remains a display client and must not derive pricing locally.

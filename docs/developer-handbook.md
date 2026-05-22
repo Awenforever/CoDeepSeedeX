@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a110-final-tests-docs-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a110-final-tests-docs-contract`
+- Current internal development checkpoint: `p2.10a111-pricing-daily-refresh-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a111-pricing-daily-refresh-contract`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1625,3 +1625,20 @@ Final contract:
   - `auto_compact_threshold_tokens = 900000`
 - Full-test validation must run under a sanitized environment that removes local `DEEPSEEK_*` and provider-key variables. Raw local environment failures must be classified as external environment leakage when sanitized full tests pass.
 - WeClaw/status clients must consume dsproxy fields directly and must not reconstruct context, Compact, Trim, pricing, token categories, or payload-safety policy locally.
+
+
+## p2.10a111 Pricing daily refresh contract
+
+Pricing is dsproxy-owned. WeClaw must consume dsproxy pricing fields directly and must not derive or locally refresh pricing.
+
+Runtime contract:
+
+- Managed pricing refresh policy: daily after local midnight.
+- If the active managed pricing source is older than the current local day, dsproxy attempts official DeepSeek pricing refresh and writes the managed cache.
+- Successful refresh updates the official cache and status `updated_at` / `fetched_at`.
+- Failed refresh preserves previous prices and exposes:
+  - `daily_refresh.status = official_daily_refresh_failed_using_previous_prices`
+  - `requires_refresh = true`
+  - `refresh_required_action`
+  - `daily_refresh.reason`
+- External pricing config remains user-managed and is not auto-refreshed.

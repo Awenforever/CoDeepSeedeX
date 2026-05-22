@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a110-final-tests-docs-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a111-pricing-daily-refresh-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1580,3 +1580,20 @@ p2.10a110关闭Plan中的G项。
   - `auto_compact_threshold_tokens = 900000`
 - full tests必须在清理本地`DEEPSEEK_*`和provider key变量后的环境中执行。如果raw本地环境失败而sanitized full tests通过，应归类为外部环境污染。
 - WeClaw/status客户端必须直接消费dsproxy字段，不得自行重构context、Compact、Trim、pricing、token分类或payload-safety策略。
+
+
+## p2.10a111 Pricing每日刷新契约
+
+Pricing由dsproxy维护。WeClaw必须直接消费dsproxy pricing字段，不得自行推导或本地刷新价格。
+
+运行时契约：
+
+- 受管pricing刷新策略：本地时间每日0:00后按日刷新。
+- 如果当前受管pricing源早于本地当天，dsproxy会尝试从DeepSeek官方定价页刷新并写入受管cache。
+- 刷新成功后，official cache和status中的`updated_at` / `fetched_at`会更新。
+- 刷新失败时保留旧cache或bundled snapshot，但必须暴露：
+  - `daily_refresh.status = official_daily_refresh_failed_using_previous_prices`
+  - `requires_refresh = true`
+  - `refresh_required_action`
+  - `daily_refresh.reason`
+- 外部pricing config属于用户管理，不自动刷新。

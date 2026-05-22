@@ -357,3 +357,135 @@ def test_parse_deepseek_official_pricing_html_skips_output_length_capability_row
     parsed = _parse_deepseek_official_pricing_html(html)
     assert parsed["deepseek-v4-flash"]["output"] == 2.0
     assert parsed["deepseek-v4-pro"]["output"] == 6.0
+
+
+def test_pricing_daily_refresh_writes_official_cache_after_calendar_rollover(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    project_path = tmp_path / "project-pricing.json"
+    cache_path = tmp_path / "pricing-cache.json"
+    project_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_kind": "bundled_official_docs_snapshot",
+                    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+                    "snapshot_created_at": "2000-01-01T00:00:00Z",
+                    "currency": "CNY",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.02,
+                    "input_cache_miss": 1.0,
+                    "output": 2.0,
+                },
+                "__model_metadata__": {
+                    "deepseek-v4-flash": {
+                        "effective_prices": {
+                            "input_cache_hit": 0.02,
+                            "input_cache_miss": 1.0,
+                            "output": 2.0,
+                        },
+                        "discount": {"available": False, "validity_confidence": "none"},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setattr(app_module, "_pricing_project_config_path", lambda: project_path)
+    monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
+
+    pricing = app_module._weclaw_pricing_contract("deepseek-v4-flash")
+
+    assert cache_path.exists()
+    assert pricing["source_kind"] == "official_docs_html"
+    assert pricing["daily_refresh"]["status"] == "official_daily_refresh_succeeded"
+    assert pricing["daily_refresh"]["requires_refresh"] is False
+    assert pricing["daily_refresh"]["refreshed"] is True
+    assert pricing["daily_refresh"]["updated_at"]
+    assert pricing["official_source"]["available"] is True
+    assert pricing["pricing_source_state"]["current_prices_are_official_live_cache"] is True
+    assert pricing["pricing_source_state"]["requires_refresh"] is False
+
+
+def test_pricing_daily_refresh_skips_when_official_cache_is_current(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    cache_path = tmp_path / "pricing-cache.json"
+    app_module._write_pricing_cache_atomic(
+        {
+            "deepseek-v4-flash": {
+                "input_cache_hit": 0.02,
+                "input_cache_miss": 1.0,
+                "output": 2.0,
+            }
+        },
+        path=cache_path,
+        source_url="https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+        fetched_at=app_module._pricing_now_iso(),
+        ttl_seconds=86400,
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+
+    def fail_fetch(url, timeout=20.0):
+        raise AssertionError("fresh same-day pricing cache must not fetch")
+
+    monkeypatch.setattr(app_module, "_fetch_text_url", fail_fetch)
+
+    pricing = app_module._weclaw_pricing_contract("deepseek-v4-flash")
+
+    assert pricing["daily_refresh"]["status"] == "official_daily_refresh_current"
+    assert pricing["daily_refresh"]["requires_refresh"] is False
+    assert pricing["daily_refresh"]["refreshed"] is False
+    assert pricing["pricing_source_state"]["requires_refresh"] is False
+
+
+def test_pricing_daily_refresh_failure_preserves_previous_prices_and_requires_action(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    project_path = tmp_path / "project-pricing.json"
+    cache_path = tmp_path / "pricing-cache.json"
+    project_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_kind": "bundled_official_docs_snapshot",
+                    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+                    "snapshot_created_at": "2000-01-01T00:00:00Z",
+                    "currency": "CNY",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.02,
+                    "input_cache_miss": 1.0,
+                    "output": 2.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setattr(app_module, "_pricing_project_config_path", lambda: project_path)
+
+    def fail_fetch(url, timeout=20.0):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(app_module, "_fetch_text_url", fail_fetch)
+
+    pricing = app_module._weclaw_pricing_contract("deepseek-v4-flash")
+
+    assert not cache_path.exists()
+    assert pricing["source_kind"] == "bundled_official_docs_snapshot"
+    assert pricing["daily_refresh"]["status"] == "official_daily_refresh_failed_using_previous_prices"
+    assert pricing["daily_refresh"]["requires_refresh"] is True
+    assert pricing["daily_refresh"]["old_cache_preserved"] is True
+    assert pricing["pricing_lifecycle"]["status"] == "official_daily_refresh_failed_using_previous_prices"
+    assert pricing["pricing_source_state"]["requires_refresh"] is True
+    assert pricing["refresh_required_action"]
+    assert "pricing refresh --write-cache --json" in pricing["refresh_required_action"]

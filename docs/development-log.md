@@ -1302,3 +1302,17 @@ Scope:
   - image-provider environment affected provider mock tests.
   Sanitized full tests are the authoritative CI-style gate for this node.
 - Public `v0.3.9-alpha` is not moved by this internal node.
+
+
+## p2.10a111 Pricing daily refresh contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Add dsproxy-owned daily pricing refresh contract.
+- Status / WeClaw JSON now evaluates pricing freshness by local calendar day.
+- When the bundled official snapshot or official cache is older than the current local day, dsproxy attempts an official-docs refresh and writes the managed cache.
+- If the official source is unavailable, the previous cache or bundled snapshot is preserved, but the status contract exposes `requires_refresh`, `reason`, and `action` instead of silently treating the old date as current.
+- External pricing configs remain user-managed and are not auto-refreshed.
+- Tests cover cross-day refresh, same-day no-refresh, and failure-preserves-old-prices behavior.

@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a110-final-tests-docs-contract"
+PROXY_INTERNAL_VERSION = "p2.10a111-pricing-daily-refresh-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -362,6 +362,175 @@ def _pricing_is_stale(metadata: dict[str, Any]) -> bool | None:
         return None
     return time.time() >= expires_ts
 
+
+
+
+def _pricing_auto_refresh_enabled() -> bool:
+    raw = os.environ.get("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH")
+    if raw is not None:
+        return raw.strip().lower() not in {"0", "false", "no", "off"}
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return True
+
+
+def _pricing_local_day_from_timestamp(value: Any) -> str | None:
+    ts = _pricing_parse_iso_timestamp(value)
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(ts).date().isoformat()
+
+
+def _pricing_current_local_day(*, now_ts: float | None = None) -> str:
+    return datetime.fromtimestamp(time.time() if now_ts is None else now_ts).date().isoformat()
+
+
+def _pricing_daily_refresh_required(
+    metadata: dict[str, Any],
+    *,
+    source_kind: str | None = None,
+    now_ts: float | None = None,
+) -> bool:
+    effective_source_kind = str(source_kind or metadata.get("source_kind") or "").strip()
+    if effective_source_kind == "external_config":
+        return False
+    last_day = _pricing_local_day_from_timestamp(
+        metadata.get("fetched_at")
+        or metadata.get("updated_at")
+        or metadata.get("snapshot_created_at")
+    )
+    if last_day is None:
+        return effective_source_kind in {
+            "official_docs_html",
+            "bundled_official_docs_snapshot",
+            "project_default_config",
+        }
+    return last_day < _pricing_current_local_day(now_ts=now_ts)
+
+
+def _pricing_refresh_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": result.get("status"),
+        "available": result.get("available"),
+        "reason": result.get("reason"),
+        "action": result.get("action"),
+        "error_type": result.get("error_type"),
+        "error": result.get("error"),
+        "source_url": result.get("source_url"),
+        "source_kind": result.get("source_kind"),
+        "fetched_at": result.get("fetched_at"),
+        "updated_at": result.get("updated_at"),
+        "expires_at": result.get("expires_at"),
+        "ttl_seconds": result.get("ttl_seconds"),
+        "writes_cache": result.get("writes_cache"),
+        "cache_path": result.get("cache_path"),
+        "old_cache_preserved": result.get("old_cache_preserved"),
+    }
+
+
+def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
+    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    active_path = _pricing_config_path()
+    source_info = _pricing_source_info(active_path)
+    metadata = _pricing_metadata_from_path(active_path) if active_path.exists() else {}
+    source_kind = str(metadata.get("source_kind") or source_info.get("source_kind") or "")
+    cache_path = _pricing_cache_path()
+    current_day = _pricing_current_local_day()
+    last_successful_refresh_day = _pricing_local_day_from_timestamp(
+        metadata.get("fetched_at")
+        or metadata.get("updated_at")
+        or metadata.get("snapshot_created_at")
+    )
+
+    base: dict[str, Any] = {
+        "available": True,
+        "policy": "daily_after_local_midnight",
+        "current_local_day": current_day,
+        "last_successful_refresh_day": last_successful_refresh_day,
+        "source_kind": source_kind,
+        "active_path": str(active_path),
+        "cache_path": str(cache_path),
+        "official_source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
+        "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
+        "external_config_user_managed": bool(configured),
+        "checked_at": _pricing_now_iso(),
+    }
+
+    required = _pricing_daily_refresh_required(metadata, source_kind=source_kind)
+    base["requires_refresh"] = required
+
+    if configured:
+        base.update(
+            {
+                "status": "external_config_user_managed",
+                "reason": "external_pricing_config_is_user_managed",
+                "refresh_recommended": False,
+                "refreshed": False,
+                "action": None,
+            }
+        )
+        return base
+
+    if not required:
+        base.update(
+            {
+                "status": "official_daily_refresh_current",
+                "reason": None,
+                "refresh_recommended": False,
+                "refreshed": False,
+                "action": None,
+            }
+        )
+        return base
+
+    if not _pricing_auto_refresh_enabled():
+        base.update(
+            {
+                "status": "official_daily_refresh_required",
+                "reason": "pricing_source_older_than_current_local_day",
+                "refresh_recommended": False,
+                "refreshed": False,
+                "action": "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
+            }
+        )
+        return base
+
+    result = _refresh_deepseek_pricing_from_official_docs(
+        model=model,
+        write_cache=True,
+        cache_path=cache_path,
+        timeout=float(os.environ.get("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
+    )
+    summary = _pricing_refresh_result_summary(result)
+    base["refresh_result"] = summary
+    if result.get("status") == "ok" and result.get("writes_cache") is True:
+        base.update(
+            {
+                "status": "official_daily_refresh_succeeded",
+                "reason": None,
+                "requires_refresh": False,
+                "refresh_recommended": False,
+                "refreshed": True,
+                "updated_at": result.get("updated_at") or result.get("fetched_at"),
+                "expires_at": result.get("expires_at"),
+                "ttl_seconds": result.get("ttl_seconds"),
+                "action": None,
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "status": "official_daily_refresh_failed_using_previous_prices",
+            "reason": result.get("reason") or "official_pricing_daily_refresh_failed",
+            "requires_refresh": True,
+            "refresh_recommended": False,
+            "refreshed": False,
+            "old_cache_preserved": True,
+            "action": "retry dsproxy pricing refresh --write-cache --json; previous pricing cache or bundled snapshot was preserved",
+        }
+    )
+    return base
 
 def _validate_model_pricing_mapping(data: Any) -> dict[str, dict[str, float]]:
     if not isinstance(data, dict):
@@ -17404,6 +17573,7 @@ def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) 
     }
 
 def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None = None) -> dict[str, Any]:
+    daily_refresh = _pricing_daily_refresh_contract(model)
     pricing_path = _pricing_config_path()
     path_exists = pricing_path.exists()
     source_info = _pricing_source_info(pricing_path)
@@ -17447,20 +17617,32 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
     )
     official_price_available = bool(official_cache and fetched_at)
     official_cache_stale = bool(official_cache and is_stale is True)
-    refresh_recommended = bool((not official_price_available) and bundled_snapshot)
-    requires_refresh = official_cache_stale
+    daily_requires_refresh = bool(daily_refresh.get("requires_refresh"))
+    daily_refresh_recommended = bool(daily_refresh.get("refresh_recommended"))
+    refresh_recommended = bool(((not official_price_available) and bundled_snapshot) or daily_refresh_recommended)
+    requires_refresh = bool(official_cache_stale or daily_requires_refresh)
     refresh_required_action = (
-        "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json"
+        str(daily_refresh.get("action"))
+        if daily_requires_refresh and daily_refresh.get("action")
+        else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json"
         if requires_refresh
         else None
     )
     refresh_recommended_action = (
-        "optional: run dsproxy pricing refresh --write-cache --json to replace the bundled snapshot with a live official-docs cache"
+        str(daily_refresh.get("action"))
+        if daily_refresh_recommended and daily_refresh.get("action")
+        else "optional: run dsproxy pricing refresh --write-cache --json to replace the bundled snapshot with a live official-docs cache"
         if refresh_recommended
         else None
     )
     refresh_action = refresh_required_action
-    if official_cache:
+    if daily_refresh.get("status") == "official_daily_refresh_failed_using_previous_prices":
+        pricing_lifecycle_status = "official_daily_refresh_failed_using_previous_prices"
+        pricing_lifecycle_reason = str(daily_refresh.get("reason") or "official_pricing_daily_refresh_failed")
+    elif daily_refresh.get("status") == "official_daily_refresh_required":
+        pricing_lifecycle_status = "official_daily_refresh_required"
+        pricing_lifecycle_reason = str(daily_refresh.get("reason") or "pricing_source_older_than_current_local_day")
+    elif official_cache:
         pricing_lifecycle_status = "official_cache_stale" if official_cache_stale else "official_cache_fresh"
         pricing_lifecycle_reason = "official_pricing_cache_stale" if official_cache_stale else None
     elif bundled_snapshot:
@@ -17522,6 +17704,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "refresh_action": refresh_action,
         "refresh_required_action": refresh_required_action,
         "refresh_recommended_action": refresh_recommended_action,
+        "daily_refresh": daily_refresh,
         "pricing_lifecycle": {
             "status": pricing_lifecycle_status,
             "reason": pricing_lifecycle_reason,
@@ -17530,6 +17713,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "action": refresh_required_action or refresh_recommended_action,
             "source_kind": source_kind,
             "source_trust": source_trust,
+            "daily_refresh": daily_refresh,
         },
         "prices": effective_prices,
         "current_prices": effective_prices,
@@ -17590,6 +17774,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
                 else None
             ),
             "action": refresh_required_action or refresh_recommended_action,
+            "daily_refresh": daily_refresh,
         },
         "pricing_source_state": {
             "current_prices_are_official_live_cache": official_price_available,
@@ -17605,6 +17790,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "refresh_required_action": refresh_required_action,
             "refresh_recommended_action": refresh_recommended_action,
             "lifecycle_status": pricing_lifecycle_status,
+            "daily_refresh": daily_refresh,
         },
         "refresh": {
             "available": True,
@@ -17618,6 +17804,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "current_status_requires_refresh": requires_refresh,
             "current_status_refresh_recommended": refresh_recommended,
             "current_status_lifecycle": pricing_lifecycle_status,
+            "daily_refresh": daily_refresh,
         },
     }
 
