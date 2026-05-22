@@ -1,3 +1,19 @@
+# p2.12a8-runtime-payload-report-persistence
+
+Date: 2026-05-22
+
+Scope:
+
+- Added SQLite persistence for token-first runtime Compact/Trim reports so WeClaw status can recover runtime payload guard observations after proxy restarts.
+- Restored runtime payload guard from the latest matching profile/session persisted report when process-local `last_context_compaction_report` or `last_context_trimming_report` is unavailable.
+- Kept external `--weclaw-json` token-only by reusing the token-only public runtime sanitizer; debug report files remain diagnostic fallback artifacts rather than authoritative runtime state.
+- Added focused regression coverage for SQLite persistence and WeClaw status recovery from persisted runtime reports.
+
+Boundary:
+
+- Public `v0.3.9-alpha` was not moved.
+- This node does not change the user-facing auto-compact ratio or context denominator.
+
 ## p2.10a64 Pre-release upgrade and uninstall documentation closure
 
 ## p2.12a7-token-only-status-surface

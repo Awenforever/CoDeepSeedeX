@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a7-token-only-status-surface"
+PROXY_INTERNAL_VERSION = "p2.12a8-runtime-payload-report-persistence"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -5247,6 +5247,7 @@ class InMemoryResponseStore:
     def __init__(self) -> None:
         self._responses: dict[str, StoredResponse] = {}
         self._profile_tokenizer_reports: list[dict[str, Any]] = []
+        self._runtime_payload_reports: list[dict[str, Any]] = []
 
     def save(self, response: dict[str, Any], chat_messages: list[dict[str, Any]]) -> None:
         self._responses[response["id"]] = StoredResponse(
@@ -5283,6 +5284,66 @@ class InMemoryResponseStore:
                 split.setdefault("persistence_source", "InMemoryResponseStore.profile_tokenizer_report")
             return restored
         return None
+    def save_runtime_payload_report(
+        self,
+        report: dict[str, Any],
+        *,
+        kind: str,
+        profile: str,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        response_id: str | None = None,
+    ) -> None:
+        if not isinstance(report, dict):
+            return
+        normalized_kind = str(kind or "").strip()
+        normalized_profile = str(profile or "").strip()
+        if normalized_kind not in {"compaction", "trimming"} or not normalized_profile:
+            return
+        payload = deepcopy(report)
+        payload.setdefault("profile", normalized_profile)
+        if session_id:
+            payload.setdefault("session_id", session_id)
+        if request_id:
+            payload.setdefault("request_id", request_id)
+        if response_id:
+            payload.setdefault("response_id", response_id)
+        self._runtime_payload_reports.append(
+            {
+                "kind": normalized_kind,
+                "profile": normalized_profile,
+                "session_id": session_id,
+                "request_id": request_id,
+                "response_id": response_id,
+                "report": payload,
+            }
+        )
+        self._runtime_payload_reports = self._runtime_payload_reports[-200:]
+
+    def runtime_payload_report(
+        self,
+        profile: str,
+        *,
+        kind: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_kind = str(kind or "").strip()
+        normalized_profile = str(profile or "").strip()
+        for item in reversed(self._runtime_payload_reports):
+            if item.get("kind") != normalized_kind or item.get("profile") != normalized_profile:
+                continue
+            if session_id and item.get("session_id") != session_id:
+                continue
+            report = item.get("report")
+            if not isinstance(report, dict):
+                continue
+            restored = deepcopy(report)
+            restored["restored_from_persistence"] = True
+            restored["source"] = f"in_memory_runtime_payload_report_store.{normalized_kind}"
+            restored["persistence_source"] = "InMemoryResponseStore.runtime_payload_report"
+            return restored
+        return None
+
 
 class SQLiteResponseStore:
     """Persistent response store backed by SQLite.
@@ -5361,6 +5422,26 @@ class SQLiteResponseStore:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_profile_tokenizer_reports_request_id ON profile_tokenizer_reports(request_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runtime_payload_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    session_id TEXT,
+                    request_id TEXT,
+                    response_id TEXT,
+                    report_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runtime_payload_reports_profile_kind_session ON runtime_payload_reports(profile, kind, session_id, created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runtime_payload_reports_request_id ON runtime_payload_reports(request_id)"
             )
             self._migrate_usage_events_schema(conn)
             conn.execute(
@@ -5519,6 +5600,99 @@ class SQLiteResponseStore:
             latest.setdefault("restored_from_persistence", True)
             latest.setdefault("source", "sqlite_profile_tokenizer_report_store")
             latest.setdefault("persistence_source", "SQLiteResponseStore.profile_tokenizer_report")
+        return restored
+
+    def save_runtime_payload_report(
+        self,
+        report: dict[str, Any],
+        *,
+        kind: str,
+        profile: str,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        response_id: str | None = None,
+    ) -> None:
+        if not isinstance(report, dict):
+            return
+        normalized_kind = str(kind or "").strip()
+        normalized_profile = str(profile or "").strip()
+        if normalized_kind not in {"compaction", "trimming"} or not normalized_profile:
+            return
+        normalized_session_id = str(session_id).strip() if session_id is not None and str(session_id).strip() else None
+        normalized_request_id = str(request_id or response_id or report.get("request_id") or report.get("response_id") or "").strip() or None
+        normalized_response_id = str(response_id or request_id or report.get("response_id") or report.get("request_id") or "").strip() or None
+        payload = deepcopy(report)
+        payload.setdefault("profile", normalized_profile)
+        if normalized_session_id:
+            payload.setdefault("session_id", normalized_session_id)
+        if normalized_request_id:
+            payload.setdefault("request_id", normalized_request_id)
+        if normalized_response_id:
+            payload.setdefault("response_id", normalized_response_id)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runtime_payload_reports (
+                    created_at,
+                    kind,
+                    profile,
+                    session_id,
+                    request_id,
+                    response_id,
+                    report_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _now(),
+                    normalized_kind,
+                    normalized_profile,
+                    normalized_session_id,
+                    normalized_request_id,
+                    normalized_response_id,
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+
+    def runtime_payload_report(
+        self,
+        profile: str,
+        *,
+        kind: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_kind = str(kind or "").strip()
+        normalized_profile = str(profile or "").strip()
+        if normalized_kind not in {"compaction", "trimming"} or not normalized_profile:
+            return None
+        clauses = ["profile = ?", "kind = ?"]
+        params: list[Any] = [normalized_profile, normalized_kind]
+        if session_id:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+        where_sql = " AND ".join(clauses)
+        with self._connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT report_json
+                FROM runtime_payload_reports
+                WHERE {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                params,
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            restored = json.loads(row["report_json"])
+        except Exception:
+            return None
+        if not isinstance(restored, dict):
+            return None
+        restored["restored_from_persistence"] = True
+        restored["source"] = f"sqlite_runtime_payload_report_store.{normalized_kind}"
+        restored["persistence_source"] = "SQLiteResponseStore.runtime_payload_report"
         return restored
 
 
@@ -8988,6 +9162,19 @@ async def _chat_completions_with_usage(
             operations=trimming_report.get("operations"),
             session_id=session_id,
         )
+
+    if isinstance(trimming_report, dict) and store is not None and hasattr(store, "save_runtime_payload_report"):
+        try:
+            store.save_runtime_payload_report(
+                trimming_report,
+                kind="trimming",
+                profile="deepseek-thinking" if thinking_enabled else "deepseek",
+                session_id=session_id,
+                request_id=request_id,
+                response_id=response_id,
+            )
+        except Exception as exc:
+            print(f"[deepseek-responses-proxy] failed to persist runtime trimming report: {exc}")
 
     _debug_trace_event(
         response_id,
@@ -18767,13 +18954,46 @@ def _runtime_weclaw_status(
     cost["balance"] = balance_contract
 
     context_status = _proxy_context_status()
+    persisted_compaction_report = None
+    persisted_trimming_report = None
+    if store is not None and hasattr(store, "runtime_payload_report"):
+        try:
+            persisted_compaction_report = store.runtime_payload_report(
+                profile,
+                kind="compaction",
+                session_id=session_id,
+            )
+            persisted_trimming_report = store.runtime_payload_report(
+                profile,
+                kind="trimming",
+                session_id=session_id,
+            )
+        except Exception as exc:
+            persisted_compaction_report = {
+                "available": False,
+                "reason": "runtime_payload_report_restore_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:500],
+                "profile": profile,
+                "raw_content_exposed": False,
+                "redacted": True,
+            }
+            persisted_trimming_report = None
+
+    effective_compaction_report = (
+        last_context_compaction_report
+        if isinstance(last_context_compaction_report, dict)
+        else persisted_compaction_report
+    )
+    in_memory_trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
+    effective_trimming_report = in_memory_trimming_report if isinstance(in_memory_trimming_report, dict) else persisted_trimming_report
     trimming_report = _route_scoped_trimming_report(
-        getattr(deepseek_client, "last_context_trimming_report", None),
+        effective_trimming_report,
         profile=profile,
     )
     runtime_payload_guard = _token_only_public_runtime_contract(_runtime_payload_guard_contract(
         context_status,
-        compaction_report=last_context_compaction_report,
+        compaction_report=effective_compaction_report,
         trimming_report=trimming_report,
     ))
     semantic_status = _token_only_public_runtime_contract(_weclaw_enrich_semantic_compaction_status(
@@ -18831,7 +19051,7 @@ def _runtime_weclaw_status(
             "compact_audit": (
                 runtime_payload_guard.get("compaction", {}).get("compact_audit")
                 if isinstance(runtime_payload_guard.get("compaction"), dict)
-                else _compaction_audit_metadata_from_report(last_context_compaction_report)
+                else _compaction_audit_metadata_from_report(effective_compaction_report)
             ),
             "semantic_compaction": semantic_status,
             "missing": [],
@@ -19289,6 +19509,18 @@ def create_app(
         context_compaction_report["current_chars_source"] = "runtime_context_builder"
         context_compaction_report["current_chars_precision"] = "exact"
         app.state.last_context_compaction_report = context_compaction_report
+        if hasattr(app.state.store, "save_runtime_payload_report"):
+            try:
+                app.state.store.save_runtime_payload_report(
+                    context_compaction_report,
+                    kind="compaction",
+                    profile="deepseek-thinking" if _thinking_enabled() else "deepseek",
+                    session_id=_session_id_from_request_payload(payload),
+                    request_id=response_id,
+                    response_id=response_id,
+                )
+            except Exception as exc:
+                print(f"[deepseek-responses-proxy] failed to persist runtime compaction report: {exc}")
         _write_context_compaction_report(context_compaction_report)
         _debug_trace_event(
             response_id,

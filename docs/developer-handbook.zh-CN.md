@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a7-token-only-status-surface`
-- 最新闭合文档同步检查点：`p2.12a7-token-only-status-surface`
+- 当前内部开发检查点：`p2.12a8-runtime-payload-report-persistence`
+- 最新闭合文档同步检查点：`p2.12a8-runtime-payload-report-persistence`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -45,6 +45,11 @@
 
 本手册是新开发对话的启动上下文。它应维护当前状态、稳定规则、任务总线、Release规则和高价值经验。详细时间线放入`docs/development-log.md`。
 - 当前公开Release note同步检查点：`p2.10a113-release-note-marker`。
+
+### Runtime payload report持久化
+
+Runtime Compact/Trim观测不能只依赖进程内存。真实请求产生token-first Compact或Trim报告后，dsproxy必须把display-safe runtime report metadata写入SQLite；`dsproxy status thinking --weclaw-json`在代理重启后应按profile/session恢复最近匹配的报告。`.debug/context_*_report.json`只能作为诊断文件，不能作为WeClaw权威live runtime snapshot。
+
 ## 3. 关键文件地图
 
 - `deepseek_responses_proxy/app.py`：运行时核心、Responses兼容接口、DeepSeek桥接、工具桥接、provider分发、版本元数据、debug trace。

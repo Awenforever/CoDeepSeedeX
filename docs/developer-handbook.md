@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a7-token-only-status-surface`
-- Latest closed documentation sync checkpoint: `p2.12a7-token-only-status-surface`
+- Current internal development checkpoint: `p2.12a8-runtime-payload-report-persistence`
+- Latest closed documentation sync checkpoint: `p2.12a8-runtime-payload-report-persistence`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -49,6 +49,11 @@ If documentation structure changes, tests must be updated to the new contract. D
 - Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
+
+
+### Runtime payload report persistence
+
+Runtime Compact/Trim observability must not depend only on process-local memory. When a real request produces token-first Compact or Trim reports, dsproxy persists the display-safe runtime report metadata in SQLite and lets `dsproxy status thinking --weclaw-json` restore the latest matching profile/session report after a proxy restart. Debug `.debug/context_*_report.json` files remain diagnostic artifacts only; they must not be treated as the authoritative live runtime snapshot for WeClaw.
 
 ## 3. Key file map
 
