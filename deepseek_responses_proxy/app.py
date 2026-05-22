@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a8-runtime-payload-report-persistence"
+PROXY_INTERNAL_VERSION = "p2.12a9-semantic-low-risk-classifier-candidate-fix"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -3686,13 +3686,26 @@ def _classify_history_message_for_audit(message: Any) -> str:
 
 def _flattened_tool_transcript_retention_markers(text: str) -> list[str]:
     lowered = text.lower()
+
+    def positive_failed_marker() -> bool:
+        if re.search(r"(^|\n)\s*=+\s*(failures|failed)\s*=+", lowered):
+            return True
+        if re.search(r"(^|\n).*\bfailed\s+\[", lowered):
+            return True
+        if re.search(r"\b[1-9]\d*\s+failed\b", lowered):
+            return True
+        if " failed in " in lowered:
+            return True
+        if re.search(r"(^|\n)\s*failed\b", lowered):
+            return True
+        return False
+
     marker_specs = [
         ("ERROR", ("error", "exception", "fatal")),
-        ("FAILED", ("failed", " failure", "failures")),
         ("Traceback", ("traceback (most recent call last)",)),
         ("AssertionError", ("assertionerror",)),
         ("PASS", (" passed", "passed in", " ok ")),
-        ("pytest summary", (" passed in", " failed in", "errors in", "warnings in", "== test session starts ==")),
+        ("pytest summary", (" passed in", " failed in", "errors in", "== test session starts ==")),
         ("git hash", ("commit ", "head ->", "origin/", "rev-parse", "sha256")),
         ("commit", ("commit ", "committed", "git commit")),
         ("modified files", ("files changed", "insertions(+)", "deletions(-)", "modified:", "changes not staged")),
@@ -3701,6 +3714,8 @@ def _flattened_tool_transcript_retention_markers(text: str) -> list[str]:
     ]
 
     markers: list[str] = []
+    if positive_failed_marker():
+        markers.append("FAILED")
     for marker, needles in marker_specs:
         if any(needle in lowered for needle in needles):
             markers.append(marker)
