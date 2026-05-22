@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.11a4-semantic-payload-weclaw-contract`
-- 最新闭合文档同步检查点：`p2.11a4-semantic-payload-weclaw-contract`
+- 当前内部开发检查点：`p2.11a5-semantic-payload-production-validation`
+- 最新闭合文档同步检查点：`p2.11a5-semantic-payload-production-validation`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1675,3 +1675,15 @@ p2.11a4新增面向WeClaw的稳定semantic payload显示契约。
 3. 原始payload内容仍保持redacted；详细证据保留在`latest.semantic_payload_compaction`下。
 4. 健康enabled monitoring不能因为dry-run readiness为false而被标记为degraded。
 5. 本节点不更新公开`v0.3.9-alpha`Release。
+
+## p2.11a5 Semantic payload production validation
+
+p2.11a5在移动公开Release之前闭合semantic payload compaction生产化验证线。
+
+规则：
+
+1. 真实`/v1/responses`请求必须在上游DeepSeek请求之前压缩符合条件的低风险旧flattened tool transcript。
+2. 随后的真实`/v1/proxy/weclaw/status`请求必须在顶层和`context_window.runtime.semantic_compaction`下暴露同一套semantic payload display契约。
+3. WeClaw必须能直接显示mode、status、runtime state、token/char收益、type/risk/action计数、last-event安全元数据、blockers和warnings，不得本地推导。
+4. display字段必须保持原始payload内容redacted。
+5. 本节点更新文档和Release notes，但不移动公开`v0.3.9-alpha`Release；公开Release移动是单独显式步骤。

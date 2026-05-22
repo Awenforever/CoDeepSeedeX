@@ -123,3 +123,13 @@ Internal marker: `p2.10a112-pricing-owned-refresh-contract`.
 - Applies daily official pricing refresh to configured pricing paths as well as the default managed cache.
 - Preserves previous pricing when official refresh fails and exposes `requires_refresh`, `reason`, and `action`.
 - Leaves semantic payload compaction as a separate hardening line; it is not declared production-ready by this pricing node.
+
+### Semantic payload compaction production validation
+
+- Adds the p2.11 semantic payload compaction hardening line:
+  - safety core limits mutation to old, low-risk flattened tool transcripts classified as pytest-success output;
+  - system/developer messages, recent transcripts, medium/high-risk transcripts, diff/patch/traceback/json/search/shell logs, and unknown transcripts are preserved or structure-only;
+  - enabled mode remains canary-gated and falls back to the original payload on failure;
+  - real `/v1/responses` route tests verify upstream payload mutation and token/char savings;
+  - `/v1/proxy/status` and `/v1/proxy/weclaw/status` expose runtime snapshots and `semantic_compaction.display`;
+  - WeClaw receives mode/status/runtime_state, applied/skipped counts, token/char savings, type/risk/action counts, last-event metadata, blockers, warnings, and redaction flags without local derivation.

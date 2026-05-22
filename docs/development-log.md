@@ -1412,3 +1412,19 @@ Scope:
 - Preserve redaction and keep raw payload details out of WeClaw display fields.
 - Keep healthy enabled monitoring out of degraded diagnostics.
 - Keep public `v0.3.9-alpha` unchanged.
+
+## p2.11a5 Semantic payload production validation
+
+Date: 2026-05-22
+
+Scope:
+
+- Add a real HTTP E2E validation for semantic payload compaction across `/v1/responses` and `/v1/proxy/weclaw/status`.
+- Verify upstream payload mutation, removal of the original large low-risk pytest body, and preservation of display-safe summary evidence.
+- Verify WeClaw can consume `semantic_compaction.display` from both the top-level status payload and `context_window.runtime.semantic_compaction`.
+- Verify token/char savings, type/risk/action counts, last-event metadata, blockers, warnings, redaction, and healthy enabled monitoring.
+- Update Release notes for the p2.11 semantic payload production validation line.
+
+Release boundary:
+
+- Public `v0.3.9-alpha` is not moved in this node.

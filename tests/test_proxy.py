@@ -327,6 +327,140 @@ async def test_semantic_payload_enabled_compacts_real_responses_route_payload_an
     assert top_target["tokens_removed"] > 0
 
 
+@pytest.mark.asyncio
+async def test_semantic_payload_enabled_real_route_surfaces_weclaw_display_contract(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_semantic_tool_weclaw",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_semantic_weclaw",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "run_tests",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 6, "total_tokens": 14},
+            },
+            {
+                "id": "chatcmpl_semantic_final_weclaw",
+                "choices": [{"message": {"role": "assistant", "content": "done"}}],
+                "usage": {"prompt_tokens": 14, "completion_tokens": 4, "total_tokens": 18},
+            },
+        ]
+    )
+
+    first = await client.post(
+        "/v1/responses",
+        json={
+            "input": "Run test suite",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "run_tests",
+                    "description": "Run tests",
+                    "parameters": {"type": "object", "properties": {}},
+                }
+            ],
+        },
+    )
+    assert first.status_code == 200
+    first_body = first.json()
+
+    long_pytest_output = (
+        "===== pytest =====\n"
+        "collected 321 items\n"
+        + ("." * 200)
+        + "\n321 passed in 0.73s\n"
+        + ("Y" * 6000)
+    )
+    second = await client.post(
+        "/v1/responses",
+        json={
+            "previous_response_id": first_body["id"],
+            "input": [
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_semantic_weclaw",
+                    "output": long_pytest_output,
+                }
+            ],
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["output_text"] == "done"
+
+    assert len(transport.requests) == 2
+    second_upstream_serialized = json.dumps(transport.requests[1]["messages"], ensure_ascii=False)
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in second_upstream_serialized
+    assert "321 passed in 0.73s" in second_upstream_serialized
+    assert "Y" * 2000 not in second_upstream_serialized
+
+    weclaw_response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+    assert weclaw_response.status_code == 200
+    weclaw = weclaw_response.json()
+
+    semantic = weclaw["semantic_compaction"]
+    display = semantic["display"]
+    runtime_semantic = weclaw["context_window"]["runtime"]["semantic_compaction"]
+
+    assert runtime_semantic["display"] == display
+    assert display["available"] is True
+    assert display["display_contract_version"] == 1
+    assert display["status"] == "applied"
+    assert display["mode"] == "enabled"
+    assert display["effective_mode"] == "enabled"
+    assert display["runtime_state"] == "enabled_monitoring"
+    assert display["enabled_monitoring_healthy"] is True
+    assert display["applied"] is True
+    assert display["applied_count"] == 1
+    assert display["tokens_before"] > display["tokens_after"]
+    assert display["tokens_removed"] > 0
+    assert display["chars_before"] > display["chars_after"]
+    assert display["chars_removed"] > 0
+    assert display["type_counts"]["test_output"] == 1
+    assert display["type_counts"].get("unknown", 0) >= 1
+    assert display["type_actions"]["compact"] == 1
+    assert display["recommended_actions"]["compact_test_output_summary"] == 1
+    assert display["risk_counts"]["low"] == 1
+    assert display["blockers"] == []
+    assert display["raw_content_exposed"] is False
+    assert display["redacted"] is True
+
+    last_event = display["last_event"]
+    assert last_event["reason"] == "enabled"
+    assert last_event["raw_content_exposed"] is False
+    assert last_event["redacted"] is True
+    assert last_event["top_target"]["semantic_type"] == "test_output"
+    assert last_event["top_target"]["semantic_plan_type"] == "pytest_success"
+    assert last_event["top_target"]["semantic_risk"] == "low"
+    assert last_event["top_target"]["safe_payload_mutation_allowed"] is True
+    assert last_event["top_target"]["source"] == "semantic_payload_safety_core_v1"
+
+    assert all(
+        item["path"] != "semantic_compaction.rollout"
+        for item in weclaw["diagnostics"]["degraded_fields"]
+    )
+
+
 
 @pytest.mark.asyncio
 async def test_request_model_overrides_env_proxy_model_by_default(monkeypatch, client_factory):

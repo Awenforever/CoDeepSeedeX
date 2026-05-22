@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.11a4-semantic-payload-weclaw-contract`
-- Latest closed documentation sync checkpoint: `p2.11a4-semantic-payload-weclaw-contract`
+- Current internal development checkpoint: `p2.11a5-semantic-payload-production-validation`
+- Latest closed documentation sync checkpoint: `p2.11a5-semantic-payload-production-validation`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1720,3 +1720,15 @@ Rules:
 3. Raw payload content remains redacted; detailed evidence stays under `latest.semantic_payload_compaction`.
 4. Healthy enabled monitoring must not be degraded merely because dry-run readiness is false.
 5. This node does not update the public `v0.3.9-alpha` Release.
+
+## p2.11a5 Semantic payload production validation
+
+p2.11a5 closes the semantic payload compaction production-validation line before the public Release is moved.
+
+Rules:
+
+1. A real `/v1/responses` request must compact eligible low-risk old flattened tool transcripts before the upstream DeepSeek request.
+2. A subsequent real `/v1/proxy/weclaw/status` request must expose the same semantic payload display contract at the top level and under `context_window.runtime.semantic_compaction`.
+3. WeClaw must be able to display mode, status, runtime state, token/char savings, type/risk/action counts, last-event safety metadata, blockers, and warnings without local derivation.
+4. Raw payload content must remain redacted in display fields.
+5. This node updates docs and Release notes but does not move the public `v0.3.9-alpha` Release; moving the public Release is a separate explicit step.
