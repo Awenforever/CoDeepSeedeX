@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a6-token-accounting-source"
+PROXY_INTERNAL_VERSION = "p2.12a7-token-only-status-surface"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -1942,9 +1942,6 @@ def _semantic_payload_compaction_display_contract(status: Any) -> dict[str, Any]
         "tokens_before": payload.get("tokens_before"),
         "tokens_after": payload.get("tokens_after"),
         "tokens_removed": payload.get("tokens_removed"),
-        "chars_before": payload.get("chars_before"),
-        "chars_after": payload.get("chars_after"),
-        "chars_removed": payload.get("chars_removed"),
         "type_counts": dict(sorted(type_counts.items())) if isinstance(type_counts, dict) else {},
         "type_actions": dict(sorted(type_actions.items())) if isinstance(type_actions, dict) else {},
         "recommended_actions": dict(sorted(recommended_actions.items())) if isinstance(recommended_actions, dict) else {},
@@ -2015,7 +2012,7 @@ def _semantic_compaction_runtime_status(runtime_events: Any | None = None) -> di
         "rollout": rollout,
     }
     status["display"] = _semantic_payload_compaction_display_contract(status)
-    return status
+    return _token_only_public_runtime_contract(status)
 
 
 def _long_session_observability_int(value: Any, default: int = 0) -> int:
@@ -6186,6 +6183,8 @@ def _runtime_token_first_payload_for_messages(
     }
 
 
+
+
 def _token_only_public_runtime_contract(value: Any) -> Any:
     forbidden_keys = {
         "char_control_scope",
@@ -6208,23 +6207,61 @@ def _token_only_public_runtime_contract(value: Any) -> Any:
         "legacy_target_chars",
         "legacy_max_context_chars",
         "char_fallback_scope",
+        "chars",
+        "char_count",
+        "content_chars",
     }
-    if isinstance(value, dict):
-        cleaned: dict[str, Any] = {}
-        for key, item in value.items():
-            key_text = str(key)
-            if (
-                key_text in forbidden_keys
-                or key_text.endswith("_chars")
-                or "_chars_" in key_text
-                or key_text.startswith("chars_")
-            ):
-                continue
-            cleaned[key_text] = _token_only_public_runtime_contract(item)
-        return cleaned
-    if isinstance(value, list):
-        return [_token_only_public_runtime_contract(item) for item in value]
-    return value
+    forbidden_value_fragments = (
+        "chars/messages",
+        "char_heuristic",
+        "current_chars",
+        "before_chars",
+        "after_chars",
+        "chars_removed",
+        "trigger_chars",
+        "target_chars",
+        "max_context_chars",
+    )
+    sentinel = object()
+
+    def _clean(item: Any) -> Any:
+        if isinstance(item, dict):
+            cleaned: dict[str, Any] = {}
+            for key, child in item.items():
+                key_text = str(key)
+                if (
+                    key_text in forbidden_keys
+                    or key_text.endswith("_chars")
+                    or key_text.endswith("_char_count")
+                    or key_text.endswith("_content_chars")
+                    or "_chars_" in key_text
+                    or key_text.startswith("chars_")
+                ):
+                    continue
+                cleaned_child = _clean(child)
+                if cleaned_child is sentinel:
+                    continue
+                cleaned[key_text] = cleaned_child
+            return cleaned
+        if isinstance(item, list):
+            cleaned_list = []
+            for child in item:
+                cleaned_child = _clean(child)
+                if cleaned_child is sentinel:
+                    continue
+                cleaned_list.append(cleaned_child)
+            return cleaned_list
+        if isinstance(item, str):
+            lower = item.lower()
+            if lower in {"chars", "chars/messages"} or any(fragment in lower for fragment in forbidden_value_fragments):
+                return sentinel
+            return item
+        return item
+
+    cleaned_value = _clean(value)
+    if cleaned_value is sentinel:
+        return None
+    return cleaned_value
 
 def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict[str, Any]:
     tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
@@ -16379,7 +16416,7 @@ def _weclaw_enrich_semantic_compaction_status(status: Any) -> dict[str, Any]:
     )
     result["rollout"] = rollout
     result["display"] = _semantic_payload_compaction_display_contract(result)
-    return result
+    return _token_only_public_runtime_contract(result)
 
 
 def _weclaw_degraded_field(path: str, value: Any, *, default_reason: str, default_action: str) -> dict[str, Any]:
@@ -18803,7 +18840,7 @@ def _runtime_weclaw_status(
         "health": profile_status.get("health", {}),
     }
     payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
-    return payload
+    return _token_only_public_runtime_contract(payload)
 
 def create_app(
     *,

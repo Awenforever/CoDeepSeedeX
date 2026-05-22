@@ -1,5 +1,13 @@
 ## p2.10a64 Pre-release upgrade and uninstall documentation closure
 
+## p2.12a7-token-only-status-surface
+
+- Tightened the external WeClaw/status surface to token-only semantics.
+- Broadened the public runtime/status sanitizer so old non-token diagnostic fields and heuristic strings remain internal-only.
+- Sanitized the top-level `_runtime_weclaw_status` return value so persisted legacy reports cannot leak non-token diagnostics back into the public JSON contract.
+- Public Release `v0.3.9-alpha` was not moved in this internal node.
+
+
 - Closed the post-P0 audit gap for uninstall documentation.
 - Pre-release upgrade was already covered by `dsproxy upgrade --alpha`, explicit `--tag`, and `--dry-run`.
 - Product-level uninstall remains installer-owned and is documented as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall`.

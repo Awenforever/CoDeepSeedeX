@@ -80,7 +80,7 @@ def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
     assert semantic["config"]["semantic_policy_dry_run"]["enabled"] is True
     assert semantic["config"]["semantic_payload_compaction"]["mode"] == "dry_run"
     assert semantic["config"]["semantic_payload_compaction"]["enabled"] is False
-    assert semantic["config"]["semantic_payload_compaction"]["summary_chars"] == 888
+    assert "summary_chars" not in semantic["config"]["semantic_payload_compaction"]
     assert semantic["config"]["semantic_payload_canary"]["guard_enabled"] is True
     assert semantic["config"]["semantic_payload_canary"]["allow_enabled"] is False
     assert semantic["latest"]["semantic_audit"]["present"] is False
@@ -762,3 +762,33 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
     assert tokens["prompt_subcategory_split"]["precision"] == "unavailable"
     assert tokens["prompt_subcategory_split"]["reason"] == "profile_tokenizer_json_not_found"
     assert "profile_tokenizer_resource" in tokens["prompt_subcategory_split"]["missing"]
+
+
+def test_weclaw_status_route_is_token_only_public_surface(monkeypatch, tmp_path):
+    import json
+    from fastapi.testclient import TestClient
+    from deepseek_responses_proxy.app import create_app
+
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(create_app())
+    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false").json()
+    dumped = json.dumps(data, sort_keys=True)
+
+    assert data["status"] == "ok"
+    for forbidden in (
+        "legacy_char_debug",
+        "char_control_scope",
+        "before_chars",
+        "after_chars",
+        "chars_removed",
+        "trigger_chars",
+        "target_chars",
+        "max_context_chars",
+        "current_chars",
+        "char_count",
+        "content_chars",
+        '"chars"',
+        "char_heuristic",
+        "chars/messages",
+    ):
+        assert forbidden not in dumped

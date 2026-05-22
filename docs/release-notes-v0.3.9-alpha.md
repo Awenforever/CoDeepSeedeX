@@ -30,7 +30,7 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - COMPACT reports `estimated_context_tokens`, `tokens_to_auto_compact`, `model_context_window_tokens`, `auto_compact_threshold_tokens`, `model_auto_compact_token_limit`, and `runtime_trigger_source=token_first`.
 - TRIM now uses the active profile auto-compact token limit as the default production token target, with `DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS` available as an explicit diagnostic override.
 - TRIM reports `token_first_runtime_trim` with before/after token estimates, removed tokens, target status, and runtime application state.
-- char-level Compact/TRIM limits remain only as emergency safety fallback after token-first runtime processing; char fields are no longer the primary context-window or trigger denominator.
+- token-only Compact/TRIM limits remain only as emergency safety fallback after token-first runtime processing; char fields are no longer the primary context-window or trigger denominator.
 
 ### Compact audit and Codex-native local prompt alignment
 

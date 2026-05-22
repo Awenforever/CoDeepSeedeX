@@ -311,7 +311,9 @@ async def test_semantic_payload_enabled_compacts_real_responses_route_payload_an
     assert payload_event["reason"] == "enabled"
     assert payload_event["compacted_count"] == 1
     assert payload_event["tokens_removed"] > 0
-    assert payload_event["chars_removed"] > 0
+    assert "chars_removed" not in payload_event
+    assert "chars_before" not in payload_event
+    assert "chars_after" not in payload_event
     assert payload_event["semantic_type_counts"]["test_output"] == 1
     assert payload_event["risk_counts"]["low"] == 1
     assert payload_event["policy_decisions"]["compact"] == 1

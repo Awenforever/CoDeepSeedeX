@@ -329,7 +329,7 @@ Current WeClaw-facing fields include:
 - CNY-first Pricing/Cost fields based on DeepSeek's Chinese official pricing page,
 - per-turn cost ledger semantics so mixed model or route sessions are not recalculated using the current active model price,
 - token-first context-window display using the full managed `model_context_window_tokens`, with the auto-compact threshold exposed separately;
-- char-level Compact and Trim fallback/debug progress through `runtime_payload_guard`;
+- token-only Compact and Trim runtime progress through `runtime_payload_guard`;
 - redacted Compact prompt fingerprints and dry-run material classification for compaction auditability;
 - Compact audit metadata through runtime/WeClaw status and CLI fallback surfaces;
 - Compact audit dry-run metadata for skipped compaction reports without model calls or payload mutation;

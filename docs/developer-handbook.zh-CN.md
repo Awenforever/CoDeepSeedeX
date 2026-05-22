@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a6-token-accounting-source`
-- 最新闭合文档同步检查点：`p2.12a6-token-accounting-source`
+- 当前内部开发检查点：`p2.12a7-token-only-status-surface`
+- 最新闭合文档同步检查点：`p2.12a7-token-only-status-surface`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1479,7 +1479,7 @@ p2.10a95闭合剩余的C1/D1计划阻断项。
 2. 生产COMPACT报告`estimated_context_tokens`、`tokens_to_auto_compact`、`model_context_window_tokens`、`auto_compact_threshold_tokens`和`runtime_trigger_source=token_first`。
 3. 生产TRIM默认使用active profile auto-compact token limit作为token目标。`DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS`可用于测试或诊断覆盖该目标。
 4. 生产TRIM报告`token_first_runtime_trim`，包含before/after token估算、removed tokens和target状态。
-5. char级Compact/TRIM控制只保留为emergency safety fallback，不得再作为主context window或触发分母。
+5. token-only Compact/TRIM控制只保留为emergency safety fallback，不得再作为主context window或触发分母。
 6. 本节点不得移动公开`v0.3.9-alpha`，不得更新GitHub Release，不得上传Release资产。
 
 

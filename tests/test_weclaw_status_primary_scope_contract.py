@@ -101,3 +101,62 @@ def test_runtime_payload_guard_progress_fields() -> None:
     assert "trigger_chars" not in dumped
     assert "target_chars" not in dumped
     assert "max_context_chars" not in dumped
+
+
+def test_token_only_public_runtime_contract_filters_non_token_diagnostics_recursively() -> None:
+    payload = {
+        "runtime_payload_guard": {
+            "unit": "tokens",
+            "current_tokens": 42,
+            "current_chars": 999,
+            "compaction": {
+                "unit": "tokens",
+                "before_chars": 1000,
+                "char_count": 1000,
+                "tokens_removed": 12,
+                "last_report": {
+                    "compact_audit": {
+                        "unit": "chars/messages",
+                        "classifier_dry_run": {
+                            "sections": {
+                                "compaction_material": {"chars": 10},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "tokens": {
+            "latest_prompt_segmentation": {
+                "segments": [
+                    {"index": 0, "token_count": 5, "char_count": 20, "content_chars": 20},
+                ],
+                "observable_payload": {
+                    "components": {"messages_json": {"local_tokens": 5, "char_count": 20}},
+                    "precision": "char_heuristic_estimate",
+                },
+            },
+        },
+    }
+    cleaned = proxy_app._token_only_public_runtime_contract(payload)
+    dumped = json.dumps(cleaned, sort_keys=True)
+
+    assert cleaned["runtime_payload_guard"]["current_tokens"] == 42
+    assert cleaned["runtime_payload_guard"]["compaction"]["tokens_removed"] == 12
+    for forbidden in (
+        "legacy_char_debug",
+        "char_control_scope",
+        "before_chars",
+        "after_chars",
+        "chars_removed",
+        "trigger_chars",
+        "target_chars",
+        "max_context_chars",
+        "current_chars",
+        "char_count",
+        "content_chars",
+        '"chars"',
+        "char_heuristic",
+        "chars/messages",
+    ):
+        assert forbidden not in dumped

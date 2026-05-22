@@ -827,7 +827,11 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
 
     for audit in (top_audit, nested_audit, guard["compaction"]["compact_audit"], last_report["compact_audit"]):
         assert audit["available"] is True
-        assert audit["unit"] == "chars/messages"
+        assert "unit" not in audit
+        audit_dump = json.dumps(audit, ensure_ascii=False, sort_keys=True)
+        assert "chars/messages" not in audit_dump
+        assert "char_count" not in audit_dump
+        assert '"chars"' not in audit_dump
         assert audit["redacted"] is True
         assert audit["raw_content_exposed"] is False
         assert audit["missing"] == []
@@ -942,7 +946,9 @@ def test_weclaw_semantic_payload_display_contract_exposes_mode_savings_and_safet
     assert display["tokens_before"] == 1000
     assert display["tokens_after"] == 400
     assert display["tokens_removed"] == 600
-    assert display["chars_removed"] == 2400
+    assert "chars_removed" not in display
+    assert "chars_before" not in display
+    assert "chars_after" not in display
     assert display["type_counts"] == {"test_output": 2}
     assert display["type_actions"] == {"compact": 2, "structure_only": 1}
     assert display["recommended_actions"]["compact_test_output_summary"] == 2
