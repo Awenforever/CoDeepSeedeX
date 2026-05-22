@@ -268,3 +268,34 @@ def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
     assert "trigger_chars" not in guard["compaction"]
     assert guard["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
     assert guard["legacy_char_debug"]["control_disabled"] is True
+
+def test_env_auto_compact_ratio_is_the_only_low_threshold_lab_control(monkeypatch, tmp_path: Path) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "10800")
+
+    context = proxy_app._runtime_token_first_context_contract_for_payload(
+        {"model": "deepseek-v4-flash"},
+        active_profile="deepseek",
+    )
+
+    assert context["model_context_window_tokens"] == 1_000_000
+    assert context["auto_compact_ratio"] == 0.02
+    assert context["auto_compact_threshold_tokens"] == 20_000
+    assert context["model_auto_compact_token_limit"] == 20_000
+    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 10800
+    assert context["legacy_absolute_limit_ignored"]["derived_value"] == 20_000
+    assert context["auto_compact_policy"]["managed_expected_auto_compact_ratio"] == 0.02
+    assert context["auto_compact_policy"]["managed_expected_auto_compact_threshold_tokens"] == 20_000

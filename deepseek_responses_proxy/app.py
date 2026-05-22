@@ -57,11 +57,30 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a3-token-only-compact-trim-runtime"
+PROXY_INTERNAL_VERSION = "p2.12a4-auto-compact-ratio-only-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
+AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
+
+
+def _normalize_auto_compact_ratio_value(value: Any, *, default: float = MANAGED_AUTO_COMPACT_RATIO) -> float:
+    try:
+        ratio = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not 0 < ratio < 1:
+        return default
+    return ratio
+
+
+def _managed_auto_compact_ratio() -> float:
+    for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
+        value = os.environ.get(env_name)
+        if value not in {None, ""}:
+            return _normalize_auto_compact_ratio_value(value)
+    return MANAGED_AUTO_COMPACT_RATIO
 
 # USD per 1M tokens. Keep this table small and explicit.
 # Source should be periodically checked against DeepSeek official pricing.
@@ -6084,7 +6103,7 @@ def _runtime_token_first_context_contract_for_payload(
         profile_section = {}
 
     env_model_context = _env_int("DEEPSEEK_PROXY_MODEL_CONTEXT_WINDOW_TOKENS", 0)
-    ratio = MANAGED_AUTO_COMPACT_RATIO
+    ratio = _managed_auto_compact_ratio()
 
     profile_model_context = _runtime_int_or_zero(profile_section.get("model_context_window"))
     legacy_profile_auto_threshold = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
@@ -15874,12 +15893,16 @@ def _weclaw_context_used_tokens_unavailable_contract() -> dict[str, Any]:
 
 
 
+
 def _auto_compact_policy_contract(
     *,
     model_context_window: int,
     auto_compact_token_limit: int,
+    expected_ratio: float | None = None,
 ) -> dict[str, Any]:
-    expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_ratio = _normalize_auto_compact_ratio_value(
+        expected_ratio if expected_ratio is not None else _managed_auto_compact_ratio()
+    )
     expected_percent = int(round(expected_ratio * 100))
     expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
     observed_ratio = (
@@ -15895,7 +15918,7 @@ def _auto_compact_policy_contract(
     if model_context_window <= 0 or auto_compact_token_limit <= 0:
         status = "unavailable"
         reason = "model_context_window_or_auto_compact_threshold_missing"
-        action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
+        action = "repair or reinstall the managed Codex profile so both model_context_window and the ratio-derived model_auto_compact_token_limit are present"
         needs_migration = True
         display_label = "auto-compact unavailable"
         short_action = "repair profile"
@@ -15909,7 +15932,7 @@ def _auto_compact_policy_contract(
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
-        action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
+        action = f"run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
         needs_migration = True
         display_label = (
             f"legacy {observed_percent}%→{expected_percent}%"
@@ -15932,11 +15955,11 @@ def _auto_compact_policy_contract(
         "action": action,
         "display_label": display_label,
         "short_action": short_action,
-        "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
+        "source": "codex_profile.model_context_window_and_ratio_derived_model_auto_compact_token_limit",
         "notes": [
             "The context denominator remains model_context_window_tokens.",
             "The auto-compact threshold is a trigger threshold, not the context denominator.",
-            "Managed CoDeepSeedeX profiles derive the threshold from auto_compact_ratio=0.90; legacy/custom profiles may expose a different observed ratio and must be labeled instead of silently rewritten by WeClaw.",
+            f"Managed CoDeepSeedeX profiles derive the threshold from auto_compact_ratio={expected_ratio:.6g}; absolute token thresholds are generated output, not configuration input.",
         ],
     }
 
@@ -16371,7 +16394,8 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
 def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
     model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window")) or 1_000_000
     legacy_auto_compact_token_limit = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
-    auto_compact_token_limit = int(model_context_window * MANAGED_AUTO_COMPACT_RATIO) if model_context_window > 0 else 0
+    auto_compact_ratio_config = _managed_auto_compact_ratio()
+    auto_compact_token_limit = int(model_context_window * auto_compact_ratio_config) if model_context_window > 0 else 0
     display_limit_tokens = model_context_window or auto_compact_token_limit or 0
     auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
@@ -16402,7 +16426,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "field": "model_auto_compact_token_limit",
                 "codex_profile_value": legacy_auto_compact_token_limit,
                 "derived_managed_value": auto_compact_token_limit,
-                "expected_auto_compact_ratio": MANAGED_AUTO_COMPACT_RATIO,
+                "expected_auto_compact_ratio": auto_compact_ratio_config,
                 "resolution": "managed_runtime_uses_ratio_derived_threshold_and_profile_repair_rewrites_generated_value",
                 "action": "run dsproxy profile repair --managed-only --json",
                 "user_visible": True,
@@ -16456,7 +16480,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
         "notes": [
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
-            "Managed CoDeepSeedeX profiles use auto_compact_ratio=0.90 as the only configuration source for auto-compact threshold.",
+            "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
             "Char-level compaction and trimming values are fallback/debug/safety controls and must not be treated as equivalent token denominators.",
         ],
         "conflicts": conflicts,

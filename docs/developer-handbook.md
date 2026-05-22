@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a3-token-only-compact-trim-runtime`
-- Latest closed documentation sync checkpoint: `p2.12a3-token-only-compact-trim-runtime`
+- Current internal development checkpoint: `p2.12a4-auto-compact-ratio-only-contract`
+- Latest closed documentation sync checkpoint: `p2.12a4-auto-compact-ratio-only-contract`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1748,3 +1748,14 @@ Rules:
 ## p2.12a3 Token-only Compact/Trim runtime
 
 p2.12a3 retires char values from the visible runtime Compact/Trim control plane. Runtime payload guard, WeClaw status, and top-level compaction contracts now expose `unit=tokens`, `current_tokens`, token thresholds, token remaining/progress fields, and token-first reports. Character counts may remain only under `legacy_char_debug` with `scope=diagnostic_only_not_a_runtime_trigger`; they are not a trigger, denominator, or user-facing progress source.
+
+## p2.12a4 Auto-compact ratio-only contract
+
+p2.12a4 makes `auto_compact_ratio` the only managed configuration source for the Compact trigger.
+
+Rules:
+
+1. `model_context_window` remains the real context denominator and must not be lowered to force tests.
+2. `model_auto_compact_token_limit` is generated output: `floor(model_context_window * auto_compact_ratio)`.
+3. Low-trigger experiments must set `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` or pass `dsproxy profile repair --auto-compact-ratio`; they must not write absolute trigger tokens.
+4. Legacy absolute values such as `DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS` are ignored as configuration sources and surfaced only as diagnostics.

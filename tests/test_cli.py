@@ -3190,3 +3190,93 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
     assert refresh["writes_cache"] is True
     assert refresh["source_kind"] == "official_docs_html"
     assert refresh["cache_path"] == str(cache_path)
+
+def test_cli_profile_repair_derives_low_lab_trigger_from_ratio_without_shrinking_window(tmp_path, capsys, monkeypatch):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n"
+        "export DEEPSEEK_PROXY_AUTO_COMPACT_RATIO=0.02\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n"
+        "model_reasoning_effort = \"xhigh\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+
+    assert main([
+        "profile",
+        "repair",
+        "--managed-only",
+        "--json",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+    ]) == 0
+
+    repaired = json.loads(capsys.readouterr().out)
+    assert repaired["managed_auto_compact_ratio"] == 0.02
+    profile = next(item for item in repaired["profile_results"] if item["profile"] == "deepseek-thinking")
+    assert profile["model_context_window_tokens"] == 1_000_000
+    assert profile["expected_model_auto_compact_token_limit"] == 20_000
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "model_context_window = 1000000" in text
+    assert "model_context_window = 12000" not in text
+    assert "model_auto_compact_token_limit = 20000" in text
+    assert "model_auto_compact_token_limit = 10800" not in text
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["context_window"]["model_context_window_tokens"] == 1_000_000
+    assert status["context_window"]["auto_compact_ratio"] == 0.02
+    assert status["context_window"]["auto_compact_threshold_tokens"] == 20_000
+
+
+def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_threshold(tmp_path, capsys, monkeypatch):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_PROXY_AUTO_COMPACT_RATIO=0.02\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+
+    assert main([
+        "profile",
+        "repair",
+        "--profile",
+        "deepseek",
+        "--json",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+        "--auto-compact-ratio",
+        "0.05",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["managed_auto_compact_ratio"] == 0.05
+    assert result["auto_compact_ratio_source"] == "arg.auto_compact_ratio"
+    assert "model_context_window = 1000000" in config_path.read_text(encoding="utf-8")
+    assert "model_auto_compact_token_limit = 50000" in config_path.read_text(encoding="utf-8")

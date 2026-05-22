@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a3-token-only-compact-trim-runtime`
-- 最新闭合文档同步检查点：`p2.12a3-token-only-compact-trim-runtime`
+- 当前内部开发检查点：`p2.12a4-auto-compact-ratio-only-contract`
+- 最新闭合文档同步检查点：`p2.12a4-auto-compact-ratio-only-contract`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1703,3 +1703,14 @@ p2.12a2加固跨Codex升级的托管profile契约。
 ## p2.12a3 Token-only Compact/Trim runtime
 
 p2.12a3将char值从可见运行时Compact/Trim控制平面中退役。runtime payload guard、WeClaw status和顶层compaction契约现在暴露`unit=tokens`、`current_tokens`、token阈值、token剩余/进度字段和token-first报告。字符计数只能保留在`legacy_char_debug`下，并标注`scope=diagnostic_only_not_a_runtime_trigger`；它们不是触发阈值、分母或用户可见进度来源。
+
+## p2.12a4 Auto-compact ratio-only contract
+
+p2.12a4将`auto_compact_ratio`固定为Compact触发阈值的唯一托管配置源。
+
+规则：
+
+1. `model_context_window`保持真实上下文分母，不能为了测试触发而改小。
+2. `model_auto_compact_token_limit`只是生成结果：`floor(model_context_window * auto_compact_ratio)`。
+3. 低阈值实验只能设置`DEEPSEEK_PROXY_AUTO_COMPACT_RATIO`或使用`dsproxy profile repair --auto-compact-ratio`，不能写入绝对token触发阈值。
+4. `DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS`等旧绝对值只作为诊断暴露，不能作为配置源。

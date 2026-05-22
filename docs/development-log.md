@@ -1441,7 +1441,7 @@ Scope:
 - Fail closed if a managed profile still has a model conflict after repair.
 - Keep token-only Compact/Trim runtime migration for the next node.
 
-## p2.12a3-token-only-compact-trim-runtime
+## p2.12a4-auto-compact-ratio-only-contract
 
 - Retired char counts from the visible runtime Compact/Trim control plane.
 - Runtime payload guard and WeClaw status now expose `unit=tokens`, `current_tokens`, token trigger/remaining/progress fields, and move char counters to `legacy_char_debug`.

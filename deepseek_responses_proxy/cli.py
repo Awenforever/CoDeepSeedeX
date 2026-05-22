@@ -30,16 +30,37 @@ DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000
 DEFAULT_AUTO_COMPACT_RATIO = 0.90
 MANAGED_AUTO_COMPACT_RATIO = DEFAULT_AUTO_COMPACT_RATIO
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
+AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
 
 
-def _normalize_auto_compact_ratio(value: object) -> float:
+
+def _normalize_auto_compact_ratio(value: object, default: float = DEFAULT_AUTO_COMPACT_RATIO) -> float:
     try:
         ratio = float(value)
     except (TypeError, ValueError):
-        return DEFAULT_AUTO_COMPACT_RATIO
+        return default
     if not 0 < ratio < 1:
-        return DEFAULT_AUTO_COMPACT_RATIO
+        return default
     return ratio
+
+
+def _auto_compact_ratio_from_env_values(
+    env_values: dict[str, str] | None = None,
+    *,
+    explicit: object | None = None,
+) -> float:
+    if explicit is not None:
+        return _normalize_auto_compact_ratio(explicit)
+    env_values = env_values or {}
+    for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
+        value = env_values.get(env_name)
+        if value not in {None, ""}:
+            return _normalize_auto_compact_ratio(value)
+    for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
+        value = os.environ.get(env_name)
+        if value not in {None, ""}:
+            return _normalize_auto_compact_ratio(value)
+    return DEFAULT_AUTO_COMPACT_RATIO
 
 
 def _derive_auto_compact_token_limit(
@@ -58,12 +79,16 @@ def _derive_auto_compact_token_limit(
 
 
 
+
 def _auto_compact_policy_contract(
     *,
     model_context_window: int,
     auto_compact_token_limit: int,
+    expected_ratio: float | None = None,
 ) -> dict[str, object]:
-    expected_ratio = MANAGED_AUTO_COMPACT_RATIO
+    expected_ratio = _normalize_auto_compact_ratio(
+        expected_ratio if expected_ratio is not None else _auto_compact_ratio_from_env_values()
+    )
     expected_percent = int(round(expected_ratio * 100))
     expected_threshold = int(model_context_window * expected_ratio) if model_context_window > 0 else None
     observed_ratio = (
@@ -78,7 +103,7 @@ def _auto_compact_policy_contract(
     if model_context_window <= 0 or auto_compact_token_limit <= 0:
         status = "unavailable"
         reason = "model_context_window_or_auto_compact_threshold_missing"
-        action = "repair or reinstall the managed Codex profile so both model_context_window and model_auto_compact_token_limit are present"
+        action = "repair or reinstall the managed Codex profile so both model_context_window and the ratio-derived model_auto_compact_token_limit are present"
         needs_migration = True
         display_label = "auto-compact unavailable"
         short_action = "repair profile"
@@ -92,7 +117,7 @@ def _auto_compact_policy_contract(
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
-        action = "run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio=0.90"
+        action = f"run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
         needs_migration = True
         display_label = (
             f"legacy {observed_percent}%→{expected_percent}%"
@@ -114,7 +139,7 @@ def _auto_compact_policy_contract(
         "action": action,
         "display_label": display_label,
         "short_action": short_action,
-        "source": "codex_profile.model_context_window_and_model_auto_compact_token_limit",
+        "source": "codex_profile.model_context_window_and_ratio_derived_model_auto_compact_token_limit",
     }
 
 def _repo_root_for_version_metadata() -> Path:
@@ -656,7 +681,7 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
     profile_name = args.name
     provider_name = args.provider_name or f"{profile_name}-proxy"
-    auto_compact_ratio = _normalize_auto_compact_ratio(getattr(args, "auto_compact_ratio", DEFAULT_AUTO_COMPACT_RATIO))
+    auto_compact_ratio = _auto_compact_ratio_from_env_values(explicit=getattr(args, "auto_compact_ratio", None))
     derived_auto_compact_token_limit = _derive_auto_compact_token_limit(args.context_window, auto_compact_ratio)
     legacy_auto_compact_token_limit = getattr(args, "auto_compact_token_limit", None)
 
@@ -937,16 +962,18 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
 
 
 
-def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, object]:
+def _profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None, env_values: dict[str, str] | None = None) -> dict[str, object]:
     model_context_window = _int_or_zero(profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
     legacy_auto_compact_token_limit = _int_or_zero(profile_section.get("model_auto_compact_token_limit"))
-    auto_compact_token_limit = _derive_auto_compact_token_limit(model_context_window, DEFAULT_AUTO_COMPACT_RATIO)
+    managed_auto_compact_ratio = _auto_compact_ratio_from_env_values(env_values)
+    auto_compact_token_limit = _derive_auto_compact_token_limit(model_context_window, managed_auto_compact_ratio)
     display_limit_tokens = model_context_window or auto_compact_token_limit or 0
     auto_compact_ratio = round(auto_compact_token_limit / model_context_window, 6) if model_context_window > 0 and auto_compact_token_limit > 0 else None
     model_catalog = _weclaw_model_catalog_contract(profile_section, effective_model)
     auto_compact_policy = _auto_compact_policy_contract(
         model_context_window=model_context_window,
         auto_compact_token_limit=auto_compact_token_limit,
+        expected_ratio=managed_auto_compact_ratio,
     )
     conflicts: list[dict[str, object]] = []
     catalog_context = model_catalog.get("context_window_tokens") if isinstance(model_catalog, dict) else None
@@ -971,7 +998,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "field": "model_auto_compact_token_limit",
                 "codex_profile_value": legacy_auto_compact_token_limit,
                 "derived_managed_value": auto_compact_token_limit,
-                "expected_auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+                "expected_auto_compact_ratio": managed_auto_compact_ratio,
                 "resolution": "managed_runtime_uses_ratio_derived_threshold_and_profile_repair_rewrites_generated_value",
                 "action": "run dsproxy profile repair --managed-only --json",
                 "user_visible": True,
@@ -1026,7 +1053,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
         "notes": [
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
-            "Managed CoDeepSeedeX profiles use auto_compact_ratio=0.90 as the only configuration source for auto-compact threshold.",
+            "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
             "Char-level compaction and trimming values are fallback/debug/safety controls and must not be treated as equivalent token denominators.",
         ],
     }
@@ -1398,6 +1425,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     context_contract = _profile_context_contract(
         profile_section,
         effective_model=str(model_contract.get("effective_model") or model_contract.get("upstream_model") or model_contract.get("codex_model") or ""),
+        env_values=env_values,
     )
 
     warnings = list(health["warnings"])
@@ -1518,6 +1546,11 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
     target_profiles = _managed_profile_targets("__managed__" if bool(getattr(args, "managed_only", False)) else getattr(args, "profile", "__managed__"))
     dry_run = bool(getattr(args, "dry_run", False))
+    env_values = _read_env_exports(env_file)
+    managed_auto_compact_ratio = _auto_compact_ratio_from_env_values(
+        env_values,
+        explicit=getattr(args, "auto_compact_ratio", None),
+    )
 
     original_text = codex_path.read_text(encoding="utf-8") if codex_path.exists() else ""
     working_text = original_text
@@ -1556,7 +1589,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         model_context_window = _int_or_zero(before_profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
         expected_auto_compact_token_limit = _derive_auto_compact_token_limit(
             model_context_window,
-            DEFAULT_AUTO_COMPACT_RATIO,
+            managed_auto_compact_ratio,
         )
         current_auto_compact_token_limit = _int_or_zero(before_profile_section.get("model_auto_compact_token_limit"))
         tool_output_token_limit = _int_or_zero(before_profile_section.get("tool_output_token_limit")) or 12_000
@@ -1629,7 +1662,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
                 "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
                 "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
                 "model_context_window_tokens": model_context_window,
-                "auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+                "auto_compact_ratio": managed_auto_compact_ratio,
                 "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
                 "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
                 "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
@@ -1691,7 +1724,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
             "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
             "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
             "model_context_window_tokens": model_context_window,
-            "auto_compact_ratio": DEFAULT_AUTO_COMPACT_RATIO,
+            "auto_compact_ratio": managed_auto_compact_ratio,
             "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
             "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
             "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
@@ -1722,6 +1755,12 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         "status": "error" if post_validation_errors or not health["codex_config_loadable"] else "ok",
         "operation": "profile_repair",
         "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+        "managed_auto_compact_ratio": managed_auto_compact_ratio,
+        "auto_compact_ratio_source": (
+            "arg.auto_compact_ratio"
+            if getattr(args, "auto_compact_ratio", None) is not None
+            else "env_file_or_default"
+        ),
         "env_file": str(env_file),
         "codex_config": str(codex_path),
         "managed_only": bool(getattr(args, "managed_only", False)),
@@ -6024,6 +6063,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_repair.add_argument("--codex-config")
     profile_repair.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     profile_repair.add_argument("--dry-run", action="store_true")
+    profile_repair.add_argument("--auto-compact-ratio", type=float, default=None, help="derive managed profile model_auto_compact_token_limit from this ratio; do not pass absolute token thresholds")
     profile_repair.set_defaults(func=_profile)
 
     profile_refresh_wrapper = profile_sub.add_parser("refresh-wrapper", help="refresh the managed Codex wrapper from the install manifest")
