@@ -434,8 +434,10 @@ async def test_semantic_payload_enabled_real_route_surfaces_weclaw_display_contr
     assert display["applied_count"] == 1
     assert display["tokens_before"] > display["tokens_after"]
     assert display["tokens_removed"] > 0
-    assert display["chars_before"] > display["chars_after"]
-    assert display["chars_removed"] > 0
+    dumped_display = json.dumps(display, sort_keys=True)
+    assert "chars_before" not in dumped_display
+    assert "chars_after" not in dumped_display
+    assert "chars_removed" not in dumped_display
     assert display["type_counts"]["test_output"] == 1
     assert display["type_counts"].get("unknown", 0) >= 1
     assert display["type_actions"]["compact"] == 1

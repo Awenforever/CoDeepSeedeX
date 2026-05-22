@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 import importlib
@@ -73,6 +75,7 @@ def test_weclaw_tokens_contract_separates_latest_primary_from_auxiliary(tmp_path
     assert context["latest_upstream_prompt_tokens"]["purpose"] == "primary"
 
 
+
 def test_runtime_payload_guard_progress_fields() -> None:
     guard = proxy_app._runtime_payload_guard_contract(
         {
@@ -82,16 +85,19 @@ def test_runtime_payload_guard_progress_fields() -> None:
         compaction_report={"before_chars": 120000, "after_chars": 80000, "chars_removed": 40000, "policy_decision": {"effective_trigger_chars": 900000}, "compacted": True},
         trimming_report={"before_chars": 95000, "after_chars": 90000, "chars_removed": 5000, "max_context_chars": 1500000, "trimmed": True},
     )
+    dumped = json.dumps(guard, sort_keys=True)
+
     assert guard["unit"] == "tokens"
     assert guard["current_tokens"] is None
     assert guard["compaction"]["unit"] == "tokens"
     assert guard["compaction"]["available"] is False
-    assert guard["compaction"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
-    assert guard["compaction"]["legacy_char_debug"]["before_chars"] == 120000
-    assert guard["compaction"]["legacy_char_debug"]["after_chars"] == 80000
-    assert guard["compaction"]["legacy_char_debug"]["control_disabled"] is True
     assert guard["trimming"]["unit"] == "tokens"
     assert guard["trimming"]["available"] is False
-    assert guard["trimming"]["legacy_char_debug"]["before_chars"] == 95000
-    assert guard["trimming"]["legacy_char_debug"]["after_chars"] == 90000
-    assert guard["trimming"]["legacy_char_debug"]["control_disabled"] is True
+    assert "legacy_char_debug" not in dumped
+    assert "char_control_scope" not in dumped
+    assert "before_chars" not in dumped
+    assert "after_chars" not in dumped
+    assert "chars_removed" not in dumped
+    assert "trigger_chars" not in dumped
+    assert "target_chars" not in dumped
+    assert "max_context_chars" not in dumped

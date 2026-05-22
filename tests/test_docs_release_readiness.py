@@ -31,14 +31,14 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
 
     assert "Current public Release: `v0.3.9-alpha`" in en_current
     assert "Current public Release commit: `ab680ee`" in en_current
-    assert "Current internal development checkpoint: `p2.12a5-token-compact-status-semantics`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.12a5-token-compact-status-semantics`" in en_current
+    assert "Current internal development checkpoint: `p2.12a6-token-accounting-source`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.12a6-token-accounting-source`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`" in en_current
     assert "  - `v0.3.9-alpha = ab680ee`" in en_current
 
     assert "当前公开Release：`v0.3.9-alpha`" in zh_current
     assert "当前公开Release提交：`ab680ee`" in zh_current
-    assert "当前内部开发检查点：`p2.12a5-token-compact-status-semantics`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.12a5-token-compact-status-semantics`" in zh_current
+    assert "当前内部开发检查点：`p2.12a6-token-accounting-source`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.12a6-token-accounting-source`" in zh_current
     assert "当前公开Release note同步检查点：`p2.10a113-release-note-marker`" in zh_current
     assert "  - `v0.3.9-alpha = ab680ee`" in zh_current

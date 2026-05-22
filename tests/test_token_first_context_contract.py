@@ -171,6 +171,7 @@ model_auto_compact_token_limit = 750000
     assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 750_000
 
 
+
 def test_compaction_budget_exposes_strict_plan_token_field_names(tmp_path: Path, monkeypatch) -> None:
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
@@ -194,11 +195,13 @@ model_auto_compact_token_limit = 900
     )
 
     assert budget["primary_control_unit"] == "tokens"
-    assert budget["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
+    assert budget["token_accounting_scope"] == "normalized_compaction_messages_only"
+    assert "char_control_scope" not in budget
     assert budget["estimated_tokens_before_compact"] == budget["estimated_context_tokens"]
     assert budget["estimated_tokens_after_compact"] == budget["estimated_context_tokens"]
     assert budget["estimated_tokens_removed_by_compact"] == 0
     assert budget["auto_compact_threshold_tokens"] == 900
+
 
 
 def test_compaction_contract_exposes_strict_plan_token_field_names() -> None:
@@ -219,12 +222,13 @@ def test_compaction_contract_exposes_strict_plan_token_field_names() -> None:
     contract = proxy_app._runtime_token_first_compaction_contract(report)
 
     assert contract["primary_control_unit"] == "tokens"
-    assert contract["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
+    assert "char_control_scope" not in contract
     assert contract["estimated_tokens_before_compact"] == 950
     assert contract["estimated_tokens_after_compact"] == 500
     assert contract["estimated_tokens_removed_by_compact"] == 450
     assert contract["trigger_tokens"] == 900
     assert contract["retention_ratio"] == 500 / 950
+
 
 
 def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_names() -> None:
@@ -233,7 +237,7 @@ def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_n
     assert contract["available"] is False
     assert contract["unit"] == "tokens"
     assert contract["primary_control_unit"] == "tokens"
-    assert contract["char_control_scope"] in {"fallback_debug_safety_only", "diagnostic_only_not_a_runtime_trigger"}
+    assert "char_control_scope" not in contract
     assert contract["estimated_tokens_before_compact"] is None
     assert contract["estimated_tokens_after_compact"] is None
     assert contract["estimated_tokens_removed_by_compact"] == 0
@@ -242,6 +246,7 @@ def test_unavailable_compaction_contract_still_exposes_strict_plan_token_field_n
     assert contract["tokens_removed"] == 0
     assert contract["raw_content_exposed"] is False
     assert contract["redacted"] is True
+
 
 
 def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
@@ -260,14 +265,15 @@ def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
         "policy_decision": {"token_budget": {"tokenizer": {"available": True}}},
     }
     guard = proxy_app._runtime_payload_guard_contract({"compaction": {"config": {}}}, compaction_report=report)
+    dumped = json.dumps(guard, sort_keys=True)
+
     assert guard["unit"] == "tokens"
     assert guard["current_tokens"] == 123
-    assert "current_chars" not in guard
     assert guard["compaction"]["unit"] == "tokens"
     assert guard["compaction"]["trigger_tokens"] == 900
-    assert "trigger_chars" not in guard["compaction"]
-    assert guard["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
-    assert guard["legacy_char_debug"]["control_disabled"] is True
+    assert "current_chars" not in dumped
+    assert "trigger_chars" not in dumped
+    assert "legacy_char_debug" not in dumped
 
 def test_env_auto_compact_ratio_is_the_only_low_threshold_lab_control(monkeypatch, tmp_path: Path) -> None:
     codex_config = tmp_path / "codex.toml"
@@ -338,7 +344,8 @@ def test_weclaw_context_limit_explanation_uses_active_managed_ratio_text(monkeyp
     assert "0.90" not in values["auto_compact_ratio"]
 
 
-def test_runtime_token_status_context_hides_char_config_from_primary_context() -> None:
+
+def test_runtime_token_status_context_hides_legacy_non_token_config_from_primary_context() -> None:
     guard = proxy_app._runtime_payload_guard_contract(
         {
             "compaction": {"config": {"trigger_chars": 900000, "target_chars": 280000}, "last_report": {}},
@@ -360,9 +367,75 @@ def test_runtime_token_status_context_hides_char_config_from_primary_context() -
         },
         guard,
     )
+    dumped = json.dumps(context, sort_keys=True)
+
     assert context["unit"] == "tokens"
     assert "config" not in context["compaction"]
     assert context["compaction"]["tokens_to_auto_compact"] == 0
     assert context["compaction"]["tokens_over_auto_compact_threshold"] == 22572
-    assert context["compaction"]["legacy_char_debug"]["config"]["trigger_chars"] == 900000
-    assert context["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert "legacy_char_debug" not in dumped
+    assert "trigger_chars" not in dumped
+    assert "max_context_chars" not in dumped
+
+def test_compaction_budget_does_not_count_raw_responses_input(tmp_path: Path, monkeypatch) -> None:
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        """
+[profiles.deepseek]
+model = "deepseek-v4-flash"
+model_provider = "deepseek-proxy"
+model_context_window = 1000000
+model_auto_compact_token_limit = 20000
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
+    messages = [{"role": "user", "content": "hello world"}]
+    huge_raw_input = "x" * 1_000_000
+    request_payload = {
+        "model": "deepseek-v4-flash",
+        "input": [{"type": "function_call_output", "output": huge_raw_input}],
+        "tools": [{"type": "function", "function": {"name": "noop", "description": huge_raw_input}}],
+    }
+
+    budget = proxy_app._runtime_token_first_compaction_budget(
+        messages=messages,
+        request_payload=request_payload,
+        config={},
+        active_profile="deepseek",
+    )
+    expected = proxy_app._runtime_token_first_payload_token_estimate(
+        proxy_app._runtime_token_first_payload_for_messages(messages, request_payload=request_payload)
+    )["estimated_tokens"]
+
+    assert budget["estimated_context_tokens"] == expected
+    assert budget["estimated_context_tokens"] < 1000
+    assert budget["token_accounting_scope"] == "normalized_compaction_messages_only"
+
+
+def test_token_only_public_runtime_contract_strips_legacy_non_token_fields() -> None:
+    value = {
+        "unit": "tokens",
+        "current_tokens": 10,
+        "legacy_char_debug": {"scope": "diagnostic_only_not_a_runtime_trigger"},
+        "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+        "compaction": {
+            "unit": "tokens",
+            "current_tokens": 10,
+            "before_chars": 100,
+            "after_chars": 20,
+            "chars_removed": 80,
+        },
+    }
+    public = proxy_app._token_only_public_runtime_contract(value)
+    dumped = json.dumps(public, sort_keys=True)
+
+    assert public["unit"] == "tokens"
+    assert public["current_tokens"] == 10
+    assert public["compaction"]["current_tokens"] == 10
+    assert "legacy_char_debug" not in dumped
+    assert "char_control_scope" not in dumped
+    assert "before_chars" not in dumped
+    assert "after_chars" not in dumped
+    assert "chars_removed" not in dumped

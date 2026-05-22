@@ -675,7 +675,7 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
     assert data["runtime_payload_guard"]["compaction"]["unit"] == "tokens"
     assert data["runtime_payload_guard"]["compaction"]["trigger_tokens"] is None
     assert data["runtime_payload_guard"]["trimming"]["unit"] == "tokens"
-    assert data["runtime_payload_guard"]["legacy_char_debug"]["scope"] == "diagnostic_only_not_a_runtime_trigger"
+    assert "legacy_char_debug" not in data["runtime_payload_guard"]
     assert data["compaction"]["available"] is True
     assert "tokens" in data
     assert data["tokens"]["last_turn"]["available"] is False

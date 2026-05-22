@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a5-token-compact-status-semantics"
+PROXY_INTERNAL_VERSION = "p2.12a6-token-accounting-source"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -6173,6 +6173,59 @@ def _runtime_token_first_context_contract_for_payload(
         "char_control_scope": "fallback_debug_safety_only",
     }
 
+
+def _runtime_token_first_payload_for_messages(
+    messages: list[dict[str, Any]],
+    *,
+    request_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source_payload = request_payload if isinstance(request_payload, dict) else {}
+    return {
+        "model": _select_upstream_model(source_payload.get("model")),
+        "messages": messages,
+    }
+
+
+def _token_only_public_runtime_contract(value: Any) -> Any:
+    forbidden_keys = {
+        "char_control_scope",
+        "legacy_char_debug",
+        "current_chars",
+        "current_chars_available",
+        "current_chars_source",
+        "current_chars_precision",
+        "current_chars_observed_at",
+        "before_chars",
+        "after_chars",
+        "chars_removed",
+        "trigger_chars",
+        "target_chars",
+        "effective_trigger_chars",
+        "effective_target_chars",
+        "max_context_chars",
+        "max_tool_output_chars",
+        "legacy_trigger_chars",
+        "legacy_target_chars",
+        "legacy_max_context_chars",
+        "char_fallback_scope",
+    }
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if (
+                key_text in forbidden_keys
+                or key_text.endswith("_chars")
+                or "_chars_" in key_text
+                or key_text.startswith("chars_")
+            ):
+                continue
+            cleaned[key_text] = _token_only_public_runtime_contract(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_token_only_public_runtime_contract(item) for item in value]
+    return value
+
 def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict[str, Any]:
     tokenizer, tokenizer_contract = _context_trim_tokenizer_for_payload(payload)
     tokens, source = _context_trim_count_tokens(payload, tokenizer)
@@ -6185,6 +6238,7 @@ def _runtime_token_first_payload_token_estimate(payload: dict[str, Any]) -> dict
 
 
 
+
 def _runtime_token_first_compaction_budget(
     *,
     messages: list[dict[str, Any]],
@@ -6192,8 +6246,7 @@ def _runtime_token_first_compaction_budget(
     config: dict[str, Any],
     active_profile: str | None = None,
 ) -> dict[str, Any]:
-    payload = dict(request_payload or {})
-    payload["messages"] = messages
+    payload = _runtime_token_first_payload_for_messages(messages, request_payload=request_payload)
     context_contract = _runtime_token_first_context_contract_for_payload(payload, active_profile=active_profile)
     token_estimate = _runtime_token_first_payload_token_estimate(payload)
 
@@ -6208,6 +6261,7 @@ def _runtime_token_first_compaction_budget(
         "unit": "tokens",
         "mode": "production",
         "runtime_trigger_source": "token_first",
+        "token_accounting_scope": "normalized_compaction_messages_only",
         "estimated_context_tokens": estimated,
         "estimated_tokens_before_compact": estimated,
         "estimated_tokens_after_compact": estimated,
@@ -6228,9 +6282,7 @@ def _runtime_token_first_compaction_budget(
         "threshold_exceeded": threshold_exceeded,
         "profile": context_contract.get("profile"),
         "profile_found": context_contract.get("profile_found"),
-        "char_fallback_scope": "emergency_safety_only",
         "primary_control_unit": "tokens",
-        "char_control_scope": "fallback_debug_safety_only",
     }
 
 
@@ -8344,9 +8396,11 @@ async def _compact_chat_history_for_codex_like_persistence(
         "model_auto_compact_token_limit": policy_decision.get("model_auto_compact_token_limit"),
         "auto_compact_ratio": policy_decision.get("auto_compact_ratio"),
         "tokens_to_auto_compact": policy_decision.get("tokens_to_auto_compact"),
-        "char_fallback_scope": policy_decision.get("char_fallback_scope"),
+        "tokens_until_auto_compact_threshold": policy_decision.get("tokens_until_auto_compact_threshold"),
+        "tokens_over_auto_compact_threshold": policy_decision.get("tokens_over_auto_compact_threshold"),
+        "threshold_exceeded": policy_decision.get("threshold_exceeded"),
         "primary_control_unit": "tokens",
-        "char_control_scope": "fallback_debug_safety_only",
+        "token_accounting_scope": policy_decision.get("token_accounting_scope"),
     }
 
     if not config["enabled"]:
@@ -8440,8 +8494,7 @@ async def _compact_chat_history_for_codex_like_persistence(
     report["compacted"] = True
     report["reason"] = str(policy_decision["reason"])
     report["after_chars"] = _json_char_size({"messages": compacted_messages})
-    after_token_payload = dict(request_payload or {})
-    after_token_payload["messages"] = compacted_messages
+    after_token_payload = _runtime_token_first_payload_for_messages(compacted_messages, request_payload=request_payload)
     after_token_estimate = _runtime_token_first_payload_token_estimate(after_token_payload)
     report["after_estimated_context_tokens"] = after_token_estimate.get("estimated_tokens")
     report["estimated_tokens_after_compact"] = report["after_estimated_context_tokens"]
@@ -14561,7 +14614,7 @@ def _runtime_payload_guard_status(
 
 
 
-def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
+def _runtime_token_first_compaction_contract_raw(report: Any) -> dict[str, Any]:
     if not isinstance(report, dict):
         return {
             "available": False,
@@ -14702,6 +14755,10 @@ def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
         "raw_content_exposed": False,
         "redacted": True,
     }
+
+
+def _runtime_token_first_compaction_contract(report: Any) -> dict[str, Any]:
+    return _token_only_public_runtime_contract(_runtime_token_first_compaction_contract_raw(report))
 
 def _route_scoped_trimming_report(report: Any, *, profile: str) -> Any:
     if not isinstance(report, dict):
@@ -14850,7 +14907,7 @@ def _runtime_payload_guard_report_snapshot(
 
 
 
-def _runtime_payload_guard_contract(
+def _runtime_payload_guard_contract_raw(
     context_status: dict[str, Any],
     *,
     compaction_report: Any = None,
@@ -15142,6 +15199,21 @@ def _runtime_payload_guard_contract(
             "redacted": True,
         },
     }
+
+
+def _runtime_payload_guard_contract(
+    context_status: dict[str, Any] | None,
+    *,
+    compaction_report: Any = None,
+    trimming_report: Any = None,
+) -> dict[str, Any]:
+    return _token_only_public_runtime_contract(
+        _runtime_payload_guard_contract_raw(
+            context_status,
+            compaction_report=compaction_report,
+            trimming_report=trimming_report,
+        )
+    )
 
 def _tool_bridge_status() -> dict[str, Any]:
     web_provider = _web_search_provider()
@@ -15538,14 +15610,13 @@ def _profile_tokenizer_message_text(message: dict[str, Any]) -> str:
 
 
 
+
 def _runtime_token_first_status_context(
     context_status: dict[str, Any],
     runtime_payload_guard: dict[str, Any],
 ) -> dict[str, Any]:
     compaction = runtime_payload_guard.get("compaction") if isinstance(runtime_payload_guard, dict) else {}
     trimming = runtime_payload_guard.get("trimming") if isinstance(runtime_payload_guard, dict) else {}
-    compaction_context = context_status.get("compaction") if isinstance(context_status, dict) else {}
-    trimming_context = context_status.get("trimming") if isinstance(context_status, dict) else {}
     return {
         "available": True,
         "unit": "tokens",
@@ -15561,15 +15632,6 @@ def _runtime_token_first_status_context(
             "tokens_to_auto_compact": compaction.get("tokens_to_auto_compact") if isinstance(compaction, dict) else None,
             "tokens_until_auto_compact_threshold": compaction.get("tokens_until_auto_compact_threshold") if isinstance(compaction, dict) else None,
             "tokens_over_auto_compact_threshold": compaction.get("tokens_over_auto_compact_threshold") if isinstance(compaction, dict) else 0,
-            "legacy_char_debug": {
-                "available": isinstance(compaction_context, dict) and bool(compaction_context.get("config")),
-                "scope": "diagnostic_only_not_a_runtime_trigger",
-                "config": compaction_context.get("config") if isinstance(compaction_context, dict) else None,
-                "last_report": compaction_context.get("last_report") if isinstance(compaction_context, dict) else None,
-                "control_disabled": True,
-                "raw_content_exposed": False,
-                "redacted": True,
-            },
         },
         "trimming": {
             "available": bool(trimming.get("available")) if isinstance(trimming, dict) else False,
@@ -15578,24 +15640,6 @@ def _runtime_token_first_status_context(
             "reason": trimming.get("reason") if isinstance(trimming, dict) else None,
             "current_tokens": trimming.get("current_tokens") if isinstance(trimming, dict) else None,
             "max_context_tokens": trimming.get("max_context_tokens") if isinstance(trimming, dict) else None,
-            "legacy_char_debug": {
-                "available": isinstance(trimming_context, dict) and bool(trimming_context.get("config")),
-                "scope": "diagnostic_only_not_a_runtime_trigger",
-                "config": trimming_context.get("config") if isinstance(trimming_context, dict) else None,
-                "last_report": trimming_context.get("last_report") if isinstance(trimming_context, dict) else None,
-                "control_disabled": True,
-                "raw_content_exposed": False,
-                "redacted": True,
-            },
-        },
-        "legacy_char_debug": {
-            "available": True,
-            "unit": "chars",
-            "scope": "diagnostic_only_not_a_runtime_trigger",
-            "context": context_status,
-            "control_disabled": True,
-            "raw_content_exposed": False,
-            "redacted": True,
         },
     }
 
@@ -16145,7 +16189,7 @@ def _weclaw_context_limit_explanation(
         "notes": [
             "WeClaw should display the full model context window as the context denominator.",
             "The auto-compact threshold is a separate trigger value, not the context-window size.",
-            "dsproxy runtime compaction and trimming values are char-level fallback/debug controls and are not token denominators.",
+            "Runtime Compact and Trim status is exposed as token fields only.",
             "If auto_compact_token_limit is lower than model_context_window, it is a compact trigger threshold only.",
         ],
     }
@@ -16591,7 +16635,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
             "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
-            "Char-level compaction and trimming values are fallback/debug/safety controls and must not be treated as equivalent token denominators.",
+            "Runtime Compact and Trim status must remain token-only in external status contracts.",
         ],
         "conflicts": conflicts,
     }
@@ -18690,14 +18734,14 @@ def _runtime_weclaw_status(
         getattr(deepseek_client, "last_context_trimming_report", None),
         profile=profile,
     )
-    runtime_payload_guard = _runtime_payload_guard_contract(
+    runtime_payload_guard = _token_only_public_runtime_contract(_runtime_payload_guard_contract(
         context_status,
         compaction_report=last_context_compaction_report,
         trimming_report=trimming_report,
-    )
-    semantic_status = _weclaw_enrich_semantic_compaction_status(
+    ))
+    semantic_status = _token_only_public_runtime_contract(_weclaw_enrich_semantic_compaction_status(
         _semantic_compaction_runtime_status(runtime_events=semantic_runtime_events)
-    )
+    ))
     context_window = _weclaw_context_window_with_usage_estimate(
         dict(profile_status.get("context_window", {})),
         tokens,
@@ -18710,7 +18754,6 @@ def _runtime_weclaw_status(
         "context": runtime_token_context,
         "payload_guard": runtime_payload_guard,
         "semantic_compaction": semantic_status,
-        "legacy_char_debug": runtime_token_context.get("legacy_char_debug"),
     }
     context_window["runtime_compaction"] = runtime_token_context.get("compaction")
     context_window["runtime_trimming"] = runtime_token_context.get("trimming")
@@ -18754,7 +18797,6 @@ def _runtime_weclaw_status(
                 else _compaction_audit_metadata_from_report(last_context_compaction_report)
             ),
             "semantic_compaction": semantic_status,
-            "legacy_char_debug": runtime_payload_guard.get("legacy_char_debug") if isinstance(runtime_payload_guard, dict) else None,
             "missing": [],
         },
         "semantic_compaction": semantic_status,

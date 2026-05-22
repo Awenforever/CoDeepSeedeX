@@ -1041,7 +1041,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
         "model_catalog": model_catalog,
         "runtime": {
             "available": False,
-            "unit": "chars",
+            "unit": "tokens",
             "source": "not_queried",
         },
         "effective_display": {
@@ -1054,7 +1054,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
             "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
-            "Char-level compaction and trimming values are fallback/debug/safety controls and must not be treated as equivalent token denominators.",
+            "Runtime Compact and Trim status must remain token-only in external status contracts.",
         ],
     }
 
@@ -1063,7 +1063,7 @@ def _merge_runtime_context_contract(context_window: dict[str, object], runtime_s
     if not isinstance(runtime_status, dict):
         merged["runtime"] = {
             "available": False,
-            "unit": "chars",
+            "unit": "tokens",
             "source": "http_status_unavailable",
         }
         return merged
@@ -1075,7 +1075,7 @@ def _merge_runtime_context_contract(context_window: dict[str, object], runtime_s
 
     merged["runtime"] = {
         "available": bool(runtime_context),
-        "unit": "chars",
+        "unit": "tokens",
         "source": "dsproxy_runtime./v1/proxy/status.context",
         "context": runtime_context,
         "semantic_compaction": semantic_compaction if isinstance(semantic_compaction, dict) else None,
@@ -1800,7 +1800,7 @@ def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str,
     if not isinstance(runtime_status, dict):
         return {
             "available": False,
-            "unit": "chars/messages",
+            "unit": "tokens",
             "source": "legacy_runtime_status_unavailable",
             "reason": "legacy_runtime_status_unavailable",
             "missing": [
@@ -1818,7 +1818,7 @@ def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str,
     if not isinstance(last_report, dict):
         return {
             "available": False,
-            "unit": "chars/messages",
+            "unit": "tokens",
             "source": "legacy_runtime_status.context.compaction.last_report",
             "reason": "context_compaction_last_report_unavailable",
             "missing": [
@@ -1855,7 +1855,7 @@ def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str,
     available = not missing
     return {
         "available": available,
-        "unit": "chars/messages",
+        "unit": "tokens",
         "source": "legacy_runtime_status.context.compaction.last_report.compact_audit_metadata",
         "raw_content_exposed": False,
         "redacted": True,
@@ -2054,12 +2054,12 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         },
         "runtime_payload_guard": {
             "available": False,
-            "unit": "chars",
-            "current_chars": None,
-            "current_chars_available": False,
-            "current_chars_source": "runtime_weclaw_status_endpoint_unavailable",
-            "current_chars_precision": "unavailable",
-            "current_chars_observed_at": None,
+            "unit": "tokens",
+            "current_tokens": None,
+            "current_tokens_available": False,
+            "current_tokens_source": "runtime_weclaw_status_endpoint_unavailable",
+            "current_tokens_precision": "unavailable",
+            "current_tokens_observed_at": None,
             "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
             "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
             "compaction": {
@@ -2078,7 +2078,7 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "available": compaction_available,
             "is_estimated": False,
             "source": "dsproxy_runtime./v1/proxy/status.context",
-            "unit": "chars",
+            "unit": "tokens",
             "runtime_context": runtime_context if isinstance(runtime_context, dict) else None,
             "compact_audit": compact_audit,
             "semantic_compaction": semantic_compaction,

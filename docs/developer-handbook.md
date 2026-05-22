@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a5-token-compact-status-semantics`
-- Latest closed documentation sync checkpoint: `p2.12a5-token-compact-status-semantics`
+- Current internal development checkpoint: `p2.12a6-token-accounting-source`
+- Latest closed documentation sync checkpoint: `p2.12a6-token-accounting-source`
 - Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1706,7 +1706,7 @@ Rules:
 1. The route-level regression must use a real ASGI request, not only direct helper calls.
 2. Thinking-mode flattened tool transcripts must be eligible for semantic payload compaction only when the canary allows enabled mode.
 3. The upstream DeepSeek payload must contain the semantic compacted envelope and must not contain the original large low-risk pytest output body.
-4. `/v1/proxy/status` must expose the latest enabled runtime event with token/char savings, canary status, safety-core metadata, and `runtime_state=enabled_monitoring`.
+4. `/v1/proxy/status` must expose the latest enabled runtime event with token savings, canary status, safety-core metadata, and `runtime_state=enabled_monitoring`.
 5. This node does not update the public `v0.3.9-alpha` Release.
 
 ## p2.11a4 Semantic payload WeClaw contract
@@ -1716,7 +1716,7 @@ p2.11a4 adds a stable WeClaw-facing semantic payload display contract.
 Rules:
 
 1. `semantic_compaction.display` is the WeClaw display surface; WeClaw must not derive semantic payload status from nested runtime events.
-2. The display contract exposes status, mode, effective mode, runtime state, applied/skipped counts, token/char savings, type counts, type actions, recommended actions, risk counts, skip reasons, last event metadata, blockers, and warnings.
+2. The display contract exposes status, mode, effective mode, runtime state, applied/skipped counts, token savings, type counts, type actions, recommended actions, risk counts, skip reasons, last event metadata, blockers, and warnings.
 3. Raw payload content remains redacted; detailed evidence stays under `latest.semantic_payload_compaction`.
 4. Healthy enabled monitoring must not be degraded merely because dry-run readiness is false.
 5. This node does not update the public `v0.3.9-alpha` Release.
@@ -1729,7 +1729,7 @@ Rules:
 
 1. A real `/v1/responses` request must compact eligible low-risk old flattened tool transcripts before the upstream DeepSeek request.
 2. A subsequent real `/v1/proxy/weclaw/status` request must expose the same semantic payload display contract at the top level and under `context_window.runtime.semantic_compaction`.
-3. WeClaw must be able to display mode, status, runtime state, token/char savings, type/risk/action counts, last-event safety metadata, blockers, and warnings without local derivation.
+3. WeClaw must be able to display mode, status, runtime state, token savings, type/risk/action counts, last-event safety metadata, blockers, and warnings without local derivation.
 4. Raw payload content must remain redacted in display fields.
 5. This node updates docs and Release notes but does not move the public `v0.3.9-alpha` Release; moving the public Release is a separate explicit step.
 
@@ -1762,4 +1762,8 @@ Rules:
 
 ## p2.12a5 Token Compact status semantics
 
-p2.12a5 fixes the status surface for token-first Compact observability. `tokens_to_auto_compact` is always a non-negative countdown; when the threshold is already exceeded, status exposes `tokens_over_auto_compact_threshold` and `threshold_exceeded=true`. If the threshold is exceeded but runtime cannot mutate the payload, such as `too_few_messages`, the visible status is `skipped`, not `triggered`. Ratio explanations must use the active managed ratio, and char-based runtime configs stay under diagnostic `legacy_char_debug` instead of primary token context fields.
+p2.12a5 fixes the status surface for token-first Compact observability. `tokens_to_auto_compact` is always a non-negative countdown; when the threshold is already exceeded, status exposes `tokens_over_auto_compact_threshold` and `threshold_exceeded=true`. If the threshold is exceeded but runtime cannot mutate the payload, such as `too_few_messages`, the visible status is `skipped`, not `triggered`. Ratio explanations must use the active managed ratio, and external runtime status remains token-only.
+
+## p2.12a6 Token accounting source
+
+p2.12a6 fixes Compact token accounting source selection. Compact token estimates must be calculated from normalized compaction messages, not from the raw Responses input object. The public runtime status contract is token-only; legacy non-token fields must not be exposed in WeClaw/status payloads.
