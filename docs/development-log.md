@@ -1316,3 +1316,21 @@ Scope:
 - If the official source is unavailable, the previous cache or bundled snapshot is preserved, but the status contract exposes `requires_refresh`, `reason`, and `action` instead of silently treating the old date as current.
 - External pricing configs remain user-managed and are not auto-refreshed.
 - Tests cover cross-day refresh, same-day no-refresh, and failure-preserves-old-prices behavior.
+
+## p2.10a112 Pricing owned refresh contract
+
+Date: 2026-05-22
+
+Scope:
+
+- Complete pricing ownership correction.
+- `DEEPSEEK_PROXY_PRICING_PATH` is dsproxy-managed, not user-managed.
+- Daily official pricing refresh after local midnight applies to configured pricing paths as well as the default managed cache.
+- A configured pricing path becomes the refresh target when present; otherwise the managed cache path is used.
+- Failed refresh preserves the previous pricing file or bundled snapshot and exposes `requires_refresh`, `reason`, and `action`.
+
+Boundary:
+
+- This node does not declare semantic payload compaction production-ready.
+- The prior attempt to equate "default enabled" with production readiness is explicitly rejected.
+- Semantic payload compaction remains a follow-up hardening line requiring staged correctness work, runtime observability, safety gates, and real-session validation.

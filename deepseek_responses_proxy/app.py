@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a111-pricing-daily-refresh-contract"
+PROXY_INTERNAL_VERSION = "p2.10a112-pricing-owned-refresh-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -392,8 +392,6 @@ def _pricing_daily_refresh_required(
     now_ts: float | None = None,
 ) -> bool:
     effective_source_kind = str(source_kind or metadata.get("source_kind") or "").strip()
-    if effective_source_kind == "external_config":
-        return False
     last_day = _pricing_local_day_from_timestamp(
         metadata.get("fetched_at")
         or metadata.get("updated_at")
@@ -402,11 +400,12 @@ def _pricing_daily_refresh_required(
     if last_day is None:
         return effective_source_kind in {
             "official_docs_html",
+            "official_docs_html_cache",
             "bundled_official_docs_snapshot",
             "project_default_config",
+            "external_config",
         }
     return last_day < _pricing_current_local_day(now_ts=now_ts)
-
 
 def _pricing_refresh_result_summary(result: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -434,7 +433,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
     source_info = _pricing_source_info(active_path)
     metadata = _pricing_metadata_from_path(active_path) if active_path.exists() else {}
     source_kind = str(metadata.get("source_kind") or source_info.get("source_kind") or "")
-    cache_path = _pricing_cache_path()
+    refresh_target_path = active_path if configured else _pricing_cache_path()
     current_day = _pricing_current_local_day()
     last_successful_refresh_day = _pricing_local_day_from_timestamp(
         metadata.get("fetched_at")
@@ -449,27 +448,17 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
         "last_successful_refresh_day": last_successful_refresh_day,
         "source_kind": source_kind,
         "active_path": str(active_path),
-        "cache_path": str(cache_path),
+        "cache_path": str(refresh_target_path),
+        "refresh_target_path": str(refresh_target_path),
         "official_source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
         "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
-        "external_config_user_managed": bool(configured),
+        "configured_pricing_path_managed_by_dsproxy": bool(configured),
+        "external_config_user_managed": False,
         "checked_at": _pricing_now_iso(),
     }
 
     required = _pricing_daily_refresh_required(metadata, source_kind=source_kind)
     base["requires_refresh"] = required
-
-    if configured:
-        base.update(
-            {
-                "status": "external_config_user_managed",
-                "reason": "external_pricing_config_is_user_managed",
-                "refresh_recommended": False,
-                "refreshed": False,
-                "action": None,
-            }
-        )
-        return base
 
     if not required:
         base.update(
@@ -490,7 +479,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
                 "reason": "pricing_source_older_than_current_local_day",
                 "refresh_recommended": False,
                 "refreshed": False,
-                "action": "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json",
+                "action": "enable DEEPSEEK_PROXY_PRICING_AUTO_REFRESH=1 or run dsproxy pricing refresh --write-cache --json against the managed pricing path, then re-check dsproxy status --weclaw-json",
             }
         )
         return base
@@ -498,7 +487,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
     result = _refresh_deepseek_pricing_from_official_docs(
         model=model,
         write_cache=True,
-        cache_path=cache_path,
+        cache_path=refresh_target_path,
         timeout=float(os.environ.get("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
     )
     summary = _pricing_refresh_result_summary(result)
@@ -527,7 +516,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
             "refresh_recommended": False,
             "refreshed": False,
             "old_cache_preserved": True,
-            "action": "retry dsproxy pricing refresh --write-cache --json; previous pricing cache or bundled snapshot was preserved",
+            "action": "retry dsproxy pricing refresh --write-cache --json; previous pricing file or bundled snapshot was preserved",
         }
     )
     return base
@@ -17649,8 +17638,8 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         pricing_lifecycle_status = "bundled_official_snapshot_active"
         pricing_lifecycle_reason = "official_live_cache_not_present_using_bundled_official_snapshot"
     elif externally_configured:
-        pricing_lifecycle_status = "external_config_user_managed"
-        pricing_lifecycle_reason = "external_pricing_config_is_user_managed"
+        pricing_lifecycle_status = "configured_pricing_path_managed_by_dsproxy"
+        pricing_lifecycle_reason = "configured_pricing_path_active_managed_refresh_contract"
     else:
         pricing_lifecycle_status = "project_default_pricing_config"
         pricing_lifecycle_reason = "project_default_pricing_config_active"

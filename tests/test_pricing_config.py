@@ -111,7 +111,11 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert "ttl_seconds" in pricing
     assert "requires_refresh" in pricing
     assert "refresh_action" in pricing
-    assert pricing["pricing_source_state"]["requires_refresh"] is False
+    assert pricing["pricing_source_state"]["requires_refresh"] is True
+    assert pricing["daily_refresh"]["status"] == "official_daily_refresh_required"
+    assert pricing["daily_refresh"]["external_config_user_managed"] is False
+    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_dsproxy"] is True
+    assert pricing["daily_refresh"]["refresh_target_path"] == str(pricing_path)
     assert pricing["pricing_source_state"]["refresh_recommended"] is False
     assert pricing["refresh"]["available"] is True
     assert pricing["refresh"]["action"]
@@ -489,3 +493,43 @@ def test_pricing_daily_refresh_failure_preserves_previous_prices_and_requires_ac
     assert pricing["pricing_source_state"]["requires_refresh"] is True
     assert pricing["refresh_required_action"]
     assert "pricing refresh --write-cache --json" in pricing["refresh_required_action"]
+
+
+def test_pricing_daily_refresh_updates_configured_pricing_path_owned_by_dsproxy(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    configured_path = tmp_path / "configured-pricing.json"
+    configured_path.write_text(
+        json.dumps(
+            {
+                "__metadata__": {
+                    "source_kind": "external_config",
+                    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+                    "updated_at": "2000-01-01T00:00:00Z",
+                    "currency": "CNY",
+                },
+                "deepseek-v4-flash": {
+                    "input_cache_hit": 0.02,
+                    "input_cache_miss": 1.0,
+                    "output": 2.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(configured_path))
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
+
+    pricing = app_module._weclaw_pricing_contract("deepseek-v4-flash")
+    stored = json.loads(configured_path.read_text(encoding="utf-8"))
+
+    assert stored["__metadata__"]["source_kind"] == "official_docs_html"
+    assert stored["__metadata__"]["fetched_at"]
+    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_dsproxy"] is True
+    assert pricing["daily_refresh"]["external_config_user_managed"] is False
+    assert pricing["daily_refresh"]["status"] == "official_daily_refresh_succeeded"
+    assert pricing["daily_refresh"]["refresh_target_path"] == str(configured_path)
+    assert pricing["source_kind"] == "official_docs_html"
+    assert pricing["pricing_source_state"]["requires_refresh"] is False

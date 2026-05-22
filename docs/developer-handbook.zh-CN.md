@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a111-pricing-daily-refresh-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a112-pricing-owned-refresh-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1597,3 +1597,9 @@ Pricing由dsproxy维护。WeClaw必须直接消费dsproxy pricing字段，不得
   - `refresh_required_action`
   - `daily_refresh.reason`
 - 外部pricing config属于用户管理，不自动刷新。
+
+## p2.10a112 Pricing受管刷新契约
+
+`DEEPSEEK_PROXY_PRICING_PATH`归dsproxy管理，不是用户手工维护的例外路径。本地每日0:00后的官方价格刷新同样适用于这个配置路径。
+
+semantic payload compaction不能因为切换默认值就视为生产可用。后续必须继续硬化，直到能够安全正常使用，包括运行时事件闭环、仅低风险内容变更、回滚、可观测性、WeClaw字段和真实会话验证。

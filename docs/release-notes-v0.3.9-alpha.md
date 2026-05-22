@@ -114,3 +114,10 @@ Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeCla
 - If official pricing refresh succeeds, the managed cache is updated and `updated_at` / `fetched_at` move to the refreshed date.
 - If official pricing refresh fails, previous prices are preserved and status exposes `requires_refresh`, `daily_refresh.reason`, and `refresh_required_action`.
 - WeClaw remains a display client and must not derive pricing locally.
+
+### Pricing owned refresh contract
+
+- Treats `DEEPSEEK_PROXY_PRICING_PATH` as a dsproxy-managed pricing file.
+- Applies daily official pricing refresh to configured pricing paths as well as the default managed cache.
+- Preserves previous pricing when official refresh fails and exposes `requires_refresh`, `reason`, and `action`.
+- Leaves semantic payload compaction as a separate hardening line; it is not declared production-ready by this pricing node.

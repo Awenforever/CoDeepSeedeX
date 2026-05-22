@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a111-pricing-daily-refresh-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a111-pricing-daily-refresh-contract`
+- Current internal development checkpoint: `p2.10a112-pricing-owned-refresh-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a112-pricing-owned-refresh-contract`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1642,3 +1642,9 @@ Runtime contract:
   - `refresh_required_action`
   - `daily_refresh.reason`
 - External pricing config remains user-managed and is not auto-refreshed.
+
+## p2.10a112 Pricing owned refresh contract
+
+`DEEPSEEK_PROXY_PRICING_PATH` is dsproxy-owned. It is not a manual user-managed pricing exception. Daily official pricing refresh applies to that configured path after local midnight.
+
+Semantic payload compaction is not considered production-ready merely because a default is toggled. The next development line must harden it until it is safe for normal use, including runtime event closure, low-risk-only mutation, rollback, observability, WeClaw fields, and real-session validation.
