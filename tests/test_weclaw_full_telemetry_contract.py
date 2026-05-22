@@ -780,6 +780,7 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
         status_response = await client.get(
             "/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false"
         )
+        proxy_status_response = await client.get("/v1/proxy/status")
 
     assert len(upstream.primary_payloads) == 1
     assert app.state.last_context_compaction_report is not None
@@ -796,7 +797,25 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
     assert report["compact_audit_generation"]["raw_material_exposed"] is False
 
     assert status_response.status_code == 200
+    assert proxy_status_response.status_code == 200
     data = status_response.json()
+    proxy_status_data = proxy_status_response.json()
+    semantic = data["semantic_compaction"]
+    proxy_semantic = proxy_status_data["semantic_compaction"]
+    assert app.state.last_semantic_compaction_events is not None
+    assert semantic["latest"]["semantic_audit"]["present"] is True
+    assert semantic["latest"]["semantic_audit"]["source"] == "in_memory_runtime_semantic_payload_snapshot"
+    assert semantic["latest"]["semantic_policy_dry_run"]["present"] is True
+    assert semantic["latest"]["semantic_policy_dry_run"]["source"] == "in_memory_runtime_semantic_payload_snapshot"
+    assert semantic["latest"]["semantic_payload_compaction"]["present"] is True
+    assert semantic["latest"]["semantic_payload_compaction"]["source"] == "in_memory_runtime_semantic_payload_snapshot"
+    assert semantic["latest"]["semantic_payload_compaction"]["mode"] == "dry_run"
+    assert semantic["latest"]["semantic_payload_compaction"]["reason"] == "semantic_payload_compaction_mode_not_enabled"
+    assert proxy_semantic["latest"]["semantic_payload_compaction"]["present"] is True
+    assert proxy_semantic["latest"]["semantic_payload_compaction"]["source"] == "in_memory_runtime_semantic_payload_snapshot"
+    assert "semantic_audit_event_missing" not in semantic["rollout"]["blockers"]
+    assert "semantic_policy_dry_run_event_missing" not in semantic["rollout"]["blockers"]
+    assert "semantic_payload_compaction_event_missing" not in semantic["rollout"]["blockers"]
     guard = data["runtime_payload_guard"]
     top_audit = data["compaction"]["compact_audit"]
     nested_audit = data["context_window"]["runtime"]["payload_guard"]["compaction"]["compact_audit"]

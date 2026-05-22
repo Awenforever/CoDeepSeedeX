@@ -1334,3 +1334,23 @@ Boundary:
 - This node does not declare semantic payload compaction production-ready.
 - The prior attempt to equate "default enabled" with production readiness is explicitly rejected.
 - Semantic payload compaction remains a follow-up hardening line requiring staged correctness work, runtime observability, safety gates, and real-session validation.
+
+
+## p2.10a115 Semantic payload runtime snapshot
+
+Date: 2026-05-22
+
+Scope:
+
+- Close the first p2.10a114 runtime audit gap for semantic payload compaction observability.
+- Real request handling already called semantic audit, policy dry-run, and payload compaction logic, but normal status visibility depended on debug trace events.
+- Runtime now keeps an in-memory semantic payload compaction event snapshot for the latest request.
+- `/v1/proxy/status` and `/v1/proxy/weclaw/status` can read semantic audit, policy dry-run, and payload compaction events from that runtime snapshot even when debug trace is disabled.
+- Debug trace remains an optional long-session observability path; it is no longer the only runtime source for the latest semantic event triplet.
+- This node does not mark semantic payload compaction production-ready and does not move public `v0.3.9-alpha`.
+
+Boundary:
+
+- Default semantic payload mode remains dry-run.
+- Enabled mode still requires the canary guard and local invariant checks.
+- This node does not update the GitHub Release or Release assets.

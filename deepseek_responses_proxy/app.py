@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.10a112-pricing-owned-refresh-contract"
+PROXY_INTERNAL_VERSION = "p2.10a115-semantic-payload-runtime-snapshot"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -1288,7 +1288,8 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
         return {"present": False}
 
     keys = [
-        "event", "enabled", "mode", "applied", "reason", "strategy",
+        "event", "source", "response_id", "observed_at",
+        "enabled", "mode", "effective_mode", "applied", "reason", "action", "strategy",
         "message_count", "message_count_before", "message_count_after",
         "flattened_message_count", "candidate_count", "eligible_compaction_count",
         "eligible_policy_count", "structure_only_count", "preserve_count",
@@ -1324,6 +1325,33 @@ def _semantic_compaction_event_summary(event: dict[str, Any] | None) -> dict[str
             }
     return summary
 
+
+
+def _semantic_runtime_event_payload(
+    event_name: str,
+    report: dict[str, Any],
+    *,
+    response_id: str | None,
+) -> dict[str, Any]:
+    event = dict(report) if isinstance(report, dict) else {}
+    event["event"] = event_name
+    event["source"] = "in_memory_runtime_semantic_payload_snapshot"
+    event["response_id"] = response_id
+    event["observed_at"] = _pricing_now_iso()
+    event.setdefault("raw_content_exposed", False)
+    event.setdefault("redacted", True)
+    return event
+
+
+def _semantic_compaction_events_from_runtime_snapshot(snapshot: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(snapshot, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for key in ("semantic_audit", "semantic_policy_dry_run", "semantic_payload_compaction"):
+        item = snapshot.get(key)
+        if isinstance(item, dict):
+            result[key] = item
+    return result
 
 
 def _semantic_compaction_rollout_assessment(
@@ -1717,7 +1745,7 @@ def _semantic_compaction_canary_check_report() -> dict[str, Any]:
     }
 
 
-def _semantic_compaction_runtime_status() -> dict[str, Any]:
+def _semantic_compaction_runtime_status(runtime_events: Any | None = None) -> dict[str, Any]:
     audit_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
     policy_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
     audit_enabled = audit_enabled_env not in {"0", "false", "off", "no"}
@@ -1733,9 +1761,10 @@ def _semantic_compaction_runtime_status() -> dict[str, Any]:
     )
     payload_config = _flattened_tool_semantic_payload_compaction_env_config()
 
-    latest_audit = _latest_debug_event_named("flattened_tool_transcript_semantic_audit")
-    latest_policy = _latest_debug_event_named("flattened_tool_transcript_semantic_policy_dry_run")
-    latest_payload = _latest_debug_event_named("flattened_tool_transcript_semantic_payload_compaction_applied")
+    runtime_latest = _semantic_compaction_events_from_runtime_snapshot(runtime_events)
+    latest_audit = runtime_latest.get("semantic_audit") or _latest_debug_event_named("flattened_tool_transcript_semantic_audit")
+    latest_policy = runtime_latest.get("semantic_policy_dry_run") or _latest_debug_event_named("flattened_tool_transcript_semantic_policy_dry_run")
+    latest_payload = runtime_latest.get("semantic_payload_compaction") or _latest_debug_event_named("flattened_tool_transcript_semantic_payload_compaction_applied")
 
     config = {
         "semantic_audit": {
@@ -18095,6 +18124,7 @@ def _runtime_weclaw_status(
     last_context_compaction_report: dict[str, Any] | None = None,
     profile_tokenizer_report: dict[str, Any] | None = None,
     session_id: str | None = None,
+    semantic_runtime_events: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
     model_contract = profile_status.get("model", {})
@@ -18134,7 +18164,9 @@ def _runtime_weclaw_status(
         compaction_report=last_context_compaction_report,
         trimming_report=trimming_report,
     )
-    semantic_status = _weclaw_enrich_semantic_compaction_status(_semantic_compaction_runtime_status())
+    semantic_status = _weclaw_enrich_semantic_compaction_status(
+        _semantic_compaction_runtime_status(runtime_events=semantic_runtime_events)
+    )
     context_window = _weclaw_context_window_with_usage_estimate(
         dict(profile_status.get("context_window", {})),
         tokens,
@@ -18208,6 +18240,7 @@ def create_app(
     app.state.started_at = _now()
     app.state.repair_count = 0
     app.state.last_context_compaction_report = None
+    app.state.last_semantic_compaction_events = None
     app.state.last_profile_tokenizer_report_by_profile = {}
 
     @app.get("/healthz")
@@ -18230,7 +18263,9 @@ def create_app(
             "command_risk_policy": _command_risk_policy_status(),
             "context": _proxy_context_status(),
             "agent_liveness": _proxy_agent_liveness_status(),
-            "semantic_compaction": _semantic_compaction_runtime_status(),
+            "semantic_compaction": _semantic_compaction_runtime_status(
+                runtime_events=getattr(app.state, "last_semantic_compaction_events", None)
+            ),
             "store": _store_info(app.state.store),
             "started_at": app.state.started_at,
             "uptime_seconds": max(0, _now() - app.state.started_at),
@@ -18276,6 +18311,7 @@ def create_app(
             last_context_compaction_report=getattr(app.state, "last_context_compaction_report", None),
             profile_tokenizer_report=profile_tokenizer_report,
             session_id=session_id,
+            semantic_runtime_events=getattr(app.state, "last_semantic_compaction_events", None),
         )
 
     @app.get("/v1/proxy/tool-bridge/status")
@@ -18613,15 +18649,17 @@ def create_app(
             "flattened_tool_transcript_compaction_dry_run",
             **_flattened_tool_transcript_compaction_dry_run(messages_before_compaction),
         )
+        semantic_audit_report = _flattened_tool_transcript_semantic_audit(messages_before_compaction)
+        semantic_policy_report = _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages_before_compaction)
         _debug_trace_event(
             response_id,
             "flattened_tool_transcript_semantic_audit",
-            **_flattened_tool_transcript_semantic_audit(messages_before_compaction),
+            **semantic_audit_report,
         )
         _debug_trace_event(
             response_id,
             "flattened_tool_transcript_semantic_policy_dry_run",
-            **_flattened_tool_transcript_semantic_compaction_policy_dry_run(messages_before_compaction),
+            **semantic_policy_report,
         )
         messages, context_compaction_report = await _compact_chat_history_for_codex_like_persistence(
             deepseek_client=app.state.deepseek_client,
@@ -18665,6 +18703,23 @@ def create_app(
             "flattened_tool_transcript_semantic_payload_compaction_applied",
             **semantic_payload_compaction_report,
         )
+        app.state.last_semantic_compaction_events = {
+            "semantic_audit": _semantic_runtime_event_payload(
+                "flattened_tool_transcript_semantic_audit",
+                semantic_audit_report,
+                response_id=response_id,
+            ),
+            "semantic_policy_dry_run": _semantic_runtime_event_payload(
+                "flattened_tool_transcript_semantic_policy_dry_run",
+                semantic_policy_report,
+                response_id=response_id,
+            ),
+            "semantic_payload_compaction": _semantic_runtime_event_payload(
+                "flattened_tool_transcript_semantic_payload_compaction_applied",
+                semantic_payload_compaction_report,
+                response_id=response_id,
+            ),
+        }
 
         payload_messages, flattened_payload_compaction_report = _apply_flattened_tool_transcript_payload_compaction(payload_messages)
         _debug_trace_event(

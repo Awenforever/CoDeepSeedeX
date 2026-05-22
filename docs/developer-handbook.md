@@ -28,20 +28,20 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `80bb0ea`
+- Current public Release commit: `ab680ee`
 - GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a112-pricing-owned-refresh-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a112-pricing-owned-refresh-contract`
-- Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
+- Current internal development checkpoint: `p2.10a115-semantic-payload-runtime-snapshot`
+- Latest closed documentation sync checkpoint: `p2.10a115-semantic-payload-runtime-snapshot`
+- Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = 80bb0ea`
+  - `v0.3.9-alpha = ab680ee`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -1648,3 +1648,17 @@ Runtime contract:
 `DEEPSEEK_PROXY_PRICING_PATH` is dsproxy-owned. It is not a manual user-managed pricing exception. Daily official pricing refresh applies to that configured path after local midnight.
 
 Semantic payload compaction is not considered production-ready merely because a default is toggled. The next development line must harden it until it is safe for normal use, including runtime event closure, low-risk-only mutation, rollback, observability, WeClaw fields, and real-session validation.
+
+
+## p2.10a115 Semantic payload runtime snapshot
+
+p2.10a115 closes the first p2.10a114 runtime audit gap for semantic payload compaction observability. The real request path already generated semantic audit, policy dry-run, and payload compaction reports, but normal status visibility depended on debug trace files.
+
+Rules:
+
+1. Runtime stores the latest semantic payload event triplet in memory on the FastAPI app state.
+2. `/v1/proxy/status` and `/v1/proxy/weclaw/status` prefer the in-memory runtime snapshot and fall back to debug trace events only when no snapshot is available.
+3. The snapshot is display-safe metadata; it does not expose raw prompt content or raw compacted material.
+4. Default semantic payload compaction mode remains dry-run.
+5. Enabled mode still requires the canary guard and local invariant checks.
+6. This node does not declare semantic payload compaction production-ready and does not move public `v0.3.9-alpha`.

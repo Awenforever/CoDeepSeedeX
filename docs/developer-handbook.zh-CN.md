@@ -24,19 +24,19 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开Release：`v0.3.9-alpha`
-- 当前公开Release提交：`80bb0ea`
+- 当前公开Release提交：`ab680ee`
 - GitHub Latest Release：`v0.3.9-alpha`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a112-pricing-owned-refresh-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
-- 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
+- 当前内部开发检查点：`p2.10a115-semantic-payload-runtime-snapshot`
+- 最新闭合文档同步检查点：`p2.10a115-semantic-payload-runtime-snapshot`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
 - 没有明确Release更新任务时不得移动的公开tag：
-  - `v0.3.9-alpha = 80bb0ea`
+  - `v0.3.9-alpha = ab680ee`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -44,7 +44,7 @@
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
 
 本手册是新开发对话的启动上下文。它应维护当前状态、稳定规则、任务总线、Release规则和高价值经验。详细时间线放入`docs/development-log.md`。
-- 当前公开Release note同步检查点仍为`p2.10a83-deepseek-cache-accounting-contract`，直到明确更新`v0.3.9-alpha`。
+- 当前公开Release note同步检查点：`p2.10a113-release-note-marker`。
 ## 3. 关键文件地图
 
 - `deepseek_responses_proxy/app.py`：运行时核心、Responses兼容接口、DeepSeek桥接、工具桥接、provider分发、版本元数据、debug trace。
@@ -1603,3 +1603,17 @@ Pricing由dsproxy维护。WeClaw必须直接消费dsproxy pricing字段，不得
 `DEEPSEEK_PROXY_PRICING_PATH`归dsproxy管理，不是用户手工维护的例外路径。本地每日0:00后的官方价格刷新同样适用于这个配置路径。
 
 semantic payload compaction不能因为切换默认值就视为生产可用。后续必须继续硬化，直到能够安全正常使用，包括运行时事件闭环、仅低风险内容变更、回滚、可观测性、WeClaw字段和真实会话验证。
+
+
+## p2.10a115 Semantic payload runtime snapshot
+
+p2.10a115闭合p2.10a114只读审计发现的第一个runtime观测缺口。真实请求路径已经生成semantic audit、policy dry-run和payload compaction报告，但普通status可见性依赖debug trace文件。
+
+规则：
+
+1. runtime会在FastAPI app state中保存最新semantic payload事件三件套。
+2. `/v1/proxy/status`和`/v1/proxy/weclaw/status`优先读取内存runtime snapshot，只有snapshot缺失时才回退到debug trace事件。
+3. snapshot只包含display-safe元数据，不暴露原始prompt或原始压缩材料。
+4. 默认semantic payload compaction模式仍为dry-run。
+5. enabled模式仍必须通过canary guard和本地invariant检查。
+6. 本节点不声明semantic payload compaction生产就绪，也不移动公开`v0.3.9-alpha`。

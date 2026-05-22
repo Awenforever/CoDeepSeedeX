@@ -21,6 +21,7 @@ def test_operations_uses_current_dsproxy_config_command_name() -> None:
     assert "dsproxy-config" not in ops
     assert "dsproxy config set-model deepseek-v4-pro" in ops
 
+
 def test_developer_handbook_current_release_state_is_synced_to_latest_release_note_node() -> None:
     en = _read("docs/developer-handbook.md")
     zh = _read("docs/developer-handbook.zh-CN.md")
@@ -28,13 +29,16 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     en_current = en.split("## 3. Key file map", 1)[0]
     zh_current = zh.split("## 3. 关键文件地图", 1)[0]
 
-    assert "Current public Release commit: `80bb0ea`" in en_current
-    assert "p2.10a83-deepseek-cache-accounting-contract" in en_current
-    assert "p2.10a71-docs-prerelease-notes = 6ea67b2" not in en_current
+    assert "Current public Release: `v0.3.9-alpha`" in en_current
+    assert "Current public Release commit: `ab680ee`" in en_current
+    assert "Current internal development checkpoint: `p2.10a115-semantic-payload-runtime-snapshot`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.10a115-semantic-payload-runtime-snapshot`" in en_current
+    assert "Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`" in en_current
+    assert "  - `v0.3.9-alpha = ab680ee`" in en_current
 
-    assert "当前公开Release提交：`80bb0ea`" in zh_current
-    assert "p2.10a83-deepseek-cache-accounting-contract" in zh_current
-    assert "p2.10a71-docs-prerelease-notes = 6ea67b2" not in zh_current
-
-    assert "docs/release-notes-v0.3.9-alpha.md" in en_current
-    assert "docs/release-notes-v0.3.9-alpha.md" in zh_current
+    assert "当前公开Release：`v0.3.9-alpha`" in zh_current
+    assert "当前公开Release提交：`ab680ee`" in zh_current
+    assert "当前内部开发检查点：`p2.10a115-semantic-payload-runtime-snapshot`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.10a115-semantic-payload-runtime-snapshot`" in zh_current
+    assert "当前公开Release note同步检查点：`p2.10a113-release-note-marker`" in zh_current
+    assert "  - `v0.3.9-alpha = ab680ee`" in zh_current
