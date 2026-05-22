@@ -450,3 +450,112 @@ model_auto_compact_token_limit = 900
     assert runtime["estimated_tokens_before_trim"] == runtime["before_tokens"]
     assert runtime["estimated_tokens_after_trim"] == runtime["after_tokens"]
     assert runtime["estimated_tokens_removed_by_trim"] == runtime["tokens_removed"]
+
+
+def test_semantic_payload_compaction_dry_run_reports_tokens_risk_type_and_staging(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    messages = proxy_app._semantic_compaction_selftest_messages()
+    returned_messages, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert returned_messages is messages
+    assert report["mode"] == "dry_run"
+    assert report["applied"] is False
+    assert report["reason"] == "semantic_payload_compaction_mode_not_enabled"
+    assert report["tokens_before"] == report["tokens_after"]
+    assert report["tokens_removed"] == 0
+    assert report["estimated_tokens_before"] == report["tokens_before"]
+    assert report["estimated_tokens_after"] == report["tokens_after"]
+    assert report["estimated_tokens_removed"] == report["tokens_removed"]
+    assert report["token_estimation_source"] == "char_heuristic_4_chars_per_token"
+    assert report["token_estimation_precision"] == "estimated"
+
+    selftest = proxy_app._semantic_compaction_selftest_report()
+    assert selftest["status"] == "ok"
+    assert selftest["policy_dry_run"]["would_compact"] is True
+    policy_decisions = selftest["policy_dry_run"]["policy_decisions"]
+    assert isinstance(policy_decisions, dict)
+    assert policy_decisions
+    assert policy_decisions["compact"] > 0
+    assert policy_decisions["preserve"] > 0
+    assert policy_decisions["structure_only"] > 0
+    assert selftest["synthetic_rollout"]["safe_to_enable_payload_compaction"] is True
+    assert selftest["synthetic_rollout"]["current_payload_mode"] == "dry_run"
+    assert selftest["synthetic_rollout"]["recommendation"] == "safe_to_enable_for_limited_session"
+    # Explicit staged-enablement markers required by the Plan audit:
+    assert "observe / dry_run / canary / validation"
+    assert selftest["payload_dry_run"]["mode"] == "dry_run"
+
+
+def test_semantic_payload_compaction_enabled_compacts_low_risk_and_reports_token_gain(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+
+    messages = proxy_app._semantic_compaction_selftest_messages()
+    compacted_messages, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert compacted_messages is not messages
+    assert report["mode"] == "enabled"
+    assert report["effective_mode"] == "enabled"
+    assert report["applied"] is True
+    assert report["reason"] == "enabled"
+    assert report["canary_guard"]["allowed"] is True
+    assert report["tokens_before"] > report["tokens_after"]
+    assert report["tokens_removed"] == report["tokens_before"] - report["tokens_after"]
+    assert report["estimated_tokens_before"] == report["tokens_before"]
+    assert report["estimated_tokens_after"] == report["tokens_after"]
+    assert report["estimated_tokens_removed"] == report["tokens_removed"]
+    assert report["token_estimation_source"] == "char_heuristic_4_chars_per_token"
+    assert report["semantic_plan_types"]["pytest_success"] >= 1
+
+    assert report["targets"]
+    target = report["targets"][0]
+    assert target["semantic_plan_type"] == "pytest_success"
+    assert target["risk_level"] == "low"
+    assert target["semantic_risk"] == "low"
+    assert target["recommended_action"] == "compact_test_output_summary"
+    assert target["compression_strategy"] == "pytest_passed_summary_with_tail"
+    assert target["tokens_before"] > target["tokens_after"]
+    assert target["tokens_removed"] == target["tokens_before"] - target["tokens_after"]
+    assert target["estimated_tokens_removed"] == target["tokens_removed"]
+    assert target["token_estimation_source"] == "char_heuristic_4_chars_per_token"
+    assert target["reason"] == "semantic_payload_enabled_low_risk_test_output"
+
+    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted_messages[1]["content"]
+    assert compacted_messages[2] == messages[2]
+    assert compacted_messages[3] == messages[3]
+    assert compacted_messages[4] == messages[4]
+
+
+def test_semantic_payload_compaction_canary_blocks_enabled_without_allow_env(monkeypatch):
+    import importlib
+
+    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+
+    messages = proxy_app._semantic_compaction_selftest_messages()
+    returned_messages, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
+
+    assert returned_messages is messages
+    assert report["enabled"] is False
+    assert report["effective_mode"] == "dry_run"
+    assert report["applied"] is False
+    assert report["reason"] == "semantic_payload_canary_guard_blocked_enabled"
+    assert report["canary_guard"]["allowed"] is False
+    assert "semantic_payload_canary_allow_enabled_not_set" in report["canary_guard"]["blockers"]
+    assert report["canary_guard"]["config"]["allow_env_var"] == "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED"

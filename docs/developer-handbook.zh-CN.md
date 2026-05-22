@@ -30,7 +30,7 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.10a101-token-first-unavailable-field-contract`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
+- 当前内部开发检查点：`p2.10a108-semantic-payload-compaction-tests`，准确提交用`git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`解析
 - 最新闭合文档同步检查点：`p2.10a92-codex-native-compact-source-alignment`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
@@ -1550,3 +1550,17 @@ p2.10a100在二元验收口径下关闭Plan中的B1/B2/C1/D1。
 - `estimated_tokens_removed_by_compact = 0`
 - `primary_control_unit = tokens`
 - `char_control_scope = fallback_debug_safety_only`
+
+
+## p2.10a108 Semantic payload compaction测试
+
+p2.10a108关闭Plan中的E项。semantic payload compaction仍与主对话COMPACT保持分离。
+
+严格测试覆盖现在包括：
+
+- semantic payload compaction dry-run；
+- token收益字段：`tokens_before`、`tokens_after`、`tokens_removed`；
+- tokenizer估算元数据；
+- semantic type与risk字段；
+- canary gate；
+- observe、dry-run、canary、validation分阶段启用标记。

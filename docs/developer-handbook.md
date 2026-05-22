@@ -34,8 +34,8 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.10a101-token-first-unavailable-field-contract` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
-- Latest closed documentation sync checkpoint: `p2.10a101-token-first-unavailable-field-contract`
+- Current internal development checkpoint: `p2.10a108-semantic-payload-compaction-tests` (resolve the exact commit with `git rev-parse --short p2.10a92-codex-native-compact-source-alignment^{}`)
+- Latest closed documentation sync checkpoint: `p2.10a108-semantic-payload-compaction-tests`
 - Current public Release note synchronization checkpoint remains `p2.10a83-deepseek-cache-accounting-contract` until `v0.3.9-alpha` is deliberately updated.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
@@ -1595,3 +1595,17 @@ Required unavailable values:
 - `estimated_tokens_removed_by_compact = 0`
 - `primary_control_unit = tokens`
 - `char_control_scope = fallback_debug_safety_only`
+
+
+## p2.10a108 Semantic payload compaction tests
+
+p2.10a108 closes Plan item E. Semantic payload compaction remains separate from main conversation COMPACT.
+
+Strict test coverage now includes:
+
+- dry-run semantic payload compaction,
+- token gain fields: `tokens_before`, `tokens_after`, `tokens_removed`,
+- tokenizer estimate metadata,
+- semantic type and risk fields,
+- canary gating,
+- staged enablement markers: observe, dry-run, canary, validation.

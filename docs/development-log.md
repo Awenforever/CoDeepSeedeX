@@ -1258,3 +1258,26 @@ Scope:
   - `estimated_tokens_removed_by_compact`
 - Unavailable token-first sections now return `None` for unavailable before/after estimates and `0` for removed tokens.
 - This node does not close later Plan items C2/C4/D2/D3/D4/D5/E/F/G.
+
+
+## p2.10a108 Semantic payload compaction tests
+
+Date: 2026-05-22
+
+Scope:
+
+- Close Plan item E under strict binary acceptance.
+- Source/runtime gates for semantic payload compaction were already present:
+  - target limited to old flattened tool transcripts and low-risk repeated logs,
+  - token gain fields,
+  - type details,
+  - risk levels,
+  - observe/dry-run/canary/validation staging,
+  - separation from main conversation COMPACT.
+- Added explicit tests for:
+  - semantic payload compaction dry-run,
+  - token gain fields,
+  - risk/type fields,
+  - canary gating,
+  - staged enablement markers.
+- Does not close F or G.
