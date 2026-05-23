@@ -929,7 +929,7 @@ Scope:
 
 - Restore the tracked cumulative release-note source if it was accidentally deleted locally.
 - Synchronize English and Chinese handbook current-state blocks from the stale `6ea67b2` / `p2.10a71-docs-prerelease-notes` state to the p2.10a80 public Release baseline `80bb0ea`.
-- Clarify that `docs/release-notes-v0.3.9-alpha.md` is the active cumulative Release-note source for the current public Release, while legacy fragmented release-note documents remain retired.
+- Clarify that the removed repository-tracked Release-note file is the active cumulative Release-note source for the current public Release, while legacy fragmented release-note documents remain retired.
 - Advance developer internal runtime metadata to `p2.10a81-handbook-current-state-sync`.
 
 Release boundary:
@@ -1177,7 +1177,7 @@ Date: 2026-05-21
 
 Scope:
 
-- Refresh `docs/release-notes-v0.3.9-alpha.md` after p2.10a94 and p2.10a95.
+- Refresh the removed repository-tracked Release-note file after p2.10a94 and p2.10a95.
 - Include token-first production Compact/TRIM runtime closure, semantic payload token estimates, image summary-unavailable metadata, retained-recent booleans, and release boundary notes.
 - Update runtime internal version metadata for the final public `v0.3.9-alpha` candidate.
 
@@ -1477,7 +1477,7 @@ Date: 2026-05-23
 
 Scope:
 
-- Update the cumulative `docs/release-notes-v0.3.9-alpha.md` source after the p2.12 stabilization line.
+- Update the cumulative the removed repository-tracked Release-note file source after the p2.12 stabilization line.
 - Ensure the Release Note covers every functional change since the previous published `v0.3.9-alpha` commit: p2.12a2 through p2.12a9.
 - Preserve older cumulative v0.3.9-alpha content rather than replacing it with a short delta.
 - Keep the WeClaw requirement `weclaw_dev >= v0.1.9-alpha`.
@@ -1523,3 +1523,15 @@ Scope:
 - Keep the WeClaw minimum version requirement.
 - Keep Release assets as `bootstrap.sh` and `install.sh`.
 - Update GitHub Release and move public `v0.3.9-alpha` after tests pass.
+
+## p2.12a13 Remove tracked Release-note document
+
+Date: 2026-05-23
+
+Scope:
+
+- Remove the repository-tracked Release-note file.
+- Remove README and README.zh-CN links to that file.
+- Keep the public GitHub Release body as the Release-note source.
+- Keep long-lived documentation limited to developer handbooks and development logs.
+- Move public `v0.3.9-alpha` after tests pass so the latest public source no longer contains the extra tracked Release-note file.

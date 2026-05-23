@@ -340,8 +340,3 @@ Current WeClaw-facing fields include:
 - GitHub source-backed Codex native local Compact prompt alignment, with remote `responses/compact` explicitly treated as provider-gated and not claimed for the third-party DeepSeek route.
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
-
-
-## v0.3.9-alpha Latest
-
-The current `v0.3.9-alpha` release includes the cumulative WeClaw-facing telemetry contracts plus the p2.12 stabilization line: Codex profile forward-compatible repair, ratio-only auto-compact policy, token-only Compact/Trim status, persisted runtime payload reports, and validated low-risk semantic payload compaction. See `docs/release-notes-v0.3.9-alpha.md` for the cumulative release notes.

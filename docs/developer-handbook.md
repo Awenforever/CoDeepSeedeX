@@ -18,9 +18,7 @@ Active maintainer documents:
 - `docs/developer-handbook.zh-CN.md`: Chinese mirror for the human maintainer.
 - `docs/development-log.md`: detailed long-term development log, read only when historical trace-back is needed.
 
-Retired document families must not be reintroduced as active documents: `OPERATIONS.md`, `docs/install.*.md`, `docs/usage.*.md`, `docs/upgrade.*.md`, `docs/security.*.md`, `docs/troubleshooting.*.md`, `docs/handoff-for-developers.*.md`, and `docs/custom_api_handoff.md`. Legacy per-release note fragments under `docs/` stay retired, except the current cumulative Release-note source explicitly maintained for the active public Release, currently `docs/release-notes-v0.3.9-alpha.md`.
-
-If documentation structure changes, tests must be updated to the new contract. Do not keep ghost documents only to satisfy stale tests.
+Retired document families must not be reintroduced as active documents: `OPERATIONS.md`, `docs/install.*.md`, `docs/usage.*.md`, `docs/upgrade.*.md`, `docs/security.*.md`, `docs/troubleshooting.*.md`, `docs/handoff-for-developers.*.md`, and `docs/custom_api_handoff.md`. Legacy per-release note fragments under `docs/` stay retired. Public GitHub Release text is maintained on the GitHub Release page; release automation may use a temporary notes file, but the repository must not keep a long-lived per-release note source. If documentation structure changes, tests must be updated to the new contract. Do not keep ghost documents only to satisfy stale tests.
 
 ## 2. Project identity and current state
 
@@ -34,9 +32,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a12-clean-release-highlights`
-- Latest closed documentation sync checkpoint: `p2.12a12-clean-release-highlights`
-- Current public Release note synchronization checkpoint: `p2.12a12-clean-release-highlights`.
+- Current internal development checkpoint: `p2.12a13-remove-tracked-release-notes`
+- Latest closed documentation sync checkpoint: `p2.12a13-remove-tracked-release-notes`
+- Current public Release note synchronization checkpoint: `p2.12a13-remove-tracked-release-notes`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
@@ -1340,7 +1338,7 @@ p2.10a79 changes the WeClaw-facing Details contract from a subtotal-centric view
 
 ## p2.10a80 Docs and latest release handoff
 
-p2.10a80 updates public/user-facing documentation and moves the existing `v0.3.9-alpha` Latest Release to the current master after p2.10a79. The cumulative release notes are maintained in `docs/release-notes-v0.3.9-alpha.md` and on the GitHub Release page. Public tag `v0.3.9-alpha` is intentionally moved only in this release step.
+p2.10a80 updates public/user-facing documentation and moves the existing `v0.3.9-alpha` Latest Release to the current master after p2.10a79. The cumulative release notes are maintained in the removed repository-tracked Release-note file and on the GitHub Release page. Public tag `v0.3.9-alpha` is intentionally moved only in this release step.
 
 Final verified p2.10a80 Release state:
 
@@ -1815,3 +1813,15 @@ Release-note quality rules:
 3. Keep one coherent Highlights list covering the functional delta from `v0.3.8-alpha` to `v0.3.9-alpha`.
 4. Keep internal p-node names out of the public Release body.
 5. Keep the WeClaw minimum version requirement and public assets statement.
+
+## p2.12a13 Remove tracked Release-note document
+
+p2.12a13 removes the repository-tracked Release-note file and the README links to it.
+
+Documentation boundary:
+
+1. Long-lived development records are limited to developer handbooks and development logs.
+2. Public GitHub Release text is maintained on the GitHub Release page and may be generated from a temporary file during release automation.
+3. The repository must not maintain a separate long-lived per-release note source.
+4. README files must not link to the removed tracked Release-note document.
+5. GitHub Release `v0.3.9-alpha` keeps the clean Highlights body from p2.12a12.
