@@ -61,8 +61,10 @@ def test_bundled_pricing_snapshot_uses_effective_cny_prices_and_discount_metadat
     assert pricing["__model_metadata__"]["deepseek-v4-pro"]["discount"]["valid_until"] == "2026-05-31T23:59:00+08:00"
 
 
-def test_weclaw_pricing_contract_exposes_current_and_original_prices(monkeypatch) -> None:
+def test_weclaw_pricing_contract_exposes_bundled_current_and_original_prices(monkeypatch) -> None:
+    pricing_path = Path("config/pricing.json").resolve()
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
     contract = proxy_app._weclaw_pricing_contract("deepseek-v4-pro", display_currency="CNY")
 
     assert contract["source_currency"] == "CNY"

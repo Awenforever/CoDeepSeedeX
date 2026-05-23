@@ -273,6 +273,10 @@ p2.13a2固化当前Compact职责边界：当Codex内部发生原生`/compact`或
 p2.13a3关闭p2.13a2运行态验证后发现的managed auto-compact ratio漂移。CoDeepSeedeX托管profile必须使用`auto_compact_ratio=0.90`；`DEEPSEEK_PROXY_AUTO_COMPACT_RATIO`和`CODEEPSEEDEX_AUTO_COMPACT_RATIO`这类运行时环境变量在managed runtime/profile status中必须被忽略，不能被显示为managed expected ratio。刻意低阈值实验必须通过显式CLI `--auto-compact-ratio` repair/install操作完成，并且不得被误认为默认托管契约。
 
 
+
+p2.13a4关闭pricing discount `valid_until`的full-test环境泄漏。凡是断言bundled snapshot discount metadata的测试，都必须显式把`DEEPSEEK_PROXY_PRICING_PATH`固定到项目`config/pricing.json`；否则真实用户pricing cache可能合法地成为active pricing source，并遮蔽bundled metadata。这只是测试隔离，不改变运行时pricing source优先级。
+
+
 ## 12. 新对话启动检查清单
 
 任何修改前先进行只读审计：

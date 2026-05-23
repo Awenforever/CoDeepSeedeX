@@ -1,3 +1,14 @@
+## p2.13a4 Pricing discount valid-until test isolation
+
+Date: 2026-05-24
+
+Scope:
+
+- Close the pre-existing full-test failure in `tests/test_weclaw_pricing_discount_contract.py`.
+- Confirm the bundled `config/pricing.json` snapshot already carries `deepseek-v4-pro` discount metadata, including `valid_until=2026-05-31T23:59:00+08:00`.
+- Make the WeClaw pricing discount contract test explicitly pin `DEEPSEEK_PROXY_PRICING_PATH` to the bundled project snapshot so user pricing cache files cannot mask bundled snapshot metadata during tests.
+- Keep runtime pricing source precedence unchanged: real status still uses configured/cache/project pricing source order.
+
 ## p2.13a3 Managed auto-compact ratio repair
 
 Date: 2026-05-24

@@ -301,7 +301,9 @@ def test_env_auto_compact_ratio_is_ignored_for_managed_runtime_contract(monkeypa
     assert context["auto_compact_ratio"] == 0.9
     assert context["model_auto_compact_token_limit"] == 900_000
     assert context["auto_compact_policy"]["managed_expected_auto_compact_ratio"] == 0.9
-    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 20_000
+    assert context["legacy_absolute_limit_ignored"] is None
+    assert context["legacy_ratio_override_ignored"]["available"] is True
+    assert context["legacy_ratio_override_ignored"]["managed_value"] == 0.9
     assert context["legacy_ratio_override_ignored"]["available"] is True
     assert context["legacy_ratio_override_ignored"]["managed_value"] == 0.9
 
