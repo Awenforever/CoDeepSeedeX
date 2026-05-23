@@ -1,3 +1,22 @@
+## p2.13a1 Handbook current-state cleanup and Codex native Compact/Fork audit prep
+
+Date: 2026-05-23
+
+Scope:
+
+- Correct the handbook current-state drift after p2.12a13 so the startup baseline no longer points to the historical p2.10a80/p2.10a81 `80bb0ea` Release-note-source state.
+- Reaffirm that `the retired v0.3.9-alpha per-release note file under docs` must not be restored and README files must not link to a repository-tracked Release-note file.
+- Prepare a source-audit bundle for Codex native Compact/Fork behavior, including local CoDeepSeedeX source grep evidence and upstream OpenAI Codex source snapshots when network access is available.
+
+Boundary:
+
+- Documentation and audit-prep only.
+- No runtime behavior change.
+- No public `v0.3.9-alpha` tag movement.
+- No GitHub Release update.
+- No Release asset rebuild.
+- Any decision to disable, merge, or further expose native Codex Compact requires a follow-up implementation node based on the audit report.
+
 # p2.12a8-runtime-payload-report-persistence
 
 Date: 2026-05-22
@@ -1507,7 +1526,7 @@ Scope:
 
 - Clean up the duplicate stale public-tag block in `docs/developer-handbook.zh-CN.md`.
 - Remove the old `v0.3.9-alpha = ab680ee` line from the Chinese current-state block.
-- Preserve the corrected `v0.3.9-alpha = release-closeout tag target` block.
+- Preserve the corrected `v0.3.9-alpha = d674a61` block.
 - Update docs readiness tests to assert that the Chinese current-state block no longer contains `ab680ee`.
 - This node does not move public `v0.3.9-alpha` and does not update GitHub Release assets.
 

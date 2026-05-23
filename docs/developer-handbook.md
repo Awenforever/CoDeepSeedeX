@@ -26,7 +26,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `v0.3.9-alpha tag target after Release closeout`
+- Current public Release commit: `d674a61`
 - GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
@@ -39,7 +39,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = release-closeout tag target`
+  - `v0.3.9-alpha = d674a61`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -252,39 +252,39 @@ The handbook is an AI startup pack:
 - Do not reintroduce fragmented handoff, operations, install, usage, upgrade, security, troubleshooting, or release-note documents under `docs/`.
 - If a test still reads a retired path, update the test contract instead of preserving a ghost document.
 
-## 11. Current major-line summary: p2.10 / v0.3.9-alpha
+## 11. Current major-line summary: p2.12 / v0.3.9-alpha Release closeout
 
-p2.10 spans the `v0.3.8-alpha` line through the closed `v0.3.9-alpha` Latest Release and the subsequent p2.10a81 documentation-state synchronization.
+p2.12 closes the `v0.3.9-alpha` Release stabilization and tracked Release-note cleanup line. The current startup baseline is the p2.12a13 closeout state, not the older p2.10a80/p2.10a81 documentation-state baseline.
 
 Current verified public Release baseline:
 
-- `v0.3.9-alpha = 80bb0ea`
-- `p2.10a80-docs-release-latest = 80bb0ea`
+- `master = origin/master = d674a61`
+- `p2.12a13-remove-tracked-release-notes = d674a61`
+- `v0.3.9-alpha = d674a61`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - Release assets: `bootstrap.sh`, `install.sh`
 - Erroneous plain tags `v0.3.9` and `v0.3.5` are absent.
-- `dsproxy --version` from the p2.10a80 public Release reports `public version: v0.3.9-alpha | 80bb0ea` and `internal version: p2.10a80-docs-release-latest | 80bb0ea`.
+- Worktree is expected to be clean after closeout.
+- `the retired v0.3.9-alpha per-release note file under docs` must not exist.
+- `README.md` and `README.zh-CN.md` must not link to a repository-tracked Release-note file.
 
-Current developer checkpoint:
+Documentation boundary after p2.12a13:
 
-- `p2.10a81-handbook-current-state-sync` is the active internal documentation/version-metadata checkpoint after this handbook sync.
-- Public Release metadata remains anchored to `v0.3.9-alpha = 80bb0ea`; do not move the public tag or GitHub Release for this documentation-only node.
-- Developer checkout runtime may report `internal version: p2.10a81-handbook-current-state-sync | <checkpoint commit>` while the public version line remains `v0.3.9-alpha | 80bb0ea`.
+- Public GitHub Release text is maintained on the GitHub Release page.
+- Release automation may use a temporary notes file.
+- The repository must not keep a long-lived per-release note source under `docs/`.
+- Long-lived maintainer history belongs only in `docs/developer-handbook.md`, `docs/developer-handbook.zh-CN.md`, and `docs/development-log.md`.
+- Historical p2.10a80/p2.10a81 text that referred to an active tracked cumulative Release-note source is superseded by p2.12a13 and must not be used as a current rule.
 
-User-visible changes since `v0.3.8-alpha`:
+User-visible changes since `v0.3.8-alpha` remain the cumulative `v0.3.9-alpha` Release surface:
 
-- WeClaw integration is backed by a dsproxy-owned telemetry contract. WeClaw can consume profile, model, effort, context-window, usage aggregation, pricing metadata, estimated cost, provider balance, auxiliary model-call accounting, and compaction status through stable CLI and HTTP surfaces.
-- `dsproxy status [thinking] --weclaw-json` prefers the runtime `/v1/proxy/weclaw/status` endpoint when the proxy is reachable, and falls back to structured unavailable fields when it is not.
-- `dsproxy profile status <profile> --json` and `dsproxy profile set-effort <profile> <effort> --json` provide machine-readable profile and effort state for integration clients.
-- Runtime payload guard fields expose Compact and Trim progress as character-level dsproxy runtime behavior. They must not be merged with token-level context-window fields.
-- DeepSeek profile-tokenizer accounting is available as local display and drift-analysis data. Provider usage remains billing-authoritative.
-- `dsproxy tokenizer sync deepseek --json` and `dsproxy tokenizer status deepseek --json` manage user-machine tokenizer resources.
-- Prompt segmentation semantics distinguish latest ordinary `user`, `user_history`, `tool_output`, `environment`, `system`, `developer`, and compaction summary categories.
-- Prompt reconciliation now exposes `details_origin_breakdown` so WeClaw Details can display token origins such as user, history, system, environment, tools schema, and protocol overhead instead of a `classified~x/y` subtotal.
-- Pricing and cost contracts are CNY-first for DeepSeek V4. The Chinese official pricing page is the primary source, with English USD pricing kept as fallback and future internationalization support.
-- Session cost uses the per-turn ledger and must not be recomputed from the currently active model price.
-- Reasoning output cost is explicitly unavailable when the provider does not expose separately priced reasoning output.
+- WeClaw integration is backed by dsproxy-owned profile, model, effort, context-window, token, pricing, cost, balance, Details, tokenizer, and compaction contracts.
+- Runtime context handling is token-first for Compact/Trim user-visible control surfaces.
+- Managed CoDeepSeedeX profiles use `auto_compact_ratio = 0.90`; absolute legacy thresholds such as `750000` are drift markers, not live managed thresholds.
+- Runtime Compact/Trim report metadata can be restored from SQLite after proxy restarts.
+- Pricing/Cost remains CNY-first for DeepSeek V4 and ledger-based for historical turn/session cost semantics.
+- Public Release assets remain exactly `bootstrap.sh` and `install.sh`.
 
 Release requirement for `v0.3.9-alpha`:
 
@@ -313,15 +313,17 @@ Expected current public Release baseline:
 
 ```text
 worktree clean
-v0.3.9-alpha=80bb0ea
-p2.10a80-docs-release-latest=80bb0ea
-current_internal_checkpoint=p2.10a84-token-first-compact-trim-contract
+master=origin/master=d674a61
+v0.3.9-alpha=d674a61
+p2.12a13-remove-tracked-release-notes=d674a61
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
-public version: v0.3.9-alpha | 80bb0ea
-internal version: p2.10a83-deepseek-cache-accounting-contract | <current checkpoint commit>
+the retired v0.3.9-alpha per-release note file under docs absent
+README release-note file links absent
+public version: v0.3.9-alpha | d674a61
+internal version: p2.12a13-remove-tracked-release-notes | d674a61
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -1352,7 +1354,7 @@ Final verified p2.10a80 Release state:
 
 ## p2.10a81 Handbook current-state sync
 
-p2.10a81 is a documentation and runtime internal-version sync after p2.10a80. It corrects stale handbook startup state from `6ea67b2` / `p2.10a71-docs-prerelease-notes` to the p2.10a80 public Release baseline at `80bb0ea`, clarifies that the current cumulative release-note source is the only active release-note file under `docs/`, and advances the developer internal checkpoint to `p2.10a81-handbook-current-state-sync`.
+p2.10a81 is a historical documentation and runtime internal-version sync after p2.10a80. It corrected stale handbook startup state from `6ea67b2` / `p2.10a71-docs-prerelease-notes` to the p2.10a80 public Release baseline at `80bb0ea`. Its temporary tracked Release-note-source wording is superseded by p2.12a13, which removed the repository-tracked per-release note file and made the GitHub Release page the only public Release body location.
 
 This node must not move `v0.3.9-alpha`, recreate the GitHub Release, or rebuild Release assets.
 
@@ -1793,7 +1795,7 @@ Release-note coverage rules for this node:
 
 ## p2.12a11 Doc duplicate tag block cleanup
 
-p2.12a11 removes the stale duplicate public-tag block from the Chinese developer handbook. The old block still said `v0.3.9-alpha = ab680ee`, conflicting with the p2.12a10 Release closeout placeholder `release-closeout tag target`.
+p2.12a11 removes the stale duplicate public-tag block from the Chinese developer handbook. The old block still said `v0.3.9-alpha = ab680ee`, conflicting with the p2.12a10 Release closeout placeholder `d674a61`.
 
 This node is documentation-only:
 
