@@ -1,3 +1,14 @@
+## p2.13a5 Token-first TRIM profile-scoped report
+
+Date: 2026-05-24
+
+Scope:
+
+- Fix WeClaw-facing token-first TRIM status so a stale in-memory report from another profile cannot mask a matching persisted report for the requested profile/session.
+- Add a profile-scoped `not_triggered` TRIM fallback for current sessions that have displayable token context but no matching live TRIM report.
+- Keep cross-profile TRIM reports unavailable; profile mismatch remains diagnostic only and must not be displayed as current-profile TRIM.
+- The fallback reports `source=profile_scoped_current_session_token_status_fallback` and `precision=current_session_context_window_estimate_not_live_request_payload`, so it is not confused with a live payload report.
+
 ## p2.13a4 Pricing discount valid-until test isolation
 
 Date: 2026-05-24

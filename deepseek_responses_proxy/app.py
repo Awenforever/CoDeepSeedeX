@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.13a4-pricing-discount-valid-until-contract"
+PROXY_INTERNAL_VERSION = "p2.13a5-token-first-trim-profile-scoped-report"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -15346,6 +15346,252 @@ def _route_scoped_trimming_report(report: Any, *, profile: str) -> Any:
         }
     return report
 
+
+
+
+def _runtime_trimming_report_has_displayable_token_first_trim(report: Any) -> bool:
+    if not isinstance(report, dict):
+        return False
+    token_trim = report.get("token_first_runtime_trim")
+    if not isinstance(token_trim, dict):
+        return False
+    if not bool(token_trim.get("available")):
+        return False
+    before_tokens = _runtime_payload_guard_int(
+        token_trim.get("before_tokens")
+        if token_trim.get("before_tokens") is not None
+        else token_trim.get("estimated_tokens_before_trim")
+    )
+    after_tokens = _runtime_payload_guard_int(
+        token_trim.get("after_tokens")
+        if token_trim.get("after_tokens") is not None
+        else token_trim.get("estimated_tokens_after_trim")
+    )
+    max_context_tokens = _runtime_payload_guard_int(
+        token_trim.get("max_context_tokens")
+        or token_trim.get("trim_limit_tokens")
+        or (
+            token_trim.get("runtime_context", {}).get("auto_compact_threshold_tokens")
+            if isinstance(token_trim.get("runtime_context"), dict)
+            else None
+        )
+    )
+    return before_tokens is not None and after_tokens is not None and max_context_tokens is not None
+
+
+def _select_profile_scoped_trimming_report(
+    *,
+    profile: str,
+    in_memory_report: Any,
+    persisted_report: Any,
+) -> Any:
+    candidates: list[tuple[str, Any]] = [
+        ("in_memory", in_memory_report),
+        ("persisted", persisted_report),
+    ]
+    diagnostics: list[dict[str, Any]] = []
+    fallback: Any = None
+
+    for source, raw_report in candidates:
+        if raw_report is None:
+            continue
+        scoped = _route_scoped_trimming_report(raw_report, profile=profile)
+        if isinstance(scoped, dict):
+            scoped.setdefault("selection_source", source)
+            if scoped.get("reason") == "runtime_trimming_report_profile_mismatch":
+                diagnostics.append(scoped)
+            elif fallback is None:
+                fallback = scoped
+            if _runtime_trimming_report_has_displayable_token_first_trim(scoped):
+                if diagnostics:
+                    scoped.setdefault("profile_mismatch_diagnostic", diagnostics[0])
+                return scoped
+
+    if isinstance(fallback, dict):
+        if diagnostics:
+            fallback.setdefault("profile_mismatch_diagnostic", diagnostics[0])
+        return fallback
+    if diagnostics:
+        return diagnostics[0]
+    return None
+
+
+def _context_window_int_from_contracts(
+    context_window: dict[str, Any],
+    profile_status: dict[str, Any],
+    keys: tuple[str, ...],
+) -> tuple[int | None, str | None]:
+    candidates: list[tuple[str, Any]] = [("context_window", context_window)]
+    profile_context = profile_status.get("context_window") if isinstance(profile_status, dict) else None
+    if isinstance(profile_context, dict):
+        candidates.append(("profile_status.context_window", profile_context))
+    limit_explanation = context_window.get("limit_explanation") if isinstance(context_window, dict) else None
+    if isinstance(limit_explanation, dict):
+        candidates.append(("context_window.limit_explanation", limit_explanation))
+
+    for source_name, source in candidates:
+        if not isinstance(source, dict):
+            continue
+        for key in keys:
+            value = _runtime_payload_guard_int(source.get(key))
+            if value is not None:
+                return value, f"{source_name}.{key}"
+    return None, None
+
+
+def _profile_scoped_token_first_trim_not_triggered_report(
+    *,
+    profile: str,
+    context_window: dict[str, Any],
+    profile_status: dict[str, Any],
+    model_contract: dict[str, Any],
+    session_id: str | None,
+    diagnostic_report: Any = None,
+) -> dict[str, Any] | None:
+    if not session_id:
+        return None
+
+    current_tokens, current_source = _context_window_int_from_contracts(
+        context_window,
+        profile_status,
+        ("used_tokens", "current_tokens", "latest_upstream_prompt_tokens"),
+    )
+    max_context_tokens, max_source = _context_window_int_from_contracts(
+        context_window,
+        profile_status,
+        (
+            "auto_compact_token_limit",
+            "auto_compact_threshold_tokens",
+            "model_auto_compact_token_limit",
+        ),
+    )
+    model_context_window_tokens, model_context_source = _context_window_int_from_contracts(
+        context_window,
+        profile_status,
+        ("model_context_window_tokens", "display_limit_tokens", "limit_tokens"),
+    )
+
+    if current_tokens is None or max_context_tokens is None:
+        return None
+    if current_tokens > max_context_tokens:
+        return {
+            "version": PROXY_VERSION,
+            "enabled": True,
+            "available": False,
+            "trimmed": False,
+            "reason": "profile_scoped_trim_fallback_would_exceed_limit_without_runtime_report",
+            "source": "profile_scoped_current_session_token_status_fallback",
+            "profile": profile,
+            "requested_profile": profile,
+            "observed_profile": profile,
+            "session_id": session_id,
+            "observed_at": _runtime_payload_guard_observed_at(),
+            "profile_mismatch_diagnostic": diagnostic_report if isinstance(diagnostic_report, dict) else None,
+            "action": "send a primary request through this profile so dsproxy can generate a live token-first runtime TRIM report",
+            "raw_content_exposed": False,
+            "redacted": True,
+        }
+
+    effective_model = (
+        model_contract.get("effective_model")
+        or model_contract.get("upstream_model")
+        or model_contract.get("codex_model")
+        or model_contract.get("model")
+        or DEFAULT_MODEL
+        if isinstance(model_contract, dict)
+        else DEFAULT_MODEL
+    )
+    runtime_context = {
+        "available": True,
+        "unit": "tokens",
+        "profile": profile,
+        "profile_source": "active_route",
+        "model": str(effective_model),
+        "model_context_window_tokens": model_context_window_tokens,
+        "model_context_window_source": model_context_source,
+        "auto_compact_threshold_tokens": max_context_tokens,
+        "model_auto_compact_token_limit": max_context_tokens,
+        "auto_compact_token_limit": max_context_tokens,
+        "auto_compact_threshold_source": max_source,
+        "runtime_trigger_source": "profile_scoped_status_fallback",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "fallback_debug_safety_only",
+    }
+    token_first_runtime_trim = {
+        "available": True,
+        "unit": "tokens",
+        "mode": "profile_scoped_session_status_fallback",
+        "applied": False,
+        "status": "not_triggered",
+        "reason": "profile_scoped_session_tokens_within_token_first_runtime_limit_without_matching_runtime_report",
+        "source": "profile_scoped_current_session_token_status_fallback",
+        "precision": "current_session_context_window_estimate_not_live_request_payload",
+        "primary_control_unit": "tokens",
+        "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
+        "before_tokens": current_tokens,
+        "after_tokens": current_tokens,
+        "tokens_removed": 0,
+        "estimated_tokens_before_trim": current_tokens,
+        "estimated_tokens_after_trim": current_tokens,
+        "estimated_tokens_removed_by_trim": 0,
+        "max_context_tokens": max_context_tokens,
+        "trim_limit_tokens": max_context_tokens,
+        "max_context_tokens_source": max_source,
+        "runtime_context": runtime_context,
+        "target_met": True,
+        "tokens_to_trim": 0,
+        "remaining_tokens": max(0, max_context_tokens - current_tokens),
+        "progress_numerator_tokens": current_tokens,
+        "progress_denominator_tokens": current_tokens,
+        "progress_ratio": 1.0,
+        "retention_numerator_tokens": current_tokens,
+        "retention_denominator_tokens": current_tokens,
+        "retention_ratio": 1.0,
+        "requested_profile": profile,
+        "observed_profile": profile,
+        "session_id": session_id,
+        "observed_at": _runtime_payload_guard_observed_at(),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+    return {
+        "version": PROXY_VERSION,
+        "enabled": True,
+        "available": True,
+        "trimmed": False,
+        "status": "not_triggered",
+        "reason": "profile_scoped_session_tokens_within_token_first_runtime_limit_without_matching_runtime_report",
+        "source": "profile_scoped_current_session_token_status_fallback",
+        "profile": profile,
+        "requested_profile": profile,
+        "observed_profile": profile,
+        "session_id": session_id,
+        "observed_at": token_first_runtime_trim["observed_at"],
+        "token_first_runtime_trim": token_first_runtime_trim,
+        "token_first_trim_dry_run": {
+            "available": True,
+            "unit": "tokens",
+            "mode": "profile_scoped_session_status_fallback",
+            "source": "profile_scoped_current_session_token_status_fallback",
+            "precision": token_first_runtime_trim["precision"],
+            "runtime_context": runtime_context,
+            "estimated_payload_tokens": current_tokens,
+            "estimated_tokens_before_trim": current_tokens,
+            "estimated_tokens_after_trim": current_tokens,
+            "estimated_tokens_removed_by_trim": 0,
+            "max_context_tokens": max_context_tokens,
+            "max_context_tokens_source": max_source,
+            "would_trim": False,
+            "would_trim_reason": "estimated_payload_tokens_within_token_first_runtime_limit",
+            "tokens_to_trim": 0,
+            "raw_content_exposed": False,
+            "redacted": True,
+        },
+        "profile_mismatch_diagnostic": diagnostic_report if isinstance(diagnostic_report, dict) else None,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
 def _runtime_payload_guard_report_snapshot(
     report: Any,
     *,
@@ -15397,6 +15643,15 @@ def _runtime_payload_guard_report_snapshot(
             "available",
             "requested_profile",
             "observed_profile",
+            "session_id",
+            "request_id",
+            "response_id",
+            "status",
+            "mode",
+            "precision",
+            "max_context_tokens_source",
+            "profile_mismatch_diagnostic",
+            "selection_source",
             "action",
             "redacted",
             "item_type_summary",
@@ -15457,9 +15712,6 @@ def _runtime_payload_guard_report_snapshot(
         "reason": "no_runtime_payload_guard_observation_yet",
         "action": "send a model request through this dsproxy route, then re-check dsproxy status --weclaw-json",
     }
-
-
-
 
 def _runtime_payload_guard_contract_raw(
     context_status: dict[str, Any],
@@ -19315,12 +19567,28 @@ def _runtime_weclaw_status(
         if isinstance(last_context_compaction_report, dict)
         else persisted_compaction_report
     )
-    in_memory_trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
-    effective_trimming_report = in_memory_trimming_report if isinstance(in_memory_trimming_report, dict) else persisted_trimming_report
-    trimming_report = _route_scoped_trimming_report(
-        effective_trimming_report,
-        profile=profile,
+    context_window = _weclaw_context_window_with_usage_estimate(
+        dict(profile_status.get("context_window", {})),
+        tokens,
     )
+    in_memory_trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)
+    trimming_report = _select_profile_scoped_trimming_report(
+        profile=profile,
+        in_memory_report=in_memory_trimming_report,
+        persisted_report=persisted_trimming_report,
+    )
+    if not _runtime_trimming_report_has_displayable_token_first_trim(trimming_report):
+        fallback_trimming_report = _profile_scoped_token_first_trim_not_triggered_report(
+            profile=profile,
+            context_window=context_window,
+            profile_status=profile_status,
+            model_contract=model_contract if isinstance(model_contract, dict) else {},
+            session_id=session_id,
+            diagnostic_report=trimming_report,
+        )
+        if isinstance(fallback_trimming_report, dict):
+            trimming_report = fallback_trimming_report
+
     runtime_payload_guard = _token_only_public_runtime_contract(_runtime_payload_guard_contract(
         context_status,
         compaction_report=effective_compaction_report,
@@ -19332,10 +19600,6 @@ def _runtime_weclaw_status(
     semantic_status = _token_only_public_runtime_contract(_weclaw_enrich_semantic_compaction_status(
         _semantic_compaction_runtime_status(runtime_events=semantic_runtime_events)
     ))
-    context_window = _weclaw_context_window_with_usage_estimate(
-        dict(profile_status.get("context_window", {})),
-        tokens,
-    )
     runtime_token_context = _runtime_token_first_status_context(context_status, runtime_payload_guard)
     context_window["runtime"] = {
         "available": True,

@@ -167,3 +167,98 @@ def test_weclaw_status_restores_runtime_payload_guard_from_persisted_reports(tmp
     assert "before_chars" not in dumped
     assert "after_chars" not in dumped
     assert "char_heuristic" not in dumped
+
+
+def test_weclaw_status_prefers_persisted_matching_trim_report_over_stale_in_memory(tmp_path: Path, monkeypatch) -> None:
+    app = _app_module()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+    store = app.SQLiteResponseStore(tmp_path / "responses-thinking.sqlite3")
+    store.save_runtime_payload_report(
+        _sample_trimming_report(),
+        kind="trimming",
+        profile="deepseek-thinking",
+        session_id="sess-1",
+        request_id="resp-1",
+        response_id="resp-1",
+    )
+
+    class StaleTrimClient:
+        last_context_trimming_report = {
+            "version": "v0.3.9-alpha",
+            "enabled": True,
+            "trimmed": False,
+            "observed_at": "2026-05-22T00:00:00Z",
+            "token_first_trim_dry_run": {
+                "available": True,
+                "unit": "tokens",
+                "runtime_context": {
+                    "profile": "deepseek",
+                    "auto_compact_threshold_tokens": 900000,
+                },
+            },
+        }
+
+    payload = app._runtime_weclaw_status(
+        "deepseek-thinking",
+        store=store,
+        balance=None,
+        deepseek_client=StaleTrimClient(),
+        last_context_compaction_report=None,
+        session_id="sess-1",
+    )
+
+    trimming = payload["runtime_payload_guard"]["trimming"]
+    assert trimming["available"] is True
+    assert trimming["status"] == "not_triggered"
+    assert trimming["current_tokens"] == 20100
+    assert trimming["max_context_tokens"] == 900000
+    assert trimming["last_report"]["reason"] != "runtime_trimming_report_profile_mismatch"
+    assert trimming["last_report"]["profile_mismatch_diagnostic"]["reason"] == "runtime_trimming_report_profile_mismatch"
+
+
+def test_profile_scoped_trim_fallback_exposes_not_triggered_session_estimate() -> None:
+    app = _app_module()
+
+    report = app._profile_scoped_token_first_trim_not_triggered_report(
+        profile="deepseek-thinking",
+        context_window={
+            "used_tokens": 19852,
+            "auto_compact_token_limit": 900000,
+            "model_context_window_tokens": 1000000,
+        },
+        profile_status={"context_window": {}},
+        model_contract={"effective_model": "deepseek-v4-flash"},
+        session_id="sess-current",
+        diagnostic_report={
+            "reason": "runtime_trimming_report_profile_mismatch",
+            "requested_profile": "deepseek-thinking",
+            "observed_profile": "deepseek",
+        },
+    )
+
+    assert report is not None
+    trim = report["token_first_runtime_trim"]
+    assert trim["available"] is True
+    assert trim["status"] == "not_triggered"
+    assert trim["before_tokens"] == 19852
+    assert trim["after_tokens"] == 19852
+    assert trim["tokens_removed"] == 0
+    assert trim["max_context_tokens"] == 900000
+    assert trim["progress_numerator_tokens"] == 19852
+    assert trim["progress_denominator_tokens"] == 19852
+    assert trim["retention_ratio"] == 1.0
+    assert trim["requested_profile"] == "deepseek-thinking"
+    assert trim["observed_profile"] == "deepseek-thinking"
+
+    guard = app._runtime_payload_guard_contract({"compaction": {"config": {}}}, trimming_report=report)
+    assert guard["trimming"]["available"] is True
+    assert guard["trimming"]["status"] == "not_triggered"
+    assert guard["trimming"]["current_tokens"] == 19852
+    assert guard["trimming"]["max_context_tokens"] == 900000
+    assert guard["trimming"]["progress_numerator_tokens"] == 19852
+    assert guard["trimming"]["progress_denominator_tokens"] == 19852
+    assert guard["trimming"]["retention_ratio"] == 1.0
