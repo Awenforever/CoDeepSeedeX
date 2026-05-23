@@ -1,3 +1,14 @@
+## p2.13a3 Managed auto-compact ratio repair
+
+Date: 2026-05-24
+
+Scope:
+
+- Lock managed CoDeepSeedeX auto-compact ratio to `0.90` for runtime status, profile status, install-codex-profile defaults, and managed profile repair.
+- Treat `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` and `CODEEPSEEDEX_AUTO_COMPACT_RATIO` as ignored legacy low-trigger experiment residue unless an explicit CLI `--auto-compact-ratio` argument is used for a deliberate one-shot repair.
+- Repair real managed Codex profiles so `model_context_window=1000000` derives `model_auto_compact_token_limit=900000`.
+- Keep public `v0.3.9-alpha` unchanged.
+
 ## p2.13a2 Codex native Compact observability and Responses output contract
 
 Date: 2026-05-23

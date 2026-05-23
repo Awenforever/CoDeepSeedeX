@@ -57,12 +57,22 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.13a2-codex-compact-and-responses-output-contract"
+PROXY_INTERNAL_VERSION = "p2.13a3-managed-auto-compact-ratio-repair"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
 AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
+
+# Restored pricing compatibility symbols kept for pricing config tests and CLI consumers.
+# They must remain top-level module exports.
+DEFAULT_MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "deepseek-v4-flash": {
+        "input_cache_hit": 0.0028,
+        "input_cache_miss": 0.14,
+        "output": 0.28,
+    },
+}
 
 
 def _normalize_auto_compact_ratio_value(value: Any, *, default: float = MANAGED_AUTO_COMPACT_RATIO) -> float:
@@ -75,23 +85,38 @@ def _normalize_auto_compact_ratio_value(value: Any, *, default: float = MANAGED_
     return ratio
 
 
+
 def _managed_auto_compact_ratio() -> float:
+    """Return the invariant managed CoDeepSeedeX auto-compact ratio.
+
+    p2.13a3 makes managed profile/runtime status immune to leftover
+    DEEPSEEK_PROXY_AUTO_COMPACT_RATIO or CODEEPSEEDEX_AUTO_COMPACT_RATIO
+    environment values. Low-trigger experiments must use an explicit profile
+    repair/install argument and must not redefine the managed runtime default.
+    """
+    return MANAGED_AUTO_COMPACT_RATIO
+
+
+def _ignored_auto_compact_ratio_env_override_contract() -> dict[str, Any] | None:
+    ignored: list[dict[str, Any]] = []
     for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
         value = os.environ.get(env_name)
         if value not in {None, ""}:
-            return _normalize_auto_compact_ratio_value(value)
-    return MANAGED_AUTO_COMPACT_RATIO
-
-# USD per 1M tokens. Keep this table small and explicit.
-# Source should be periodically checked against DeepSeek official pricing.
-DEFAULT_MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
-    "deepseek-v4-flash": {
-        "input_cache_hit": 0.0028,
-        "input_cache_miss": 0.14,
-        "output": 0.28,
-    },
-}
-
+            ignored.append({
+                "name": env_name,
+                "value_present": True,
+                "value_redacted": True,
+                "reason": "managed_auto_compact_ratio_is_invariant_0_90",
+            })
+    if not ignored:
+        return None
+    return {
+        "available": True,
+        "ignored": ignored,
+        "managed_value": MANAGED_AUTO_COMPACT_RATIO,
+        "reason": "environment_auto_compact_ratio_overrides_are_ignored_for_managed_profiles",
+        "action": "remove stale env overrides and run dsproxy profile repair --managed-only --json",
+    }
 
 def _now() -> int:
     return int(time.time())
@@ -6353,6 +6378,7 @@ def _runtime_token_first_context_contract_for_payload(
         "auto_compact_ratio_source": "managed_auto_compact_ratio",
         "auto_compact_policy": auto_compact_policy,
         "legacy_absolute_limit_ignored": ignored_absolute_limit,
+        "legacy_ratio_override_ignored": _ignored_auto_compact_ratio_env_override_contract(),
         "runtime_trigger_source": "token_first_profile_context_contract",
         "char_fallback_scope": "emergency_safety_only",
         "primary_control_unit": "tokens",

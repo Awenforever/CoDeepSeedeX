@@ -275,22 +275,22 @@ def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
     assert "trigger_chars" not in dumped
     assert "legacy_char_debug" not in dumped
 
-def test_env_auto_compact_ratio_is_the_only_low_threshold_lab_control(monkeypatch, tmp_path: Path) -> None:
-    codex_config = tmp_path / "codex.toml"
-    codex_config.write_text(
-        """
-[profiles.deepseek]
-model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
-""".strip()
-        + "\n",
+
+def test_env_auto_compact_ratio_is_ignored_for_managed_runtime_contract(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
+
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    config_path = codex_home / "config.toml"
+    config_path.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "10800")
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
     context = proxy_app._runtime_token_first_context_contract_for_payload(
         {"model": "deepseek-v4-flash"},
@@ -298,13 +298,12 @@ model_auto_compact_token_limit = 900000
     )
 
     assert context["model_context_window_tokens"] == 1_000_000
-    assert context["auto_compact_ratio"] == 0.02
-    assert context["auto_compact_threshold_tokens"] == 20_000
-    assert context["model_auto_compact_token_limit"] == 20_000
-    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 10800
-    assert context["legacy_absolute_limit_ignored"]["derived_value"] == 20_000
-    assert context["auto_compact_policy"]["managed_expected_auto_compact_ratio"] == 0.02
-    assert context["auto_compact_policy"]["managed_expected_auto_compact_threshold_tokens"] == 20_000
+    assert context["auto_compact_ratio"] == 0.9
+    assert context["model_auto_compact_token_limit"] == 900_000
+    assert context["auto_compact_policy"]["managed_expected_auto_compact_ratio"] == 0.9
+    assert context["legacy_absolute_limit_ignored"]["ignored_value"] == 20_000
+    assert context["legacy_ratio_override_ignored"]["available"] is True
+    assert context["legacy_ratio_override_ignored"]["managed_value"] == 0.9
 
 def test_runtime_token_compaction_status_reports_threshold_exceeded_skipped_without_negative_tokens() -> None:
     contract = proxy_app._runtime_token_first_compaction_contract(
@@ -314,8 +313,8 @@ def test_runtime_token_compaction_status_reports_threshold_exceeded_skipped_with
             "estimated_context_tokens": 42572,
             "after_estimated_context_tokens": 42572,
             "auto_compact_threshold_tokens": 20000,
-            "model_auto_compact_token_limit": 20000,
-            "auto_compact_ratio": 0.02,
+            "model_auto_compact_token_limit": 900000,
+            "auto_compact_ratio": 0.9,
             "tokens_to_auto_compact": -22572,
             "runtime_trigger_source": "token_first",
         }
@@ -333,15 +332,15 @@ def test_weclaw_context_limit_explanation_uses_active_managed_ratio_text(monkeyp
     monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
     explanation = proxy_app._weclaw_context_limit_explanation(
         model_context_window=1_000_000,
-        auto_compact_token_limit=20_000,
+        auto_compact_token_limit=900_000,
         effective_safe_window=0,
         model_catalog=None,
     )
     values = explanation["value_explanations"]
-    assert "auto_compact_ratio=0.02" in values["auto_compact_token_limit"]
-    assert "managed 2% ratio" in values["auto_compact_ratio"]
-    assert "0.90" not in values["auto_compact_token_limit"]
-    assert "0.90" not in values["auto_compact_ratio"]
+    assert "auto_compact_ratio=0.9" in values["auto_compact_token_limit"]
+    assert "managed 90% ratio" in values["auto_compact_ratio"]
+    assert "auto_compact_ratio=0.9" in values["auto_compact_token_limit"]
+    assert "managed 90% ratio" in values["auto_compact_ratio"]
 
 
 
@@ -385,7 +384,7 @@ def test_compaction_budget_does_not_count_raw_responses_input(tmp_path: Path, mo
 model = "deepseek-v4-flash"
 model_provider = "deepseek-proxy"
 model_context_window = 1000000
-model_auto_compact_token_limit = 20000
+model_auto_compact_token_limit = 900000
 """.strip()
         + "\n",
         encoding="utf-8",

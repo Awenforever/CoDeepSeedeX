@@ -3191,7 +3191,7 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
     assert refresh["source_kind"] == "official_docs_html"
     assert refresh["cache_path"] == str(cache_path)
 
-def test_cli_profile_repair_derives_low_lab_trigger_from_ratio_without_shrinking_window(tmp_path, capsys, monkeypatch):
+def test_cli_profile_repair_ignores_env_ratio_without_shrinking_window(tmp_path, capsys, monkeypatch):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
@@ -3224,23 +3224,22 @@ def test_cli_profile_repair_derives_low_lab_trigger_from_ratio_without_shrinking
     ]) == 0
 
     repaired = json.loads(capsys.readouterr().out)
-    assert repaired["managed_auto_compact_ratio"] == 0.02
+    assert repaired["managed_auto_compact_ratio"] == 0.9
     profile = next(item for item in repaired["profile_results"] if item["profile"] == "deepseek-thinking")
     assert profile["model_context_window_tokens"] == 1_000_000
-    assert profile["expected_model_auto_compact_token_limit"] == 20_000
+    assert profile["expected_model_auto_compact_token_limit"] == 900_000
 
     text = config_path.read_text(encoding="utf-8")
     assert "model_context_window = 1000000" in text
     assert "model_context_window = 12000" not in text
-    assert "model_auto_compact_token_limit = 20000" in text
+    assert "model_auto_compact_token_limit = 900000" in text
     assert "model_auto_compact_token_limit = 10800" not in text
 
     assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["context_window"]["model_context_window_tokens"] == 1_000_000
-    assert status["context_window"]["auto_compact_ratio"] == 0.02
-    assert status["context_window"]["auto_compact_threshold_tokens"] == 20_000
-
+    assert status["context_window"]["auto_compact_ratio"] == 0.9
+    assert status["context_window"]["auto_compact_threshold_tokens"] == 900_000
 
 def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_threshold(tmp_path, capsys, monkeypatch):
     config_path = tmp_path / "codex.toml"

@@ -44,24 +44,22 @@ def _normalize_auto_compact_ratio(value: object, default: float = DEFAULT_AUTO_C
     return ratio
 
 
+
 def _auto_compact_ratio_from_env_values(
     env_values: dict[str, str] | None = None,
     *,
     explicit: object | None = None,
 ) -> float:
+    """Return the managed ratio for profile generation/repair.
+
+    Managed CoDeepSeedeX profiles use 0.90 unless the caller passes an
+    explicit --auto-compact-ratio argument for a deliberate one-shot repair.
+    Environment variables are ignored here so stale low-trigger experiments do
+    not silently redefine the managed profile contract.
+    """
     if explicit is not None:
         return _normalize_auto_compact_ratio(explicit)
-    env_values = env_values or {}
-    for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
-        value = env_values.get(env_name)
-        if value not in {None, ""}:
-            return _normalize_auto_compact_ratio(value)
-    for env_name in AUTO_COMPACT_RATIO_ENV_NAMES:
-        value = os.environ.get(env_name)
-        if value not in {None, ""}:
-            return _normalize_auto_compact_ratio(value)
     return DEFAULT_AUTO_COMPACT_RATIO
-
 
 def _derive_auto_compact_token_limit(
     context_window: int,
