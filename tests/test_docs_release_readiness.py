@@ -31,14 +31,15 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
 
     assert "Current public Release: `v0.3.9-alpha`" in en_current
     assert "Current public Release commit: `v0.3.9-alpha tag target after Release closeout`" in en_current
-    assert "Current internal development checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`" in en_current
-    assert "Current public Release note synchronization checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`" in en_current
+    assert "Current internal development checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
+    assert "Current public Release note synchronization checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
     assert "  - `v0.3.9-alpha = release-closeout tag target`" in en_current
 
     assert "当前公开Release：`v0.3.9-alpha`" in zh_current
     assert "当前公开Release提交：`release-closeout tag target`" in zh_current
-    assert "当前内部开发检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`" in zh_current
-    assert "当前公开Release note同步检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`" in zh_current
+    assert "当前内部开发检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
+    assert "当前公开Release note同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
     assert "  - `v0.3.9-alpha = release-closeout tag target`" in zh_current
+    assert "ab680ee" not in zh_current

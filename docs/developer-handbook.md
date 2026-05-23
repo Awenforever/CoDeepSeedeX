@@ -34,9 +34,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`
-- Latest closed documentation sync checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`
-- Current public Release note synchronization checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`.
+- Current internal development checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`
+- Latest closed documentation sync checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`
+- Current public Release note synchronization checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
@@ -1792,3 +1792,14 @@ Release-note coverage rules for this node:
 3. The Release body must keep the WeClaw minimum version requirement: `weclaw_dev >= v0.1.9-alpha`.
 4. Public Release assets remain exactly `bootstrap.sh` and `install.sh`.
 5. Public tag movement is allowed only in the explicit Release-update step after docs and validation pass.
+
+## p2.12a11 Doc duplicate tag block cleanup
+
+p2.12a11 removes the stale duplicate public-tag block from the Chinese developer handbook. The old block still said `v0.3.9-alpha = ab680ee`, conflicting with the p2.12a10 Release closeout placeholder `release-closeout tag target`.
+
+This node is documentation-only:
+
+1. Remove the stale duplicate Chinese public-tag block.
+2. Keep the corrected public-tag protection block.
+3. Add a regression assertion that the Chinese current-state block no longer contains `ab680ee`.
+4. Do not move public `v0.3.9-alpha` and do not update the GitHub Release.

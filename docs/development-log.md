@@ -1498,3 +1498,15 @@ Release boundary:
 
 - Public tag `v0.3.9-alpha` is moved only after this documentation and validation step passes.
 - Forbidden plain tags `v0.3.9` and `v0.3.5` must remain absent.
+
+## p2.12a11 Doc duplicate tag block cleanup
+
+Date: 2026-05-23
+
+Scope:
+
+- Clean up the duplicate stale public-tag block in `docs/developer-handbook.zh-CN.md`.
+- Remove the old `v0.3.9-alpha = ab680ee` line from the Chinese current-state block.
+- Preserve the corrected `v0.3.9-alpha = release-closeout tag target` block.
+- Update docs readiness tests to assert that the Chinese current-state block no longer contains `ab680ee`.
+- This node does not move public `v0.3.9-alpha` and does not update GitHub Release assets.
