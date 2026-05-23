@@ -1470,3 +1470,31 @@ Scope:
 - Retired char counts from the visible runtime Compact/Trim control plane.
 - Runtime payload guard and WeClaw status now expose `unit=tokens`, `current_tokens`, token trigger/remaining/progress fields, and move char counters to `legacy_char_debug`.
 - Character counters are diagnostic only and must not drive Compact/Trim triggering, capacity progress, or WeClaw display.
+
+## p2.12a10 Docs and v0.3.9-alpha Release closeout
+
+Date: 2026-05-23
+
+Scope:
+
+- Update the cumulative `docs/release-notes-v0.3.9-alpha.md` source after the p2.12 stabilization line.
+- Ensure the Release Note covers every functional change since the previous published `v0.3.9-alpha` commit: p2.12a2 through p2.12a9.
+- Preserve older cumulative v0.3.9-alpha content rather than replacing it with a short delta.
+- Keep the WeClaw requirement `weclaw_dev >= v0.1.9-alpha`.
+- Prepare the GitHub Release update and asset refresh for `bootstrap.sh` and `install.sh`.
+
+Functional coverage added for the new public Release body:
+
+- Codex profile forward-compatible repair.
+- Token-first Compact/Trim runtime.
+- Ratio-only auto-compact policy.
+- Token Compact status semantics.
+- Token accounting source fixes.
+- Token-only status surface.
+- Runtime payload report persistence.
+- Semantic low-risk pytest classifier/candidate fix and real-route validation.
+
+Release boundary:
+
+- Public tag `v0.3.9-alpha` is moved only after this documentation and validation step passes.
+- Forbidden plain tags `v0.3.9` and `v0.3.5` must remain absent.

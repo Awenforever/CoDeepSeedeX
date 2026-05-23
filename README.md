@@ -344,4 +344,4 @@ WeClaw clients should consume the structured JSON fields and should not recalcul
 
 ## v0.3.9-alpha Latest
 
-The current `v0.3.9-alpha` release includes the latest WeClaw-facing telemetry contracts: current-session token/cost scope, auxiliary token zero objects, session-scoped Details, prompt reconciliation, Details origin breakdown, CNY-first pricing/cost fields, Compact/Trim retention fields, and same-version commit-aware upgrade behavior. See `docs/release-notes-v0.3.9-alpha.md` for the cumulative release notes.
+The current `v0.3.9-alpha` release includes the cumulative WeClaw-facing telemetry contracts plus the p2.12 stabilization line: Codex profile forward-compatible repair, ratio-only auto-compact policy, token-only Compact/Trim status, persisted runtime payload reports, and validated low-risk semantic payload compaction. See `docs/release-notes-v0.3.9-alpha.md` for the cumulative release notes.

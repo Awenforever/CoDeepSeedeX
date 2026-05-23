@@ -28,20 +28,20 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `ab680ee`
+- Current public Release commit: `v0.3.9-alpha tag target after Release closeout`
 - GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a8-runtime-payload-report-persistence`
-- Latest closed documentation sync checkpoint: `p2.12a8-runtime-payload-report-persistence`
-- Current public Release note synchronization checkpoint: `p2.10a113-release-note-marker`.
+- Current internal development checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`
+- Latest closed documentation sync checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`
+- Current public Release note synchronization checkpoint: `p2.12a10-docs-release-v039-alpha-p212-closeout`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = ab680ee`
+  - `v0.3.9-alpha = release-closeout tag target`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -1772,3 +1772,23 @@ p2.12a5 fixes the status surface for token-first Compact observability. `tokens_
 ## p2.12a6 Token accounting source
 
 p2.12a6 fixes Compact token accounting source selection. Compact token estimates must be calculated from normalized compaction messages, not from the raw Responses input object. The public runtime status contract is token-only; legacy non-token fields must not be exposed in WeClaw/status payloads.
+
+## p2.12a10 Docs and v0.3.9-alpha Release closeout
+
+p2.12a10 updates the cumulative `v0.3.9-alpha` Release-note source after the p2.12 stabilization line and prepares the public Release update.
+
+Release-note coverage rules for this node:
+
+1. The Release body must remain cumulative and must not replace older v0.3.9-alpha features with a short delta.
+2. The delta since the previous published `v0.3.9-alpha` commit must explicitly cover p2.12a2 through p2.12a9:
+   - Codex profile forward-compatible repair.
+   - Token-first Compact/Trim runtime.
+   - Ratio-only auto-compact contract.
+   - Token Compact status semantics.
+   - Token accounting source fixes.
+   - Token-only status surface.
+   - Runtime payload report persistence.
+   - Semantic low-risk pytest classifier/candidate fix.
+3. The Release body must keep the WeClaw minimum version requirement: `weclaw_dev >= v0.1.9-alpha`.
+4. Public Release assets remain exactly `bootstrap.sh` and `install.sh`.
+5. Public tag movement is allowed only in the explicit Release-update step after docs and validation pass.

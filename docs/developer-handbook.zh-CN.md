@@ -24,17 +24,23 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开Release：`v0.3.9-alpha`
-- 当前公开Release提交：`ab680ee`
+- 当前公开Release提交：`release-closeout tag target`
 - GitHub Latest Release：`v0.3.9-alpha`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a8-runtime-payload-report-persistence`
-- 最新闭合文档同步检查点：`p2.12a8-runtime-payload-report-persistence`
+- 当前内部开发检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`
+- 最新闭合文档同步检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`
+- 当前公开Release note同步检查点：`p2.12a10-docs-release-v039-alpha-p212-closeout`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
+- 未经明确Release更新任务不得移动的公开tag：
+  - `v0.3.9-alpha = release-closeout tag target`
+  - `v0.3.8-alpha = dfdc629`
+  - `v0.3.7-alpha = 466706f`
+  - `v0.3.6-alpha = 7fd8fb6`
 - 没有明确Release更新任务时不得移动的公开tag：
   - `v0.3.9-alpha = ab680ee`
   - `v0.3.8-alpha = dfdc629`
@@ -1727,3 +1733,23 @@ p2.12a5修正token-first Compact可观测状态语义。`tokens_to_auto_compact`
 ## p2.12a6 Token accounting source
 
 p2.12a6修正Compact token估算来源。Compact token估算必须基于规范化后的Compact消息，而不是原始Responses输入对象。公开runtime状态契约只暴露token字段；旧的非token字段不得出现在WeClaw/status payload中。
+
+## p2.12a10 Docs and v0.3.9-alpha Release closeout
+
+p2.12a10在p2.12稳定线之后更新累计`v0.3.9-alpha` Release-note源，并准备公开Release更新。
+
+本节点Release-note覆盖规则：
+
+1. Release正文必须保持累计说明，不能用短delta覆盖旧的v0.3.9-alpha功能。
+2. 从上一版已发布`v0.3.9-alpha`提交以来的delta必须显式覆盖p2.12a2到p2.12a9：
+   - Codex profile前向兼容修复。
+   - token-first Compact/Trim runtime。
+   - 只认比例的auto-compact契约。
+   - token Compact状态语义。
+   - token accounting source修复。
+   - token-only status surface。
+   - runtime payload report持久化。
+   - semantic低风险pytest分类器/候选修复。
+3. Release正文必须保留WeClaw最低版本要求：`weclaw_dev >= v0.1.9-alpha`。
+4. 公开Release资产仍只包含`bootstrap.sh`和`install.sh`。
+5. 只有在文档和验证通过后的显式Release更新步骤中，才允许移动公开tag。

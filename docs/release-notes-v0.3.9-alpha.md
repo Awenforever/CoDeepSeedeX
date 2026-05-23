@@ -1,5 +1,44 @@
 # CoDeepSeedeX v0.3.9-alpha release notes
 
+Highlights:
+
+- Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
+- This update keeps the complete cumulative `v0.3.9-alpha` feature set from earlier builds and adds the p2.12 stabilization line since the previous published `v0.3.9-alpha` build.
+- CoDeepSeedeX remains the dsproxy-owned DeepSeek/Codex runtime backend for managed `deepseek` and `deepseek-thinking` Codex profiles.
+
+## Changes since the previous published v0.3.9-alpha build
+
+- Codex profile compatibility: managed `deepseek` and `deepseek-thinking` profiles are repaired for newer Codex releases such as v0.133, so the displayed model/provider stays aligned with the selected DeepSeek profile instead of drifting to an incompatible provider model.
+- Token-first Compact/Trim runtime: Compact and Trim use token-based runtime measurements and expose token-first before/after/removed estimates, while legacy character diagnostics remain internal fallback/debug metadata rather than the user-visible context denominator.
+- Ratio-only auto-compact policy: managed profiles use one auto-compact trigger knob, `auto_compact_ratio`, with the threshold derived from the profile context window. Legacy explicit token-limit inputs remain compatibility-only and must not create a second competing user parameter.
+- Context-window status semantics: context display uses the full managed `model_context_window_tokens` as the denominator, while `auto_compact_threshold_tokens` is reported separately as a trigger threshold.
+- Compact status semantics: token Compact reports stable trigger, target, before/after, retention, source, reason, and observed-time fields so status clients do not confuse trigger thresholds with context-window capacity.
+- Token accounting source fixes: status and WeClaw JSON prefer profile-tokenizer/provider-backed token sources and label estimates explicitly instead of mixing session totals, stale profile data, or fallback diagnostics into the context-window numerator.
+- Token-only status surface: public status and WeClaw JSON remove legacy character-control fields from the primary status surface and keep token-only Compact/Trim progress for user-facing runtime display.
+- Runtime payload report persistence: token-first Compact and Trim reports are persisted in SQLite and can be restored by status after proxy restart; status no longer depends only on process-local memory or diagnostic debug files.
+- Semantic payload compaction hardening: low-risk old flattened pytest-success transcripts can be compacted through the real `/v1/responses` thinking route, with canary/invariant gates, redacted display metadata, token savings, type/risk/action counts, and fallback-to-original behavior.
+- Semantic classifier fix: successful pytest output containing negated phrases such as `no failures`, `no traceback`, `no diff`, or `no patch` is not misclassified as a pytest failure; only positive failure evidence keeps payloads out of low-risk mutation.
+- Real-route validation: the p2.12 line was validated with direct thinking-route probes and Codex TUI before/after checks, including runtime payload report restoration and low-risk semantic payload token reduction.
+
+## Fixes since the previous published v0.3.9-alpha build
+
+- Prevents Codex profile/model display drift after Codex upgrades.
+- Prevents custom explicit compact-token limits from becoming a second source of truth beside the managed ratio policy.
+- Prevents character-budget fallback diagnostics from leaking into the token-only user-facing status surface.
+- Prevents stale process-local runtime reports from making status lose Compact/Trim information after restart.
+- Prevents successful pytest logs with negated failure words from being treated as failure payloads.
+- Prevents status clients from deriving context usage or semantic compaction state locally when dsproxy already exposes the authoritative structured fields.
+
+## Validation for this Release update
+
+- p2.12a9 focused tests passed before this Release closeout.
+- p2.12a9 full test suite passed before this Release closeout.
+- Runtime validation confirmed `runtime_payload_guard` restoration through SQLite persistence.
+- Runtime validation confirmed low-risk semantic payload compaction on the real thinking `/v1/responses` route with positive token reduction.
+- Public Release assets remain `bootstrap.sh` and `install.sh`.
+
+## Cumulative v0.3.9-alpha coverage retained from earlier builds
+
 ## Highlights since v0.3.8-alpha
 
 Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used. Newer WeClaw builds can consume the latest p2.10a75-p2.10a95 status, token, Compact, TRIM, and payload-safety contracts.
