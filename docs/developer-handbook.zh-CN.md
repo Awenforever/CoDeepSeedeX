@@ -30,9 +30,9 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`
-- 最新闭合文档同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`
-- 当前公开Release note同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`
+- 当前内部开发检查点：`p2.12a12-clean-release-highlights`
+- 最新闭合文档同步检查点：`p2.12a12-clean-release-highlights`
+- 当前公开Release note同步检查点：`p2.12a12-clean-release-highlights`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
@@ -1759,3 +1759,15 @@ p2.12a11清理中文开发手册中残留的旧公开tag块。该旧块仍写着
 2. 保留正确的公开tag保护块。
 3. 增加测试断言，禁止中文当前状态块继续包含`ab680ee`。
 4. 不移动公开`v0.3.9-alpha` tag，不更新GitHub Release。
+
+## p2.12a12 Clean v0.3.9-alpha Release highlights
+
+p2.12a12将公开`v0.3.9-alpha` Release正文重写为干净的Highlights清单，只解释相对`v0.3.8-alpha`的用户可见差异。
+
+Release note质量规则：
+
+1. 正文不写重复的Release标题。
+2. 正文不拆成validation、旧累计块、pricing节点、plan closure节点等内部流程标题。
+3. 只保留一个有机的Highlights清单，覆盖`v0.3.8-alpha`到`v0.3.9-alpha`的功能delta。
+4. 公开Release正文不得出现内部p节点名。
+5. 保留WeClaw最低版本要求和公开资产说明。

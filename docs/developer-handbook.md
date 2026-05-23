@@ -34,9 +34,9 @@ If documentation structure changes, tests must be updated to the new contract. D
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`
-- Latest closed documentation sync checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`
-- Current public Release note synchronization checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`.
+- Current internal development checkpoint: `p2.12a12-clean-release-highlights`
+- Latest closed documentation sync checkpoint: `p2.12a12-clean-release-highlights`
+- Current public Release note synchronization checkpoint: `p2.12a12-clean-release-highlights`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
@@ -1803,3 +1803,15 @@ This node is documentation-only:
 2. Keep the corrected public-tag protection block.
 3. Add a regression assertion that the Chinese current-state block no longer contains `ab680ee`.
 4. Do not move public `v0.3.9-alpha` and do not update the GitHub Release.
+
+## p2.12a12 Clean v0.3.9-alpha Release highlights
+
+p2.12a12 rewrites the public `v0.3.9-alpha` Release body into a clean Highlights list that explains the user-visible diff from `v0.3.8-alpha`.
+
+Release-note quality rules:
+
+1. Do not include a redundant Release-title heading in the body.
+2. Do not split the body into internal workflow sections such as validation, old cumulative blocks, pricing nodes, or plan-closure nodes.
+3. Keep one coherent Highlights list covering the functional delta from `v0.3.8-alpha` to `v0.3.9-alpha`.
+4. Keep internal p-node names out of the public Release body.
+5. Keep the WeClaw minimum version requirement and public assets statement.

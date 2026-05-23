@@ -1510,3 +1510,16 @@ Scope:
 - Preserve the corrected `v0.3.9-alpha = release-closeout tag target` block.
 - Update docs readiness tests to assert that the Chinese current-state block no longer contains `ab680ee`.
 - This node does not move public `v0.3.9-alpha` and does not update GitHub Release assets.
+
+## p2.12a12 Clean v0.3.9-alpha Release highlights
+
+Date: 2026-05-23
+
+Scope:
+
+- Replace the overly fragmented `v0.3.9-alpha` Release body with one clean Highlights list.
+- Describe the user-visible diff from `v0.3.8-alpha` to `v0.3.9-alpha`.
+- Remove redundant body title, internal workflow headings, validation section, old cumulative block headings, internal p-node references, and repeated implementation-log fragments.
+- Keep the WeClaw minimum version requirement.
+- Keep Release assets as `bootstrap.sh` and `install.sh`.
+- Update GitHub Release and move public `v0.3.9-alpha` after tests pass.

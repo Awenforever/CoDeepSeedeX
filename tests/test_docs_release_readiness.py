@@ -31,15 +31,61 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
 
     assert "Current public Release: `v0.3.9-alpha`" in en_current
     assert "Current public Release commit: `v0.3.9-alpha tag target after Release closeout`" in en_current
-    assert "Current internal development checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
-    assert "Current public Release note synchronization checkpoint: `p2.12a11-doc-duplicate-tag-block-cleanup`" in en_current
+    assert "Current internal development checkpoint: `p2.12a12-clean-release-highlights`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.12a12-clean-release-highlights`" in en_current
+    assert "Current public Release note synchronization checkpoint: `p2.12a12-clean-release-highlights`" in en_current
     assert "  - `v0.3.9-alpha = release-closeout tag target`" in en_current
 
     assert "当前公开Release：`v0.3.9-alpha`" in zh_current
     assert "当前公开Release提交：`release-closeout tag target`" in zh_current
-    assert "当前内部开发检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
-    assert "当前公开Release note同步检查点：`p2.12a11-doc-duplicate-tag-block-cleanup`" in zh_current
+    assert "当前内部开发检查点：`p2.12a12-clean-release-highlights`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.12a12-clean-release-highlights`" in zh_current
+    assert "当前公开Release note同步检查点：`p2.12a12-clean-release-highlights`" in zh_current
     assert "  - `v0.3.9-alpha = release-closeout tag target`" in zh_current
     assert "ab680ee" not in zh_current
+
+def test_release_notes_are_clean_user_facing_highlights() -> None:
+    body = _read("docs/release-notes-v0.3.9-alpha.md")
+    lower = body.lower()
+
+    required = [
+        "requires `weclaw_dev >= v0.1.9-alpha`",
+        "highlights since v0.3.8-alpha",
+        "weclaw status and details are now dsproxy-owned",
+        "current-session token and cost accounting",
+        "provider usage remains authoritative",
+        "prompt cache hit/miss accounting",
+        "model context window",
+        "`auto_compact_ratio = 0.90`",
+        "token-first compact and trim",
+        "runtime payload reports are persisted",
+        "semantic payload compaction",
+        "successful pytest output containing negated phrases",
+        "codex profile compatibility",
+        "deepseek pricing and cost display are cny-first",
+        "same-version commit-aware upgrade",
+        "bootstrap.sh` and `install.sh",
+    ]
+    for marker in required:
+        assert marker in lower
+
+    forbidden = [
+        "# CoDeepSeedeX v0.3.9-alpha release notes",
+        "Changes since the previous published v0.3.9-alpha build",
+        "Fixes since the previous published v0.3.9-alpha build",
+        "Validation for this Release update",
+        "Cumulative v0.3.9-alpha coverage retained from earlier builds",
+        "Final Plan closure / tests and docs contract",
+        "Pricing daily refresh contract",
+        "Pricing owned refresh contract",
+        "Semantic payload compaction production validation",
+        "Internal marker:",
+        "p2.10a",
+        "p2.11",
+        "p2.12",
+        "run_ok",
+        "focused tests",
+        "full test",
+    ]
+    for marker in forbidden:
+        assert marker not in body
