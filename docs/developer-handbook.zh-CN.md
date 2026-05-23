@@ -265,6 +265,10 @@ p2.12a13之后的文档边界：
 
 - 如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 
+
+p2.13a2固化当前Compact职责边界：当Codex内部发生原生`/compact`或auto-compact时，它仍是session级摘要主路径；CoDeepSeedeX runtime Compact只作为DeepSeek payload安全兜底层。dsproxy可以通过HTTP payload中经审计的Codex summary prefix观察native summary，但必须声明这是payload证据推断，不是Codex内部session真值。Codex native summary、dsproxy persistent summary和semantic payload summary都必须避免被dsproxy再次LLM摘要；只有硬上限安全场景允许确定性emergency shrink。`/v1/responses`不得在上游报告completion tokens时返回`status=completed`且`output=[]`、`output_text=""`。
+
+
 ## 12. 新对话启动检查清单
 
 任何修改前先进行只读审计：

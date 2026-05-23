@@ -1,3 +1,19 @@
+## p2.13a2 Codex native Compact observability and Responses output contract
+
+Date: 2026-05-23
+
+Scope:
+
+- Treat CoDeepSeedeX runtime Compact as a fallback-only path after Codex native compact summaries are present.
+- Detect Codex native compact summaries by the audited Codex summary prefix and protect them from dsproxy LLM re-compaction.
+- Expose `codex_native_compact` in WeClaw-facing runtime status as an observed/inferred dsproxy payload contract, not as Codex internal session truth.
+- Keep remote `responses/compact` unsupported for the managed DeepSeek third-party provider unless future request evidence proves Codex is incorrectly calling it.
+- Reject `/v1/responses` completed envelopes that would otherwise return `output=[]` and `output_text=""` while upstream reports completion tokens.
+
+Validation note:
+
+- Full-test pricing discount validity failure is pre-existing on clean `origin/master` and remains tracked separately.
+
 ## p2.13a1 Handbook current-state cleanup and Codex native Compact/Fork audit prep
 
 Date: 2026-05-23

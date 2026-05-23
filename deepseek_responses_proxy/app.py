@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.12a9-semantic-low-risk-classifier-candidate-fix"
+PROXY_INTERNAL_VERSION = "p2.13a2-codex-compact-and-responses-output-contract"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -7736,13 +7736,11 @@ def _clamp_int(value: int, low: int, high: int) -> int:
 
 
 def _last_persistent_compaction_summary_index(messages: list[dict[str, Any]]) -> int | None:
-    marker = "[deepseek-proxy persistent compaction summary]"
     for index in range(len(messages) - 1, -1, -1):
         message = messages[index]
         if not isinstance(message, dict):
             continue
-        content = _plain_text_from_content(message.get("content", ""))
-        if marker in content:
+        if _is_protected_compaction_summary_message(message):
             return index
     return None
 
@@ -8059,10 +8057,14 @@ def _build_compaction_material(
     compactable = messages[:recent_start]
     rendered: list[str] = []
     total = 0
+    raw_compactable_count = 0
 
     for index, message in enumerate(compactable):
         if not isinstance(message, dict):
             continue
+        if _is_protected_compaction_summary_message(message):
+            continue
+        raw_compactable_count += 1
         chunk = _message_to_compaction_material(message, index=index)
         if total + len(chunk) > material_chars:
             remaining = max(0, material_chars - total)
@@ -8072,7 +8074,7 @@ def _build_compaction_material(
         rendered.append(chunk)
         total += len(chunk) + 2
 
-    return "\n\n".join(rendered), len(compactable)
+    return "\n\n".join(rendered), raw_compactable_count
 
 
 def _compact_prompt_sha256(text: str) -> str:
@@ -8221,6 +8223,213 @@ CODEX_NATIVE_COMPACT_PROMPT_SHA256 = "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9
 CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256 = "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
 CODEX_NATIVE_COMPACT_SOURCE_COMMIT = "main"
 
+DSPROXY_PERSISTENT_COMPACTION_SUMMARY_MARKER = "[deepseek-proxy persistent compaction summary]"
+DSPROXY_SEMANTIC_COMPACTION_SUMMARY_MARKERS = (
+    "[semantic flattened tool transcript compacted by CoDeepSeedeX]",
+    "[flattened tool transcript compacted by CoDeepSeedeX]",
+)
+
+
+def _is_codex_native_compaction_summary_text(text: str) -> bool:
+    return str(text or "").lstrip().startswith(CODEX_NATIVE_COMPACT_SUMMARY_PREFIX)
+
+
+def _is_dsproxy_compaction_summary_text(text: str) -> bool:
+    value = str(text or "")
+    return DSPROXY_PERSISTENT_COMPACTION_SUMMARY_MARKER in value or any(
+        marker in value for marker in DSPROXY_SEMANTIC_COMPACTION_SUMMARY_MARKERS
+    )
+
+
+def _is_codex_native_compaction_summary_message(message: dict[str, Any]) -> bool:
+    if not isinstance(message, dict):
+        return False
+    return _is_codex_native_compaction_summary_text(_plain_text_from_content(message.get("content", "")))
+
+
+def _is_protected_compaction_summary_message(message: dict[str, Any]) -> bool:
+    if not isinstance(message, dict):
+        return False
+    text = _plain_text_from_content(message.get("content", ""))
+    return _is_codex_native_compaction_summary_text(text) or _is_dsproxy_compaction_summary_text(text)
+
+
+def _protected_compaction_summary_observation(
+    messages: list[dict[str, Any]],
+    *,
+    keep_recent_messages: int,
+) -> dict[str, Any]:
+    recent_start = _safe_recent_message_start(messages, keep_recent_messages)
+    summary_indexes: list[int] = []
+    codex_indexes: list[int] = []
+    dsproxy_indexes: list[int] = []
+
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        text = _plain_text_from_content(message.get("content", ""))
+        is_codex = _is_codex_native_compaction_summary_text(text)
+        is_dsproxy = _is_dsproxy_compaction_summary_text(text)
+        if is_codex or is_dsproxy:
+            summary_indexes.append(index)
+            if is_codex:
+                codex_indexes.append(index)
+            if is_dsproxy:
+                dsproxy_indexes.append(index)
+
+    compactable_message_count = recent_start
+    protected_compactable_indexes = [index for index in summary_indexes if index < recent_start]
+    raw_compactable_message_count = max(0, compactable_message_count - len(protected_compactable_indexes))
+
+    latest_codex_index = codex_indexes[-1] if codex_indexes else None
+    latest_codex_sha256 = None
+    if latest_codex_index is not None:
+        latest_text = _plain_text_from_content(messages[latest_codex_index].get("content", ""))
+        latest_codex_sha256 = hashlib.sha256(latest_text.encode("utf-8", errors="replace")).hexdigest()
+
+    return {
+        "available": True,
+        "observation_model": "dsproxy_observed_http_payload_and_managed_profile_contract",
+        "truth_scope": "observed_or_inferred_not_codex_internal_session_truth",
+        "summary_detected": bool(summary_indexes),
+        "codex_native_summary_detected": bool(codex_indexes),
+        "dsproxy_summary_detected": bool(dsproxy_indexes),
+        "summary_count": len(summary_indexes),
+        "codex_native_summary_count": len(codex_indexes),
+        "dsproxy_summary_count": len(dsproxy_indexes),
+        "latest_codex_native_summary_index": latest_codex_index,
+        "latest_codex_native_summary_sha256": latest_codex_sha256,
+        "compactable_message_count": compactable_message_count,
+        "protected_compactable_message_count": len(protected_compactable_indexes),
+        "raw_compactable_message_count": raw_compactable_message_count,
+        "protected_from_dsproxy_recompact": bool(summary_indexes),
+        "llm_recompact_native_summary_allowed": False,
+        "emergency_summary_shrink_allowed": True,
+        "raw_summary_exposed": False,
+        "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+        "redacted": True,
+    }
+
+
+def _codex_native_compact_observation(
+    messages: list[dict[str, Any]],
+    *,
+    request_payload: dict[str, Any] | None = None,
+    path: str = "/v1/responses",
+) -> dict[str, Any]:
+    protected = _protected_compaction_summary_observation(
+        messages,
+        keep_recent_messages=max(1, _context_compaction_env_config().get("keep_recent_messages", 24)),
+    )
+    provider_id = os.environ.get("DEEPSEEK_PROXY_CODEX_PROVIDER_ID") or (
+        "deepseek-thinking-proxy" if _thinking_enabled() else "deepseek-proxy"
+    )
+    context_contract = _runtime_token_first_context_contract_for_payload(request_payload or {})
+    return {
+        "available": True,
+        "observation_model": protected["observation_model"],
+        "truth_scope": protected["truth_scope"],
+        "profile_contract": {
+            "provider_id": provider_id,
+            "managed_by_dsproxy": True,
+            "remote_compaction_expected": False,
+            "expected_compact_path": "ordinary_responses_inline_compact",
+            "forbidden_or_unexpected_path": "responses/compact",
+            "model_context_window_tokens": context_contract.get("model_context_window_tokens"),
+            "auto_compact_threshold_tokens": context_contract.get("auto_compact_threshold_tokens"),
+            "auto_compact_ratio": context_contract.get("auto_compact_ratio"),
+        },
+        "latest_request_observation": {
+            "compact_request_observed": False,
+            "path": path,
+            "evidence": ["ordinary_responses_path_observed_by_dsproxy"],
+            "confidence": "path_only",
+        },
+        "latest_summary_observation": {
+            "summary_detected": protected["codex_native_summary_detected"],
+            "summary_count": protected["codex_native_summary_count"],
+            "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+            "latest_summary_message_index": protected["latest_codex_native_summary_index"],
+            "latest_summary_sha256": protected["latest_codex_native_summary_sha256"],
+            "protected_from_dsproxy_recompact": protected["protected_from_dsproxy_recompact"],
+            "raw_summary_exposed": False,
+        },
+        "remote_compact_guard": {
+            "responses_compact_seen": False,
+            "unexpected_remote_compact_call_seen": False,
+            "expected_for_managed_deepseek_profile": False,
+            "status": "not_seen",
+            "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
+        },
+        "fallback_policy": {
+            "dsproxy_runtime_compact_role": "fallback_only",
+            "native_summary_protected": protected["protected_from_dsproxy_recompact"],
+            "llm_recompact_native_summary_allowed": False,
+            "emergency_summary_shrink_allowed": True,
+            "emergency_summary_shrink_method": "deterministic_truncate_middle",
+        },
+    }
+
+
+def _codex_native_compact_status_from_report(
+    report: dict[str, Any] | None,
+    *,
+    profile: str | None = None,
+) -> dict[str, Any]:
+    observed = report.get("codex_native_compact") if isinstance(report, dict) else None
+    if isinstance(observed, dict):
+        return observed
+    provider_id = "deepseek-thinking-proxy" if str(profile or "").endswith("thinking") else "deepseek-proxy"
+    context_contract = _runtime_token_first_context_contract_for_payload(
+        {},
+        active_profile=str(profile or "").strip() or None,
+    )
+    return {
+        "available": True,
+        "observation_model": "dsproxy_observed_http_payload_and_managed_profile_contract",
+        "truth_scope": "observed_or_inferred_not_codex_internal_session_truth",
+        "profile_contract": {
+            "provider_id": provider_id,
+            "managed_by_dsproxy": True,
+            "remote_compaction_expected": False,
+            "expected_compact_path": "ordinary_responses_inline_compact",
+            "forbidden_or_unexpected_path": "responses/compact",
+            "model_context_window_tokens": context_contract.get("model_context_window_tokens"),
+            "auto_compact_threshold_tokens": context_contract.get("auto_compact_threshold_tokens"),
+            "auto_compact_ratio": context_contract.get("auto_compact_ratio"),
+        },
+        "latest_request_observation": {
+            "compact_request_observed": False,
+            "path": None,
+            "evidence": [],
+            "confidence": "none",
+        },
+        "latest_summary_observation": {
+            "summary_detected": False,
+            "summary_count": 0,
+            "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
+            "latest_summary_message_index": None,
+            "latest_summary_sha256": None,
+            "protected_from_dsproxy_recompact": True,
+            "raw_summary_exposed": False,
+        },
+        "remote_compact_guard": {
+            "responses_compact_seen": False,
+            "unexpected_remote_compact_call_seen": False,
+            "expected_for_managed_deepseek_profile": False,
+            "status": "not_seen",
+            "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
+        },
+        "fallback_policy": {
+            "dsproxy_runtime_compact_role": "fallback_only",
+            "native_summary_protected": True,
+            "llm_recompact_native_summary_allowed": False,
+            "emergency_summary_shrink_allowed": True,
+            "emergency_summary_shrink_method": "deterministic_truncate_middle",
+        },
+    }
+
+
 
 def _codex_native_compact_source_evidence_contract() -> dict[str, Any]:
     return {
@@ -8328,6 +8537,10 @@ def _compaction_prompt_messages(
     material_chars: int,
     keep_recent_messages: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    protection_observation = _protected_compaction_summary_observation(
+        messages,
+        keep_recent_messages=keep_recent_messages,
+    )
     material, compactable_count = _build_compaction_material(
         messages,
         material_chars=material_chars,
@@ -8384,6 +8597,7 @@ def _compaction_prompt_messages(
         "compaction_prompt_fingerprint": fingerprint,
         "compact_material_classifier_dry_run": classifier_dry_run,
         "retained_recent_policy": retained_recent_policy,
+        "protected_summary_observation": protection_observation,
         "codex_native_source_evidence": _codex_native_compact_source_evidence_contract(),
         "compact_prompt_alignment": _compact_prompt_alignment_contract(),
         "codex_summary_prefix": {
@@ -8628,6 +8842,18 @@ async def _compact_chat_history_for_codex_like_persistence(
         "primary_control_unit": "tokens",
         "token_accounting_scope": policy_decision.get("token_accounting_scope"),
     }
+    protected_summary_observation = _protected_compaction_summary_observation(
+        messages,
+        keep_recent_messages=int(config["keep_recent_messages"]),
+    )
+    codex_native_observation = _codex_native_compact_observation(
+        messages,
+        request_payload=request_payload,
+        path="/v1/responses",
+    )
+    report["protected_summary_observation"] = protected_summary_observation
+    report["codex_native_compact"] = codex_native_observation
+    report["fallback_policy"] = codex_native_observation["fallback_policy"]
 
     if not config["enabled"]:
         report["reason"] = "disabled"
@@ -8650,6 +8876,21 @@ async def _compact_chat_history_for_codex_like_persistence(
             messages,
             config,
             audit_source="too_few_messages_pre_compaction",
+        )
+        return messages, report
+
+    if (
+        protected_summary_observation.get("protected_compactable_message_count")
+        and not protected_summary_observation.get("raw_compactable_message_count")
+    ):
+        report["reason"] = "native_compaction_summary_already_present_no_raw_material_to_compact"
+        report["summary_source"] = "not_invoked_native_summary_protected"
+        report["compacted"] = False
+        _attach_compaction_dry_run_audit_to_report(
+            report,
+            messages,
+            config,
+            audit_source="native_summary_protected_no_raw_material",
         )
         return messages, report
 
@@ -14343,6 +14584,54 @@ def _build_response_envelope(
     }
 
 
+
+def _ensure_completed_response_output_contract(
+    *,
+    response_body: dict[str, Any],
+    assistant_message: dict[str, Any],
+    deepseek_response: dict[str, Any],
+) -> None:
+    """Reject completed Responses envelopes that would be empty for Codex/ACP.
+
+    A DeepSeek response can be syntactically valid ChatCompletions while still
+    being unusable as an OpenAI Responses object, for example when it reports
+    completion tokens but contains neither assistant text nor tool calls. In that
+    case returning status=completed with output=[] and output_text="" makes Codex
+    and ACP fail later with an opaque empty-response error. Surface a proxy error
+    at the mapping boundary instead.
+    """
+    if response_body.get("status") != "completed":
+        return
+
+    output_items = response_body.get("output")
+    output_text = str(response_body.get("output_text") or "")
+    if isinstance(output_items, list) and output_items:
+        return
+    if output_text.strip():
+        return
+
+    usage = deepseek_response.get("usage") if isinstance(deepseek_response, dict) else {}
+    completion_tokens = int((usage or {}).get("completion_tokens") or 0)
+    has_tool_calls = bool(assistant_message.get("tool_calls"))
+    assistant_content = _plain_text_from_content(assistant_message.get("content", ""))
+
+    if completion_tokens > 0 and not has_tool_calls:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "upstream": "deepseek",
+                "error_type": "invalid_responses_output_contract",
+                "reason": "completed_response_without_assistant_output",
+                "message": "DeepSeek reported completion tokens but dsproxy could not map any assistant text or tool call into Responses output.",
+                "completion_tokens": completion_tokens,
+                "assistant_content_available": bool(assistant_content.strip()),
+                "output_item_count": len(output_items) if isinstance(output_items, list) else 0,
+                "output_text_empty": True,
+                "action": "inspect upstream choices[0].message.content and Responses mapping before returning completed output",
+            },
+        )
+
+
 def _sse_event(event: str, data: dict[str, Any] | str) -> bytes:
     payload = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
@@ -19011,6 +19300,9 @@ def _runtime_weclaw_status(
         compaction_report=effective_compaction_report,
         trimming_report=trimming_report,
     ))
+    codex_native_compact_status = _token_only_public_runtime_contract(
+        _codex_native_compact_status_from_report(effective_compaction_report, profile=profile)
+    )
     semantic_status = _token_only_public_runtime_contract(_weclaw_enrich_semantic_compaction_status(
         _semantic_compaction_runtime_status(runtime_events=semantic_runtime_events)
     ))
@@ -19054,6 +19346,7 @@ def _runtime_weclaw_status(
         "cost": cost,
         "balance": balance_contract,
         "runtime_payload_guard": runtime_payload_guard,
+        "codex_native_compact": codex_native_compact_status,
         "compaction": {
             "available": True,
             "is_estimated": True,
@@ -19061,6 +19354,7 @@ def _runtime_weclaw_status(
             "unit": "tokens",
             "runtime_context": runtime_token_context,
             "runtime_payload_guard": runtime_payload_guard,
+            "codex_native_compact": codex_native_compact_status,
             "token_first": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
             "token_contract": runtime_payload_guard.get("token_first_compaction") if isinstance(runtime_payload_guard, dict) else None,
             "compact_audit": (
@@ -19696,6 +19990,11 @@ def create_app(
             model=model,
             previous_response_id=previous_response_id,
             output_items=output_items,
+            deepseek_response=deepseek_response,
+        )
+        _ensure_completed_response_output_contract(
+            response_body=response_body,
+            assistant_message=assistant_message,
             deepseek_response=deepseek_response,
         )
         _debug_trace_event(
