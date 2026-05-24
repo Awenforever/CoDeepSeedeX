@@ -1,3 +1,56 @@
+## p2.13a6 Documentation current-state sync
+
+Date: 2026-05-24
+
+Scope:
+
+- Synchronize `docs/developer-handbook.md` and `docs/developer-handbook.zh-CN.md` from the stale `d674a61` / `p2.12a13-remove-tracked-release-notes` startup baseline to the current `82a4428` / `p2.13a5-token-first-trim-profile-scoped-report` public Latest baseline.
+- Update current-state markers, startup checklist markers, long-term task checklist anchors, and p2.13 Compact/TRIM current-rule notes.
+- Record that repository-tracked per-release note files remain retired; public GitHub Release text stays on the GitHub Release page and may only be generated from temporary files.
+- Advance developer internal runtime metadata to `p2.13a6-docs-current-state-sync` while keeping public `v0.3.9-alpha` Release metadata at the `82a4428` public Release baseline.
+
+Validation:
+
+- `git diff --check`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `python -m py_compile deepseek_responses_proxy/app.py`
+- focused documentation/version tests
+- full tests
+
+Release boundary:
+
+- Public `v0.3.9-alpha` remains at `82a4428`.
+- No GitHub Release update is performed.
+- No Release assets are rebuilt.
+- `the retired v0.3.9-alpha per-release note source under docs` must not be recreated.
+
+## v0.3.9-alpha Latest update to p2.13a5
+
+Date: 2026-05-24
+
+Scope:
+
+- Move the public `v0.3.9-alpha` Latest Release from the previous peeled commit `d674a61` to `82a4428` after p2.13a5 validation.
+- Keep the GitHub Release title `CoDeepSeedeX v0.3.9-alpha` and state as non-draft, non-prerelease, Latest ordinary Release.
+- Re-upload the public Release assets `bootstrap.sh` and `install.sh`.
+- Write Release text through a temporary `/tmp` notes file instead of creating any tracked repository Release-note source.
+
+Final state:
+
+- `master = origin/master = 82a4428`.
+- `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`.
+- Public `v0.3.9-alpha` peeled commit is `82a4428`.
+- GitHub Latest Release is `v0.3.9-alpha`, `isDraft=false`, `isPrerelease=false`.
+- Release assets are exactly `bootstrap.sh` and `install.sh`.
+- Expected public Release install version is `public version: v0.3.9-alpha | 82a4428` and `internal version: p2.13a5-token-first-trim-profile-scoped-report | 82a4428`.
+
+Boundary:
+
+- Do not recreate `the retired v0.3.9-alpha per-release note source under docs`.
+- Do not add repository README links to a tracked Release-note file.
+- Future Release updates require an explicit Release-update task.
+
 ## p2.13a5 Token-first TRIM profile-scoped report
 
 Date: 2026-05-24

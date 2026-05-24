@@ -24,20 +24,21 @@
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开Release：`v0.3.9-alpha`
-- 当前公开Release提交：`d674a61`
+- 当前公开Release提交：`82a4428`
 - GitHub Latest Release：`v0.3.9-alpha`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.12a13-remove-tracked-release-notes`
-- 最新闭合文档同步检查点：`p2.12a13-remove-tracked-release-notes`
-- 当前公开Release note同步检查点：`p2.12a13-remove-tracked-release-notes`
+- 当前内部开发检查点：`p2.13a6-docs-current-state-sync`
+- 最新闭合文档同步检查点：`p2.13a6-docs-current-state-sync`
+- 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
+- 最新WeClaw-facing运行时检查点：`p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
 - WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.3.9-alpha = d674a61`
+  - `v0.3.9-alpha = 82a4428`，这是公开Latest Release的peeled commit。
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -45,7 +46,7 @@
 - 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
 
 本手册是新开发对话的启动上下文。它应维护当前状态、稳定规则、任务总线、Release规则和高价值经验。详细时间线放入`docs/development-log.md`。
-- 当前公开Release note同步检查点：`p2.10a113-release-note-marker`。
+- 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
 
 ### Runtime payload report持久化
 
@@ -227,15 +228,15 @@ VM -> 192.168.231.1:7896 -> Windows portproxy -> 127.0.0.1:7892 -> 极连云
 - 新经验先判断是“长期规则”还是“流水记录”。长期规则进手册，流水记录进development log。
 - 文档结构变化必须同步测试契约。
 
-## 11. 当前主线摘要：p2.12 / v0.3.9-alpha Release收尾
+## 11. 当前主线摘要：p2.13 / v0.3.9-alpha Latest token-first TRIM稳定化之后
 
-p2.12已经关闭`v0.3.9-alpha` Release稳定化和tracked Release-note清理线。当前新对话启动基线是p2.12a13收尾状态，不再是较早的p2.10a80/p2.10a81文档状态基线。
+p2.13关闭Codex native Compact观测、managed auto-compact ratio修复、pricing discount测试隔离，以及profile-scoped token-first TRIM稳定化这一线。当前新对话启动基线是`p2.13a5`公开Latest状态加本次文档同步检查点，不再是较早的`p2.12a13` Release-note清理状态。
 
 当前已验证公开Release基线：
 
-- `master = origin/master = d674a61`
-- `p2.12a13-remove-tracked-release-notes = d674a61`
-- `v0.3.9-alpha = d674a61`
+- 本次文档同步前，`master = origin/master = 82a4428`。
+- `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`。
+- `v0.3.9-alpha = 82a4428`
 - GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release状态：非draft、非prerelease、Latest普通Release
 - Release资产：`bootstrap.sh`、`install.sh`
@@ -260,6 +261,17 @@ p2.12a13之后的文档边界：
 - Runtime Compact/Trim report metadata可在proxy重启后从SQLite恢复。
 - DeepSeek V4 Pricing/Cost保持CNY-first，历史turn/session成本保持ledger-based语义。
 - 公开Release资产仍然只能是`bootstrap.sh`和`install.sh`。
+
+p2.13当前规则：
+
+- 当Codex生成native summary时，Codex native Compact仍是session级摘要主路径。CoDeepSeedeX runtime Compact只作为DeepSeek payload安全兜底层。
+- WeClaw-facing runtime status中的`codex_native_compact`是dsproxy-observed或inferred payload evidence，不是Codex内部session真值。
+- Codex native summary、dsproxy persistent summary和semantic payload summary不得被dsproxy再次LLM摘要；只有硬安全上限场景允许确定性emergency shrink。
+- `/v1/responses`不得在上游报告completion tokens时返回`status=completed`且`output=[]`、`output_text=""`。
+- managed auto-compact ratio固定为`0.90`。`DEEPSEEK_PROXY_AUTO_COMPACT_RATIO`和`CODEEPSEEDEX_AUTO_COMPACT_RATIO`是旧实验残留，除非显式CLI repair/install参数使用，否则不得改变managed契约。
+- 断言bundled pricing discount metadata的测试必须把`DEEPSEEK_PROXY_PRICING_PATH`固定到项目`config/pricing.json`；正常运行时，用户pricing cache合法地可以遮蔽bundled metadata。
+- WeClaw-facing token-first TRIM必须按profile/session选择。其他profile的旧in-memory TRIM report不能遮蔽匹配的persisted report。cross-profile report只能作为诊断。
+- 当current session有token context但没有匹配的live TRIM report时，dsproxy可以暴露profile-scoped `not_triggered` fallback，并明确标注`source=profile_scoped_current_session_token_status_fallback`和`precision=current_session_context_window_estimate_not_live_request_payload`。
 
 `v0.3.9-alpha` Release要求：
 
@@ -291,8 +303,8 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
-git rev-parse --short p2.10a80-docs-release-latest^{}
-git rev-parse --short p2.10a84-token-first-compact-trim-contract^{} || true
+git rev-parse --short p2.13a5-token-first-trim-profile-scoped-report^{}
+git rev-parse --short p2.13a2-codex-compact-and-responses-output-contract^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -304,17 +316,17 @@ dsproxy --version
 
 ```text
 worktree clean
-master=origin/master=d674a61
-v0.3.9-alpha=d674a61
-p2.12a13-remove-tracked-release-notes=d674a61
+master=origin/master=82a4428
+v0.3.9-alpha=82a4428
+p2.13a5-token-first-trim-profile-scoped-report=82a4428
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 the retired v0.3.9-alpha per-release note file under docs absent
 README release-note file links absent
-public version: v0.3.9-alpha | d674a61
-internal version: p2.12a13-remove-tracked-release-notes | d674a61
+public version: v0.3.9-alpha | 82a4428
+internal version: p2.13a5-token-first-trim-profile-scoped-report | 82a4428
 ```
 
 然后阅读`docs/developer-handbook.md`。只有需要历史回溯时再阅读`docs/development-log.md`。
@@ -346,12 +358,13 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.9-
 
 | ID | 主线任务 | 预期指标 | 当前版本 / 锚点 | 当前状态 | 最近更新 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 | WeClaw完整遥测基线 | WeClaw可通过dsproxy拥有的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance、Details、tokenizer状态和compaction。 | `v0.3.9-alpha = 80bb0ea` | 已闭合 | 2026-05-19 | WeClaw侧未回报阻塞问题。v0.3.9-alpha提升为Latest后，VM安装和运行验证通过。 |
+| P0 | WeClaw完整遥测基线 | WeClaw可通过dsproxy拥有的CLI/HTTP契约消费profile、model、effort、context、usage聚合、pricing、cost、balance、Details、tokenizer状态和compaction。 | `v0.3.9-alpha = 82a4428` | 已闭合 | 2026-05-19 | WeClaw侧未回报阻塞问题。v0.3.9-alpha提升为Latest后，VM安装和运行验证通过。 |
 | P0.4 | Token shadow accounting和token-vs-char drift观测 | token级状态、本地tokenizer估算、provider usage和字符级payload guard保持明确分离。 | `p2.10a65`到`p2.10a68` | 已为DeepSeek profile-tokenizer accounting和prompt segmentation实现 | 2026-05-18 | provider usage仍是计费权威。本地tokenizer accounting用于显示和漂移分析。 |
 | P0.5 | Semantic payload compaction加固 | 在改写用户意图或patch关键payload前，存在dry-run、canary、telemetry、rollback和禁止内容规则。 | `p2.10a52-semantic-payload-compaction-tui-plan` | 已规划，未激活 | 2026-05-18 | 没有具体需求重新打开前，不要实施。 |
 | P0.6 | Codex TUI第三方profile命令兼容性 | 除非未来auto-compact证据证明不同，manual compact路径仍按普通Responses流量兼容。 | `p2.10a53-tui-compact-path-evidence-sync` | 部分闭合 | 2026-05-18 | 没有新证据前不要添加`/responses/compact`。 |
+| P0.7 | Codex native Compact和token-first TRIM稳定化 | native Compact summary受保护不被dsproxy二次摘要，managed ratio为0.90，token-first TRIM按profile/session选择。 | `p2.13a2`到`p2.13a5`；公开Release `82a4428` | 已闭合 | 2026-05-24 | p2.13a5暴露profile-scoped `not_triggered` TRIM fallback，但不把它伪装为live payload trace。 |
 | P1 | AnyCodeX级通用provider架构 | 在保持CoDeepSeedeX现有公开接口不破坏的前提下，形成基于证据的adapter和capability方案。 | `p2.10a40-generalized-provider-architecture-audit-report` | 已规划，未激活 | 2026-05-18 | AnyCodeX仍只是未来方向。 |
-| P2 | `v0.3.9-alpha`公开Latest Release | GitHub Latest Release存在，`prerelease=false`，资产为`bootstrap.sh`和`install.sh`，Release notes不重复标题且包含WeClaw最低版本要求。 | `v0.3.9-alpha = 80bb0ea` | 已完成 | 2026-05-19 | Release notes包含`Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| P2 | `v0.3.9-alpha`公开Latest Release | GitHub Latest Release存在，`prerelease=false`，资产为`bootstrap.sh`和`install.sh`，Release notes不重复标题且包含WeClaw最低版本要求。 | `v0.3.9-alpha = 82a4428` | 已完成 | 2026-05-19 | Release notes包含`Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | 全源码优先补丁纪律 | 补丁设计基于上传的完整文件或完整复制的源码/文档文件，而不是grep/rg片段。 | 手册规则6.1.13 | 生效中 | 2026-05-18 | `grep`和`rg`只能用于识别候选文件。 |
 
 清单维护规则：

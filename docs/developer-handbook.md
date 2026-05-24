@@ -26,20 +26,21 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Main branch: `master`
 - Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `d674a61`
+- Current public Release commit: `82a4428`
 - GitHub Latest Release: `v0.3.9-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.12a13-remove-tracked-release-notes`
-- Latest closed documentation sync checkpoint: `p2.12a13-remove-tracked-release-notes`
-- Current public Release note synchronization checkpoint: `p2.12a13-remove-tracked-release-notes`.
+- Current internal development checkpoint: `p2.13a6-docs-current-state-sync`
+- Latest closed documentation sync checkpoint: `p2.13a6-docs-current-state-sync`
+- Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
+- Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = d674a61`
+  - `v0.3.9-alpha = 82a4428` as the public Latest Release peeled commit.
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
@@ -252,15 +253,15 @@ The handbook is an AI startup pack:
 - Do not reintroduce fragmented handoff, operations, install, usage, upgrade, security, troubleshooting, or release-note documents under `docs/`.
 - If a test still reads a retired path, update the test contract instead of preserving a ghost document.
 
-## 11. Current major-line summary: p2.12 / v0.3.9-alpha Release closeout
+## 11. Current major-line summary: p2.13 / v0.3.9-alpha Latest after token-first TRIM stabilization
 
-p2.12 closes the `v0.3.9-alpha` Release stabilization and tracked Release-note cleanup line. The current startup baseline is the p2.12a13 closeout state, not the older p2.10a80/p2.10a81 documentation-state baseline.
+p2.13 closes the Codex native Compact observability, managed auto-compact ratio repair, pricing discount test isolation, and profile-scoped token-first TRIM stabilization line. The current startup baseline is the `p2.13a5` public Latest state plus this documentation sync checkpoint, not the older `p2.12a13` Release-note cleanup state.
 
 Current verified public Release baseline:
 
-- `master = origin/master = d674a61`
-- `p2.12a13-remove-tracked-release-notes = d674a61`
-- `v0.3.9-alpha = d674a61`
+- `master = origin/master = 82a4428` before this documentation sync node.
+- `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`.
+- `v0.3.9-alpha = 82a4428`
 - GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - Release assets: `bootstrap.sh`, `install.sh`
@@ -286,6 +287,17 @@ User-visible changes since `v0.3.8-alpha` remain the cumulative `v0.3.9-alpha` R
 - Pricing/Cost remains CNY-first for DeepSeek V4 and ledger-based for historical turn/session cost semantics.
 - Public Release assets remain exactly `bootstrap.sh` and `install.sh`.
 
+p2.13-specific current rules:
+
+- Codex native Compact remains the session-level summary path when Codex produces native summaries. CoDeepSeedeX runtime Compact is a fallback-only DeepSeek payload safety layer.
+- `codex_native_compact` in WeClaw-facing runtime status is dsproxy-observed or inferred payload evidence, not Codex internal session truth.
+- Codex native summaries, dsproxy persistent summaries, and semantic payload summaries must not be re-compacted by dsproxy LLM summarization. Only deterministic emergency shrink remains allowed for hard safety limits.
+- `/v1/responses` must not return `status=completed` with `output=[]` and `output_text=""` when upstream reports completion tokens.
+- Managed auto-compact ratio is `0.90`. `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` and `CODEEPSEEDEX_AUTO_COMPACT_RATIO` are legacy experiment residue unless an explicit CLI repair/install option is used.
+- Tests that assert bundled pricing discount metadata must pin `DEEPSEEK_PROXY_PRICING_PATH` to project `config/pricing.json`; user pricing caches may legitimately mask bundled metadata in normal runtime.
+- WeClaw-facing token-first TRIM must be profile/session scoped. A stale in-memory TRIM report from another profile must not mask a matching persisted report. Cross-profile reports remain diagnostic only.
+- When the current session has token context but no matching live TRIM report, dsproxy may expose a profile-scoped `not_triggered` fallback with `source=profile_scoped_current_session_token_status_fallback` and `precision=current_session_context_window_estimate_not_live_request_payload`.
+
 Release requirement for `v0.3.9-alpha`:
 
 - Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
@@ -300,8 +312,8 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.3.9-alpha^{}
-git rev-parse --short p2.10a80-docs-release-latest^{}
-git rev-parse --short p2.10a84-token-first-compact-trim-contract^{} || true
+git rev-parse --short p2.13a5-token-first-trim-profile-scoped-report^{}
+git rev-parse --short p2.13a2-codex-compact-and-responses-output-contract^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
 gh release view v0.3.9-alpha --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
@@ -313,17 +325,17 @@ Expected current public Release baseline:
 
 ```text
 worktree clean
-master=origin/master=d674a61
-v0.3.9-alpha=d674a61
-p2.12a13-remove-tracked-release-notes=d674a61
+master=origin/master=82a4428
+v0.3.9-alpha=82a4428
+p2.13a5-token-first-trim-profile-scoped-report=82a4428
 GitHub Latest Release=v0.3.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 the retired v0.3.9-alpha per-release note file under docs absent
 README release-note file links absent
-public version: v0.3.9-alpha | d674a61
-internal version: p2.12a13-remove-tracked-release-notes | d674a61
+public version: v0.3.9-alpha | 82a4428
+internal version: p2.13a5-token-first-trim-profile-scoped-report | 82a4428
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -355,12 +367,13 @@ This checklist is the durable anti-drift task ledger. It must be updated after e
 
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, Details, tokenizer status, and compaction from dsproxy-owned CLI/HTTP contracts. | `v0.3.9-alpha = 80bb0ea` | Closed | 2026-05-19 | WeClaw side reported no blocking issue. VM installation and runtime validation passed after v0.3.9-alpha was promoted to Latest. |
+| P0 | WeClaw full telemetry baseline | WeClaw can consume profile, model, effort, context, usage aggregation, pricing, cost, balance, Details, tokenizer status, and compaction from dsproxy-owned CLI/HTTP contracts. | `v0.3.9-alpha = 82a4428` | Closed | 2026-05-19 | WeClaw side reported no blocking issue. VM installation and runtime validation passed after v0.3.9-alpha was promoted to Latest. |
 | P0.4 | Token shadow accounting and token-vs-char drift observability | Token-level status, local tokenizer estimates, provider usage, and char-level payload guards remain explicitly separated. | `p2.10a65` to `p2.10a68` | Implemented for DeepSeek profile-tokenizer accounting and prompt segmentation | 2026-05-18 | Provider usage remains billing-authoritative. Local tokenizer accounting is for display and drift analysis. |
 | P0.5 | Semantic payload compaction hardening | Dry-run, canary, telemetry, rollback, and forbidden-content rules exist before any mutation of user intent or patch-critical payloads. | Plan captured at `p2.10a52-semantic-payload-compaction-tui-plan` | Planned, not active | 2026-05-18 | Do not implement until a concrete requirement reopens this line. |
 | P0.6 | Codex TUI third-party profile command compatibility | Manual compact path evidence remains compatible with ordinary Responses traffic unless future auto-compact evidence proves otherwise. | Evidence captured at `p2.10a53-tui-compact-path-evidence-sync` | Partially closed | 2026-05-18 | Do not add `/responses/compact` without fresh evidence. |
+| P0.7 | Codex native Compact and token-first TRIM stabilization | Native Compact summaries are protected from dsproxy re-compaction, managed ratio is 0.90, and token-first TRIM is profile/session scoped. | `p2.13a2` to `p2.13a5`; public Release `82a4428` | Closed | 2026-05-24 | p2.13a5 exposes profile-scoped `not_triggered` TRIM fallback without pretending it is a live payload trace. |
 | P1 | AnyCodeX-level generalized provider architecture | Evidence-based adapter and capability plan that preserves existing CoDeepSeedeX public surfaces. | `p2.10a40-generalized-provider-architecture-audit-report` | Planned, not active | 2026-05-18 | AnyCodeX remains a future direction only. |
-| P2 | `v0.3.9-alpha` public Latest Release | GitHub Latest Release exists with `prerelease=false`, assets `bootstrap.sh` and `install.sh`, Release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 80bb0ea` | Completed | 2026-05-19 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
+| P2 | `v0.3.9-alpha` public Latest Release | GitHub Latest Release exists with `prerelease=false`, assets `bootstrap.sh` and `install.sh`, Release notes without duplicate title, and WeClaw minimum version requirement. | `v0.3.9-alpha = 82a4428` | Completed | 2026-05-19 | Release notes include `Requires weclaw_dev >= v0.1.9-alpha if WeClaw integration is used.` |
 | Process | Full-source-first patch discipline | Patch design is based on uploaded full files or complete copied source/document files, not on grep/rg snippets. | Handbook rule 6.1.13 | Active rule | 2026-05-18 | `grep` and `rg` may identify candidate files only. |
 
 Checklist maintenance rules:
