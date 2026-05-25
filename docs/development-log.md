@@ -1,3 +1,32 @@
+## p2.14a2 Managed tool routing core
+
+Date: 2026-05-25
+
+Scope:
+
+- Start the p2.14 managed tool routing line without moving the public `v0.3.9-alpha` Release.
+- Add a dsproxy-owned managed tool routing core for native Responses web/image tools on DeepSeek/Codex third-party profiles.
+- Add policy normalization for `auto`, `managed_only`, `native_only`, and `disabled`.
+- Map native `web_search` to `codeepseedex_web_search` and native `image_generation` to `codeepseedex_generate_image` when the policy is `auto` or `managed_only`.
+- Keep legacy `proxy_web_search` and `proxy_image_generate` execution aliases working for compatibility.
+- Add managed routing instruction injection, route decision reporting, debug trace event emission, and tool-bridge status registry fields.
+- Expose routing status through normal status and WeClaw-facing status while keeping provider cost attribution out of scope for this core node.
+
+Validation:
+
+- `git diff --check`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `python -m py_compile deepseek_responses_proxy/app.py`
+- focused managed-tool-routing/tool-bridge/provider/version tests
+- full tests
+
+Release boundary:
+
+- Public `v0.3.9-alpha` remains at `82a4428`.
+- No GitHub Release update is performed.
+- No Release assets are rebuilt.
+
 ## p2.13a6 Documentation current-state sync
 
 Date: 2026-05-24

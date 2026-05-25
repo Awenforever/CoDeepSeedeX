@@ -31,15 +31,15 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
 
     assert "Current public Release: `v0.3.9-alpha`" in en_current
     assert "Current public Release commit: `82a4428`" in en_current
-    assert "Current internal development checkpoint: `p2.13a6-docs-current-state-sync`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.13a6-docs-current-state-sync`" in en_current
+    assert "Current internal development checkpoint: `p2.14a2-tool-routing-core`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.14a2-tool-routing-core`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`" in en_current
     assert "  - `v0.3.9-alpha = 82a4428`" in en_current
 
     assert "当前公开Release：`v0.3.9-alpha`" in zh_current
     assert "当前公开Release提交：`82a4428`" in zh_current
-    assert "当前内部开发检查点：`p2.13a6-docs-current-state-sync`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.13a6-docs-current-state-sync`" in zh_current
+    assert "当前内部开发检查点：`p2.14a2-tool-routing-core`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.14a2-tool-routing-core`" in zh_current
     assert "当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`" in zh_current
     assert "  - `v0.3.9-alpha = 82a4428`" in zh_current
     assert "ab680ee" not in zh_current

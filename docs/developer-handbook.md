@@ -32,8 +32,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.13a6-docs-current-state-sync`
-- Latest closed documentation sync checkpoint: `p2.13a6-docs-current-state-sync`
+- Current internal development checkpoint: `p2.14a2-tool-routing-core`
+- Latest closed documentation sync checkpoint: `p2.14a2-tool-routing-core`
 - Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1840,3 +1840,22 @@ Documentation boundary:
 3. The repository must not maintain a separate long-lived per-release note source.
 4. README files must not link to the removed tracked Release-note document.
 5. GitHub Release `v0.3.9-alpha` keeps the clean Highlights body from p2.12a12.
+
+## p2.14a2 Managed tool routing core
+
+p2.14a2 starts the managed tool routing line. The current implementation establishes the routing core only; it is not a public Release update.
+
+Rules:
+
+1. dsproxy is the source of truth for managed tool routing on DeepSeek/Codex third-party profiles.
+2. Provider API-key configuration is not the same as tool routing enablement. Routing has an explicit policy per capability.
+3. Supported routing policies are `auto`, `managed_only`, `native_only`, and `disabled`; hyphenated CLI/env spellings may normalize to underscore internally.
+4. Native Responses hosted tools such as `web_search` and `image_generation` are considered unavailable on the DeepSeek ChatCompletions bridge unless future audited evidence proves otherwise.
+5. In `auto` or `managed_only`, native web/image tools are mapped to managed function tools:
+   - `web_search` -> `codeepseedex_web_search`
+   - `image_generation` -> `codeepseedex_generate_image`
+6. Legacy `proxy_web_search` and `proxy_image_generate` execution aliases remain accepted for compatibility, but new native-tool routing should expose the `codeepseedex_*` managed names.
+7. The managed routing instruction is injected only when managed tools are present. It must tell the model to emit managed function calls rather than narrating native hosted tool use.
+8. `tool_bridge.managed_tool_routing` and per-tool `routing` status expose policy, provider, configured state, managed function name, availability state, failure reason, and recommended action.
+9. Debug trace must include a `managed_tool_routing` event for each `/v1/responses` request.
+10. Do not claim exact web/image provider cost attribution until a later audited usage/cost node records provider-call accounting separately from primary model usage.

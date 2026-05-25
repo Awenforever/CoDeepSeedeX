@@ -204,7 +204,7 @@ async def test_non_proxy_tool_calls_keep_existing_function_call_output_behavior(
 
 
 @pytest.mark.asyncio
-async def test_web_search_tool_is_mapped_to_proxy_web_search(monkeypatch, tmp_path):
+async def test_web_search_tool_is_mapped_to_codeepseedex_web_search(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
 
@@ -226,16 +226,20 @@ async def test_web_search_tool_is_mapped_to_proxy_web_search(monkeypatch, tmp_pa
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "proxy_web_search" in tool_names
+    assert "codeepseedex_web_search" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
-    assert warnings == [
-        {
-            "kind": "mapped_tool_type",
-            "tool_type": "web_search",
-            "mapped_to": "proxy_web_search",
-        }
-    ]
+    assert any(
+        item.get("kind") == "mapped_tool_type"
+        and item.get("tool_type") == "web_search"
+        and item.get("mapped_to") == "codeepseedex_web_search"
+        for item in warnings
+    )
+    assert any(
+        item.get("kind") == "managed_tool_routing_decision"
+        and item.get("action") == "mapped_to_managed"
+        for item in warnings
+    )
 
 
 @pytest.mark.asyncio
@@ -342,14 +346,15 @@ async def test_deepseek_proxy_account_namespace_is_mapped_while_image_generation
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "proxy_image_generate" in tool_names
+    assert "codeepseedex_generate_image" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
-    assert warnings[0] == {
-        "kind": "mapped_tool_type",
-        "tool_type": "image_generation",
-        "mapped_to": "proxy_image_generate",
-    }
+    assert any(
+        item.get("kind") == "mapped_tool_type"
+        and item.get("tool_type") == "image_generation"
+        and item.get("mapped_to") == "codeepseedex_generate_image"
+        for item in warnings
+    )
     unsupported = [
         item for item in warnings if item.get("kind") == "unsupported_tool_type"
     ]
@@ -357,7 +362,7 @@ async def test_deepseek_proxy_account_namespace_is_mapped_while_image_generation
 
 
 @pytest.mark.asyncio
-async def test_image_generation_tool_is_mapped_to_proxy_image_generate(monkeypatch, tmp_path):
+async def test_image_generation_tool_is_mapped_to_codeepseedex_generate_image(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
 
@@ -379,16 +384,20 @@ async def test_image_generation_tool_is_mapped_to_proxy_image_generate(monkeypat
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "proxy_image_generate" in tool_names
+    assert "codeepseedex_generate_image" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
-    assert warnings == [
-        {
-            "kind": "mapped_tool_type",
-            "tool_type": "image_generation",
-            "mapped_to": "proxy_image_generate",
-        }
-    ]
+    assert any(
+        item.get("kind") == "mapped_tool_type"
+        and item.get("tool_type") == "image_generation"
+        and item.get("mapped_to") == "codeepseedex_generate_image"
+        for item in warnings
+    )
+    assert any(
+        item.get("kind") == "managed_tool_routing_decision"
+        and item.get("action") == "mapped_to_managed"
+        for item in warnings
+    )
 
 
 @pytest.mark.asyncio

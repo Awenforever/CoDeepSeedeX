@@ -593,22 +593,32 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
         (tool.get("function") or {}).get("name")
         for tool in transport.requests[0].get("tools", [])
     ]
-    assert "proxy_web_search" in tool_names
+    assert "codeepseedex_web_search" in tool_names
+    assert "codeepseedex_generate_image" in tool_names
 
     warnings_path = tmp_path / ".debug" / "last_compat_warnings.json"
     warnings = json.loads(warnings_path.read_text(encoding="utf-8"))
 
-    assert warnings[0] == {
-        "kind": "mapped_tool_type",
-        "tool_type": "web_search",
-        "mapped_to": "proxy_web_search",
-    }
+    assert any(
+        item.get("kind") == "mapped_tool_type"
+        and item.get("tool_type") == "web_search"
+        and item.get("mapped_to") == "codeepseedex_web_search"
+        for item in warnings
+    )
 
-    assert {
-        "kind": "mapped_tool_type",
-        "tool_type": "image_generation",
-        "mapped_to": "proxy_image_generate",
-    } in warnings
+    assert any(
+        item.get("kind") == "mapped_tool_type"
+        and item.get("tool_type") == "image_generation"
+        and item.get("mapped_to") == "codeepseedex_generate_image"
+        for item in warnings
+    )
+
+    assert any(
+        item.get("kind") == "managed_tool_routing_decision"
+        and item.get("tool_kind") == "web_search"
+        and item.get("action") == "mapped_to_managed"
+        for item in warnings
+    )
 
     unsupported = [
         item for item in warnings if item.get("kind", "").startswith("unsupported")

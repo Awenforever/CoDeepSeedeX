@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.13a6-docs-current-state-sync"
+PROXY_INTERNAL_VERSION = "p2.14a2-tool-routing-core"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -10222,10 +10222,428 @@ def _normalize_mcp_nested_tool(
     }
 
 
+_MANAGED_TOOL_ROUTING_KINDS = ("web_search", "image_generation")
+_MANAGED_TOOL_ROUTING_POLICIES = {"auto", "managed_only", "native_only", "disabled"}
+_MANAGED_TOOL_ROUTING_MARKER = "[codeepseedex managed tool routing]"
+
+_NATIVE_TOOL_ALIASES = {
+    "web_search": {
+        "web_search",
+        "web_search_preview",
+        "web_search_preview_2025_03_11",
+    },
+    "image_generation": {
+        "image_generation",
+        "image_generation_call",
+        "image_generation_preview",
+    },
+}
+
+_MANAGED_TOOL_FUNCTION_NAMES = {
+    "web_search": "codeepseedex_web_search",
+    "image_generation": "codeepseedex_generate_image",
+}
+
+
+def _normalize_tool_routing_policy_value(value: Any, *, default: str = "auto") -> str:
+    raw = str(value or default or "auto").strip().lower().replace("-", "_")
+    if raw in {"managed", "managed_tool", "managed_tools"}:
+        raw = "managed_only"
+    if raw in {"native", "native_tool", "native_tools"}:
+        raw = "native_only"
+    if raw in {"off", "none"}:
+        raw = "disabled"
+    if raw not in _MANAGED_TOOL_ROUTING_POLICIES:
+        return default
+    return raw
+
+
+def _managed_tool_routing_env_names(kind: str) -> list[str]:
+    if kind == "web_search":
+        return [
+            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING",
+            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING_POLICY",
+            "CODEEPSEEDEX_WEB_SEARCH_ROUTING",
+        ]
+    if kind == "image_generation":
+        return [
+            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING",
+            "DEEPSEEK_PROXY_IMAGE_ROUTING",
+            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING_POLICY",
+            "CODEEPSEEDEX_IMAGE_GENERATION_ROUTING",
+        ]
+    return []
+
+
+def _managed_tool_routing_policy(kind: str) -> str:
+    for env_name in _managed_tool_routing_env_names(kind):
+        raw = os.environ.get(env_name)
+        if raw is not None and str(raw).strip():
+            return _normalize_tool_routing_policy_value(raw)
+    return "auto"
+
+
+def _native_tool_kind(tool: dict[str, Any]) -> str | None:
+    if not isinstance(tool, dict):
+        return None
+    tool_type = str(tool.get("type") or "").strip().lower()
+    name = str(tool.get("name") or "").strip().lower()
+    function = tool.get("function") if isinstance(tool.get("function"), dict) else {}
+    function_name = str((function or {}).get("name") or "").strip().lower()
+    candidates = {tool_type, name, function_name}
+    for kind, aliases in _NATIVE_TOOL_ALIASES.items():
+        if candidates & aliases:
+            return kind
+    return None
+
+
+def _managed_tool_function_name(kind: str) -> str:
+    return _MANAGED_TOOL_FUNCTION_NAMES[kind]
+
+
+def _managed_tool_schema(kind: str) -> dict[str, Any]:
+    if kind == "web_search":
+        schema = deepcopy(_web_search_tool_schema())
+    elif kind == "image_generation":
+        schema = deepcopy(_image_generation_tool_schema())
+    else:
+        raise ValueError(f"unsupported managed tool kind: {kind}")
+    schema["function"]["name"] = _managed_tool_function_name(kind)
+    if kind == "web_search":
+        schema["function"]["description"] = (
+            "Managed CoDeepSeedeX web search. Use this instead of native Responses "
+            "web_search when the DeepSeek/Codex third-party profile cannot execute "
+            "native hosted web tools."
+        )
+    elif kind == "image_generation":
+        schema["function"]["description"] = (
+            "Managed CoDeepSeedeX image generation. Use this instead of native "
+            "Responses image_generation when the DeepSeek/Codex third-party profile "
+            "cannot execute native hosted image tools."
+        )
+    return schema
+
+
+def _managed_tool_provider_status(kind: str) -> dict[str, Any]:
+    if kind == "web_search":
+        provider = _web_search_provider()
+        configured = (
+            provider == "mock"
+            or bool(_web_search_api_key_for_provider(provider))
+            if provider not in {"disabled", "off", "none"}
+            else False
+        )
+        return {
+            "provider": provider,
+            "configured": configured,
+            "is_mock": provider == "mock",
+            "disabled": provider in {"disabled", "off", "none"},
+            "api_key_configured": (
+                bool(_web_search_api_key_for_provider(provider))
+                if provider not in {"mock", "disabled", "off", "none"}
+                else None
+            ),
+        }
+    if kind == "image_generation":
+        provider = _image_provider()
+        configured = (
+            provider == "mock"
+            or bool(_image_api_key_for_provider(provider))
+            if provider not in {"disabled", "off", "none"}
+            else False
+        )
+        return {
+            "provider": provider,
+            "configured": configured,
+            "is_mock": provider == "mock",
+            "disabled": provider in {"disabled", "off", "none"},
+            "api_key_configured": (
+                bool(_image_api_key_for_provider(provider))
+                if provider not in {"mock", "disabled", "off", "none"}
+                else None
+            ),
+        }
+    return {
+        "provider": None,
+        "configured": False,
+        "is_mock": False,
+        "disabled": True,
+        "api_key_configured": None,
+    }
+
+
+def _managed_tool_recommended_action(kind: str, provider_status: dict[str, Any]) -> str | None:
+    if provider_status.get("disabled"):
+        return f"Enable a {kind} provider or set routing policy to native_only if native hosting is intentionally required."
+    if provider_status.get("configured"):
+        return None
+    if kind == "web_search":
+        return "Run dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl."
+    if kind == "image_generation":
+        return "Run dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal."
+    return None
+
+
+def _managed_tool_capability(kind: str) -> dict[str, Any]:
+    provider_status = _managed_tool_provider_status(kind)
+    policy = _managed_tool_routing_policy(kind)
+    native_available = False
+    native_reason = "native_responses_tool_not_supported_by_deepseek_chat_completions"
+    managed_available = bool(provider_status.get("configured")) and not bool(provider_status.get("disabled"))
+    return {
+        "kind": kind,
+        "native_tool_aliases": sorted(_NATIVE_TOOL_ALIASES.get(kind, set())),
+        "managed_function_name": _managed_tool_function_name(kind),
+        "configured_provider": provider_status.get("provider"),
+        "configured": bool(provider_status.get("configured")),
+        "api_key_configured": provider_status.get("api_key_configured"),
+        "routing_policy": policy,
+        "native_available": native_available,
+        "native_unavailable_reason": native_reason,
+        "managed_available": managed_available,
+        "availability_status": "available" if managed_available else "not_configured",
+        "failure_reason": None if managed_available else ("disabled" if provider_status.get("disabled") else "provider_not_configured"),
+        "recommended_action": _managed_tool_recommended_action(kind, provider_status),
+    }
+
+
+def _tool_capability_registry() -> dict[str, dict[str, Any]]:
+    return {kind: _managed_tool_capability(kind) for kind in _MANAGED_TOOL_ROUTING_KINDS}
+
+
+def _new_managed_tool_routing_report(tools: Any) -> dict[str, Any]:
+    registry = _tool_capability_registry()
+    native_tools = []
+    if isinstance(tools, list):
+        for index, tool in enumerate(tools):
+            if isinstance(tool, dict):
+                kind = _native_tool_kind(tool)
+                if kind is not None:
+                    native_tools.append(
+                        {
+                            "index": index,
+                            "kind": kind,
+                            "tool_type": tool.get("type"),
+                            "name": tool.get("name"),
+                            "policy": registry[kind].get("routing_policy"),
+                        }
+                    )
+    return {
+        "enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True),
+        "source": "dsproxy_managed_tool_routing",
+        "capabilities": registry,
+        "native_tools_detected": native_tools,
+        "managed_tools_injected": [],
+        "decisions": [],
+        "fallback_triggered": False,
+        "fallback_reason": None,
+        "provider": None,
+        "tool_calls": [],
+        "tool_results": [],
+    }
+
+
+def _record_managed_tool_routing_decision(
+    report: dict[str, Any] | None,
+    decision: dict[str, Any],
+) -> None:
+    if not isinstance(report, dict):
+        return
+    report.setdefault("decisions", []).append(decision)
+    if decision.get("action") in {"mapped_to_managed", "managed_fallback"}:
+        report["fallback_triggered"] = True
+        report["fallback_reason"] = decision.get("reason")
+        report["provider"] = decision.get("provider")
+        injected = report.setdefault("managed_tools_injected", [])
+        managed_name = decision.get("managed_function_name")
+        if managed_name and managed_name not in injected:
+            injected.append(managed_name)
+
+
+def _normalize_managed_native_tool(
+    tool: dict[str, Any],
+    kind: str,
+    compat_warnings: list[dict[str, Any]] | None,
+    managed_tool_routing_report: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    capability = _managed_tool_capability(kind)
+    policy = str(capability.get("routing_policy") or "auto")
+    tool_type = tool.get("type")
+    managed_name = str(capability.get("managed_function_name") or _managed_tool_function_name(kind))
+    provider = capability.get("configured_provider")
+
+    if not _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True):
+        decision = {
+            "kind": kind,
+            "tool_type": tool_type,
+            "policy": policy,
+            "action": "ignored",
+            "reason": "managed_tool_routing_disabled",
+            "native_available": capability.get("native_available"),
+            "managed_function_name": managed_name,
+            "provider": provider,
+        }
+        if compat_warnings is not None:
+            compat_warnings.append({**decision, "kind": "managed_tool_routing_decision", "tool_kind": kind})
+        _record_managed_tool_routing_decision(managed_tool_routing_report, decision)
+        return None
+
+    if policy == "disabled":
+        decision = {
+            "kind": kind,
+            "tool_type": tool_type,
+            "policy": policy,
+            "action": "ignored",
+            "reason": "routing_policy_disabled",
+            "native_available": capability.get("native_available"),
+            "managed_function_name": managed_name,
+            "provider": provider,
+            "recommended_action": (
+                capability.get("recommended_action")
+                or f"Set managed tool routing policy for {kind} to auto or managed_only to enable dsproxy fallback."
+            ),
+        }
+        if compat_warnings is not None:
+            compat_warnings.append({**decision, "kind": "managed_tool_routing_decision", "tool_kind": kind})
+        _record_managed_tool_routing_decision(managed_tool_routing_report, decision)
+        return None
+
+    if policy == "native_only":
+        decision = {
+            "kind": kind,
+            "tool_type": tool_type,
+            "policy": policy,
+            "action": "not_mapped",
+            "reason": "routing_policy_native_only_but_deepseek_native_tool_unavailable",
+            "native_available": capability.get("native_available"),
+            "native_unavailable_reason": capability.get("native_unavailable_reason"),
+            "managed_function_name": managed_name,
+            "provider": provider,
+        }
+        if compat_warnings is not None:
+            compat_warnings.append({**decision, "kind": "managed_tool_routing_decision", "tool_kind": kind})
+        _record_managed_tool_routing_decision(managed_tool_routing_report, decision)
+        return None
+
+    decision = {
+        "kind": kind,
+        "tool_type": tool_type,
+        "policy": policy,
+        "action": "mapped_to_managed",
+        "reason": (
+            "managed_only_policy"
+            if policy == "managed_only"
+            else capability.get("native_unavailable_reason")
+        ),
+        "native_available": capability.get("native_available"),
+        "managed_available": capability.get("managed_available"),
+        "managed_function_name": managed_name,
+        "provider": provider,
+        "configured": capability.get("configured"),
+        "recommended_action": capability.get("recommended_action"),
+    }
+    if compat_warnings is not None:
+        compat_warnings.append(
+            {
+                "kind": "mapped_tool_type",
+                "tool_type": tool_type,
+                "mapped_to": managed_name,
+                "routing_policy": policy,
+                "routing_reason": decision["reason"],
+                "provider": provider,
+            }
+        )
+        compat_warnings.append({**decision, "kind": "managed_tool_routing_decision", "tool_kind": kind})
+    _record_managed_tool_routing_decision(managed_tool_routing_report, decision)
+    return _managed_tool_schema(kind)
+
+
+def _managed_tool_routing_instruction_message(tools: list[dict[str, Any]] | None) -> dict[str, str] | None:
+    if not tools or not _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING_INSTRUCTION", True):
+        return None
+
+    available_names = {
+        str((tool.get("function") or {}).get("name") or "")
+        for tool in tools
+        if isinstance(tool, dict)
+    }
+    managed_names = [
+        name
+        for name in _MANAGED_TOOL_FUNCTION_NAMES.values()
+        if name in available_names
+    ]
+    if not managed_names:
+        return None
+
+    instructions = [
+        _MANAGED_TOOL_ROUTING_MARKER,
+        "Native hosted Responses tools are not available on this DeepSeek/Codex third-party profile.",
+        "Use the managed CoDeepSeedeX function tools below when the user asks for the corresponding capability.",
+    ]
+    if _MANAGED_TOOL_FUNCTION_NAMES["web_search"] in managed_names:
+        instructions.append(
+            "- For web/current-information search, call codeepseedex_web_search with query and optional max_results."
+        )
+    if _MANAGED_TOOL_FUNCTION_NAMES["image_generation"] in managed_names:
+        instructions.append(
+            "- For image generation, call codeepseedex_generate_image with prompt and optional size/n."
+        )
+    instructions.append("Do not merely describe that a native hosted tool would be used; emit the managed function tool call.")
+
+    return {
+        "role": "system",
+        "content": "\n".join(instructions),
+    }
+
+
+def _messages_with_managed_tool_routing_instruction(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    instruction = _managed_tool_routing_instruction_message(tools)
+    if instruction is None:
+        return messages
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = _plain_text_from_content(message.get("content", ""))
+        if _MANAGED_TOOL_ROUTING_MARKER in content:
+            return messages
+
+    injected = deepcopy(messages)
+    insert_at = 0
+    while insert_at < len(injected):
+        message = injected[insert_at]
+        if isinstance(message, dict) and message.get("role") == "system":
+            insert_at += 1
+            continue
+        break
+    injected.insert(insert_at, instruction)
+    return injected
+
+
+def _managed_tool_routing_last_decision_for_kind(
+    last_report: dict[str, Any] | None,
+    kind: str,
+) -> dict[str, Any] | None:
+    if not isinstance(last_report, dict):
+        return None
+    decisions = last_report.get("decisions")
+    if not isinstance(decisions, list):
+        return None
+    for decision in reversed(decisions):
+        if isinstance(decision, dict) and decision.get("kind") == kind:
+            return deepcopy(decision)
+    return None
+
+
+
 def _normalize_response_tool(
     tool: dict[str, Any],
     compat_warnings: list[dict[str, Any]] | None = None,
     mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
+    managed_tool_routing_report: dict[str, Any] | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Convert a Responses tool into one or more DeepSeek ChatCompletions tools.
 
@@ -10234,28 +10652,15 @@ def _normalize_response_tool(
     Unsupported non-function tools are dropped but recorded for audit.
     """
     tool_type = tool.get("type")
+    native_tool_kind = _native_tool_kind(tool)
+    if native_tool_kind is not None:
+        return _normalize_managed_native_tool(
+            tool,
+            native_tool_kind,
+            compat_warnings,
+            managed_tool_routing_report,
+        )
 
-    if tool_type == "web_search":
-        if compat_warnings is not None:
-            compat_warnings.append(
-                {
-                    "kind": "mapped_tool_type",
-                    "tool_type": tool_type,
-                    "mapped_to": "proxy_web_search",
-                }
-            )
-        return _web_search_tool_schema()
-
-    if tool_type == "image_generation":
-        if compat_warnings is not None:
-            compat_warnings.append(
-                {
-                    "kind": "mapped_tool_type",
-                    "tool_type": tool_type,
-                    "mapped_to": "proxy_image_generate",
-                }
-            )
-        return _image_generation_tool_schema()
 
     if tool_type == "namespace":
         namespace = str(tool.get("namespace") or tool.get("name") or "").strip()
@@ -12196,10 +12601,10 @@ async def _execute_proxy_tool_call(
             "unix_time": _now(),
         }
 
-    if name == "proxy_web_search":
+    if name in {"proxy_web_search", "codeepseedex_web_search"}:
         return await _proxy_web_search(arguments)
 
-    if name == "proxy_image_generate":
+    if name in {"proxy_image_generate", "codeepseedex_generate_image"}:
         return await _proxy_image_generate(arguments)
 
     return {
@@ -12217,7 +12622,11 @@ def _is_mcp_executor_tool_call(tool_call: dict[str, Any]) -> bool:
 def _is_proxy_tool_call(tool_call: dict[str, Any]) -> bool:
     function = tool_call.get("function") or {}
     function_name = str(function.get("name") or "")
-    return function_name.startswith("proxy_") or _is_mcp_executor_tool_call(tool_call)
+    return (
+        function_name.startswith("proxy_")
+        or function_name in set(_MANAGED_TOOL_FUNCTION_NAMES.values())
+        or _is_mcp_executor_tool_call(tool_call)
+    )
 
 
 def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -14453,7 +14862,26 @@ def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> 
         if not isinstance(result, dict):
             continue
 
-        if result.get("provider") not in {"mock", "glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore"}:
+        if result.get("provider") not in {
+            "mock",
+            "glm",
+            "zai",
+            "zhipu",
+            "zhipuai",
+            "bigmodel",
+            "qwen_image",
+            "qwen_image_beijing",
+            "qwen_image_singapore",
+            "qwen_image_us",
+            "qwen_image_germany",
+            "dashscope",
+            "stability",
+            "stability_ai",
+            "stable_image",
+            "fal",
+            "fal_ai",
+            "fal.ai",
+        }:
             continue
 
         images = result.get("images") or []
@@ -14849,6 +15277,7 @@ def _build_chat_payload(
         messages,
         tools_available=bool(tools),
     )
+    messages = _messages_with_managed_tool_routing_instruction(messages, tools)
 
     payload: dict[str, Any] = {
         "model": model,
@@ -16021,19 +16450,33 @@ def _runtime_payload_guard_contract(
         )
     )
 
-def _tool_bridge_status() -> dict[str, Any]:
+def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None = None) -> dict[str, Any]:
     web_provider = _web_search_provider()
     image_provider = _image_provider()
+    registry = _tool_capability_registry()
+    web_capability = registry["web_search"]
+    image_capability = registry["image_generation"]
 
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True),
         "max_rounds": _env_int("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", 3),
+        "managed_tool_routing": {
+            "enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True),
+            "instruction_enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING_INSTRUCTION", True),
+            "capabilities": registry,
+            "last_route_decision": deepcopy(last_managed_tool_routing_report) if isinstance(last_managed_tool_routing_report, dict) else None,
+        },
         "web_search": {
             "provider": web_provider,
             "is_mock": web_provider == "mock",
             "max_results": _web_search_max_results(),
             "timeout_seconds": _web_search_timeout_seconds(),
             "api_key_configured": bool(_web_search_api_key_for_provider(web_provider)) if web_provider not in {"mock", "disabled", "off", "none"} else None,
+            "routing": web_capability,
+            "routing_policy": web_capability.get("routing_policy"),
+            "managed_function_name": web_capability.get("managed_function_name"),
+            "configured": web_capability.get("configured"),
+            "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "web_search"),
         },
         "image_generation": {
             "provider": image_provider,
@@ -16045,6 +16488,11 @@ def _tool_bridge_status() -> dict[str, Any]:
             "max_artifacts": _image_max_artifacts(),
             "output_dir": str(_image_output_dir()),
             "api_key_configured": bool(_image_api_key_for_provider(image_provider)) if image_provider not in {"mock", "disabled", "off", "none"} else None,
+            "routing": image_capability,
+            "routing_policy": image_capability.get("routing_policy"),
+            "managed_function_name": image_capability.get("managed_function_name"),
+            "configured": image_capability.get("configured"),
+            "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "image_generation"),
         },
         "mcp_executor": _mcp_executor_status(),
     }
@@ -19506,6 +19954,7 @@ def _runtime_weclaw_status(
     profile_tokenizer_report: dict[str, Any] | None = None,
     session_id: str | None = None,
     semantic_runtime_events: dict[str, Any] | None = None,
+    last_managed_tool_routing_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile_status = _runtime_weclaw_profile_status(profile)
     model_contract = profile_status.get("model", {})
@@ -19635,6 +20084,7 @@ def _runtime_weclaw_status(
         "pricing": pricing,
         "cost": cost,
         "balance": balance_contract,
+        "tools": _tool_bridge_status(last_managed_tool_routing_report),
         "runtime_payload_guard": runtime_payload_guard,
         "codex_native_compact": codex_native_compact_status,
         "compaction": {
@@ -19674,6 +20124,7 @@ def create_app(
     app.state.last_context_compaction_report = None
     app.state.last_semantic_compaction_events = None
     app.state.last_profile_tokenizer_report_by_profile = {}
+    app.state.last_managed_tool_routing_report = None
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -19691,7 +20142,7 @@ def create_app(
             "model_default": DEFAULT_MODEL,
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
-            "tool_bridge": _tool_bridge_status(),
+            "tool_bridge": _tool_bridge_status(getattr(app.state, "last_managed_tool_routing_report", None)),
             "command_risk_policy": _command_risk_policy_status(),
             "context": _proxy_context_status(),
             "agent_liveness": _proxy_agent_liveness_status(),
@@ -19744,6 +20195,7 @@ def create_app(
             profile_tokenizer_report=profile_tokenizer_report,
             session_id=session_id,
             semantic_runtime_events=getattr(app.state, "last_semantic_compaction_events", None),
+            last_managed_tool_routing_report=getattr(app.state, "last_managed_tool_routing_report", None),
         )
 
     @app.get("/v1/proxy/tool-bridge/status")
@@ -19751,7 +20203,7 @@ def create_app(
         return {
             "status": "ok",
             "version": PROXY_VERSION,
-            "tool_bridge": _tool_bridge_status(),
+            "tool_bridge": _tool_bridge_status(getattr(app.state, "last_managed_tool_routing_report", None)),
             "command_risk_policy": _command_risk_policy_status(),
         }
 
@@ -19943,9 +20395,15 @@ def create_app(
         tools = payload.get("tools") or []
         compat_warnings: list[dict[str, Any]] = []
         mcp_tool_mapping: dict[str, dict[str, str]] = {}
+        managed_tool_routing_report = _new_managed_tool_routing_report(tools)
         deepseek_tools_list: list[dict[str, Any]] = []
         for tool in tools:
-            normalized_tool = _normalize_response_tool(tool, compat_warnings, mcp_tool_mapping)
+            normalized_tool = _normalize_response_tool(
+                tool,
+                compat_warnings,
+                mcp_tool_mapping,
+                managed_tool_routing_report,
+            )
             if isinstance(normalized_tool, list):
                 deepseek_tools_list.extend(normalized_tool)
             elif normalized_tool is not None:
@@ -19960,6 +20418,14 @@ def create_app(
                 if proxy_name not in existing_tool_names:
                     deepseek_tools_list.append(proxy_tool)
         deepseek_tools = deepseek_tools_list or None
+        managed_tool_routing_report["tool_count_after_normalization"] = len(deepseek_tools_list)
+        managed_tool_routing_report["normalized_tool_names"] = [
+            (tool.get("function") or {}).get("name")
+            for tool in deepseek_tools_list
+            if isinstance(tool, dict)
+        ]
+        app.state.last_managed_tool_routing_report = deepcopy(managed_tool_routing_report)
+        _debug_trace_event(response_id, "managed_tool_routing", **managed_tool_routing_report)
 
         try:
             debug_dir = Path(".debug")

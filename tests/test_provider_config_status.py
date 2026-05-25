@@ -276,6 +276,8 @@ async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "qwen_image")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "dashscope-test-key")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("DASHSCOPE_IMAGE_MODEL", raising=False)
 
     class FakeResponse:
         def raise_for_status(self):
@@ -519,6 +521,8 @@ async def test_proxy_image_generation_stability_provider(monkeypatch):
 
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "stability")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "stability-test-key")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("STABILITY_IMAGE_MODEL", raising=False)
 
     class FakeResponse:
         headers = {"content-type": "application/json"}
@@ -563,6 +567,9 @@ async def test_proxy_image_generation_fal_provider(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "fal")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "fal-test-key")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("FAL_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FAL_IMAGE_URL", raising=False)
 
     class FakeResponse:
         def raise_for_status(self):
