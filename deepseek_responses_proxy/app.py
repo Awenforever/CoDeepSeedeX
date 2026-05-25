@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.14a3-managed-tool-routing-runtime-diagnostics"
+PROXY_INTERNAL_VERSION = "p2.14a5-no-tool-call-diagnostics"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -10441,6 +10441,10 @@ def _new_managed_tool_routing_report(tools: Any) -> dict[str, Any]:
         "tool_calls": [],
         "tool_results": [],
         "execution": _managed_tool_routing_empty_execution_summary(),
+        "diagnostics": {},
+        "no_native_tools_observed": [],
+        "no_tool_call_diagnostics": [],
+        "diagnostic_phase": "initialized",
     }
 
 
@@ -10773,6 +10777,120 @@ def _managed_tool_routing_last_execution_for_kind(
             return deepcopy(result)
     return None
 
+
+
+
+
+
+def _managed_tool_routing_native_tool_observed(
+    report: dict[str, Any] | None,
+    kind: str,
+) -> bool:
+    if not isinstance(report, dict):
+        return False
+    native_tools = report.get("native_tools_detected")
+    if not isinstance(native_tools, list):
+        return False
+    return any(isinstance(item, dict) and item.get("kind") == kind for item in native_tools)
+
+
+def _managed_tool_routing_decision_observed(
+    report: dict[str, Any] | None,
+    kind: str,
+) -> bool:
+    return _managed_tool_routing_last_decision_for_kind(report, kind) is not None
+
+
+def _managed_tool_routing_execution_observed(
+    report: dict[str, Any] | None,
+    kind: str,
+) -> bool:
+    return _managed_tool_routing_last_execution_for_kind(report, kind) is not None
+
+
+def _managed_tool_routing_diagnostic_for_kind(
+    report: dict[str, Any] | None,
+    kind: str,
+) -> dict[str, Any] | None:
+    if not isinstance(report, dict):
+        return None
+
+    capabilities = report.get("capabilities") if isinstance(report.get("capabilities"), dict) else {}
+    capability = capabilities.get(kind) if isinstance(capabilities.get(kind), dict) else _managed_tool_capability(kind)
+    native_observed = _managed_tool_routing_native_tool_observed(report, kind)
+    decision = _managed_tool_routing_last_decision_for_kind(report, kind)
+    execution = _managed_tool_routing_last_execution_for_kind(report, kind)
+    managed_name = str(capability.get("managed_function_name") or _managed_tool_function_name(kind))
+
+    no_native_tool_observed = not native_observed
+    no_tool_call = execution is None
+    reason = None
+    action = None
+    status = "executed" if execution is not None else "not_executed"
+
+    if no_native_tool_observed:
+        reason = f"codex_did_not_send_native_{kind}_tool"
+        action = (
+            f"The latest Codex request did not expose a native {kind} Responses tool to dsproxy. "
+            f"If this capability was expected, run real Codex entry validation and check Codex tool availability/flags."
+        )
+        status = "no_native_tool_observed"
+    elif decision is None:
+        reason = "native_tool_observed_but_no_routing_decision_recorded"
+        action = "Inspect managed_tool_routing debug trace and tool normalization warnings."
+        status = "no_routing_decision"
+    elif no_tool_call:
+        reason = "managed_tool_injected_but_model_did_not_call"
+        action = (
+            f"Native {kind} was mapped to {managed_name}, but the upstream model did not emit that function call. "
+            f"Inspect liveness_guard and managed_tool_routing_after_tool_bridge debug events."
+        )
+        status = "no_managed_tool_call"
+
+    return {
+        "kind": kind,
+        "status": status,
+        "native_tool_observed": native_observed,
+        "no_native_tool_observed": no_native_tool_observed,
+        "routing_decision_observed": decision is not None,
+        "execution_observed": execution is not None,
+        "no_tool_call": no_tool_call,
+        "reason": reason,
+        "action": action,
+        "managed_function_name": managed_name,
+        "configured_provider": capability.get("configured_provider"),
+        "managed_available": capability.get("managed_available"),
+        "routing_policy": capability.get("routing_policy"),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+
+def _refresh_managed_tool_routing_diagnostics(
+    report: dict[str, Any] | None,
+    *,
+    phase: str,
+) -> dict[str, Any] | None:
+    if not isinstance(report, dict):
+        return None
+    diagnostics = {}
+    no_native_tools_observed = []
+    no_tool_call_diagnostics = []
+    for kind in _MANAGED_TOOL_ROUTING_KINDS:
+        diagnostic = _managed_tool_routing_diagnostic_for_kind(report, kind)
+        if not isinstance(diagnostic, dict):
+            continue
+        diagnostic["phase"] = phase
+        diagnostics[kind] = diagnostic
+        if diagnostic.get("no_native_tool_observed"):
+            no_native_tools_observed.append(deepcopy(diagnostic))
+        if diagnostic.get("no_tool_call"):
+            no_tool_call_diagnostics.append(deepcopy(diagnostic))
+    report["diagnostics"] = diagnostics
+    report["no_native_tools_observed"] = no_native_tools_observed
+    report["no_tool_call_diagnostics"] = no_tool_call_diagnostics
+    report["diagnostic_phase"] = phase
+    return report
 
 
 def _normalize_response_tool(
@@ -16615,6 +16733,10 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "capabilities": registry,
             "last_route_decision": deepcopy(last_managed_tool_routing_report) if isinstance(last_managed_tool_routing_report, dict) else None,
             "last_execution": deepcopy(last_managed_tool_routing_report.get("execution")) if isinstance(last_managed_tool_routing_report, dict) else None,
+            "diagnostics": deepcopy(last_managed_tool_routing_report.get("diagnostics")) if isinstance(last_managed_tool_routing_report, dict) else {},
+            "no_native_tools_observed": deepcopy(last_managed_tool_routing_report.get("no_native_tools_observed")) if isinstance(last_managed_tool_routing_report, dict) else [],
+            "no_tool_call_diagnostics": deepcopy(last_managed_tool_routing_report.get("no_tool_call_diagnostics")) if isinstance(last_managed_tool_routing_report, dict) else [],
+            "diagnostic_phase": last_managed_tool_routing_report.get("diagnostic_phase") if isinstance(last_managed_tool_routing_report, dict) else None,
         },
         "web_search": {
             "provider": web_provider,
@@ -16628,6 +16750,11 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "configured": web_capability.get("configured"),
             "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "web_search"),
             "last_execution": _managed_tool_routing_last_execution_for_kind(last_managed_tool_routing_report, "web_search"),
+            "diagnostic": _managed_tool_routing_diagnostic_for_kind(last_managed_tool_routing_report, "web_search"),
+            "native_tool_observed": _managed_tool_routing_native_tool_observed(last_managed_tool_routing_report, "web_search") if isinstance(last_managed_tool_routing_report, dict) else None,
+            "no_native_tool_observed": (
+                _managed_tool_routing_diagnostic_for_kind(last_managed_tool_routing_report, "web_search") or {}
+            ).get("no_native_tool_observed") if isinstance(last_managed_tool_routing_report, dict) else None,
         },
         "image_generation": {
             "provider": image_provider,
@@ -16645,6 +16772,11 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "configured": image_capability.get("configured"),
             "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "image_generation"),
             "last_execution": _managed_tool_routing_last_execution_for_kind(last_managed_tool_routing_report, "image_generation"),
+            "diagnostic": _managed_tool_routing_diagnostic_for_kind(last_managed_tool_routing_report, "image_generation"),
+            "native_tool_observed": _managed_tool_routing_native_tool_observed(last_managed_tool_routing_report, "image_generation") if isinstance(last_managed_tool_routing_report, dict) else None,
+            "no_native_tool_observed": (
+                _managed_tool_routing_diagnostic_for_kind(last_managed_tool_routing_report, "image_generation") or {}
+            ).get("no_native_tool_observed") if isinstance(last_managed_tool_routing_report, dict) else None,
         },
         "mcp_executor": _mcp_executor_status(),
     }
@@ -20576,8 +20708,20 @@ def create_app(
             for tool in deepseek_tools_list
             if isinstance(tool, dict)
         ]
+        _refresh_managed_tool_routing_diagnostics(
+            managed_tool_routing_report,
+            phase="after_tool_normalization",
+        )
         app.state.last_managed_tool_routing_report = deepcopy(managed_tool_routing_report)
         _debug_trace_event(response_id, "managed_tool_routing", **managed_tool_routing_report)
+        if managed_tool_routing_report.get("no_native_tools_observed"):
+            _debug_trace_event(
+                response_id,
+                "managed_tool_routing_no_native_tool_observed",
+                diagnostics=managed_tool_routing_report.get("no_native_tools_observed"),
+                raw_content_exposed=False,
+                redacted=True,
+            )
 
         try:
             debug_dir = Path(".debug")
@@ -20883,6 +21027,10 @@ def create_app(
                 usage_call_counter=usage_call_counter,
                 user_tool_control_policy_report=user_tool_control_policy_report,
                 managed_tool_routing_report=managed_tool_routing_report,
+            )
+            _refresh_managed_tool_routing_diagnostics(
+                managed_tool_routing_report,
+                phase="after_tool_bridge",
             )
             app.state.last_managed_tool_routing_report = deepcopy(managed_tool_routing_report)
             _debug_trace_event(

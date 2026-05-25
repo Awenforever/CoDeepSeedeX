@@ -213,6 +213,65 @@ async def test_managed_image_generation_tool_executes_and_surfaces_image_evidenc
     assert last_execution["raw_result_exposed"] is False
 
 
+
+@pytest.mark.asyncio
+async def test_no_native_image_generation_tool_observed_is_explained(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "mock")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+
+    fake = FakeDeepSeekClient([text_response("No image tool was exposed by Codex.")])
+    app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "deepseek-v4-pro",
+                "input": "Generate an image, but this request only exposes web search.",
+                "tools": [{"type": "web_search"}],
+            },
+        )
+        status_response = await client.get("/v1/proxy/tool-bridge/status")
+
+    assert response.status_code == 200
+    status_data = status_response.json()
+    image_status = status_data["tool_bridge"]["image_generation"]
+    diagnostic = image_status["diagnostic"]
+
+    assert image_status["configured"] is True
+    assert image_status["managed_function_name"] == "codeepseedex_generate_image"
+    assert image_status["last_route_decision"] is None
+    assert image_status["last_execution"] is None
+    assert image_status["native_tool_observed"] is False
+    assert image_status["no_native_tool_observed"] is True
+    assert diagnostic["status"] == "no_native_tool_observed"
+    assert diagnostic["reason"] == "codex_did_not_send_native_image_generation_tool"
+    assert diagnostic["no_tool_call"] is True
+    assert diagnostic["managed_available"] is True
+    assert diagnostic["raw_content_exposed"] is False
+
+    aggregate = status_data["tool_bridge"]["managed_tool_routing"]
+    assert aggregate["diagnostic_phase"] == "after_tool_bridge"
+    assert any(
+        item.get("kind") == "image_generation"
+        and item.get("reason") == "codex_did_not_send_native_image_generation_tool"
+        for item in aggregate["no_native_tools_observed"]
+    )
+
+
+def test_tool_bridge_status_exposes_no_request_diagnostics_as_null(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "mock")
+    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+    client = TestClient(create_app())
+
+    data = client.get("/v1/proxy/tool-bridge/status").json()
+    assert data["tool_bridge"]["image_generation"]["diagnostic"] is None
+    assert data["tool_bridge"]["image_generation"]["no_native_tool_observed"] is None
+
+
 def test_tool_bridge_status_exposes_managed_tool_routing_registry(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "mock")
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")

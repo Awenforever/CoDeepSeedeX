@@ -1,3 +1,30 @@
+## p2.14a5 No-tool-call diagnostics
+
+Date: 2026-05-25
+
+Scope:
+
+- Add no-native-tool/no-tool-call diagnostics for managed tool routing without claiming execution.
+- Explain the real Codex image-generation observation where Codex did not send a native `image_generation` Responses tool to dsproxy.
+- Expose request-scoped diagnostics through `tool_bridge.managed_tool_routing`, per-tool status, and WeClaw-facing tools status.
+- Emit `managed_tool_routing_no_native_tool_observed` when the latest request lacks one or more managed native tool capabilities.
+- Keep diagnostics redacted and avoid raw prompt/query/provider payload exposure.
+
+Validation:
+
+- `git diff --check`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `python -m py_compile deepseek_responses_proxy/app.py`
+- focused managed-tool-routing/tool-bridge/proxy/provider/version/docs tests
+- full tests
+
+Release boundary:
+
+- Public `v0.3.9-alpha` remains at `82a4428`.
+- No GitHub Release update is performed.
+- No Release assets are rebuilt.
+
 ## p2.14a3 Managed tool routing runtime diagnostics
 
 Date: 2026-05-25

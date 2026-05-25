@@ -32,8 +32,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a3-managed-tool-routing-runtime-diagnostics`
-- Latest closed documentation sync checkpoint: `p2.14a3-managed-tool-routing-runtime-diagnostics`
+- Current internal development checkpoint: `p2.14a5-no-tool-call-diagnostics`
+- Latest closed documentation sync checkpoint: `p2.14a5-no-tool-call-diagnostics`
 - Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1872,3 +1872,16 @@ Rules:
 4. `tool_bridge.managed_tool_routing.last_execution` exposes aggregate execution status. Each managed tool also exposes its own `last_execution`.
 5. Debug trace should include `managed_tool_routing_execution` for each managed tool execution and `managed_tool_routing_after_tool_bridge` after the tool bridge loop.
 6. Legacy `proxy_*` aliases may execute, but diagnostics must still classify them under the managed kind.
+
+## p2.14a5 No-tool-call diagnostics
+
+p2.14a5 adds request-scoped diagnostics for managed tool routing cases where a managed capability is configured but no actual managed function execution occurs.
+
+Rules:
+
+1. Do not claim execution when Codex did not send the native tool or when the upstream model did not emit a managed function call.
+2. `diagnostics`, `no_native_tools_observed`, and `no_tool_call_diagnostics` are request-scoped and describe the latest `/v1/responses` request seen by the runtime.
+3. Per-tool status exposes `native_tool_observed`, `no_native_tool_observed`, and a redacted `diagnostic` object.
+4. If Codex does not expose native `image_generation`, status must explain `codex_did_not_send_native_image_generation_tool` while keeping `image_generation.configured=true` when the managed provider is configured.
+5. Diagnostics must remain redacted: do not expose raw prompt, query, image URL lists, or provider payloads.
+6. A `managed_tool_routing_no_native_tool_observed` debug trace event may be emitted when the latest request lacks one or more native managed-tool capabilities.

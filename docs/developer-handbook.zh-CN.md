@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.14a3-managed-tool-routing-runtime-diagnostics`
-- 最新闭合文档同步检查点：`p2.14a3-managed-tool-routing-runtime-diagnostics`
+- 当前内部开发检查点：`p2.14a5-no-tool-call-diagnostics`
+- 最新闭合文档同步检查点：`p2.14a5-no-tool-call-diagnostics`
 - 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1846,3 +1846,16 @@ p2.14a3将p2.14a2从路由决策扩展到运行时执行诊断。状态契约必
 4. `tool_bridge.managed_tool_routing.last_execution`暴露聚合执行状态；每个managed tool也暴露自己的`last_execution`。
 5. debug trace应为每次managed tool执行写入`managed_tool_routing_execution`，并在tool bridge循环后写入`managed_tool_routing_after_tool_bridge`。
 6. 旧`proxy_*`别名仍可执行，但诊断必须仍归类到对应managed kind。
+
+## p2.14a5 No-tool-call diagnostics
+
+p2.14a5为managed tool routing补充请求级诊断，用于说明managed capability已经配置，但没有实际managed function执行的情况。
+
+规则：
+
+1. 如果Codex没有发送native tool，或者上游模型没有发出managed function call，不得声称工具已经执行。
+2. `diagnostics`、`no_native_tools_observed`和`no_tool_call_diagnostics`是request-scoped，只描述runtime看到的最近一次`/v1/responses`请求。
+3. 每个tool状态暴露`native_tool_observed`、`no_native_tool_observed`和脱敏`diagnostic`对象。
+4. 如果Codex没有暴露native `image_generation`，状态必须解释`codex_did_not_send_native_image_generation_tool`；如果managed provider已配置，仍保留`image_generation.configured=true`。
+5. 诊断必须保持脱敏：不得暴露原始prompt、query、image URL列表或provider原始payload。
+6. 当最近请求缺少一个或多个native managed-tool capability时，可以写入`managed_tool_routing_no_native_tool_observed` debug trace事件。
