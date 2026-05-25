@@ -1,3 +1,24 @@
+## p2.14a6 Routing policy CLI and doctor diagnostics
+
+Date: 2026-05-26
+
+Scope:
+
+- Expose managed native tool routing configuration in `dsproxy config show`.
+- Add `dsproxy config set-tool-routing <web-search|image-generation> <auto|managed-only|native-only|disabled>`.
+- Add `dsproxy doctor tool-routing` for non-spending diagnostics over provider configuration, routing policy, last route decision, last execution, and no-native-tool/no-tool-call status.
+- Keep live provider probes behind `dsproxy doctor providers --live --allow-spend`.
+- Do not move public `v0.3.9-alpha` and do not rebuild Release assets.
+
+Validation:
+
+- `python -m py_compile deepseek_responses_proxy/app.py deepseek_responses_proxy/cli.py tests/test_cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `git diff --check`
+- focused CLI/provider/managed-routing/version/docs tests
+- full tests
+
 ## p2.14a5 No-tool-call diagnostics
 
 Date: 2026-05-25

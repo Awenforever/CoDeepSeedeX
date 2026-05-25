@@ -32,8 +32,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a5-no-tool-call-diagnostics`
-- Latest closed documentation sync checkpoint: `p2.14a5-no-tool-call-diagnostics`
+- Current internal development checkpoint: `p2.14a6-routing-policy-cli-doctor`
+- Latest closed documentation sync checkpoint: `p2.14a6-routing-policy-cli-doctor`
 - Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1885,3 +1885,15 @@ Rules:
 4. If Codex does not expose native `image_generation`, status must explain `codex_did_not_send_native_image_generation_tool` while keeping `image_generation.configured=true` when the managed provider is configured.
 5. Diagnostics must remain redacted: do not expose raw prompt, query, image URL lists, or provider payloads.
 6. A `managed_tool_routing_no_native_tool_observed` debug trace event may be emitted when the latest request lacks one or more native managed-tool capabilities.
+
+## p2.14a6 Routing policy CLI and doctor diagnostics
+
+p2.14a6 exposes managed native tool routing configuration and diagnostics through the CLI.
+
+Rules:
+
+1. `dsproxy config show` must include a `tool_routing` object with web/image provider, configured state, routing policy, and managed function name.
+2. `dsproxy config set-tool-routing <tool> <policy>` writes only the routing policy and enables the tool bridge. Supported policies are `auto`, `managed_only`, `native_only`, and `disabled`.
+3. `dsproxy doctor tool-routing` must not call live providers. It reads local configuration and the running tool-bridge status endpoint when available.
+4. Doctor output must show provider/configured state, routing policy, last route decision, last execution, and no-native-tool/no-tool-call diagnostics without exposing API key values.
+5. Live web/image provider probes remain under `dsproxy doctor providers --live --allow-spend`; image generation must never be triggered by `doctor tool-routing`.

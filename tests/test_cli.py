@@ -1315,6 +1315,127 @@ def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, 
 
 
 
+def test_cli_config_show_includes_tool_routing_status(monkeypatch, tmp_path, capsys):
+    _clear_provider_probe_test_env(monkeypatch)
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi\n"
+        "export SERPAPI_API_KEY=serpapi-test-key\n"
+        "export DEEPSEEK_PROXY_WEB_SEARCH_ROUTING=managed_only\n"
+        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
+        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n"
+        "export DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING=disabled\n",
+        encoding="utf-8",
+    )
+
+    assert main(["config", "show", "--env-file", str(env_file)]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["tool_routing"]["web_search"]["provider"] == "serpapi"
+    assert result["tool_routing"]["web_search"]["configured"] is True
+    assert result["tool_routing"]["web_search"]["routing_policy"] == "managed_only"
+    assert result["tool_routing"]["image_generation"]["provider"] == "zhipu"
+    assert result["tool_routing"]["image_generation"]["configured"] is True
+    assert result["tool_routing"]["image_generation"]["routing_policy"] == "disabled"
+    assert "serpapi-test-key" not in json.dumps(result)
+    assert "zhipu-test-key" not in json.dumps(result)
+
+
+def test_cli_config_set_tool_routing_writes_policy(monkeypatch, tmp_path, capsys):
+    _clear_provider_probe_test_env(monkeypatch)
+    env_file = tmp_path / "env"
+
+    assert main([
+        "config",
+        "set-tool-routing",
+        "image-generation",
+        "managed-only",
+        "--env-file",
+        str(env_file),
+        "--no-refresh",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "ok"
+    assert result["tool"] == "image_generation"
+    assert result["routing_policy"] == "managed_only"
+    assert result["routing_env_key"] == "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING"
+    text = env_file.read_text(encoding="utf-8")
+    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+    assert "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING=managed_only" in text
+
+
+def test_cli_config_set_tool_routing_invalid_policy_errors(capsys, tmp_path):
+    env_file = tmp_path / "env"
+    try:
+        main(["config", "set-tool-routing", "web-search", "bad-policy", "--env-file", str(env_file)])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected argparse SystemExit for invalid tool routing policy")
+
+
+def test_cli_doctor_tool_routing_reports_runtime_diagnostics(monkeypatch, tmp_path, capsys):
+    _clear_provider_probe_test_env(monkeypatch)
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi\n"
+        "export SERPAPI_API_KEY=serpapi-test-key\n"
+        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
+        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n",
+        encoding="utf-8",
+    )
+
+    def fake_http_json(url, *, timeout=3.0):
+        assert "/v1/proxy/tool-bridge/status" in url
+        return 200, {
+            "status": "ok",
+            "tool_bridge": {
+                "managed_tool_routing": {
+                    "enabled": True,
+                    "instruction_enabled": True,
+                    "last_execution": {"attempted": True, "status": "executed_ok"},
+                    "no_native_tools_observed": [],
+                    "no_tool_call_diagnostics": [],
+                },
+                "web_search": {
+                    "provider": "serpapi",
+                    "configured": True,
+                    "routing_policy": "auto",
+                    "managed_function_name": "codeepseedex_web_search",
+                    "last_route_decision": {"action": "mapped_to_managed"},
+                    "last_execution": {"ok": True, "provider": "mock"},
+                },
+                "image_generation": {
+                    "provider": "zhipu",
+                    "configured": True,
+                    "routing_policy": "auto",
+                    "managed_function_name": "codeepseedex_generate_image",
+                    "last_route_decision": None,
+                    "last_execution": None,
+                    "native_tool_observed": False,
+                    "no_native_tool_observed": True,
+                    "diagnostic": {"reason": "codex_did_not_send_native_image_generation_tool"},
+                },
+            },
+        }, None
+
+    monkeypatch.setattr(cli_module, "_http_json", fake_http_json)
+
+    assert main(["doctor", "tool-routing", "--env-file", str(env_file)]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["command"] == "doctor tool-routing"
+    assert result["native_tool_routing"]["available"] is True
+    assert result["native_tool_routing"]["end_to_end_managed_route"] == "tested"
+    assert result["tools"]["web_search"]["last_route_decision"]["action"] == "mapped_to_managed"
+    assert result["tools"]["image_generation"]["no_native_tool_observed"] is True
+    assert result["tools"]["image_generation"]["diagnostic"]["reason"] == "codex_did_not_send_native_image_generation_tool"
+    assert result["api_key_values_logged"] is False
+    assert "serpapi-test-key" not in json.dumps(result)
+    assert "zhipu-test-key" not in json.dumps(result)
+
+
 def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
     from deepseek_responses_proxy.cli import main
 

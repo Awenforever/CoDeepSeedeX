@@ -30,8 +30,8 @@
 - GitHub Release状态：非draft，非prerelease，普通Latest Release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.14a5-no-tool-call-diagnostics`
-- 最新闭合文档同步检查点：`p2.14a5-no-tool-call-diagnostics`
+- 当前内部开发检查点：`p2.14a6-routing-policy-cli-doctor`
+- 最新闭合文档同步检查点：`p2.14a6-routing-policy-cli-doctor`
 - 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1859,3 +1859,15 @@ p2.14a5为managed tool routing补充请求级诊断，用于说明managed capabi
 4. 如果Codex没有暴露native `image_generation`，状态必须解释`codex_did_not_send_native_image_generation_tool`；如果managed provider已配置，仍保留`image_generation.configured=true`。
 5. 诊断必须保持脱敏：不得暴露原始prompt、query、image URL列表或provider原始payload。
 6. 当最近请求缺少一个或多个native managed-tool capability时，可以写入`managed_tool_routing_no_native_tool_observed` debug trace事件。
+
+## p2.14a6 Routing policy CLI and doctor diagnostics
+
+p2.14a6通过CLI暴露managed native tool routing配置与诊断。
+
+规则：
+
+1. `dsproxy config show`必须包含`tool_routing`对象，展示web/image provider、configured状态、routing policy和managed function name。
+2. `dsproxy config set-tool-routing <tool> <policy>`只写入routing policy并启用tool bridge。支持策略为`auto`、`managed_only`、`native_only`和`disabled`。
+3. `dsproxy doctor tool-routing`不得调用live provider；它只读取本地配置，并在可用时读取运行中的tool-bridge status endpoint。
+4. Doctor输出必须展示provider/configured状态、routing policy、last route decision、last execution，以及no-native-tool/no-tool-call诊断，并且不得暴露API key值。
+5. 真实web/image provider探测仍归`dsproxy doctor providers --live --allow-spend`；`doctor tool-routing`绝不能触发image generation。
