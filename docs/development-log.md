@@ -1,3 +1,30 @@
+## p2.14a3 Managed tool routing runtime diagnostics
+
+Date: 2026-05-25
+
+Scope:
+
+- Harden managed tool routing diagnostics without moving the public `v0.3.9-alpha` Release.
+- Record actual managed tool execution evidence in `managed_tool_routing_report.tool_calls`, `tool_results`, and `execution`.
+- Expose per-tool `last_execution` and aggregate `managed_tool_routing.last_execution` through tool-bridge status and WeClaw-facing tools status.
+- Keep execution diagnostics redacted: argument keys and result keys are exposed, but raw query/prompt/result payloads are not surfaced in status.
+- Emit `managed_tool_routing_execution` and `managed_tool_routing_after_tool_bridge` debug trace events.
+
+Validation:
+
+- `git diff --check`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `python -m py_compile deepseek_responses_proxy/app.py`
+- focused managed-tool-routing/tool-bridge/proxy/status/version/docs tests
+- full tests
+
+Release boundary:
+
+- Public `v0.3.9-alpha` remains at `82a4428`.
+- No GitHub Release update is performed.
+- No Release assets are rebuilt.
+
 ## p2.14a2 Managed tool routing core
 
 Date: 2026-05-25

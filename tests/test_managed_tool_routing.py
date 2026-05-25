@@ -154,6 +154,17 @@ async def test_managed_web_search_tool_executes_and_second_model_call_receives_r
     last_decision = status_data["tool_bridge"]["web_search"]["last_route_decision"]
     assert last_decision["managed_function_name"] == "codeepseedex_web_search"
     assert last_decision["action"] == "mapped_to_managed"
+    last_execution = status_data["tool_bridge"]["web_search"]["last_execution"]
+    assert last_execution["tool_name"] == "codeepseedex_web_search"
+    assert last_execution["ok"] is True
+    assert last_execution["provider"] == "mock"
+    assert last_execution["raw_result_exposed"] is False
+    assert "query" in last_execution["result_keys"]
+    execution = status_data["tool_bridge"]["managed_tool_routing"]["last_execution"]
+    assert execution["status"] == "executed_ok"
+    assert execution["call_count"] == 1
+    assert execution["success_count"] == 1
+    assert execution["raw_content_exposed"] is False
 
     routing = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
     assert any(item.get("mapped_to") == "codeepseedex_web_search" for item in routing)
@@ -190,6 +201,16 @@ async def test_managed_image_generation_tool_executes_and_surfaces_image_evidenc
     assert "Generated image result:" in data["output_text"]
     assert "Provider: mock" in data["output_text"]
     assert "Image 1 URL: https://example.com/mock-generated-image.png" in data["output_text"]
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        status_response = await client.get("/v1/proxy/tool-bridge/status")
+    status_data = status_response.json()
+    last_execution = status_data["tool_bridge"]["image_generation"]["last_execution"]
+    assert last_execution["tool_name"] == "codeepseedex_generate_image"
+    assert last_execution["ok"] is True
+    assert last_execution["provider"] == "mock"
+    assert last_execution["image_count"] == 1
+    assert last_execution["raw_result_exposed"] is False
 
 
 def test_tool_bridge_status_exposes_managed_tool_routing_registry(monkeypatch):

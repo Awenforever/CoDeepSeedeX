@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.14a2-tool-routing-core"
+PROXY_INTERNAL_VERSION = "p2.14a3-managed-tool-routing-runtime-diagnostics"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
@@ -10440,6 +10440,7 @@ def _new_managed_tool_routing_report(tools: Any) -> dict[str, Any]:
         "provider": None,
         "tool_calls": [],
         "tool_results": [],
+        "execution": _managed_tool_routing_empty_execution_summary(),
     }
 
 
@@ -10635,6 +10636,141 @@ def _managed_tool_routing_last_decision_for_kind(
     for decision in reversed(decisions):
         if isinstance(decision, dict) and decision.get("kind") == kind:
             return deepcopy(decision)
+    return None
+
+
+def _managed_tool_kind_from_function_name(function_name: Any) -> str | None:
+    name = str(function_name or "").strip()
+    if name in {"codeepseedex_web_search", "proxy_web_search"}:
+        return "web_search"
+    if name in {"codeepseedex_generate_image", "proxy_image_generate"}:
+        return "image_generation"
+    return None
+
+
+def _managed_tool_routing_empty_execution_summary() -> dict[str, Any]:
+    return {
+        "attempted": False,
+        "status": "not_executed",
+        "call_count": 0,
+        "result_count": 0,
+        "success_count": 0,
+        "failure_count": 0,
+        "last_kind": None,
+        "last_tool_name": None,
+        "last_provider": None,
+        "last_ok": None,
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+
+
+def _managed_tool_result_diagnostic_summary(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "provider": None,
+            "error": "non_dict_tool_result",
+            "result_keys": [],
+            "image_count": 0,
+            "raw_result_exposed": False,
+            "redacted": True,
+        }
+    images = result.get("images")
+    if not isinstance(images, list):
+        images = []
+    return {
+        "ok": bool(result.get("ok")),
+        "provider": result.get("provider"),
+        "tool": result.get("tool"),
+        "error": result.get("error"),
+        "image_count": len(images),
+        "result_keys": sorted(str(key) for key in result.keys()),
+        "raw_result_exposed": False,
+        "redacted": True,
+    }
+
+
+def _record_managed_tool_execution(
+    report: dict[str, Any] | None,
+    tool_call: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    round_index: int,
+) -> dict[str, Any] | None:
+    if not isinstance(report, dict) or not isinstance(tool_call, dict):
+        return None
+    function = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+    function_name = str((function or {}).get("name") or "")
+    kind = _managed_tool_kind_from_function_name(function_name)
+    if kind is None:
+        return None
+    arguments = _decode_tool_arguments((function or {}).get("arguments", ""))
+    if not isinstance(arguments, dict):
+        arguments = {}
+
+    call_record = {
+        "round": round_index,
+        "kind": kind,
+        "tool_call_id": tool_call.get("id"),
+        "tool_name": function_name,
+        "managed_function_name": _managed_tool_function_name(kind),
+        "legacy_alias": function_name.startswith("proxy_"),
+        "argument_keys": sorted(str(key) for key in arguments.keys()),
+        "raw_arguments_exposed": False,
+        "redacted": True,
+    }
+    result_record = {
+        "round": round_index,
+        "kind": kind,
+        "tool_call_id": tool_call.get("id"),
+        "tool_name": function_name,
+        "managed_function_name": _managed_tool_function_name(kind),
+        **_managed_tool_result_diagnostic_summary(result),
+    }
+
+    report.setdefault("tool_calls", []).append(call_record)
+    report.setdefault("tool_results", []).append(result_record)
+
+    results = [item for item in report.get("tool_results", []) if isinstance(item, dict)]
+    success_count = sum(1 for item in results if item.get("ok") is True)
+    failure_count = sum(1 for item in results if item.get("ok") is not True)
+    execution = {
+        **_managed_tool_routing_empty_execution_summary(),
+        "attempted": True,
+        "status": "executed_ok" if failure_count == 0 else "executed_with_failures",
+        "call_count": len([item for item in report.get("tool_calls", []) if isinstance(item, dict)]),
+        "result_count": len(results),
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "last_kind": kind,
+        "last_tool_name": function_name,
+        "last_provider": result_record.get("provider"),
+        "last_ok": result_record.get("ok"),
+        "raw_content_exposed": False,
+        "redacted": True,
+    }
+    report["execution"] = execution
+
+    return {
+        "tool_call": deepcopy(call_record),
+        "tool_result": deepcopy(result_record),
+        "execution": deepcopy(execution),
+    }
+
+
+def _managed_tool_routing_last_execution_for_kind(
+    last_report: dict[str, Any] | None,
+    kind: str,
+) -> dict[str, Any] | None:
+    if not isinstance(last_report, dict):
+        return None
+    results = last_report.get("tool_results")
+    if not isinstance(results, list):
+        return None
+    for result in reversed(results):
+        if isinstance(result, dict) and result.get("kind") == kind:
+            return deepcopy(result)
     return None
 
 
@@ -14423,6 +14559,7 @@ async def _run_chat_with_tool_bridge(
     previous_response_id: str | None = None,
     usage_call_counter: dict[str, int] | None = None,
     user_tool_control_policy_report: dict[str, Any] | None = None,
+    managed_tool_routing_report: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     session_id = _session_id_from_request_payload(request_payload)
     deepseek_response = await _chat_completions_with_usage(
@@ -14742,6 +14879,18 @@ async def _run_chat_with_tool_bridge(
                 deepseek_client=deepseek_client,
                 store=store,
             )
+            execution_record = _record_managed_tool_execution(
+                managed_tool_routing_report,
+                tool_call,
+                result,
+                round_index=round_index + 1,
+            )
+            if execution_record is not None:
+                _debug_trace_event(
+                    response_id,
+                    "managed_tool_routing_execution",
+                    **execution_record,
+                )
             tool_message = _tool_result_message(tool_call, result)
             tool_messages.append(tool_message)
             tool_trace.append(
@@ -16465,6 +16614,7 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "instruction_enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING_INSTRUCTION", True),
             "capabilities": registry,
             "last_route_decision": deepcopy(last_managed_tool_routing_report) if isinstance(last_managed_tool_routing_report, dict) else None,
+            "last_execution": deepcopy(last_managed_tool_routing_report.get("execution")) if isinstance(last_managed_tool_routing_report, dict) else None,
         },
         "web_search": {
             "provider": web_provider,
@@ -16477,6 +16627,7 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "managed_function_name": web_capability.get("managed_function_name"),
             "configured": web_capability.get("configured"),
             "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "web_search"),
+            "last_execution": _managed_tool_routing_last_execution_for_kind(last_managed_tool_routing_report, "web_search"),
         },
         "image_generation": {
             "provider": image_provider,
@@ -16493,6 +16644,7 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
             "managed_function_name": image_capability.get("managed_function_name"),
             "configured": image_capability.get("configured"),
             "last_route_decision": _managed_tool_routing_last_decision_for_kind(last_managed_tool_routing_report, "image_generation"),
+            "last_execution": _managed_tool_routing_last_execution_for_kind(last_managed_tool_routing_report, "image_generation"),
         },
         "mcp_executor": _mcp_executor_status(),
     }
@@ -20730,6 +20882,13 @@ def create_app(
                 previous_response_id=previous_response_id,
                 usage_call_counter=usage_call_counter,
                 user_tool_control_policy_report=user_tool_control_policy_report,
+                managed_tool_routing_report=managed_tool_routing_report,
+            )
+            app.state.last_managed_tool_routing_report = deepcopy(managed_tool_routing_report)
+            _debug_trace_event(
+                response_id,
+                "managed_tool_routing_after_tool_bridge",
+                **managed_tool_routing_report,
             )
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc

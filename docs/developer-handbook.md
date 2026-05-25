@@ -32,8 +32,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a2-tool-routing-core`
-- Latest closed documentation sync checkpoint: `p2.14a2-tool-routing-core`
+- Current internal development checkpoint: `p2.14a3-managed-tool-routing-runtime-diagnostics`
+- Latest closed documentation sync checkpoint: `p2.14a3-managed-tool-routing-runtime-diagnostics`
 - Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
@@ -1859,3 +1859,16 @@ Rules:
 8. `tool_bridge.managed_tool_routing` and per-tool `routing` status expose policy, provider, configured state, managed function name, availability state, failure reason, and recommended action.
 9. Debug trace must include a `managed_tool_routing` event for each `/v1/responses` request.
 10. Do not claim exact web/image provider cost attribution until a later audited usage/cost node records provider-call accounting separately from primary model usage.
+
+## p2.14a3 Managed tool routing runtime diagnostics
+
+p2.14a3 extends p2.14a2 from route decisions to runtime execution diagnostics. Status contracts must distinguish three layers: configured capability, route decision, and actual managed tool execution.
+
+Rules:
+
+1. `managed_tool_routing_report.decisions` records routing decisions before model execution.
+2. `managed_tool_routing_report.tool_calls`, `tool_results`, and `execution` record actual managed function execution after the model emits tool calls.
+3. Tool execution status must be redacted by default: expose tool name, kind, provider, ok/error, result keys, image count, and argument keys; do not expose raw query, prompt, image URL list, or provider result payload in status.
+4. `tool_bridge.managed_tool_routing.last_execution` exposes aggregate execution status. Each managed tool also exposes its own `last_execution`.
+5. Debug trace should include `managed_tool_routing_execution` for each managed tool execution and `managed_tool_routing_after_tool_bridge` after the tool bridge loop.
+6. Legacy `proxy_*` aliases may execute, but diagnostics must still classify them under the managed kind.
