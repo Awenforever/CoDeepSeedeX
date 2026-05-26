@@ -24,35 +24,34 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
-- Main branch: `master`
-- Current public Release: `v0.3.9-alpha`
-- Current public Release commit: `82a4428`
-- GitHub Latest Release: `v0.3.9-alpha`
-- GitHub Release title: `CoDeepSeedeX v0.3.9-alpha`
-- GitHub Release state: non-draft, non-prerelease, Latest ordinary Release
-- GitHub Release flags: `isDraft=false`, `isPrerelease=false`
+- Primary branch: `master`
+- Current public Release: `v0.4.0-alpha`
+- Current public Release kind: pre-release
+- Current public Release commit: resolved from `v0.4.0-alpha` tag after publication
+- GitHub Latest ordinary Release: `v0.3.9-alpha`
+- GitHub Release title: `CoDeepSeedeX v0.4.0-alpha`
+- GitHub Release state: non-draft pre-release
+- GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a6-routing-policy-cli-doctor`
-- Latest closed documentation sync checkpoint: `p2.14a6-routing-policy-cli-doctor`
-- Current public Release note synchronization checkpoint: `p2.13a5-token-first-trim-profile-scoped-report`.
+- Current internal development checkpoint: `p2.14a8-v040-alpha-release`
+- Latest closed documentation sync checkpoint: `p2.14a8-v040-alpha-release`
+- Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- Latest WeClaw-facing runtime checkpoint: `p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
-- WeClaw status: the current CoDeepSeedeX and WeClaw integration line is closed. The WeClaw side reported no blocking issue after the v0.3.9-alpha Latest validation.
+- Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
+- WeClaw status: the current CoDeepSeedeX and WeClaw integration line remains compatible with the dsproxy-owned status contracts. p2.14 adds managed native tool routing, routing diagnostics, and web/image provider bridge validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.3.9-alpha = 82a4428` as the public Latest Release peeled commit.
+  - `v0.4.0-alpha = resolved by release tag`
+  - `v0.3.9-alpha = 82a4428` as the previous public Latest ordinary Release peeled commit.
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
-- Erroneous plain tags `v0.3.5` and `v0.3.9` must not exist.
+- Erroneous plain tags `v0.4.0`, `v0.3.5`, and `v0.3.9` must not exist.
+- Important p2.14 validation note: real SerpAPI web-search E2E passed through Codex `--search`; real Zhipu image-generation E2E passed through the dsproxy provider bridge using an ASGI/mock DeepSeek client. Current Codex CLI did not expose native `image_generation` to dsproxy, so image-provider E2E validates the provider bridge, not Codex native image entry.
+- Logging rule: real provider E2E scripts must not log signed image URLs, temporary provider URLs, or query-string tokens.
 
 This handbook is the startup context for new AI-assisted development conversations. It should track current state, stable rules, the active task bus, release rules, and high-value lessons. Detailed timelines belong in `docs/development-log.md`.
-
-
-### Runtime payload report persistence
-
-Runtime Compact/Trim observability must not depend only on process-local memory. When a real request produces token-first Compact or Trim reports, dsproxy persists the display-safe runtime report metadata in SQLite and lets `dsproxy status thinking --weclaw-json` restore the latest matching profile/session report after a proxy restart. Debug `.debug/context_*_report.json` files remain diagnostic artifacts only; they must not be treated as the authoritative live runtime snapshot for WeClaw.
 
 ## 3. Key file map
 
@@ -70,13 +69,13 @@ Runtime Compact/Trim observability must not depend only on process-local memory.
 `dsproxy --version` must expose two version sources:
 
 ```text
-public version: v0.3.x-alpha | <public_release_commit>
+public version: v0.x.y-alpha | <public_release_commit>
 internal version: p2.9aN-topic | <internal_commit>
 ```
 
 For user installations from a public Release tag, the internal version line reports the `p~` tag that was current at the moment that Release tag was created. For a developer checkout running from `master`, the public version line remains the latest published public Release until the next Release, while the internal version line must track the latest internal `p~` tag on `master`.
 
-Public release tags use the `v0.3.x-alpha` form during alpha. Do not create plain `v0.3.x` public tags. Internal development tags use the `p` prefix, such as `p2.9a21-handbook-bilingual-restoration`, and must not create GitHub Releases.
+Public release tags use the `v0.x.y-alpha` form during alpha. Do not create plain `v0.3.x` public tags. Internal development tags use the `p` prefix, such as `p2.9a21-handbook-bilingual-restoration`, and must not create GitHub Releases.
 
 Package versions in `pyproject.toml` use PEP440, for example `0.3.7a0`.
 
@@ -1897,3 +1896,15 @@ Rules:
 3. `dsproxy doctor tool-routing` must not call live providers. It reads local configuration and the running tool-bridge status endpoint when available.
 4. Doctor output must show provider/configured state, routing policy, last route decision, last execution, and no-native-tool/no-tool-call diagnostics without exposing API key values.
 5. Live web/image provider probes remain under `dsproxy doctor providers --live --allow-spend`; image generation must never be triggered by `doctor tool-routing`.
+
+## p2.14a8 v0.4.0-alpha Release
+
+p2.14a8 publishes the p2.14 managed native tool routing line as `v0.4.0-alpha` without moving the previous `v0.3.9-alpha` tag.
+
+Release rules:
+
+1. `v0.4.0-alpha` is a GitHub pre-release, not the Latest ordinary Release.
+2. `v0.3.9-alpha` remains pinned at `82a4428`.
+3. Release assets are exactly `bootstrap.sh` and `install.sh`.
+4. The repository must not add tracked per-release note files under `docs/`; release notes are written to GitHub Release from a temporary file.
+5. The release note must mention the Codex native image limitation and the real-provider E2E logging rule for signed URLs.

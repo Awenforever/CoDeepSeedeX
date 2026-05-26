@@ -1,3 +1,41 @@
+## p2.14a8 v0.4.0-alpha Release
+
+Date: 2026-05-26
+
+Scope:
+
+- Publish the p2.14 managed native tool routing line as `v0.4.0-alpha`.
+- Keep `v0.3.9-alpha` pinned at `82a4428`; do not move the previous public Release tag.
+- Update runtime public version metadata to `v0.4.0-alpha` and internal metadata to `p2.14a8-v040-alpha-release`.
+- Update README explicit pre-release install examples to `v0.4.0-alpha`.
+- Update developer handbooks with the new pre-release state.
+- Write GitHub Release notes from a temporary file only; do not add tracked per-release note files under `docs/`.
+
+p2.14 release coverage:
+
+- Managed native tool routing core maps native `web_search` and `image_generation` to `codeepseedex_web_search` and `codeepseedex_generate_image` when policy allows managed routing.
+- Runtime diagnostics expose last route decisions, last execution evidence, tool calls, tool results, request-scoped no-native-tool/no-tool-call diagnostics, and WeClaw-facing status.
+- `dsproxy config show`, `dsproxy config set-tool-routing`, and `dsproxy doctor tool-routing` expose routing configuration and non-spending diagnostics.
+- Real Codex `--search` E2E passed through real SerpAPI.
+- Real Zhipu image-generation E2E passed through the dsproxy provider bridge using an ASGI/mock DeepSeek client.
+- Current Codex CLI did not expose native `image_generation` to dsproxy; image provider E2E validates the provider bridge rather than Codex native image entry.
+- Future real-provider E2E scripts must not log signed image URLs, temporary provider URLs, or query-string tokens.
+
+Validation target:
+
+- `python -m py_compile deepseek_responses_proxy/app.py deepseek_responses_proxy/cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `git diff --check`
+- focused version/docs/CLI/managed-routing/provider tests
+- full tests
+- GitHub Release verification for `v0.4.0-alpha` as non-draft pre-release with assets `bootstrap.sh` and `install.sh`
+
+Release boundary:
+
+- `v0.4.0-alpha` is a new public pre-release.
+- `v0.3.9-alpha` remains at `82a4428` and remains the previous Latest ordinary Release unless GitHub Latest state is explicitly changed later.
+
 ## p2.14a6 Routing policy CLI and doctor diagnostics
 
 Date: 2026-05-26

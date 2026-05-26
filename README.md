@@ -32,16 +32,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Explicit pre-release channel, currently `v0.3.9-alpha`:
+Explicit pre-release channel, currently `v0.4.0-alpha`:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.9-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.9-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.0-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.0-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.3.9-alpha"
+tag="v0.4.0-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -66,7 +66,7 @@ dsproxy status thinking
 Expected version output has two lines:
 
 ```text
-public version: v0.3.x-alpha | <public-release-commit>
+public version: v0.x.y-alpha | <public-release-commit>
 internal version: p2.x-topic | <internal-commit>
 ```
 
@@ -225,7 +225,7 @@ dsproxy upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-dsproxy upgrade --tag v0.3.9-alpha
+dsproxy upgrade --tag v0.4.0-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -263,7 +263,7 @@ The uninstaller must not delete unrelated user files or non-CoDeepSeedeX configu
 
 CoDeepSeedeX can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
 
-If WeClaw integration is used with CoDeepSeedeX `v0.3.9-alpha`, WeClaw must be at least:
+If WeClaw integration is used with CoDeepSeedeX `v0.4.0-alpha` or `v0.3.9-alpha`, WeClaw must be at least:
 
 ```text
 weclaw_dev >= v0.1.9-alpha

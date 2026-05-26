@@ -24,7 +24,7 @@ import subprocess
 
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.3.9-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.0-alpha"
 def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
     repo_root = Path(__file__).resolve().parents[1]
     candidates = [
@@ -57,7 +57,7 @@ PROXY_PUBLIC_COMMIT = (
     _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.14a6-routing-policy-cli-doctor"
+PROXY_INTERNAL_VERSION = "p2.14a8-v040-alpha-release"
 PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90

@@ -36,7 +36,7 @@ def _clear_provider_probe_test_env(monkeypatch):
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "public version: v0.3.9-alpha |" in out
+    assert "public version: v0.4.0-alpha |" in out
     assert "internal version: p" in out
 
 

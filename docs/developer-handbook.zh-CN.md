@@ -23,34 +23,33 @@
 - 本地项目路径：`~/projects/deepseek-responses-proxy`
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
-- 当前公开Release：`v0.3.9-alpha`
-- 当前公开Release提交：`82a4428`
-- GitHub Latest Release：`v0.3.9-alpha`
-- GitHub Release标题：`CoDeepSeedeX v0.3.9-alpha`
-- GitHub Release状态：非draft，非prerelease，普通Latest Release
-- GitHub Release标志：`isDraft=false`，`isPrerelease=false`
+- 当前公开Release：`v0.4.0-alpha`
+- 当前公开Release类型：pre-release
+- 当前公开Release提交：发布后由`v0.4.0-alpha` tag解析
+- GitHub Latest普通Release：`v0.3.9-alpha`
+- GitHub Release标题：`CoDeepSeedeX v0.4.0-alpha`
+- GitHub Release状态：非draft，pre-release
+- GitHub Release标志：`isDraft=false`，`isPrerelease=true`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.14a6-routing-policy-cli-doctor`
-- 最新闭合文档同步检查点：`p2.14a6-routing-policy-cli-doctor`
-- 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
+- 当前内部开发检查点：`p2.14a8-v040-alpha-release`
+- 最新闭合文档同步检查点：`p2.14a8-v040-alpha-release`
+- 当前公开Release note同步检查点：`p2.14a8-v040-alpha-release`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
-- 最新WeClaw-facing运行时检查点：`p2.13a5-token-first-trim-profile-scoped-report = 82a4428`
-- WeClaw状态：当前CoDeepSeedeX和WeClaw集成线已闭合。`v0.3.9-alpha`提升为Latest并完成验证后，WeClaw侧未回报阻塞问题。
+- 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`
+- WeClaw状态：当前CoDeepSeedeX与WeClaw集成线仍兼容dsproxy拥有的status契约。p2.14新增managed native tool routing、routing diagnostics以及web/image provider bridge验证。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.3.9-alpha = 82a4428`，这是公开Latest Release的peeled commit。
+  - `v0.4.0-alpha = resolved by release tag`
+  - `v0.3.9-alpha = 82a4428`，这是上一版公开Latest普通Release的peeled commit。
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
   - `v0.3.6-alpha = 7fd8fb6`
   - `v0.3.5-alpha = 53897ad`
-- 错误普通tag `v0.3.5`和`v0.3.9`必须不存在。
+- 错误普通tag `v0.4.0`、`v0.3.5`和`v0.3.9`必须不存在。
+- 重要p2.14验证说明：真实SerpAPI web-search E2E已通过Codex `--search`入口；真实Zhipu image-generation E2E通过ASGI/mock DeepSeek client验证dsproxy provider bridge。当前Codex CLI没有把native `image_generation`暴露给dsproxy，因此image-provider E2E验证的是provider bridge，不是Codex native image入口。
+- 日志规则：真实provider E2E脚本不得记录签名图片URL、临时provider URL或query-string token。
 
 本手册是新开发对话的启动上下文。它应维护当前状态、稳定规则、任务总线、Release规则和高价值经验。详细时间线放入`docs/development-log.md`。
-- 当前公开Release note同步检查点：`p2.13a5-token-first-trim-profile-scoped-report`
-
-### Runtime payload report持久化
-
-Runtime Compact/Trim观测不能只依赖进程内存。真实请求产生token-first Compact或Trim报告后，dsproxy必须把display-safe runtime report metadata写入SQLite；`dsproxy status thinking --weclaw-json`在代理重启后应按profile/session恢复最近匹配的报告。`.debug/context_*_report.json`只能作为诊断文件，不能作为WeClaw权威live runtime snapshot。
 
 ## 3. 关键文件地图
 
@@ -66,11 +65,11 @@ Runtime Compact/Trim观测不能只依赖进程内存。真实请求产生token-
 `dsproxy --version`必须输出两行：
 
 ```text
-public version: v0.3.x-alpha | <public_release_commit>
+public version: v0.x.y-alpha | <public_release_commit>
 internal version: p2.9aN-topic | <internal_commit>
 ```
 
-公开Release tag在alpha阶段使用`v0.3.x-alpha`，不得创建不带`-alpha`的`v0.3.x`公开tag。内部开发tag使用`p`前缀，不创建GitHubRelease。
+公开Release tag在alpha阶段使用`v0.x.y-alpha`，不得创建不带`-alpha`的`v0.3.x`公开tag。内部开发tag使用`p`前缀，不创建GitHubRelease。
 
 Release时通常需要同步：
 
@@ -1871,3 +1870,15 @@ p2.14a6通过CLI暴露managed native tool routing配置与诊断。
 3. `dsproxy doctor tool-routing`不得调用live provider；它只读取本地配置，并在可用时读取运行中的tool-bridge status endpoint。
 4. Doctor输出必须展示provider/configured状态、routing policy、last route decision、last execution，以及no-native-tool/no-tool-call诊断，并且不得暴露API key值。
 5. 真实web/image provider探测仍归`dsproxy doctor providers --live --allow-spend`；`doctor tool-routing`绝不能触发image generation。
+
+## p2.14a8 v0.4.0-alpha Release
+
+p2.14a8将p2.14 managed native tool routing主线发布为`v0.4.0-alpha`，不移动上一版`v0.3.9-alpha` tag。
+
+Release规则：
+
+1. `v0.4.0-alpha`是GitHub pre-release，不是Latest普通Release。
+2. `v0.3.9-alpha`继续固定在`82a4428`。
+3. Release资产必须正好是`bootstrap.sh`和`install.sh`。
+4. 仓库不得在`docs/`下新增长期per-release note文件；Release notes从临时文件写入GitHub Release。
+5. Release note必须说明Codex native image限制，以及真实provider E2E日志不得记录签名URL的规则。
