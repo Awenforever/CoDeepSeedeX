@@ -33,8 +33,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft pre-release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a8-v040-alpha-release`
-- Latest closed documentation sync checkpoint: `p2.14a8-v040-alpha-release`
+- Current internal development checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`
+- Latest closed documentation sync checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`
 - Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
@@ -1908,3 +1908,17 @@ Release rules:
 3. Release assets are exactly `bootstrap.sh` and `install.sh`.
 4. The repository must not add tracked per-release note files under `docs/`; release notes are written to GitHub Release from a temporary file.
 5. The release note must mention the Codex native image limitation and the real-provider E2E logging rule for signed URLs.
+
+## p2.14a9 Upgrade alpha non-git fallback
+
+p2.14a9 fixes the future `dsproxy upgrade --alpha` path for source-archive or otherwise non-git installations.
+
+Rules:
+
+1. Do not move `v0.3.9-alpha`; old `v0.3.9-alpha` clients still cannot be patched in place unless that old Release asset is changed.
+2. When `dsproxy upgrade` resolves a target ref but the install directory is not a git checkout, the command must use a release-bootstrap fallback rather than returning `not_a_git_checkout`.
+3. The fallback downloads `bootstrap.sh` for the resolved target ref and runs it with `--install-ref <target-ref>` plus `--non-interactive --install-dir <repo_hint>`.
+4. `--dry-run` must print this non-git fallback plan without downloading or executing the installer.
+5. `--skip-profile` maps to installer `--no-codex-profile`; `--no-restart` is informational because the installer fallback does not start proxy processes.
+6. Same-public-version non-git upgrades are skipped unless `--force` is used, because a non-git install cannot safely compare the target tag commit without a checkout.
+7. Publishing the fix still requires a separate public Release decision: update the existing `v0.4.0-alpha` pre-release or publish a later alpha tag.

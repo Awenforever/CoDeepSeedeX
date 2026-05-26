@@ -1,3 +1,38 @@
+## p2.14a9 Upgrade alpha non-git fallback
+
+Date: 2026-05-26
+
+Scope:
+
+- Fix future `dsproxy upgrade --alpha` behavior for source-archive/non-git installs.
+- Replace the old `not_a_git_checkout` terminal error with a release-bootstrap fallback.
+- The fallback downloads target-ref `bootstrap.sh` and runs it with `--install-ref <target-ref>` plus `--non-interactive --install-dir <repo_hint>`.
+- `--dry-run` now reports the non-git bootstrap plan without downloading or executing it.
+- `--skip-profile` maps to installer `--no-codex-profile`.
+- `--no-restart` is recorded as informational because the installer fallback does not start proxy processes.
+- Same-public-version non-git upgrades skip unless `--force` is used.
+- This node does not move `v0.3.9-alpha` or `v0.4.0-alpha` and does not update GitHub Release assets.
+
+Reason:
+
+- VM validation showed explicit `--install-ref v0.4.0-alpha` succeeds, but `v0.3.9-alpha` source-archive installs return `not_a_git_checkout` for `dsproxy upgrade --alpha`.
+- Because `v0.3.9-alpha` must not move, old clients still need the explicit installer path. p2.14a9 prevents the same failure for future installed versions once this fix is published in a later public alpha.
+
+Validation target:
+
+- py_compile for app/CLI/tests
+- `bash -n bootstrap.sh`
+- `bash -n scripts/install.sh`
+- `git diff --check`
+- focused upgrade tests including non-git dry-run and bootstrap execution fallback
+- focused version/docs tests
+- full tests
+
+Release boundary:
+
+- Internal-only patch node unless a separate Release decision updates `v0.4.0-alpha` or publishes a later alpha.
+- `v0.3.9-alpha` remains pinned at `82a4428`.
+
 ## p2.14a8 v0.4.0-alpha Release
 
 Date: 2026-05-26

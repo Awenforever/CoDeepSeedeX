@@ -230,7 +230,7 @@ dsproxy upgrade --tag v0.4.0-alpha
 
 不要同时使用`--alpha`和`--tag`。
 
-如果旧安装还没有`dsproxy upgrade`，重新运行安装命令。
+如果旧安装还没有`dsproxy upgrade`，重新运行安装命令。带有p2.14a9 fallback的source-archive/非git安装也可以使用`dsproxy upgrade --alpha`；该命令会用解析出的`--install-ref`重新运行Release bootstrap安装器。
 
 ## 卸载
 

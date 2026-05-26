@@ -230,7 +230,7 @@ dsproxy upgrade --tag v0.4.0-alpha
 
 Do not combine `--alpha` and `--tag`.
 
-Older installations that do not have `dsproxy upgrade` should rerun the installer.
+Older installations that do not have `dsproxy upgrade` should rerun the installer. Source-archive/non-git installs on versions with the p2.14a9 fallback can also use `dsproxy upgrade --alpha`; the command reruns the release bootstrap installer with the resolved `--install-ref`.
 
 ## Uninstall
 

@@ -5265,6 +5265,196 @@ def _git_remote_tag_commit_in_repo(repo_root: Path, tag: str, remote: str = "ori
     return peeled or direct
 
 
+
+
+
+def _upgrade_bootstrap_urls_for_ref(target_ref: str, *, target_source: str | None = None) -> list[str]:
+    ref = str(target_ref or "").strip()
+    urls: list[str] = []
+    if target_source == "latest_release":
+        urls.append("https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh")
+    if ref:
+        quoted_ref = urllib.parse.quote(ref, safe="")
+        urls.extend([
+            f"https://github.com/Awenforever/CoDeepSeedeX/releases/download/{quoted_ref}/bootstrap.sh",
+            f"https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/{urllib.parse.quote(ref, safe='/._-')}/bootstrap.sh",
+            f"https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/{quoted_ref}/bootstrap.sh",
+        ])
+    deduped: list[str] = []
+    for url in urls:
+        if url not in deduped:
+            deduped.append(url)
+    return deduped
+
+
+def _upgrade_bootstrap_command_for_non_git(
+    target_ref: str,
+    bootstrap_path: Path,
+    repo_hint: Path,
+    *,
+    skip_profile: bool = False,
+) -> list[str]:
+    cmd = [
+        "bash",
+        str(bootstrap_path),
+        "--install-ref",
+        target_ref,
+        "--",
+        "--non-interactive",
+        "--install-dir",
+        str(repo_hint),
+    ]
+    if skip_profile:
+        cmd.append("--no-codex-profile")
+    return cmd
+
+
+def _download_upgrade_bootstrap(
+    result: dict[str, Any],
+    *,
+    target_ref: str,
+    target_source: str,
+    bootstrap_path: Path,
+    dry_run: bool,
+) -> bool:
+    urls = _upgrade_bootstrap_urls_for_ref(target_ref, target_source=target_source)
+    result["one_line_upgrade"] = f"curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/{target_ref}/bootstrap.sh | bash -s -- --install-ref {target_ref}"
+    result["bootstrap_urls"] = urls
+    step: dict[str, Any] = {
+        "label": "download_release_bootstrap",
+        "urls": urls,
+        "target": str(bootstrap_path),
+        "dry_run": dry_run,
+    }
+    result.setdefault("steps", []).append(step)
+    if dry_run:
+        step["skipped"] = True
+        return True
+
+    last_error = None
+    for url in urls:
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+                    "Accept": "application/octet-stream,*/*",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=120) as response:
+                raw = response.read()
+            if not raw.startswith(b"#!/") and b"bash" not in raw[:200]:
+                raise RuntimeError("downloaded bootstrap asset does not look like a shell script")
+            bootstrap_path.write_bytes(raw)
+            bootstrap_path.chmod(0o755)
+            step["selected_url"] = url
+            step["bytes"] = len(raw)
+            return True
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+            step.setdefault("attempts", []).append({"url": url, "error": last_error})
+    step["error"] = last_error
+    return False
+
+
+def _upgrade_non_git_install(
+    result: dict[str, Any],
+    *,
+    target_ref: str,
+    target_source: str,
+    repo_hint: Path,
+    args: argparse.Namespace,
+    dry_run: bool,
+) -> int:
+    result.update({
+        "status": "ok",
+        "upgrade_path": "non_git_release_bootstrap",
+        "non_git_install": True,
+        "repo_root": None,
+        "hint": "This install is not a git checkout, so dsproxy upgrade will rerun the release bootstrap installer with an explicit install ref.",
+        "fallback": "If the automatic non-git upgrade fails, rerun the one-line installer shown in one_line_upgrade.",
+    })
+    same_public_version = _release_tag_matches_runtime(target_ref, str(result.get("current_public_version") or ""))
+    result["same_public_version"] = same_public_version
+    if same_public_version and not bool(result.get("force_reinstall")):
+        result.update({
+            "status": "already_up_to_date",
+            "skipped": True,
+            "skip_reason": "same_public_version_non_git_install",
+            "message": f"Already on {result.get('current_public_version')}; pass --force to rerun the release bootstrap installer.",
+        })
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    with tempfile.TemporaryDirectory(prefix="codeepseedex-upgrade-bootstrap-") as tmp:
+        bootstrap_path = Path(tmp) / "bootstrap.sh"
+        if not _download_upgrade_bootstrap(
+            result,
+            target_ref=target_ref,
+            target_source=target_source,
+            bootstrap_path=bootstrap_path,
+            dry_run=dry_run,
+        ):
+            result.update({"status": "error", "error": "bootstrap_download_failed"})
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1
+
+        cmd = _upgrade_bootstrap_command_for_non_git(
+            target_ref,
+            bootstrap_path,
+            repo_hint,
+            skip_profile=bool(args.skip_profile),
+        )
+        step: dict[str, Any] = {
+            "label": "run_release_bootstrap_installer",
+            "cmd": cmd,
+            "cwd": str(Path.home()),
+            "dry_run": dry_run,
+        }
+        if bool(args.no_restart):
+            step["no_restart_note"] = "The installer fallback does not start proxy processes; no restart is performed by this non-git path."
+        if bool(args.no_backup):
+            step["no_backup_note"] = "The installer fallback may still create its own safety backups for replaced install directories."
+        result.setdefault("steps", []).append(step)
+
+        if dry_run:
+            step["skipped"] = True
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        env = os.environ.copy()
+        env.setdefault("DEEPSEEK_PROXY_INSTALL_REF", target_ref)
+        env.setdefault("DEEPSEEK_PROXY_INSTALL_DIR", str(repo_hint))
+        try:
+            completed = subprocess.run(
+                cmd,
+                cwd=str(Path.home()),
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=900,
+                check=False,
+            )
+        except Exception as exc:
+            step["returncode"] = None
+            step["error"] = f"{type(exc).__name__}: {exc}"
+            result.update({"status": "error", "error": "bootstrap_installer_failed"})
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1
+
+        step["returncode"] = completed.returncode
+        step["stdout"] = completed.stdout[-4000:]
+        step["stderr"] = completed.stderr[-4000:]
+        if completed.returncode != 0:
+            result.update({"status": "error", "error": "bootstrap_installer_failed"})
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1
+
+    result["configuration_guidance"] = _api_configuration_status(default_env_file_path())
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _upgrade_commit_matches(current_commit: str | None, target_commit: str | None) -> bool:
     current = str(current_commit or "").strip()
     target = str(target_commit or "").strip()
@@ -5494,14 +5684,14 @@ def _upgrade(args: argparse.Namespace) -> int:
 
     repo_root = _git_root_for(repo_hint)
     if repo_root is None:
-        result.update({
-            "status": "error",
-            "error": "not_a_git_checkout",
-            "one_line_upgrade": "curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash",
-            "hint": "This command supports git checkout installs. Older or non-git installs should upgrade by rerunning the one-line installer.",
-        })
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 1
+        return _upgrade_non_git_install(
+            result,
+            target_ref=target_ref,
+            target_source=target_source,
+            repo_hint=repo_hint,
+            args=args,
+            dry_run=dry_run,
+        )
 
     result["repo_root"] = str(repo_root)
 
@@ -6369,7 +6559,7 @@ def build_parser() -> argparse.ArgumentParser:
     balance.add_argument("--timeout", type=float, default=10.0)
     balance.set_defaults(func=_balance)
 
-    upgrade = sub.add_parser("upgrade", help="upgrade a git checkout installation")
+    upgrade = sub.add_parser("upgrade", help="upgrade a git checkout or source-archive installation")
     upgrade.add_argument("--tag", help="target git tag or ref; defaults to the GitHub Latest Release tag")
     upgrade.add_argument("--alpha", action="store_true", help="upgrade to the newest non-draft GitHub pre-release instead of the Latest Release")
     upgrade.add_argument("--latest-release-url", help="GitHub latest Release API URL; defaults to the CoDeepSeedeX releases/latest endpoint")

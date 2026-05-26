@@ -31,8 +31,8 @@
 - GitHub Release状态：非draft，pre-release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=true`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.14a8-v040-alpha-release`
-- 最新闭合文档同步检查点：`p2.14a8-v040-alpha-release`
+- 当前内部开发检查点：`p2.14a9-upgrade-alpha-non-git-fallback`
+- 最新闭合文档同步检查点：`p2.14a9-upgrade-alpha-non-git-fallback`
 - 当前公开Release note同步检查点：`p2.14a8-v040-alpha-release`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`
@@ -1882,3 +1882,17 @@ Release规则：
 3. Release资产必须正好是`bootstrap.sh`和`install.sh`。
 4. 仓库不得在`docs/`下新增长期per-release note文件；Release notes从临时文件写入GitHub Release。
 5. Release note必须说明Codex native image限制，以及真实provider E2E日志不得记录签名URL的规则。
+
+## p2.14a9 Upgrade alpha non-git fallback
+
+p2.14a9修复未来`dsproxy upgrade --alpha`在source-archive或其他非git安装形态下的升级路径。
+
+规则：
+
+1. 不移动`v0.3.9-alpha`；旧`v0.3.9-alpha`客户端除非修改旧Release资产，否则无法被原地补丁。
+2. 当`dsproxy upgrade`已经解析出目标ref，但安装目录不是git checkout时，命令必须走release-bootstrap fallback，而不是返回`not_a_git_checkout`。
+3. fallback下载目标ref对应的`bootstrap.sh`，并用`--install-ref <target-ref>`加`--non-interactive --install-dir <repo_hint>`执行。
+4. `--dry-run`必须只打印non-git fallback计划，不下载、不执行安装器。
+5. `--skip-profile`映射为安装器`--no-codex-profile`；`--no-restart`只作为说明字段，因为安装器fallback本身不会启动proxy进程。
+6. 同一public version的non-git升级默认跳过，除非使用`--force`，因为非git安装无法安全比较目标tag commit。
+7. 该修复是否进入公开版本仍需要单独Release决策：更新现有`v0.4.0-alpha` pre-release，或发布后续alpha tag。
