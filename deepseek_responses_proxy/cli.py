@@ -5423,8 +5423,15 @@ def _upgrade_non_git_install(
             return 0
 
         env = os.environ.copy()
-        env.setdefault("DEEPSEEK_PROXY_INSTALL_REF", target_ref)
-        env.setdefault("DEEPSEEK_PROXY_INSTALL_DIR", str(repo_hint))
+        for metadata_key in (
+            "DEEPSEEK_PROXY_PUBLIC_COMMIT",
+            "DEEPSEEK_PROXY_INTERNAL_COMMIT",
+            "DEEPSEEK_PROXY_INTERNAL_VERSION",
+        ):
+            env.pop(metadata_key, None)
+        env["DEEPSEEK_PROXY_INSTALL_REF"] = target_ref
+        env["DEEPSEEK_PROXY_INSTALL_DIR"] = str(repo_hint)
+        step["metadata_env_sanitized"] = True
         try:
             completed = subprocess.run(
                 cmd,

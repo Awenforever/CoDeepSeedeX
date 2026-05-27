@@ -1,3 +1,25 @@
+## p2.14a10 Release metadata environment sanitization
+
+Date: 2026-05-27
+
+Scope:
+
+- Fix stale release metadata env pollution found during `v0.4.0-alpha` VM validation.
+- Runtime commit metadata now ignores `DEEPSEEK_PROXY_PUBLIC_COMMIT` and `DEEPSEEK_PROXY_INTERNAL_COMMIT` when the env file also exposes a mismatched `DEEPSEEK_PROXY_INTERNAL_VERSION`.
+- `scripts/install.sh` now writes the current internal version parsed from installed source instead of the old hard-coded `p2.10a26-wrapper-start-plan-mode-hardening` value.
+- `bootstrap.sh` and `dsproxy upgrade` non-git fallback scrub stale release metadata env keys before invoking the installer.
+- Added regression tests for stale env metadata, non-git upgrade env scrubbing, and installer release metadata output.
+
+Reason:
+
+- VM validation showed `dsproxy --version` returning `v0.4.0-alpha | 72e0f77` although remote `v0.4.0-alpha^{}` and `p2.14a9-upgrade-alpha-non-git-fallback^{}` both pointed to `e5111c5`.
+- Narrow audit showed `72e0f77` came from `/home/wjh/.config/deepseek-responses-proxy/env`, not from the Release tag or installed source.
+
+Release boundary:
+
+- This is an internal patch node until the existing `v0.4.0-alpha` pre-release is updated again.
+- Do not mark `v0.4.0-alpha` as Latest until VM install and forced non-git `upgrade --alpha` both report the updated peeled commit.
+
 ## p2.14a9 Upgrade alpha non-git fallback
 
 Date: 2026-05-26

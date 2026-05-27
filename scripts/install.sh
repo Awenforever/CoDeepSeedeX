@@ -1636,8 +1636,10 @@ write_env_file() {
 ' "max"
     printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q
 ' "1"
-    printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q
-' "p2.10a26-wrapper-start-plan-mode-hardening"
+    if [ -n "${INSTALL_TARGET_INTERNAL_VERSION:-}" ]; then
+      printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q
+' "$INSTALL_TARGET_INTERNAL_VERSION"
+    fi
     if [ -n "${INSTALL_TARGET_COMMIT:-}" ]; then
       printf 'export DEEPSEEK_PROXY_PUBLIC_COMMIT=%q
 ' "$INSTALL_TARGET_COMMIT"
@@ -2298,6 +2300,15 @@ prepare_install_checkout() {
   download_source_archive_to_install_dir "$target_ref"
 }
 
+resolve_install_internal_version_for_metadata() {
+  local app_file="$INSTALL_DIR/deepseek_responses_proxy/app.py"
+  if [ ! -f "$app_file" ]; then
+    return 0
+  fi
+  awk -F'"' '/^PROXY_INTERNAL_VERSION = / {print $2; exit}' "$app_file" 2>> "$INSTALL_LOG" || true
+}
+
+
 resolve_install_commit_for_metadata() {
   local ref="$1"
 
@@ -2342,6 +2353,13 @@ if [ -n "$INSTALL_TARGET_COMMIT" ]; then
   printf '+ Install target commit: %s\n' "$INSTALL_TARGET_COMMIT" >> "$INSTALL_LOG"
 else
   warn "Install target commit could not be resolved. Version output will use packaged fallback metadata."
+fi
+INSTALL_TARGET_INTERNAL_VERSION="$(resolve_install_internal_version_for_metadata)"
+if [ -n "$INSTALL_TARGET_INTERNAL_VERSION" ]; then
+  ok "Install internal version: $INSTALL_TARGET_INTERNAL_VERSION"
+  printf '+ Install internal version: %s\n' "$INSTALL_TARGET_INTERNAL_VERSION" >> "$INSTALL_LOG"
+else
+  warn "Install internal version could not be resolved. Env metadata will omit DEEPSEEK_PROXY_INTERNAL_VERSION."
 fi
 
 run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"

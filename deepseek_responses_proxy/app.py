@@ -25,6 +25,13 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.0-alpha"
+PROXY_INTERNAL_VERSION = "p2.14a10-release-metadata-env-sanitization"
+_RELEASE_METADATA_COMMIT_ENV_NAMES = {
+    "DEEPSEEK_PROXY_PUBLIC_COMMIT",
+    "DEEPSEEK_PROXY_INTERNAL_COMMIT",
+}
+
+
 def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
     repo_root = Path(__file__).resolve().parents[1]
     candidates = [
@@ -49,16 +56,31 @@ def _resolve_public_release_commit(public_version: str, fallback: str) -> str:
     return fallback
 
 
-def _metadata_env_value(name: str) -> str:
-    return os.environ.get(name, "").strip()
+def _metadata_env_value(name: str, *, expected_internal_version: str | None = None) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return ""
+    if name in _RELEASE_METADATA_COMMIT_ENV_NAMES:
+        env_internal_version = os.environ.get("DEEPSEEK_PROXY_INTERNAL_VERSION", "").strip()
+        if env_internal_version and expected_internal_version and env_internal_version != expected_internal_version:
+            return ""
+    return value
 
 
 PROXY_PUBLIC_COMMIT = (
-    _metadata_env_value("DEEPSEEK_PROXY_PUBLIC_COMMIT")
+    _metadata_env_value(
+        "DEEPSEEK_PROXY_PUBLIC_COMMIT",
+        expected_internal_version=PROXY_INTERNAL_VERSION,
+    )
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
-PROXY_INTERNAL_VERSION = "p2.14a9-upgrade-alpha-non-git-fallback"
-PROXY_INTERNAL_COMMIT = _metadata_env_value("DEEPSEEK_PROXY_INTERNAL_COMMIT") or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
+PROXY_INTERNAL_COMMIT = (
+    _metadata_env_value(
+        "DEEPSEEK_PROXY_INTERNAL_COMMIT",
+        expected_internal_version=PROXY_INTERNAL_VERSION,
+    )
+    or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
+)
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001

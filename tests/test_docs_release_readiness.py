@@ -33,8 +33,8 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     assert "Current public Release kind: pre-release" in en_current
     assert "Current public Release commit: resolved from `v0.4.0-alpha` tag after publication" in en_current
     assert "GitHub Latest ordinary Release: `v0.3.9-alpha`" in en_current
-    assert "Current internal development checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`" in en_current
+    assert "Current internal development checkpoint: `p2.14a10-release-metadata-env-sanitization`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.14a10-release-metadata-env-sanitization`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`" in en_current
     assert "  - `v0.4.0-alpha = resolved by release tag`" in en_current
     assert "  - `v0.3.9-alpha = 82a4428`" in en_current
@@ -43,8 +43,8 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     assert "当前公开Release类型：pre-release" in zh_current
     assert "当前公开Release提交：发布后由`v0.4.0-alpha` tag解析" in zh_current
     assert "GitHub Latest普通Release：`v0.3.9-alpha`" in zh_current
-    assert "当前内部开发检查点：`p2.14a9-upgrade-alpha-non-git-fallback`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.14a9-upgrade-alpha-non-git-fallback`" in zh_current
+    assert "当前内部开发检查点：`p2.14a10-release-metadata-env-sanitization`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.14a10-release-metadata-env-sanitization`" in zh_current
     assert "当前公开Release note同步检查点：`p2.14a8-v040-alpha-release`" in zh_current
     assert "  - `v0.4.0-alpha = resolved by release tag`" in zh_current
     assert "  - `v0.3.9-alpha = 82a4428`" in zh_current

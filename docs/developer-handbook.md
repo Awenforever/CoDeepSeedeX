@@ -33,8 +33,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft pre-release
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`
-- Latest closed documentation sync checkpoint: `p2.14a9-upgrade-alpha-non-git-fallback`
+- Current internal development checkpoint: `p2.14a10-release-metadata-env-sanitization`
+- Latest closed documentation sync checkpoint: `p2.14a10-release-metadata-env-sanitization`
 - Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
@@ -1922,3 +1922,15 @@ Rules:
 5. `--skip-profile` maps to installer `--no-codex-profile`; `--no-restart` is informational because the installer fallback does not start proxy processes.
 6. Same-public-version non-git upgrades are skipped unless `--force` is used, because a non-git install cannot safely compare the target tag commit without a checkout.
 7. Publishing the fix still requires a separate public Release decision: update the existing `v0.4.0-alpha` pre-release or publish a later alpha tag.
+
+## p2.14a10 Release metadata environment sanitization
+
+p2.14a10 fixes stale release metadata from old env files and shell environments.
+
+Rules:
+
+1. Runtime commit metadata must not blindly trust `DEEPSEEK_PROXY_PUBLIC_COMMIT` or `DEEPSEEK_PROXY_INTERNAL_COMMIT` when `DEEPSEEK_PROXY_INTERNAL_VERSION` is present and does not match the current internal version.
+2. The installer must write the current internal version parsed from the installed `deepseek_responses_proxy/app.py`, not a legacy hard-coded p tag.
+3. Bootstrap and `dsproxy upgrade` non-git fallback must scrub stale `DEEPSEEK_PROXY_PUBLIC_COMMIT`, `DEEPSEEK_PROXY_INTERNAL_COMMIT`, and `DEEPSEEK_PROXY_INTERNAL_VERSION` before invoking the installer.
+4. Source-archive root names such as `Awenforever-CoDeepSeedeX-<tag-object-prefix>` must not be treated as release commit evidence; use peeled tag refs or installer-resolved metadata.
+5. Do not mark `v0.4.0-alpha` as Latest until VM validation shows `dsproxy --version` with the updated peeled public/internal commit after installation and forced non-git upgrade.
