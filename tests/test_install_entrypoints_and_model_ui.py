@@ -178,6 +178,17 @@ def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
     assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"' not in text
 
 
+def test_installer_non_interactive_preserves_existing_model_provider_env() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"' in text
+    assert 'PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"' in text
+    assert 'PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"' in text
+    assert 'RESOLVED_MODEL_PROVIDER="$final_model_provider"' in text
+    assert 'RESOLVED_MODEL_NAME="$final_model_name"' in text
+    assert 'if [ -n "${RESOLVED_MODEL_NAME:-}" ] && [ "${RESOLVED_MODEL_PROVIDER:-deepseek}" != "deepseek" ]; then' in text
+    assert '--model "$PROFILE_THINKING_MODEL"' in text
+
+
 
 
 

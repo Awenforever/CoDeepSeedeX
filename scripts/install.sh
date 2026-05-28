@@ -27,6 +27,9 @@ REMOVE_FILES=0
 PROMPTED_MODEL_PROVIDER=""
 PROMPTED_MODEL_BASE_URL=""
 PROMPTED_MODEL_NAME=""
+RESOLVED_MODEL_PROVIDER=""
+RESOLVED_MODEL_BASE_URL=""
+RESOLVED_MODEL_NAME=""
 
 show_version_source() {
   sub_title "Version source"
@@ -967,9 +970,30 @@ prompt_deepseek_api_key() {
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
     PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
-    PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-deepseek}"
-    PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")}"
-    PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")}"
+    if [ -z "$PROMPTED_API_KEY" ]; then
+      PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
+    fi
+    PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
+    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
+      PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+    fi
+    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
+      PROMPTED_MODEL_PROVIDER="deepseek"
+    fi
+    PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
+    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
+      PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
+    fi
+    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
+      PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
+    fi
+    PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
+    if [ -z "$PROMPTED_MODEL_NAME" ]; then
+      PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+    fi
+    if [ -z "$PROMPTED_MODEL_NAME" ]; then
+      PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+    fi
     return 0
   fi
 
@@ -1577,6 +1601,11 @@ write_env_file() {
   if [ -z "$final_model_name" ]; then
     final_model_name="deepseek-v4-pro"
   fi
+
+  RESOLVED_MODEL_PROVIDER="$final_model_provider"
+  RESOLVED_MODEL_BASE_URL="$final_model_base_url"
+  RESOLVED_MODEL_NAME="$final_model_name"
+
   if [ -z "$final_web_search_provider" ]; then
     final_web_search_provider="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
   fi
@@ -2381,12 +2410,19 @@ if [ -n "$MODEL_CATALOG_JSON" ]; then
   MODEL_CATALOG_ARGS=(--model-catalog-json "$MODEL_CATALOG_JSON")
 fi
 
+PROFILE_STABLE_MODEL="deepseek-v4-flash"
+PROFILE_THINKING_MODEL="deepseek-v4-pro"
+if [ -n "${RESOLVED_MODEL_NAME:-}" ] && [ "${RESOLVED_MODEL_PROVIDER:-deepseek}" != "deepseek" ]; then
+  PROFILE_STABLE_MODEL="$RESOLVED_MODEL_NAME"
+  PROFILE_THINKING_MODEL="$RESOLVED_MODEL_NAME"
+fi
+
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
   run_quiet "Codex profile installed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
     --name deepseek \
     --provider-name deepseek-proxy \
     --base-url "http://127.0.0.1:${STABLE_PORT}/v1" \
-    --model deepseek-v4-flash \
+    --model "$PROFILE_STABLE_MODEL" \
     --reasoning-effort high \
     "${MODEL_CATALOG_ARGS[@]}"
 
@@ -2394,7 +2430,7 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
     --name deepseek-thinking \
     --provider-name deepseek-thinking-proxy \
     --base-url "http://127.0.0.1:${THINKING_PORT}/v1" \
-    --model deepseek-v4-pro \
+    --model "$PROFILE_THINKING_MODEL" \
     --reasoning-effort xhigh \
     "${MODEL_CATALOG_ARGS[@]}"
 fi

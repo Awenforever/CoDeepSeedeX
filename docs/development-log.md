@@ -1,3 +1,18 @@
+
+## p2.15a5 Installer preserves existing model-provider env
+
+Date: 2026-05-28
+
+Scope:
+
+- Fix the `v0.4.1-alpha` VM validation failure where non-interactive install rewrote an existing env file without loading its configured model provider before choosing defaults.
+- Preserve existing `DEEPSEEK_PROXY_MODEL_PROVIDER`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_PROXY_MODEL` values during non-interactive install/upgrade.
+- Use the resolved non-DeepSeek/custom model when generating managed Codex split profile files, so upgraded Codex 0.134+ users keep their configured upstream model.
+
+Release boundary:
+
+- This node updates the existing `v0.4.1-alpha` pre-release candidate only after tests pass. VM legacy-config validation remains required before any Latest promotion.
+
 ## p2.15a4 v0.4.1-alpha pre-release
 
 Date: 2026-05-28
