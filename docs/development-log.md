@@ -6,7 +6,7 @@ Scope:
 
 - Adapt managed Codex profiles to the Codex 0.134+ split profile file layout.
 - Keep provider blocks in the main Codex config and write profile bodies to `deepseek.config.toml` and `deepseek-thinking.config.toml`.
-- Treat legacy `[profiles.*]` tables and top-level `profile = "deepseek*"` selectors as migration input only.
+- Treat legacy embedded profile tables and top-level deepseek profile selectors as migration input only.
 - Make `dsproxy config test-api-key` read the configured model provider/base URL/model from env by default, so custom providers validate against their configured `/models` endpoint instead of DeepSeek official `/user/balance`.
 - Align `dsproxy config wizard` with the installer arrow-key menu contract.
 

@@ -9296,7 +9296,7 @@ class DeepSeekClient:
         if isinstance(trace_metadata, dict):
             active_profile = trace_metadata.get("active_profile")
             if not active_profile and trace_metadata.get("thinking_enabled") is not None:
-                active_profile = "deepseek-thinking" if bool(trace_metadata.get("thinking_enabled")) else "deepseek"
+                active_profile = ("deepseek-thinking" if bool(trace_metadata.get("thinking_enabled")) else "deepseek")
         payload, context_trimming_report = _compact_deepseek_payload_context(payload, active_profile=str(active_profile) if active_profile else None)
         context_trimming_report["observed_at"] = _runtime_payload_guard_observed_at()
         context_trimming_report["source"] = "live_request_payload"

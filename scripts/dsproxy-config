@@ -3,6 +3,7 @@ set -euo pipefail
 
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$HOME/.config/deepseek-responses-proxy/env}"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
+CODEX_DIR="$(dirname "$CODEX_CONFIG")"
 
 mkdir -p "$(dirname "$ENV_FILE")"
 
@@ -56,51 +57,48 @@ codex_effort_for_deepseek_effort() {
   esac
 }
 
-patch_codex_model() {
-  local model="$1"
+codex_profile_path() {
+  local profile="$1"
+  printf '%s/%s.config.toml\n' "$CODEX_DIR" "$profile"
+}
 
-  [ -f "$CODEX_CONFIG" ] || return 0
+patch_profile_file_key() {
+  local profile="$1"
+  local key="$2"
+  local value="$3"
+  local profile_file
+  profile_file="$(codex_profile_path "$profile")"
 
-  python3 - "$CODEX_CONFIG" "$model" <<'PY'
+  [ -f "$profile_file" ] || return 0
+
+  python3 - "$profile_file" "$key" "$value" <<'PYCODEEPSEEDEX_DSPROXY_CONFIG_SPLIT_PROFILE_PATCH'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-model = sys.argv[2]
+key = sys.argv[2]
+value = sys.argv[3]
 text = path.read_text(encoding="utf-8")
+lines = text.splitlines()
+out = []
+found = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith(f"{key} = "):
+        out.append(f'{key} = "{value}"')
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f'{key} = "{value}"')
+path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+PYCODEEPSEEDEX_DSPROXY_CONFIG_SPLIT_PROFILE_PATCH
+}
 
-profiles = ["deepseek", "deepseek-thinking"]
-
-def patch_profile(text: str, profile: str) -> str:
-    header = f"[profiles.{profile}]"
-    start = text.find(header)
-    if start == -1:
-        return text
-
-    next_table = text.find("\n[", start + len(header))
-    end = len(text) if next_table == -1 else next_table
-    block = text[start:end]
-
-    lines = block.rstrip().splitlines()
-    out = []
-    found = False
-    for line in lines:
-        if line.strip().startswith("model = "):
-            out.append(f'model = "{model}"')
-            found = True
-        else:
-            out.append(line)
-
-    if not found:
-        out.append(f'model = "{model}"')
-
-    return text[:start] + "\n".join(out) + "\n" + text[end:]
-
-for profile in profiles:
-    text = patch_profile(text, profile)
-
-path.write_text(text, encoding="utf-8")
-PY
+patch_codex_model() {
+  local model="$1"
+  patch_profile_file_key "deepseek" "model" "$model"
+  patch_profile_file_key "deepseek-thinking" "model" "$model"
 }
 
 patch_codex_effort() {
@@ -108,44 +106,8 @@ patch_codex_effort() {
   local codex_effort
   codex_effort="$(codex_effort_for_deepseek_effort "$deepseek_effort")"
 
-  [ -f "$CODEX_CONFIG" ] || return 0
-
-  python3 - "$CODEX_CONFIG" "$codex_effort" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-effort = sys.argv[2]
-text = path.read_text(encoding="utf-8")
-
-profile = "deepseek-thinking"
-header = f"[profiles.{profile}]"
-start = text.find(header)
-if start == -1:
-    path.write_text(text, encoding="utf-8")
-    raise SystemExit(0)
-
-next_table = text.find("\n[", start + len(header))
-end = len(text) if next_table == -1 else next_table
-block = text[start:end]
-
-lines = block.rstrip().splitlines()
-out = []
-found = False
-
-for line in lines:
-    if line.strip().startswith("model_reasoning_effort = "):
-        out.append(f'model_reasoning_effort = "{effort}"')
-        found = True
-    else:
-        out.append(line)
-
-if not found:
-    out.append(f'model_reasoning_effort = "{effort}"')
-
-text = text[:start] + "\n".join(out) + "\n" + text[end:]
-path.write_text(text, encoding="utf-8")
-PY
+  patch_profile_file_key "deepseek-thinking" "model_reasoning_effort" "$codex_effort"
+  patch_profile_file_key "deepseek-thinking" "plan_mode_reasoning_effort" "high"
 }
 
 show_config() {
@@ -153,12 +115,22 @@ show_config() {
   echo "ENV_FILE=$ENV_FILE"
   grep -E '^export DEEPSEEK_(PROXY_MODEL|REASONING_EFFORT)=' "$ENV_FILE" || true
   echo
-  echo "CODEX_CONFIG=$CODEX_CONFIG"
+  echo "CODEX_MAIN_CONFIG=$CODEX_CONFIG"
   if [ -f "$CODEX_CONFIG" ]; then
-    grep -nA12 -E '^\[profiles\.deepseek\]|^\[profiles\.deepseek-thinking\]' "$CODEX_CONFIG" || true
+    grep -nA8 -E '^\[model_providers\.deepseek|^\[model_providers\.deepseek-thinking' "$CODEX_CONFIG" || true
   else
     echo "missing"
   fi
+  for profile in deepseek deepseek-thinking; do
+    profile_file="$(codex_profile_path "$profile")"
+    echo
+    echo "CODEX_PROFILE_FILE=$profile_file"
+    if [ -f "$profile_file" ]; then
+      grep -nE '^(model|model_provider|model_reasoning_effort|plan_mode_reasoning_effort|model_context_window|model_auto_compact_token_limit) = ' "$profile_file" || true
+    else
+      echo "missing"
+    fi
+  done
 }
 
 restart_thinking_proxy() {

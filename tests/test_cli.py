@@ -3504,3 +3504,39 @@ def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_thresh
     assert result["auto_compact_ratio_source"] == "arg.auto_compact_ratio"
     assert "model_context_window = 1000000" in _codex_profile_text(config_path, "deepseek")
     assert "model_auto_compact_token_limit = 50000" in _codex_profile_text(config_path, "deepseek")
+
+
+
+def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_API_KEY=sk-fake-custom\n"
+        "export DEEPSEEK_PROXY_MODEL_PROVIDER=custom\n"
+        "export DEEPSEEK_BASE_URL=https://api.llm.ustc.edu.cn/v1\n"
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash-ascend\n",
+        encoding="utf-8",
+    )
+    seen = {"validate": [], "deepseek": []}
+
+    def fake_validate(provider, api_key, *, base_url=None, timeout=10.0):
+        seen["validate"].append({"provider": provider, "api_key": api_key, "base_url": base_url, "timeout": timeout})
+        return {"ok": True, "provider": provider, "base_url": base_url, "url": str(base_url).rstrip("/") + "/models"}
+
+    def fake_deepseek(api_key, *, url, timeout=10.0):
+        seen["deepseek"].append({"api_key": api_key, "url": url, "timeout": timeout})
+        return {"ok": False, "error": "deepseek_should_not_be_called"}
+
+    monkeypatch.setattr(cli_module, "_validate_model_api_key", fake_validate)
+    monkeypatch.setattr(cli_module, "_check_deepseek_api_key", fake_deepseek)
+
+    assert main(["config", "test-api-key", "--env-file", str(env_file), "--timeout", "2"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["provider"] == "custom"
+    assert result["model_provider"] == "custom"
+    assert result["base_url"] == "https://api.llm.ustc.edu.cn/v1"
+    assert result["model"] == "deepseek-v4-flash-ascend"
+    assert result["validation_url"] == "https://api.llm.ustc.edu.cn/v1/models"
+    assert seen["validate"] == [{"provider": "custom", "api_key": "sk-fake-custom", "base_url": "https://api.llm.ustc.edu.cn/v1", "timeout": 2.0}]
+    assert seen["deepseek"] == []

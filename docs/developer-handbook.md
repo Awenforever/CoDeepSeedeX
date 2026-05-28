@@ -1927,7 +1927,7 @@ Rules:
 
 p2.15a1 fixes three P0 surfaces:
 
-1. Codex 0.134+ managed profiles use split profile files. The main `~/.codex/config.toml` must contain provider blocks only; managed profile bodies live in `~/.codex/deepseek.config.toml` and `~/.codex/deepseek-thinking.config.toml`. Legacy `[profiles.deepseek]`, `[profiles.deepseek-thinking]`, and top-level `profile = "deepseek*"` entries are migration inputs only and must be removed by install/repair/set-effort/uninstall paths.
+1. Codex 0.134+ managed profiles use split profile files. The main `~/.codex/config.toml` must contain provider blocks only; managed profile bodies live in `~/.codex/deepseek.config.toml` and `~/.codex/deepseek-thinking.config.toml`. Legacy embedded profile tables and top-level deepseek profile selectors are migration inputs only and must be removed by install/repair/set-effort/uninstall paths.
 2. Custom model API validation must use the configured `DEEPSEEK_PROXY_MODEL_PROVIDER`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_PROXY_MODEL`. `dsproxy config test-api-key` must not default to DeepSeek official `/user/balance` when the env selects `custom`.
 3. `dsproxy config wizard` must follow the same arrow-key UI contract as the one-line installer: `↑/↓` or `j/k` to move, Enter to select, Backspace to go back, with no TTY numeric prompt.
 

@@ -4794,7 +4794,7 @@ def _wizard_web_provider_choice(*, non_interactive: bool = False) -> str:
 
 def _wizard_image_provider_choice(*, non_interactive: bool = False) -> str:
     family = _wizard_read_menu_choice(
-        "Select image generation provider family",
+        "Choose image generation provider family",
         [
             ("zhipu", "ZhipuAI / BigModel", "Experimental"),
             ("zai", "Z.AI", "Experimental"),
@@ -5201,6 +5201,7 @@ def _config(args: argparse.Namespace) -> int:
     if args.config_command == "test-api-key":
         env_values = _read_env_exports(env_file)
         provider_arg = getattr(args, "provider", None)
+        provider_arg = None if provider_arg is None or str(provider_arg).strip() == "" else str(provider_arg).strip()
         provider = _canonical_model_api_provider(provider_arg or env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
         api_key, source = _load_deepseek_api_key(env_file=env_file)
         try:
@@ -6685,7 +6686,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_test_api_key = config_sub.add_parser("test-api-key", help="validate model API key")
     config_test_api_key.add_argument("--env-file")
-    config_test_api_key.add_argument("--provider", choices=_supported_model_api_providers(), help="model API provider; defaults to DEEPSEEK_PROXY_MODEL_PROVIDER from env")
+    config_test_api_key.add_argument("--provider", default=None, choices=_supported_model_api_providers(), help="model API provider; defaults to DEEPSEEK_PROXY_MODEL_PROVIDER from env")
     config_test_api_key.add_argument("--base-url", help="OpenAI-compatible base URL for --provider custom or provider override")
     config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)

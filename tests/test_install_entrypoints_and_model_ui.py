@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -689,3 +690,32 @@ def test_installer_uses_quiet_pip_commands() -> None:
     assert "PIP_DISABLE_PIP_VERSION_CHECK=1" in text
     assert "PIP_PROGRESS_BAR=off" in text
     assert "pip install --quiet --no-input -e" in text
+
+
+
+def test_legacy_profile_markers_are_absent_from_production_sources() -> None:
+    paths = [
+        ROOT / "deepseek_responses_proxy" / "app.py",
+        ROOT / "deepseek_responses_proxy" / "cli.py",
+        ROOT / "scripts" / "dsproxy-config",
+        ROOT / "scripts" / "install.sh",
+        ROOT / "README.md",
+        ROOT / "README.zh-CN.md",
+        ROOT / "docs" / "developer-handbook.md",
+        ROOT / "docs" / "developer-handbook.zh-CN.md",
+        ROOT / "docs" / "development-log.md",
+    ]
+    pattern = re.compile(r"\[profiles\.(deepseek|deepseek-thinking)\]|profile = \\\"deepseek")
+    offenders = []
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        if pattern.search(text):
+            offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == []
+
+
+def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> None:
+    text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "Select model API provider" not in text
+    assert "Select image generation provider" not in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
