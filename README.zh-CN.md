@@ -32,16 +32,16 @@ npm install -g @openai/codex
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-显式pre-release通道，当前为`v0.4.0-alpha`：
+显式pre-release通道，当前为`v0.4.1-alpha`：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.0-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.0-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.1-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.1-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
 
 ```bash
-tag="v0.4.0-alpha"
+tag="v0.4.1-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -225,7 +225,7 @@ dsproxy upgrade --alpha
 显式指定tag或ref：
 
 ```bash
-dsproxy upgrade --tag v0.4.0-alpha
+dsproxy upgrade --tag v0.4.1-alpha
 ```
 
 不要同时使用`--alpha`和`--tag`。
@@ -263,7 +263,7 @@ bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --re
 
 CoDeepSeedeX可以作为`weclaw_dev`的DeepSeek/Codex运行后端。
 
-如果WeClaw联动使用CoDeepSeedeX `v0.4.0-alpha`或`v0.3.9-alpha`，WeClaw版本必须不低于：
+如果WeClaw联动使用CoDeepSeedeX `v0.4.1-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`，WeClaw版本必须不低于：
 
 ```text
 weclaw_dev >= v0.1.9-alpha

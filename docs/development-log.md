@@ -1,3 +1,20 @@
+## p2.15a4 v0.4.1-alpha pre-release
+
+Date: 2026-05-28
+
+Scope:
+
+- Publish the p2.15 Codex 0.134+ split-profile fix line as `v0.4.1-alpha`.
+- Keep `v0.4.0-alpha` as the GitHub Latest ordinary Release; `v0.4.1-alpha` is a non-draft pre-release.
+- Release coverage: split Codex profile files for Codex 0.134+, legacy profile-table migration/removal, custom provider default API validation, and wizard/installer provider UX alignment.
+- Validate the old-user path with an isolated HOME containing legacy `[profiles.*]` config before install/repair.
+
+Release boundary:
+
+- Do not move `v0.4.0-alpha`.
+- Do not create tracked release-note files under `docs/`.
+- Upload only `bootstrap.sh` and `install.sh` as Release assets.
+
 ## p2.15a3 Postmerge checklist closure
 
 Date: 2026-05-28
