@@ -969,27 +969,29 @@ prompt_deepseek_api_key() {
   PROMPTED_MODEL_NAME=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
+    # Existing installer env file is the migration source of truth for non-interactive upgrades.
+    # Ambient shell variables can belong to another HOME/session; use them only when no env file value exists.
+    PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
     if [ -z "$PROMPTED_API_KEY" ]; then
-      PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
+      PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
     fi
-    PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
+    PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
     if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
-      PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+      PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
     fi
     if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
       PROMPTED_MODEL_PROVIDER="deepseek"
     fi
-    PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
+    PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
     if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
-      PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
+      PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
     fi
     if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
       PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
     fi
-    PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
+    PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
     if [ -z "$PROMPTED_MODEL_NAME" ]; then
-      PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+      PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
     fi
     if [ -z "$PROMPTED_MODEL_NAME" ]; then
       PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
@@ -1147,8 +1149,19 @@ prompt_serpapi_api_key() {
   PROMPTED_WEB_SEARCH_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${EXA_API_KEY:-${FIRECRAWL_API_KEY:-}}}}"
-    PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
+    PROMPTED_WEB_SEARCH_PROVIDER="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
+    if [ -z "$PROMPTED_WEB_SEARCH_PROVIDER" ]; then
+      PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
+    fi
+    case "$PROMPTED_WEB_SEARCH_PROVIDER" in
+      tavily) PROMPTED_SERPAPI_API_KEY="$(env_file_value TAVILY_API_KEY)" ;;
+      exa) PROMPTED_SERPAPI_API_KEY="$(env_file_value EXA_API_KEY)" ;;
+      firecrawl) PROMPTED_SERPAPI_API_KEY="$(env_file_value FIRECRAWL_API_KEY)" ;;
+      *) PROMPTED_SERPAPI_API_KEY="$(env_file_value SERPAPI_API_KEY)" ;;
+    esac
+    if [ -z "$PROMPTED_SERPAPI_API_KEY" ]; then
+      PROMPTED_SERPAPI_API_KEY="${SERPAPI_API_KEY:-${TAVILY_API_KEY:-${EXA_API_KEY:-${FIRECRAWL_API_KEY:-}}}}"
+    fi
     return 0
   fi
 
@@ -1230,8 +1243,14 @@ prompt_image_generation_api_key() {
   PROMPTED_IMAGE_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
-    PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"
+    PROMPTED_IMAGE_PROVIDER="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"
+    if [ -z "$PROMPTED_IMAGE_PROVIDER" ]; then
+      PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"
+    fi
+    PROMPTED_IMAGE_API_KEY="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"
+    if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
+      PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
+    fi
     return 0
   fi
 

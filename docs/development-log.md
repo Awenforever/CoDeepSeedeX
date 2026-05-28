@@ -1,3 +1,18 @@
+## p2.15a6-installer-env-file-precedence installer env-file precedence for non-interactive upgrades
+
+Date: 2026-05-28
+
+Scope:
+
+- Fixed the installer non-interactive upgrade path so an existing env file remains the source of truth for model provider, base URL, upstream model, web-search provider/key, and image provider/key.
+- Prevented ambient shell variables from another HOME/session from overriding the target install HOME env file during Release/VM validation and real user upgrades.
+- This closes the v0.4.1-alpha VM validation gap where a legacy custom provider env was overwritten back to DeepSeek official defaults.
+
+Release boundary:
+
+- The existing `v0.4.1-alpha` pre-release is updated to this internal checkpoint for VM validation.
+- GitHub Latest remains `v0.4.0-alpha` until VM validation passes and promotion is explicitly requested.
+
 
 ## p2.15a5 Installer preserves existing model-provider env
 

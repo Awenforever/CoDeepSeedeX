@@ -174,19 +174,46 @@ def test_installer_image_validation_is_live_generation_not_non_generation_probe(
 
 def test_installer_non_interactive_image_provider_defaults_to_zhipu() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'PROMPTED_IMAGE_PROVIDER="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"' in text
     assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"' in text
     assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-glm}"' not in text
 
 
 def test_installer_non_interactive_preserves_existing_model_provider_env() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"' in text
-    assert 'PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"' in text
-    assert 'PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"' in text
+    model_prompt = text[text.index("prompt_deepseek_api_key() {"):text.index("local configure=", text.index("prompt_deepseek_api_key() {"))]
+    assert 'PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"' in model_prompt
+    assert 'PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"' in model_prompt
+    assert model_prompt.index('PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"') < model_prompt.index('PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"')
+    assert 'PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"' in model_prompt
+    assert 'PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"' in model_prompt
+    assert model_prompt.index('PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"') < model_prompt.index('PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"')
+    assert 'PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"' in model_prompt
+    assert 'PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"' in model_prompt
+    assert model_prompt.index('PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"') < model_prompt.index('PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"')
     assert 'RESOLVED_MODEL_PROVIDER="$final_model_provider"' in text
     assert 'RESOLVED_MODEL_NAME="$final_model_name"' in text
     assert 'if [ -n "${RESOLVED_MODEL_NAME:-}" ] && [ "${RESOLVED_MODEL_PROVIDER:-deepseek}" != "deepseek" ]; then' in text
     assert '--model "$PROFILE_THINKING_MODEL"' in text
+
+
+def test_installer_non_interactive_prefers_target_env_file_over_ambient_shell_env() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    model_prompt = text[text.index("prompt_deepseek_api_key() {"):text.index("local configure=", text.index("prompt_deepseek_api_key() {"))]
+    assert "Existing installer env file is the migration source of truth" in model_prompt
+    assert model_prompt.index('PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"') < model_prompt.index('PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"')
+
+    web_prompt = text[text.index("prompt_serpapi_api_key() {"):text.index("local configure=", text.index("prompt_serpapi_api_key() {"))]
+    assert 'PROMPTED_WEB_SEARCH_PROVIDER="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"' in web_prompt
+    assert 'PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"' in web_prompt
+    assert web_prompt.index('PROMPTED_WEB_SEARCH_PROVIDER="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"') < web_prompt.index('PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"')
+    assert 'PROMPTED_SERPAPI_API_KEY="$(env_file_value TAVILY_API_KEY)"' in web_prompt
+
+    image_prompt = text[text.index("prompt_image_generation_api_key() {"):text.index("local configure=", text.index("prompt_image_generation_api_key() {"))]
+    assert 'PROMPTED_IMAGE_PROVIDER="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"' in image_prompt
+    assert 'PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"' in image_prompt
+    assert image_prompt.index('PROMPTED_IMAGE_PROVIDER="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"') < image_prompt.index('PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"')
+    assert 'PROMPTED_IMAGE_API_KEY="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"' in image_prompt
 
 
 

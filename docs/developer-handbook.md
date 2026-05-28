@@ -33,9 +33,9 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft non-prerelease
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.15a5-installer-preserve-existing-model-provider-env`
-- Latest closed documentation sync checkpoint: `p2.15a5-installer-preserve-existing-model-provider-env`
-- Current public Release note synchronization checkpoint: `p2.15a5-installer-preserve-existing-model-provider-env`
+- Current internal development checkpoint: `p2.15a6-installer-env-file-precedence`
+- Latest closed documentation sync checkpoint: `p2.15a6-installer-env-file-precedence`
+- Current public Release note synchronization checkpoint: `p2.15a6-installer-env-file-precedence`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line remains compatible with the dsproxy-owned status contracts. p2.14 adds managed native tool routing, routing diagnostics, and web/image provider bridge validation.
