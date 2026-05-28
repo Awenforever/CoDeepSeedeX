@@ -35,7 +35,8 @@ def test_generated_image_artifact_retention_can_be_disabled(monkeypatch, tmp_pat
     assert len(list(tmp_path.glob("mock_*.png"))) == 4
 
 
-def test_tool_output_image_payload_artifact_ref_round_trip(monkeypatch, tmp_path):
+
+def test_tool_output_image_payload_is_preserved_verbatim_without_artifact_ref(monkeypatch, tmp_path):
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
     monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
@@ -47,15 +48,11 @@ def test_tool_output_image_payload_artifact_ref_round_trip(monkeypatch, tmp_path
     ]
 
     compacted, report = _apply_tool_output_safe_trimming(input_items)
-    ref = compacted[1]["output"]
 
-    assert report["applied"] is True
-    assert report["targets"][0]["artifact_preserved"] is True
-    assert ref["type"] == "image_payload_artifact_ref"
-    artifact_path = Path(ref["artifact_path"])
-    assert artifact_path.exists()
-
-    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    assert artifact["payload"] == original_payload
-    assert artifact["serialized_output"] == json.dumps(original_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=str)
-    assert artifact["sha256"] == ref["sha256"]
+    assert compacted == input_items
+    assert report["applied"] is False
+    assert report["targets"] == []
+    assert report["skipped_outputs"][0]["skip_reason"] == "image_payload_preserved_verbatim_no_trim_no_artifact_ref"
+    assert report["skipped_outputs"][0]["image_payload_preserve_verbatim"] is True
+    assert report["skipped_outputs"][0]["artifact_ref_written"] is False
+    assert not list((tmp_path / "tool-output-artifacts").glob("*.json"))

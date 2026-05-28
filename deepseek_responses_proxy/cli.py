@@ -4654,20 +4654,33 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
     return value or default
 
 
-def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
-    print("", file=sys.stderr)
-    print(prompt, file=sys.stderr)
-    if help_text:
-        print(f"  \033[2m{help_text}\033[0m", file=sys.stderr)
-    print("  \033[2mUse ↑/↓ or j/k to move, Enter to select, Backspace to go back.\033[0m", file=sys.stderr)
-    for idx, (_value, label, status) in enumerate(options):
-        marker = "▶ " if idx == selected else "  "
-        suffix = f"  \033[2m[{status}]\033[0m" if status else ""
-        if idx == selected:
-            print(f"\033[7m{marker}{label}{suffix}\033[0m", file=sys.stderr)
-        else:
-            print(f"{marker}{label}{suffix}", file=sys.stderr)
 
+def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
+    width = min(96, max(64, shutil.get_terminal_size((88, 24)).columns - 2))
+    inner = max(40, width - 4)
+
+    def fit(value: str) -> str:
+        value = str(value)
+        if len(value) > inner:
+            value = value[: max(1, inner - 1)] + "…"
+        return value.ljust(inner)
+
+    print("", file=sys.stderr)
+    print(f"\033[38;5;33m╭─ CoDeepSeedeX {'─' * max(1, inner - 13)}╮\033[0m", file=sys.stderr)
+    print(f"\033[38;5;33m│\033[0m \033[1;34m{fit(prompt)}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+    if help_text:
+        print(f"\033[38;5;33m│\033[0m \033[2m{fit(help_text)}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+    print(f"\033[38;5;33m│\033[0m \033[2m{fit('Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.')}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+    print(f"\033[38;5;33m├{'─' * (inner + 2)}┤\033[0m", file=sys.stderr)
+    for idx, (_value, label, status) in enumerate(options):
+        marker = "●" if idx == selected else "○"
+        suffix = f" ({status})" if status else ""
+        row = fit(f"{marker} [{idx + 1}] {label}{suffix}")
+        if idx == selected:
+            print(f"\033[38;5;33m│\033[0m \033[1;44m{row}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+        else:
+            print(f"\033[38;5;33m│\033[0m {row} \033[38;5;33m│\033[0m", file=sys.stderr)
+    print(f"\033[38;5;33m╰─ Step interactive {'─' * max(1, inner - 18)}╯\033[0m", file=sys.stderr)
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
@@ -4840,8 +4853,10 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             print(json.dumps(result, ensure_ascii=False, indent=2))
         return result
 
-    print("\nCoDeepSeedeX guided API configuration", file=sys.stderr)
-    print("You can skip any item and configure it later.", file=sys.stderr)
+    print("\n\033[38;5;33m╭─ CoDeepSeedeX ─────────────────────────────────────────────╮\033[0m", file=sys.stderr)
+    print("\033[38;5;33m│\033[0m \033[1;34mGuided API configuration\033[0m                               \033[38;5;33m│\033[0m", file=sys.stderr)
+    print("\033[38;5;33m│\033[0m \033[2mYou can skip any item and configure it later.\033[0m             \033[38;5;33m│\033[0m", file=sys.stderr)
+    print("\033[38;5;33m╰────────────────────────────────────────────────────────────╯\033[0m", file=sys.stderr)
 
     if _wizard_yes_no("Configure model API now?", "Y", non_interactive=non_interactive):
         provider = _wizard_model_provider_choice(non_interactive=non_interactive)

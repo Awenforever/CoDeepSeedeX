@@ -33,9 +33,9 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft non-prerelease
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.15a6-installer-env-file-precedence`
-- Latest closed documentation sync checkpoint: `p2.15a6-installer-env-file-precedence`
-- Current public Release note synchronization checkpoint: `p2.15a6-installer-env-file-precedence`
+- Current internal development checkpoint: `p2.16a1-image-payload-preserve-and-terminal-ui`
+- Latest closed documentation sync checkpoint: `p2.16a1-image-payload-preserve-and-terminal-ui`
+- Current public Release note synchronization checkpoint: `p2.16a1-image-payload-preserve-and-terminal-ui`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line remains compatible with the dsproxy-owned status contracts. p2.14 adds managed native tool routing, routing diagnostics, and web/image provider bridge validation.
@@ -1487,7 +1487,7 @@ p2.10a91 adds a display-safe image semantic envelope layer for context TRIM.
 
 Rules:
 
-1. The first observed image payload remains protected and verbatim.
+1. All observed image payloads remain protected and verbatim.
 2. Non-protected image messages can be replaced with semantic envelope text that records only message index, role, image count, media type hints, source shape, byte estimate, and sha256.
 3. `image_semantic_envelope` is exposed in context trim reports, runtime payload guard snapshots, and WeClaw status surfaces.
 4. Raw image payloads, base64 strings, data URLs, and raw message content must not be exposed through metadata.

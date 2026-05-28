@@ -294,7 +294,8 @@ def test_type_aware_trim_can_be_disabled_without_disabling_dry_run(monkeypatch):
     assert trimmed["messages"][0]["content"] == raw_log
 
 
-def test_image_semantic_envelope_transforms_non_first_image_without_raw_leak(monkeypatch):
+
+def test_image_semantic_envelope_preserves_all_images_without_transform(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "100000")
     monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "60000")
     monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "1")
@@ -315,32 +316,27 @@ def test_image_semantic_envelope_transforms_non_first_image_without_raw_leak(mon
     envelope = report["image_semantic_envelope"]
     assert envelope["available"] is True
     assert envelope["enabled"] is True
-    assert envelope["transform_enabled"] is True
-    assert envelope["applied"] is True
+    assert envelope["mode"] == "preserve_verbatim_no_compact_no_trim"
+    assert envelope["transform_enabled"] is False
+    assert envelope["applied"] is False
     assert envelope["image_message_count"] == 2
-    assert envelope["protected_count"] == 1
-    assert envelope["transformed_count"] == 1
+    assert envelope["protected_count"] == 2
+    assert envelope["transformed_count"] == 0
     assert envelope["items"][0]["protected"] is True
-    assert envelope["items"][0]["raw_image_content_exposed"] is False
-    assert envelope["items"][0]["semantic_summary_unavailable"] is True
-    assert envelope["items"][1]["transformed"] is True
-    assert envelope["items"][1]["semantic_summary_available"] is False
-    assert envelope["items"][1]["semantic_summary_unavailable_reason"] == "no_vision_caption_or_ocr_available"
-    assert envelope["semantic_summary_available"] is False
-    assert envelope["semantic_summary_unavailable"] is True
+    assert envelope["items"][1]["protected"] is True
+    assert envelope["items"][0]["transformed"] is False
+    assert envelope["items"][1]["transformed"] is False
+    assert "image_payload_preserved_verbatim_no_compact_no_trim" in envelope["items"][0]["protection_reasons"]
+    assert "image_payload_preserved_verbatim_no_compact_no_trim" in envelope["items"][1]["protection_reasons"]
 
     assert trimmed["messages"][0]["content"] == first_image
-    assert "[deepseek-proxy image semantic envelope]" in trimmed["messages"][1]["content"]
-    assert "semantic_summary_unavailable: true" in trimmed["messages"][1]["content"]
-    assert "semantic_summary_unavailable_reason: no_vision_caption_or_ocr_available" in trimmed["messages"][1]["content"]
-    assert "raw_image_content_exposed: false" in trimmed["messages"][1]["content"]
+    assert trimmed["messages"][1]["content"] == second_image
+    assert "[deepseek-proxy image semantic envelope]" not in json.dumps(trimmed, ensure_ascii=False)
 
     serialized_report = json.dumps(report, ensure_ascii=False)
-    serialized_trimmed = json.dumps(trimmed, ensure_ascii=False)
+    assert first_image not in serialized_report
     assert second_image not in serialized_report
-    assert second_image not in serialized_trimmed
     assert '"raw_image_content_exposed": true' not in serialized_report.lower()
-
 
 def test_image_semantic_envelope_transform_can_be_disabled(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM", "0")

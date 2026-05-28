@@ -757,3 +757,16 @@ def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> No
     assert "Select model API provider" not in text
     assert "Select image generation provider" not in text
     assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
+
+
+
+def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "ui_box_top()" in install_text
+    assert "ui_box_line()" in install_text
+    assert "ui_step_footer()" in install_text
+    assert "╭─ CoDeepSeedeX" in install_text
+    assert "╰─ Step" in install_text
+    assert "╭─ CoDeepSeedeX" in cli_text
+    assert "Step interactive" in cli_text

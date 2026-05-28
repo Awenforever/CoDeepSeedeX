@@ -1,3 +1,17 @@
+## p2.16a1 Image payload preservation and terminal UI foundation
+
+Date: 2026-05-28
+
+Scope:
+
+- Treat image payloads as opaque, lossless request payloads. They are excluded from tool-output trimming, artifact-ref replacement, semantic-envelope replacement, token-first compaction, and char fallback trimming.
+- Add reporting semantics for `image_payload_preserved_verbatim_no_compact_no_trim` so downstream status/debug surfaces can distinguish preservation from a missing trim opportunity.
+- Start a boxed terminal UI foundation for installer and `dsproxy config wizard`, preserving arrow-key navigation while improving structure and visual hierarchy.
+
+Release boundary:
+
+- Internal development node only. It does not move `v0.4.1-alpha` and does not update GitHub Release assets.
+
 ## p2.15a6-installer-env-file-precedence installer env-file precedence for non-interactive upgrades
 
 Date: 2026-05-28

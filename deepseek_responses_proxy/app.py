@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.1-alpha"
-PROXY_INTERNAL_VERSION = "p2.15a6-installer-env-file-precedence"
+PROXY_INTERNAL_VERSION = "p2.16a1-image-payload-preserve-and-terminal-ui"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -3393,6 +3393,27 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
                         )
                     continue
 
+            if category == "image_payload" or _context_trim_contains_image_value(output):
+                if len(skipped_outputs) < skip_trace_limit:
+                    skipped_outputs.append(
+                        {
+                            "index": index,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "category": category,
+                            "skip_reason": "image_payload_preserved_verbatim_no_trim_no_artifact_ref",
+                            "item_chars": original_item_chars,
+                            "output_chars": output_chars,
+                            "output_type": output_type,
+                            "output_was_serialized": output_was_serialized,
+                            "policy_max_item_chars": int(policy["max_item_chars"]),
+                            "has_matching_function_call": bool(call_info),
+                            "image_payload_preserve_verbatim": True,
+                            "artifact_ref_written": False,
+                        }
+                    )
+                continue
+
             if original_item_chars <= int(policy["max_item_chars"]):
                 if len(skipped_outputs) < skip_trace_limit:
                     skipped_outputs.append(
@@ -6578,9 +6599,11 @@ def _context_trim_item_meta(
     protected = False
     protection_reasons: list[str] = []
 
-    if index == first_image_index and has_image:
+    if has_image:
         protected = True
-        protection_reasons.append("first_image_payload_preserved_verbatim")
+        protection_reasons.append("image_payload_preserved_verbatim_no_compact_no_trim")
+        if index == first_image_index:
+            protection_reasons.append("first_image_payload_preserved_verbatim")
 
     if static_type in {"static_system", "static_developer"}:
         protected = True
@@ -6813,14 +6836,18 @@ def _context_image_semantic_envelope_text(item: dict[str, Any]) -> str:
     )
 
 
+
 def _context_image_semantic_envelope_report(
     messages: list[dict[str, Any]],
     *,
     protected_message_indexes: set[int],
     config: dict[str, int],
 ) -> dict[str, Any]:
+    # p2.16a1 hard policy: image payloads are opaque lossless payloads.
+    # They must not be compacted, trimmed, converted to artifact refs, or
+    # replaced by semantic envelopes. The report remains display-safe metadata.
     enabled = bool(config.get("image_semantic_envelope_enabled", 1))
-    transform_enabled = bool(config.get("image_semantic_envelope_transform_enabled", 1))
+    transform_enabled = False
     max_items = max(1, int(config.get("image_semantic_envelope_max_items") or 24))
 
     items: list[dict[str, Any]] = []
@@ -6831,9 +6858,6 @@ def _context_image_semantic_envelope_report(
         if not findings:
             continue
 
-        protected = index in protected_message_indexes
-        has_tool_calls = isinstance(message.get("tool_calls"), list) and bool(message.get("tool_calls"))
-        transform_eligible = bool(enabled and transform_enabled and not protected and not has_tool_calls)
         media_types = sorted({str(item.get("media_type")) for item in findings if item.get("media_type")})
         source_shapes = sorted({str(item.get("source_shape")) for item in findings if item.get("source_shape")})
         byte_estimates = [
@@ -6841,19 +6865,22 @@ def _context_image_semantic_envelope_report(
             for item in findings
             if isinstance(item.get("byte_estimate"), int)
         ]
+        protected = True
+        protection_reasons = ["image_payload_preserved_verbatim_no_compact_no_trim"]
+        if index in protected_message_indexes:
+            protection_reasons.append("protected_message_index")
+        if isinstance(message.get("tool_calls"), list) and bool(message.get("tool_calls")):
+            protection_reasons.append("tool_call_structure_preserved")
+
         items.append(
             {
                 "index": index,
                 "role": str(message.get("role") or "unknown"),
                 "type": _context_trim_content_shape_type(message),
                 "protected": protected,
-                "transform_eligible": transform_eligible,
+                "transform_eligible": False,
                 "transformed": False,
-                "protection_reasons": (
-                    ["protected_message_index"]
-                    if protected
-                    else (["tool_call_structure_preserved"] if has_tool_calls else [])
-                ),
+                "protection_reasons": protection_reasons,
                 "image_count": len(findings),
                 "paths": [str(item.get("path")) for item in findings[:12]],
                 "media_types": media_types,
@@ -6863,42 +6890,39 @@ def _context_image_semantic_envelope_report(
                 "sha256": hashlib.sha256(_context_trim_json_text(message).encode("utf-8", errors="replace")).hexdigest(),
                 "semantic_summary_available": False,
                 "semantic_summary_unavailable": True,
-                "semantic_summary_unavailable_reason": "no_vision_caption_or_ocr_available",
+                "semantic_summary_unavailable_reason": "image_payload_preserved_verbatim_no_vision_summary_attempted",
                 "raw_image_content_exposed": False,
                 "raw_content_exposed": False,
                 "redacted": True,
             }
         )
 
-    transformed_count = sum(1 for item in items if bool(item.get("transform_eligible")))
-    protected_count = sum(1 for item in items if bool(item.get("protected")))
     return {
         "available": bool(items),
         "enabled": enabled,
-        "mode": "enabled",
+        "mode": "preserve_verbatim_no_compact_no_trim",
         "unit": "messages",
         "transform_enabled": transform_enabled,
-        "applied": bool(enabled and transform_enabled and transformed_count),
-        "applied_count": transformed_count if enabled and transform_enabled else 0,
+        "applied": False,
+        "applied_count": 0,
         "image_message_count": len(items),
         "image_count": sum(int(item.get("image_count") or 0) for item in items),
-        "protected_count": protected_count,
-        "transformed_count": transformed_count if enabled and transform_enabled else 0,
+        "protected_count": len(items),
+        "transformed_count": 0,
         "items": items[:max_items],
         "semantic_summary_available": False,
         "semantic_summary_unavailable": bool(items),
-        "semantic_summary_unavailable_reason": "no_vision_caption_or_ocr_available" if items else None,
+        "semantic_summary_unavailable_reason": "image_payload_preserved_verbatim_no_vision_summary_attempted" if items else None,
         "raw_image_content_exposed": False,
         "raw_content_exposed": False,
         "redacted": True,
         "notes": [
             "This report exposes display-safe image metadata only.",
-            "The first observed image payload remains protected and verbatim.",
-            "Non-protected image messages can be replaced with metadata-only semantic envelopes to reduce raw image payload pressure.",
-            "semantic_summary_unavailable=true means no OCR, caption, or external vision summary is claimed.",
+            "All observed image payloads are preserved verbatim and excluded from compact/trim transforms.",
+            "If image payloads make an upstream request too large, dsproxy must surface diagnostics instead of mutating the payload.",
+            "semantic_summary_unavailable=true means no OCR, caption, external vision summary, semantic envelope, artifact-ref replacement, compact, or trim is applied to image payloads.",
         ],
     }
-
 
 def _apply_context_image_semantic_envelopes(
     messages: list[Any],

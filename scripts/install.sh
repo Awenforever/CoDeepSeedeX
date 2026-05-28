@@ -105,6 +105,30 @@ sub_title() {
 }
 
 
+ui_box_line() {
+  local text="${1:-}"
+  local width=62
+  local max=$((width - 4))
+  if [ "${#text}" -gt "$max" ]; then
+    text="${text:0:$((max - 1))}…"
+  fi
+  printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$max" "$text"
+}
+
+ui_box_top() {
+  local title="${1:-CoDeepSeedeX}"
+  printf '\n\033[38;5;33m╭─ %s %s╮\033[0m\n' "$title" "────────────────────────────────────────"
+}
+
+ui_box_bottom() {
+  printf '\033[38;5;33m╰────────────────────────────────────────────────────────────╯\033[0m\n'
+}
+
+ui_step_footer() {
+  local label="${1:-Step}"
+  printf '\033[38;5;33m╰─ %s %s╯\033[0m\n' "$label" "────────────────────────────────────────────────"
+}
+
 print_install_logs() {
   sub_title "Install logs"
   if [ -n "${BOOTSTRAP_LOG:-}" ]; then
@@ -862,7 +886,8 @@ read_menu_choice_from_tty() {
   local width
   width="$(menu_terminal_cols)"
 
-  menu_tty_printf '\n\033[1m%s\033[0m\n' "$prompt"
+  menu_tty_printf '\n\033[38;5;33m╭─ CoDeepSeedeX ─────────────────────────────────────────────╮\033[0m\n'
+  menu_tty_printf '\033[38;5;33m│\033[0m \033[1;34m%s\033[0m\n' "$prompt"
   if [ -n "${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}" ]; then
     menu_tty_printf '  \033[2m%s\033[0m\n' "$CODEEPSEEDEX_NEXT_MENU_DETAIL"
     CODEEPSEEDEX_NEXT_MENU_DETAIL=""
@@ -897,7 +922,7 @@ read_menu_choice_from_tty() {
     case "$key" in
       "")
         IFS='|' read -r value _label _status <<< "${options[$selected]}"
-        menu_tty_printf '\n'
+        menu_tty_printf '\033[38;5;33m╰─ Step interactive ─────────────────────────────────────────╯\033[0m\n'
         printf '%s\n' "$value"
         return 0
         ;;
@@ -2139,14 +2164,15 @@ printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
 
 divider
-section_title "Setup plan"
-printf '%s\n' "  1. Check Python and Git"
-printf '%s\n' "  2. Install or update repository"
-printf '%s\n' "  3. Create virtual environment"
-printf '%s\n' "  4. Install dsproxy"
-printf '%s\n' "  5. Guided API configuration and local env file"
-printf '%s\n' "  6. Install Codex profiles"
-printf '%s\n' "  7. Install safe Codex wrapper, recommended"
+ui_box_top "Setup plan"
+ui_box_line "[1] Check Python and Git"
+ui_box_line "[2] Install or update repository"
+ui_box_line "[3] Create virtual environment"
+ui_box_line "[4] Install dsproxy"
+ui_box_line "[5] Guided API configuration and local env file"
+ui_box_line "[6] Install Codex profiles"
+ui_box_line "[7] Install safe Codex wrapper, recommended"
+ui_step_footer "Step 0/7"
 print_install_logs
 
 step "Checking requirements"
