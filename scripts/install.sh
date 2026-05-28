@@ -196,14 +196,26 @@ ui_box_bottom() {
   printf '\033[38;5;33m╰%s╯\033[0m\n' "$(ui_repeat "─" "$inner")"
 }
 
+
 ui_box_line() {
   local text="${1:-}"
   local width="${2:-$(ui_terminal_width)}"
+  ui_box_line_styled "$text" "$width" ""
+}
+
+ui_box_line_styled() {
+  local text="${1:-}"
+  local width="${2:-$(ui_terminal_width)}"
+  local style="${3:-}"
   local inner=$((width - 4))
   local line=""
   while IFS= read -r line; do
     line="$(ui_trim_text "$line" "$inner")"
-    printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$inner" "$line"
+    if [ -n "$style" ]; then
+      printf '\033[38;5;33m│\033[0m %b%-*s\033[0m \033[38;5;33m│\033[0m\n' "$style" "$inner" "$line"
+    else
+      printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$inner" "$line"
+    fi
   done < <(ui_wrap_text "$text" "$inner")
 }
 
@@ -949,6 +961,7 @@ menu_print_separator() {
   printf '\n'
 }
 
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -980,25 +993,30 @@ read_menu_choice_from_tty() {
   width="$(ui_terminal_width)"
 
   ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
-  ui_box_line "$prompt" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "$prompt" "$width" "\033[1;38;5;75m" > /dev/tty
   if [ -n "${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}" ]; then
+    ui_box_line "" "$width" > /dev/tty
     ui_box_line "Hint: ${CODEEPSEEDEX_NEXT_MENU_DETAIL}" "$width" > /dev/tty
     CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   fi
-  if [ "${CODEEPSEEDEX_MENU_HELP_SHOWN:-0}" != "1" ]; then
-    ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
-    CODEEPSEEDEX_MENU_HELP_SHOWN=1
-  fi
+  ui_box_line "" "$width" > /dev/tty
   ui_box_separator "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
 
   for ((i=0; i<count; i++)); do
     ui_box_line "" "$width" > /dev/tty
   done
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
+  CODEEPSEEDEX_MENU_HELP_SHOWN=1
   ui_step_footer "Step interactive" "$width" > /dev/tty
 
   local key
   while true; do
-    menu_tty_printf '\033[%sA' "$((count + 1))"
+    menu_tty_printf '\033[%sA' "$((count + 4))"
+    menu_tty_printf '\r\033[2K'
+    ui_box_line "" "$width" > /dev/tty
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
       menu_tty_printf '\r\033[2K'
@@ -1008,6 +1026,10 @@ read_menu_choice_from_tty() {
         menu_render_option_line "0" "$value" "$label" "$status" "$width"
       fi
     done
+    menu_tty_printf '\r\033[2K'
+    ui_box_line "" "$width" > /dev/tty
+    menu_tty_printf '\r\033[2K'
+    ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
     menu_tty_printf '\r\033[2K'
     ui_step_footer "Step interactive" "$width" > /dev/tty
 
@@ -1049,8 +1071,7 @@ read_menu_choice_from_tty() {
         fi
         return 0
         ;;
-      *)
-        ;;
+      *) ;;
     esac
   done
 }
@@ -2261,15 +2282,22 @@ printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
 
 divider
-ui_box_top "Setup plan"
-ui_box_line "[1] Check Python and Git"
-ui_box_line "[2] Install or update repository"
-ui_box_line "[3] Create virtual environment"
-ui_box_line "[4] Install dsproxy"
-ui_box_line "[5] Guided API configuration and local env file"
-ui_box_line "[6] Install Codex profiles"
-ui_box_line "[7] Install safe Codex wrapper, recommended"
-ui_step_footer "Step 0/7"
+setup_width="$(ui_terminal_width)"
+ui_box_top "CoDeepSeedeX" "$setup_width"
+ui_box_line "" "$setup_width"
+ui_box_line_styled "Setup plan" "$setup_width" "\033[1;38;5;75m"
+ui_box_line "This installer prepares dsproxy, managed Codex profiles, provider configuration, and the optional Codex wrapper." "$setup_width"
+ui_box_line "" "$setup_width"
+ui_box_line "[1] Check Python and Git" "$setup_width"
+ui_box_line "[2] Install or update repository" "$setup_width"
+ui_box_line "[3] Create virtual environment" "$setup_width"
+ui_box_line "[4] Install dsproxy" "$setup_width"
+ui_box_line "[5] Guided API configuration and local env file" "$setup_width"
+ui_box_line "[6] Install Codex profiles" "$setup_width"
+ui_box_line "[7] Install safe Codex wrapper, recommended" "$setup_width"
+ui_box_line "" "$setup_width"
+ui_box_line "You can skip API setup now and run dsproxy config wizard later." "$setup_width"
+ui_step_footer "Step 0/7" "$setup_width"
 print_install_logs
 
 step "Checking requirements"

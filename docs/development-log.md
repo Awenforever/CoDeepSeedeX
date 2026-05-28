@@ -1,3 +1,14 @@
+## p2.16a3 Terminal UI layout redesign
+
+Date: 2026-05-28
+
+Scope:
+
+- Reworked the installer and `dsproxy config wizard` terminal panels from compact box-only output into a more spacious framed layout.
+- Separated the main question, hint/details, option list, and keybinding footer so long guidance does not visually crowd the selection rows.
+- Kept non-interactive and dry-run output machine-readable; this node only changes interactive TTY presentation.
+- Public `v0.4.1-alpha` is not moved in this internal UI iteration.
+
 ## p2.16a2 Terminal UI polish
 
 Date: 2026-05-28

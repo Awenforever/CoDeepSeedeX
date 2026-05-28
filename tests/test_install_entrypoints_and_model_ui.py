@@ -576,6 +576,7 @@ def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     assert "\\033[7;1m" not in text
     assert "\\033[1;38;5;75m" in text
     assert "ui_box_line" in text
+    assert "ui_box_line_styled()" in text
 
 def test_installer_port_prompts_use_dim_default_hint() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -779,6 +780,8 @@ def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     assert "╰─ %s %s╯" in install_text
     assert "_wizard_render_panel(" in cli_text
     assert "_wizard_print_box_line(" in cli_text
+    assert "_wizard_render_menu(" in cli_text
+    assert '_wizard_print_box_line("", width=width)' in cli_text
     assert "textwrap.wrap" in cli_text
     assert "\\033[1;44m" not in cli_text
     assert "Step interactive" in cli_text

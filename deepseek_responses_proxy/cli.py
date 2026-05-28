@@ -4705,11 +4705,19 @@ def _wizard_print_step_footer(label: str = "Step interactive", *, width: int | N
     print(f"\033[38;5;33m╰─ {text} {fill}╯\033[0m", file=sys.stderr)
 
 
+
 def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step interactive") -> None:
     width = _wizard_terminal_width()
-    _wizard_print_box_top(title, width=width)
-    for line in lines:
-        _wizard_print_box_line(line, width=width, style="\033[2m" if line.startswith("Hint:") else "")
+    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line(title, width=width, style="\033[1;38;5;75m")
+    body = list(lines or [])
+    if body:
+        _wizard_print_box_line("", width=width)
+    for line in body:
+        style = "\033[2m" if str(line).startswith("Hint:") else ""
+        _wizard_print_box_line(line, width=width, style=style)
+    _wizard_print_box_line("", width=width)
     _wizard_print_step_footer(footer, width=width)
 
 
@@ -4724,11 +4732,14 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
         return value.ljust(inner)
 
     _wizard_print_box_top("CoDeepSeedeX", width=width)
-    _wizard_print_box_line(prompt, width=width, style="\033[1;34m")
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line(prompt, width=width, style="\033[1;38;5;75m")
     if help_text:
+        _wizard_print_box_line("", width=width)
         _wizard_print_box_line(f"Hint: {help_text}", width=width, style="\033[2m")
-    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", width=width, style="\033[2m")
+    _wizard_print_box_line("", width=width)
     _wizard_print_box_separator(width=width)
+    _wizard_print_box_line("", width=width)
     for idx, (value, label, status) in enumerate(options):
         marker = "●" if idx == selected else "○"
         suffix = f"  [{status}]" if status else ""
@@ -4745,8 +4756,9 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
             _wizard_print_box_line(row, width=width, style="\033[2m")
         else:
             _wizard_print_box_line(row, width=width)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", width=width, style="\033[2m")
     _wizard_print_step_footer("Step interactive", width=width)
-
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
