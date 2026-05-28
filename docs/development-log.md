@@ -1,3 +1,13 @@
+## p2.16a2 Terminal UI polish
+
+Date: 2026-05-28
+
+Scope:
+
+- Replace the p2.16a1 box-only terminal UI with a shared framed renderer that wraps long text and keeps menu content inside the panel.
+- Improve installer arrow menus and `dsproxy config wizard` with a consistent title, hint, options, and Step footer layout.
+- Keep non-interactive and JSON/dry-run paths machine-readable; this node does not update the public Release.
+
 ## p2.16a1 Image payload preservation and terminal UI foundation
 
 Date: 2026-05-28

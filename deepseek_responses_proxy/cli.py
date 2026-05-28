@@ -4655,8 +4655,66 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
 
 
 
+def _wizard_terminal_width() -> int:
+    return min(96, max(72, shutil.get_terminal_size((88, 24)).columns))
+
+
+def _wizard_wrap_lines(text: str, width: int) -> list[str]:
+    import textwrap
+
+    value = str(text or "")
+    if not value:
+        return [""]
+    return textwrap.wrap(value, width=max(24, width), replace_whitespace=False, drop_whitespace=True) or [""]
+
+
+def _wizard_print_box_line(text: str = "", *, width: int | None = None, style: str = "") -> None:
+    width = width or _wizard_terminal_width()
+    inner = max(40, width - 4)
+    for line in _wizard_wrap_lines(text, inner):
+        if len(line) > inner:
+            line = line[: max(1, inner - 1)] + "…"
+        padded = line.ljust(inner)
+        if style:
+            padded = f"{style}{padded}\033[0m"
+        print(f"\033[38;5;33m│\033[0m {padded} \033[38;5;33m│\033[0m", file=sys.stderr)
+
+
+def _wizard_print_box_top(title: str = "CoDeepSeedeX", *, width: int | None = None) -> None:
+    width = width or _wizard_terminal_width()
+    inner = max(40, width - 4)
+    label = str(title or "CoDeepSeedeX")
+    if len(label) > inner - 8:
+        label = label[: max(1, inner - 9)] + "…"
+    fill = "─" * max(1, inner - len(label) - 3)
+    print(f"\n\033[38;5;33m╭─ {label} {fill}╮\033[0m", file=sys.stderr)
+
+
+def _wizard_print_box_separator(*, width: int | None = None) -> None:
+    width = width or _wizard_terminal_width()
+    print(f"\033[38;5;33m├{'─' * max(1, width - 2)}┤\033[0m", file=sys.stderr)
+
+
+def _wizard_print_step_footer(label: str = "Step interactive", *, width: int | None = None) -> None:
+    width = width or _wizard_terminal_width()
+    inner = max(40, width - 2)
+    text = str(label or "Step")
+    if len(text) > inner - 4:
+        text = text[: max(1, inner - 5)] + "…"
+    fill = "─" * max(1, inner - len(text) - 3)
+    print(f"\033[38;5;33m╰─ {text} {fill}╯\033[0m", file=sys.stderr)
+
+
+def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step interactive") -> None:
+    width = _wizard_terminal_width()
+    _wizard_print_box_top(title, width=width)
+    for line in lines:
+        _wizard_print_box_line(line, width=width, style="\033[2m" if line.startswith("Hint:") else "")
+    _wizard_print_step_footer(footer, width=width)
+
+
 def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
-    width = min(96, max(64, shutil.get_terminal_size((88, 24)).columns - 2))
+    width = _wizard_terminal_width()
     inner = max(40, width - 4)
 
     def fit(value: str) -> str:
@@ -4665,22 +4723,30 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
             value = value[: max(1, inner - 1)] + "…"
         return value.ljust(inner)
 
-    print("", file=sys.stderr)
-    print(f"\033[38;5;33m╭─ CoDeepSeedeX {'─' * max(1, inner - 13)}╮\033[0m", file=sys.stderr)
-    print(f"\033[38;5;33m│\033[0m \033[1;34m{fit(prompt)}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_line(prompt, width=width, style="\033[1;34m")
     if help_text:
-        print(f"\033[38;5;33m│\033[0m \033[2m{fit(help_text)}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
-    print(f"\033[38;5;33m│\033[0m \033[2m{fit('Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.')}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
-    print(f"\033[38;5;33m├{'─' * (inner + 2)}┤\033[0m", file=sys.stderr)
-    for idx, (_value, label, status) in enumerate(options):
+        _wizard_print_box_line(f"Hint: {help_text}", width=width, style="\033[2m")
+    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", width=width, style="\033[2m")
+    _wizard_print_box_separator(width=width)
+    for idx, (value, label, status) in enumerate(options):
         marker = "●" if idx == selected else "○"
-        suffix = f" ({status})" if status else ""
-        row = fit(f"{marker} [{idx + 1}] {label}{suffix}")
+        suffix = f"  [{status}]" if status else ""
+        row = fit(f"{marker} [{value}] {label}{suffix}")
         if idx == selected:
-            print(f"\033[38;5;33m│\033[0m \033[1;44m{row}\033[0m \033[38;5;33m│\033[0m", file=sys.stderr)
+            _wizard_print_box_line(row, width=width, style="\033[1;38;5;75m")
+        elif status.lower() == "supported":
+            _wizard_print_box_line(row, width=width, style="\033[38;5;114m")
+        elif status.lower() in {"experimental", "validated"}:
+            _wizard_print_box_line(row, width=width, style="\033[38;5;177m")
+        elif status.lower() in {"custom", "model availability varies"}:
+            _wizard_print_box_line(row, width=width, style="\033[38;5;215m")
+        elif status.lower() == "unsupported":
+            _wizard_print_box_line(row, width=width, style="\033[2m")
         else:
-            print(f"\033[38;5;33m│\033[0m {row} \033[38;5;33m│\033[0m", file=sys.stderr)
-    print(f"\033[38;5;33m╰─ Step interactive {'─' * max(1, inner - 18)}╯\033[0m", file=sys.stderr)
+            _wizard_print_box_line(row, width=width)
+    _wizard_print_step_footer("Step interactive", width=width)
+
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
@@ -4853,10 +4919,14 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             print(json.dumps(result, ensure_ascii=False, indent=2))
         return result
 
-    print("\n\033[38;5;33m╭─ CoDeepSeedeX ─────────────────────────────────────────────╮\033[0m", file=sys.stderr)
-    print("\033[38;5;33m│\033[0m \033[1;34mGuided API configuration\033[0m                               \033[38;5;33m│\033[0m", file=sys.stderr)
-    print("\033[38;5;33m│\033[0m \033[2mYou can skip any item and configure it later.\033[0m             \033[38;5;33m│\033[0m", file=sys.stderr)
-    print("\033[38;5;33m╰────────────────────────────────────────────────────────────╯\033[0m", file=sys.stderr)
+    _wizard_render_panel(
+        "Guided API configuration",
+        [
+            "You can skip any item and configure it later.",
+            "Secrets are hidden. Saved values are kept when you press Enter.",
+        ],
+        footer="Step 1/3",
+    )
 
     if _wizard_yes_no("Configure model API now?", "Y", non_interactive=non_interactive):
         provider = _wizard_model_provider_choice(non_interactive=non_interactive)

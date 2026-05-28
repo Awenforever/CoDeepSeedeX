@@ -105,28 +105,120 @@ sub_title() {
 }
 
 
-ui_box_line() {
-  local text="${1:-}"
-  local width=62
-  local max=$((width - 4))
-  if [ "${#text}" -gt "$max" ]; then
-    text="${text:0:$((max - 1))}…"
+ui_terminal_width() {
+  local cols=""
+  if command -v tput >/dev/null 2>&1; then
+    cols="$(tput cols 2>/dev/null || true)"
   fi
-  printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$max" "$text"
+  case "$cols" in
+    ''|*[!0-9]*) cols=88 ;;
+  esac
+  if [ "$cols" -lt 72 ]; then
+    cols=72
+  fi
+  if [ "$cols" -gt 96 ]; then
+    cols=96
+  fi
+  printf '%s\n' "$cols"
+}
+
+ui_repeat() {
+  local char="$1"
+  local count="$2"
+  local out=""
+  while [ "$count" -gt 0 ]; do
+    out="${out}${char}"
+    count=$((count - 1))
+  done
+  printf '%s' "$out"
+}
+
+ui_trim_text() {
+  local text="$1"
+  local max="$2"
+  if [ "$max" -lt 8 ]; then
+    max=8
+  fi
+  if [ "${#text}" -gt "$max" ]; then
+    printf '%s…\n' "${text:0:$((max - 1))}"
+  else
+    printf '%s\n' "$text"
+  fi
+}
+
+ui_wrap_text() {
+  local text="${1:-}"
+  local max="${2:-72}"
+  local cut segment
+  if [ -z "$text" ]; then
+    printf '\n'
+    return 0
+  fi
+  while [ "${#text}" -gt "$max" ]; do
+    cut="$max"
+    while [ "$cut" -gt 28 ] && [ "${text:$cut:1}" != " " ]; do
+      cut=$((cut - 1))
+    done
+    if [ "$cut" -le 28 ]; then
+      cut="$max"
+    fi
+    segment="${text:0:$cut}"
+    printf '%s\n' "${segment%"${segment##*[![:space:]]}"}"
+    text="${text:$cut}"
+    text="${text#"${text%%[![:space:]]*}"}"
+  done
+  printf '%s\n' "$text"
 }
 
 ui_box_top() {
   local title="${1:-CoDeepSeedeX}"
-  printf '\n\033[38;5;33m╭─ %s %s╮\033[0m\n' "$title" "────────────────────────────────────────"
+  local width="${2:-$(ui_terminal_width)}"
+  local inner=$((width - 4))
+  local clipped=""
+  local fill_count=0
+  clipped="$(ui_trim_text "$title" "$((inner - 8))")"
+  fill_count=$((inner - ${#clipped} - 3))
+  if [ "$fill_count" -lt 1 ]; then
+    fill_count=1
+  fi
+  printf '\n\033[38;5;33m╭─ %s %s╮\033[0m\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
+}
+
+ui_box_separator() {
+  local width="${1:-$(ui_terminal_width)}"
+  local inner=$((width - 2))
+  printf '\033[38;5;33m├%s┤\033[0m\n' "$(ui_repeat "─" "$inner")"
 }
 
 ui_box_bottom() {
-  printf '\033[38;5;33m╰────────────────────────────────────────────────────────────╯\033[0m\n'
+  local width="${1:-$(ui_terminal_width)}"
+  local inner=$((width - 2))
+  printf '\033[38;5;33m╰%s╯\033[0m\n' "$(ui_repeat "─" "$inner")"
+}
+
+ui_box_line() {
+  local text="${1:-}"
+  local width="${2:-$(ui_terminal_width)}"
+  local inner=$((width - 4))
+  local line=""
+  while IFS= read -r line; do
+    line="$(ui_trim_text "$line" "$inner")"
+    printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$inner" "$line"
+  done < <(ui_wrap_text "$text" "$inner")
 }
 
 ui_step_footer() {
   local label="${1:-Step}"
-  printf '\033[38;5;33m╰─ %s %s╯\033[0m\n' "$label" "────────────────────────────────────────────────"
+  local width="${2:-$(ui_terminal_width)}"
+  local inner=$((width - 2))
+  local clipped=""
+  local fill_count=0
+  clipped="$(ui_trim_text "$label" "$((inner - 4))")"
+  fill_count=$((inner - ${#clipped} - 3))
+  if [ "$fill_count" -lt 1 ]; then
+    fill_count=1
+  fi
+  printf '\033[38;5;33m╰─ %s %s╯\033[0m\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
 }
 
 print_install_logs() {
@@ -802,33 +894,34 @@ menu_render_option_line() {
   local label="$3"
   local status="$4"
   local width="$5"
-  local prefix="  "
+  local inner=$((width - 4))
   local suffix=""
+  local marker="○"
   local row=""
   local rendered=""
 
   if [ "$selected" = "1" ]; then
-    prefix="▶ "
+    marker="●"
   fi
 
   suffix="$(menu_status_suffix "$status")"
   if [ -n "$suffix" ]; then
-    row="$(printf '%s%s. %s  %s' "$prefix" "$value" "$label" "$suffix")"
+    row="$(printf '%s [%s] %s  %s' "$marker" "$value" "$label" "$suffix")"
   else
-    row="$(printf '%s%s. %s' "$prefix" "$value" "$label")"
+    row="$(printf '%s [%s] %s' "$marker" "$value" "$label")"
   fi
 
-  rendered="$(menu_truncate_line "$row" "$width")"
-  rendered="$(printf "%-$((width - 1))s" "$rendered")"
+  rendered="$(menu_truncate_line "$row" "$inner")"
+  rendered="$(printf "%-${inner}s" "$rendered")"
   if [ "$selected" = "1" ]; then
-    menu_tty_printf '\033[7;1m%s\033[0m\n' "$rendered"
+    menu_tty_printf '\033[38;5;33m│\033[0m \033[1;38;5;75m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered"
   else
     case "$status" in
-      supported) menu_tty_printf '\033[1;32m%s\033[0m\n' "$rendered" ;;
-      experimental) menu_tty_printf '\033[1;35m%s\033[0m\n' "$rendered" ;;
-      custom) menu_tty_printf '\033[1;33m%s\033[0m\n' "$rendered" ;;
-      "model unavailable"|unsupported) menu_tty_printf '\033[2m%s\033[0m\n' "$rendered" ;;
-      *) menu_tty_printf '%s\n' "$rendered" ;;
+      supported) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;114m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
+      experimental) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;177m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
+      custom) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;215m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
+      "model unavailable"|unsupported) menu_tty_printf '\033[38;5;33m│\033[0m \033[2m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
+      *) menu_tty_printf '\033[38;5;33m│\033[0m %s \033[38;5;33m│\033[0m\n' "$rendered" ;;
     esac
   fi
 }
@@ -884,26 +977,28 @@ read_menu_choice_from_tty() {
   done
 
   local width
-  width="$(menu_terminal_cols)"
+  width="$(ui_terminal_width)"
 
-  menu_tty_printf '\n\033[38;5;33m╭─ CoDeepSeedeX ─────────────────────────────────────────────╮\033[0m\n'
-  menu_tty_printf '\033[38;5;33m│\033[0m \033[1;34m%s\033[0m\n' "$prompt"
+  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_line "$prompt" "$width" > /dev/tty
   if [ -n "${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}" ]; then
-    menu_tty_printf '  \033[2m%s\033[0m\n' "$CODEEPSEEDEX_NEXT_MENU_DETAIL"
+    ui_box_line "Hint: ${CODEEPSEEDEX_NEXT_MENU_DETAIL}" "$width" > /dev/tty
     CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   fi
   if [ "${CODEEPSEEDEX_MENU_HELP_SHOWN:-0}" != "1" ]; then
-    menu_tty_printf '  \033[2mUse ↑/↓ or j/k to move, Enter to select, Backspace to go back.\033[0m\n'
+    ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
     CODEEPSEEDEX_MENU_HELP_SHOWN=1
   fi
+  ui_box_separator "$width" > /dev/tty
 
   for ((i=0; i<count; i++)); do
-    menu_tty_printf '\n'
+    ui_box_line "" "$width" > /dev/tty
   done
+  ui_step_footer "Step interactive" "$width" > /dev/tty
 
   local key
   while true; do
-    menu_tty_printf '\033[%sA' "$count"
+    menu_tty_printf '\033[%sA' "$((count + 1))"
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
       menu_tty_printf '\r\033[2K'
@@ -913,6 +1008,8 @@ read_menu_choice_from_tty() {
         menu_render_option_line "0" "$value" "$label" "$status" "$width"
       fi
     done
+    menu_tty_printf '\r\033[2K'
+    ui_step_footer "Step interactive" "$width" > /dev/tty
 
     IFS= read -rsn1 key < /dev/tty || {
       printf '%s\n' "$default"
@@ -922,7 +1019,7 @@ read_menu_choice_from_tty() {
     case "$key" in
       "")
         IFS='|' read -r value _label _status <<< "${options[$selected]}"
-        menu_tty_printf '\033[38;5;33m╰─ Step interactive ─────────────────────────────────────────╯\033[0m\n'
+        menu_tty_printf '\n'
         printf '%s\n' "$value"
         return 0
         ;;

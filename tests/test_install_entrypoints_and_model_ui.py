@@ -558,6 +558,7 @@ def test_installer_logo_function_renders_without_backtick_substitution(tmp_path)
     assert "Codex × DeepSeek local Responses proxy" in result.stdout
 
 
+
 def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert text.count("read_menu_choice_from_tty() {") == 1
@@ -572,10 +573,9 @@ def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     assert "[0-9])" not in text
     assert "[0-9A-Za-z_./:-])" not in text
     assert "$'\\x7f'|$'\\b')" in text
-    assert "\\033[7;1m%s\\033[0m" in text
-    assert "menu_print_separator" in text
-
-
+    assert "\\033[7;1m" not in text
+    assert "\\033[1;38;5;75m" in text
+    assert "ui_box_line" in text
 
 def test_installer_port_prompts_use_dim_default_hint() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -591,14 +591,17 @@ def test_installer_logo_colors_version() -> None:
     assert "CoDeepSeedeX \\033[1;35m%s\\033[0m" in text
 
 
+
 def test_installer_menu_selected_and_unselected_value_columns_align() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'local prefix="  "' in text
-    assert 'prefix="▶ "' in text
-    assert "row=\"$(printf " in text
-    assert "%s%s. %s  %s" in text
-    assert "\"$prefix\" \"$value\" \"$label\" \"$suffix\")" in text
-
+    assert 'marker="●"' in text
+    assert 'marker="○"' in text
+    assert 'row="$(printf '"'"'%s [%s] %s'"'"' "$marker" "$value" "$label")"' in text
+    assert 'row="$(printf '"'"'%s [%s] %s  %s'"'"' "$marker" "$value" "$label" "$suffix")"' in text
+    assert 'menu_render_option_line "0" "$value" "$label" "$status" "$width"' in text
+    assert "menu_truncate_line" in text
+    assert "ui_box_line" in text
+    assert "local prefix=" not in text
 
 def test_installer_secret_prompt_keeps_existing_key_without_counting_it_as_new_input() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -618,15 +621,16 @@ def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
     assert "The wrapper starts or refreshes the local dsproxy backend automatically." in text
 
 
+
 def test_installer_menu_prints_detail_between_prompt_and_global_help() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    detail_line = "menu_tty_printf '  \\033[2m%s\\033[0m\\n' \"$CODEEPSEEDEX_NEXT_MENU_DETAIL\""
+    detail_line = 'ui_box_line "Hint: ${CODEEPSEEDEX_NEXT_MENU_DETAIL}" "$width"'
     help_line = "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back."
     assert "CODEEPSEEDEX_NEXT_MENU_DETAIL" in text
     assert detail_line in text
-    assert text.index(detail_line) < text.index(help_line)
-    assert text.index("CODEEPSEEDEX_NEXT_MENU_DETAIL=\"After installing") < text.index("WRAPPER_CHOICE=\"$(read_yes_no_menu")
-
+    assert help_line in text
+    assert text.index("CODEEPSEEDEX_NEXT_MENU_DETAIL") < text.index(help_line)
+    assert "menu_tty_printf '  \\033[2m%s\\033[0m\\n'" not in text
 
 def test_installer_wrapper_help_not_printed_as_standalone_line() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -760,13 +764,21 @@ def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> No
 
 
 
+
 def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
     cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
-    assert "ui_box_top()" in install_text
-    assert "ui_box_line()" in install_text
+    assert "ui_terminal_width()" in install_text
+    assert "ui_wrap_text()" in install_text
+    assert "ui_box_separator()" in install_text
     assert "ui_step_footer()" in install_text
-    assert "╭─ CoDeepSeedeX" in install_text
-    assert "╰─ Step" in install_text
-    assert "╭─ CoDeepSeedeX" in cli_text
+    assert "ui_box_top \"CoDeepSeedeX\"" in install_text
+    assert "menu_render_option_line()" in install_text
+    assert "\\033[7;1m" not in install_text
+    assert "╭─ %s %s╮" in install_text
+    assert "╰─ %s %s╯" in install_text
+    assert "_wizard_render_panel(" in cli_text
+    assert "_wizard_print_box_line(" in cli_text
+    assert "textwrap.wrap" in cli_text
+    assert "\\033[1;44m" not in cli_text
     assert "Step interactive" in cli_text
