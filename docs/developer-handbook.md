@@ -33,8 +33,8 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft non-prerelease
 - GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
-- Latest closed documentation sync checkpoint: `p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
+- Current internal development checkpoint: `p2.15a3-postmerge-checklist-closure`
+- Latest closed documentation sync checkpoint: `p2.15a3-postmerge-checklist-closure`
 - Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`

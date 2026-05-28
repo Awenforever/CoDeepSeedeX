@@ -1204,7 +1204,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
             "auto_compact_ratio": auto_compact_ratio,
             "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
-            "source": "codex_config.profiles.<profile>",
+            "source": "codex_split_profile_file",
         },
         "model_catalog": model_catalog,
         "runtime": {
@@ -4723,17 +4723,6 @@ def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = F
         non_interactive=non_interactive,
     )
     return value == "Y"
-
-
-def _print_wizard_catalog(title: str, options: list[tuple[str, str, bool]], *, stream: Any = sys.stderr) -> None:
-    # Retained only for compatibility with old tests/imports. The interactive
-    # wizard uses the shared arrow-key menu contract instead of numeric catalogs.
-    print(f"\n{title}", file=stream)
-    print("  Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", file=stream)
-    for number, name, supported in options:
-        status = "Supported" if supported else "Experimental"
-        print(f"  {number}. {name} [{status}]", file=stream)
-    print("  0. Skip", file=stream)
 
 
 def _wizard_model_provider_choice(*, non_interactive: bool = False) -> str:

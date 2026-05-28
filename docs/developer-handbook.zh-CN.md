@@ -31,8 +31,8 @@
 - GitHub Release状态：非draft，非pre-release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
-- 最新闭合文档同步检查点：`p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
+- 当前内部开发检查点：`p2.15a3-postmerge-checklist-closure`
+- 最新闭合文档同步检查点：`p2.15a3-postmerge-checklist-closure`
 - 当前公开Release note同步检查点：`p2.14a8-v040-alpha-release`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`

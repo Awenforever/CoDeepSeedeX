@@ -23,7 +23,7 @@ def test_cli_version_ignores_stale_release_metadata_env() -> None:
 
     output = result.stdout.strip()
     assert "72e0f77" not in output
-    assert "p2.15a1-codex-0134-profile-custom-provider-wizard-ux" in output
+    assert "p2.15a3-postmerge-checklist-closure" in output
 
 
 def test_install_script_writes_current_release_metadata_env() -> None:

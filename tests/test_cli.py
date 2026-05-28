@@ -1870,8 +1870,16 @@ def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_pat
     assert "update available" not in capsys.readouterr().err
 
 
-def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys):
+def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys, monkeypatch):
     from deepseek_responses_proxy.cli import main
+
+    for key in [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_PROXY_MODEL",
+        "DEEPSEEK_PROXY_MODEL_PROVIDER",
+    ]:
+        monkeypatch.delenv(key, raising=False)
 
     env_file = tmp_path / "env"
     assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
@@ -3509,6 +3517,14 @@ def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_thresh
 
 def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monkeypatch, capsys):
     from deepseek_responses_proxy import cli as cli_module
+
+    for key in [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_PROXY_MODEL",
+        "DEEPSEEK_PROXY_MODEL_PROVIDER",
+    ]:
+        monkeypatch.delenv(key, raising=False)
 
     env_file = tmp_path / "env"
     env_file.write_text(

@@ -1,3 +1,28 @@
+## p2.15a3 Postmerge checklist closure
+
+Date: 2026-05-28
+
+Scope:
+
+- Close remaining p2.15 post-merge checklist gates after p2.15a2.
+- Advance runtime internal metadata to `p2.15a3-postmerge-checklist-closure` while keeping public `v0.4.0-alpha` unchanged.
+- Remove the unused wizard catalog helper from the CLI source surface.
+- Update the split-profile context source label from the legacy `codex_config.profiles.<profile>` wording to `codex_split_profile_file`.
+- Isolate custom-provider and wizard non-interactive regression tests from developer-machine `DEEPSEEK_*` environment variables.
+
+Validation target:
+
+- `python -m py_compile` for app/CLI/focused tests.
+- `bash -n bootstrap.sh`, `bash -n scripts/install.sh`, and `bash -n scripts/dsproxy-config`.
+- `git diff --check`.
+- Focused CLI/docs/version/provider tests.
+- Full tests.
+
+Release boundary:
+
+- This internal node does not move `v0.4.0-alpha`, rebuild Release assets, or update GitHub Release notes.
+
+
 ## p2.15a1 Codex 0.134 profile, custom provider, and wizard UX contract
 
 Date: 2026-05-28
