@@ -602,7 +602,7 @@ def test_installer_menu_selected_and_unselected_value_columns_align() -> None:
     assert 'menu_render_option_line "0" "$value" "$label" "$status" "$width"' in text
     assert "menu_truncate_line" in text
     assert "ui_box_line" in text
-    assert "local prefix=" not in text
+    assert "menu_step_label_for_prompt()" in text
 
 def test_installer_secret_prompt_keeps_existing_key_without_counting_it_as_new_input() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -623,15 +623,16 @@ def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
 
 
 
+
 def test_installer_menu_prints_detail_between_prompt_and_global_help() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    detail_line = 'ui_box_line "Hint: ${CODEEPSEEDEX_NEXT_MENU_DETAIL}" "$width"'
     help_line = "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back."
     assert "CODEEPSEEDEX_NEXT_MENU_DETAIL" in text
-    assert detail_line in text
-    assert help_line in text
-    assert text.index("CODEEPSEEDEX_NEXT_MENU_DETAIL") < text.index(help_line)
-    assert "menu_tty_printf '  \\033[2m%s\\033[0m\\n'" not in text
+    assert 'local detail="${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}"' in text
+    assert 'ui_box_line "Hint:" "$width"' in text
+    assert 'ui_box_line "$detail" "$width"' in text
+    assert 'CODEEPSEEDEX_NEXT_MENU_DETAIL=""' in text
+    assert text.index('ui_box_line "Hint:" "$width"') < text.index(help_line)
 
 def test_installer_wrapper_help_not_printed_as_standalone_line() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -777,11 +778,24 @@ def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     assert "menu_render_option_line()" in install_text
     assert "\\033[7;1m" not in install_text
     assert "╭─ %s %s╮" in install_text
-    assert "╰─ %s %s╯" in install_text
+    assert "ui_step_footer()" in install_text
+    assert "Step interactive" not in install_text
     assert "_wizard_render_panel(" in cli_text
     assert "_wizard_print_box_line(" in cli_text
     assert "_wizard_render_menu(" in cli_text
     assert '_wizard_print_box_line("", width=width)' in cli_text
     assert "textwrap.wrap" in cli_text
     assert "\\033[1;44m" not in cli_text
-    assert "Step interactive" in cli_text
+    assert "Step interactive" not in cli_text
+    assert "Step 2/5" in cli_text
+
+
+def test_terminal_ui_uses_fixed_step_labels_instead_of_interactive_placeholder() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "Step interactive" not in install_text
+    assert "Step interactive" not in cli_text
+    assert "Step 2/5" in install_text
+    assert "Step 5/5" in install_text
+    assert "Step 2/5" in cli_text
+    assert "\\033[2J\\033[H" in install_text

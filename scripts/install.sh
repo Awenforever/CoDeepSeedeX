@@ -106,8 +106,8 @@ sub_title() {
 
 
 ui_terminal_width() {
-  local cols=""
-  if command -v tput >/dev/null 2>&1; then
+  local cols="${COLUMNS:-}"
+  if [ -z "$cols" ] && command -v tput >/dev/null 2>&1; then
     cols="$(tput cols 2>/dev/null || true)"
   fi
   case "$cols" in
@@ -116,8 +116,8 @@ ui_terminal_width() {
   if [ "$cols" -lt 72 ]; then
     cols=72
   fi
-  if [ "$cols" -gt 96 ]; then
-    cols=96
+  if [ "$cols" -gt 88 ]; then
+    cols=88
   fi
   printf '%s\n' "$cols"
 }
@@ -220,17 +220,15 @@ ui_box_line_styled() {
 }
 
 ui_step_footer() {
-  local label="${1:-Step}"
+  local text="${1:-Step 1/1}"
   local width="${2:-$(ui_terminal_width)}"
-  local inner=$((width - 2))
-  local clipped=""
-  local fill_count=0
-  clipped="$(ui_trim_text "$label" "$((inner - 4))")"
-  fill_count=$((inner - ${#clipped} - 3))
-  if [ "$fill_count" -lt 1 ]; then
-    fill_count=1
+  local prefix="╰─ ${text} "
+  local suffix="╯"
+  local fill_len=$((width - ${#prefix} - ${#suffix}))
+  if [ "$fill_len" -lt 1 ]; then
+    fill_len=1
   fi
-  printf '\033[38;5;33m╰─ %s %s╯\033[0m\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
+  printf '\033[38;5;33m%s%s%s\033[0m\n' "$prefix" "$(ui_repeat "─" "$fill_len")" "$suffix"
 }
 
 print_install_logs() {
@@ -962,6 +960,17 @@ menu_print_separator() {
 }
 
 
+menu_step_label_for_prompt() {
+  local prompt="${1:-}"
+  case "$prompt" in
+    *"Install codex wrapper"*) printf 'Step 5/5\n' ;;
+    *"image generation"*|*"Image"*|*"Qwen Image"*) printf 'Step 4/5\n' ;;
+    *"web search"*|*"Web search"*) printf 'Step 3/5\n' ;;
+    *"model"*|*"Model"*|*"ZhipuAI"*|*"Z.AI"*|*"Qwen / DashScope"*) printf 'Step 2/5\n' ;;
+    *) printf 'Step 2/5\n' ;;
+  esac
+}
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -991,49 +1000,49 @@ read_menu_choice_from_tty() {
 
   local width
   width="$(ui_terminal_width)"
-
-  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
-  ui_box_line "" "$width" > /dev/tty
-  ui_box_line_styled "$prompt" "$width" "\033[1;38;5;75m" > /dev/tty
-  if [ -n "${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}" ]; then
-    ui_box_line "" "$width" > /dev/tty
-    ui_box_line "Hint: ${CODEEPSEEDEX_NEXT_MENU_DETAIL}" "$width" > /dev/tty
-    CODEEPSEEDEX_NEXT_MENU_DETAIL=""
+  local step_label="${CODEEPSEEDEX_MENU_STEP:-}"
+  if [ -z "$step_label" ]; then
+    step_label="$(menu_step_label_for_prompt "$prompt")"
   fi
-  ui_box_line "" "$width" > /dev/tty
-  ui_box_separator "$width" > /dev/tty
-  ui_box_line "" "$width" > /dev/tty
-
-  for ((i=0; i<count; i++)); do
-    ui_box_line "" "$width" > /dev/tty
-  done
-  ui_box_line "" "$width" > /dev/tty
-  ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
+  local detail="${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}"
+  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   CODEEPSEEDEX_MENU_HELP_SHOWN=1
-  ui_step_footer "Step interactive" "$width" > /dev/tty
 
-  local key
-  while true; do
-    menu_tty_printf '\033[%sA' "$((count + 4))"
-    menu_tty_printf '\r\033[2K'
+  local render_panel
+  render_panel() {
+    menu_tty_printf '\033[2J\033[H'
+    ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+    ui_box_line "" "$width" > /dev/tty
+    ui_box_line_styled "$prompt" "$width" "\033[1;38;5;75m" > /dev/tty
+    ui_box_line "" "$width" > /dev/tty
+    if [ -n "$detail" ]; then
+      ui_box_line "Hint:" "$width" > /dev/tty
+      ui_box_line "$detail" "$width" > /dev/tty
+      ui_box_line "" "$width" > /dev/tty
+    fi
+    ui_box_separator "$width" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
-      menu_tty_printf '\r\033[2K'
       if [ "$i" -eq "$selected" ]; then
         menu_render_option_line "1" "$value" "$label" "$status" "$width"
       else
         menu_render_option_line "0" "$value" "$label" "$status" "$width"
       fi
     done
-    menu_tty_printf '\r\033[2K'
     ui_box_line "" "$width" > /dev/tty
-    menu_tty_printf '\r\033[2K'
+    ui_box_separator "$width" > /dev/tty
     ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
-    menu_tty_printf '\r\033[2K'
-    ui_step_footer "Step interactive" "$width" > /dev/tty
+    ui_step_footer "$step_label" "$width" > /dev/tty
+  }
+
+  local key
+  menu_tty_printf '\033[?25l'
+  while true; do
+    render_panel
 
     IFS= read -rsn1 key < /dev/tty || {
+      menu_tty_printf '\033[?25h\n'
       printf '%s\n' "$default"
       return 0
     }
@@ -1041,7 +1050,7 @@ read_menu_choice_from_tty() {
     case "$key" in
       "")
         IFS='|' read -r value _label _status <<< "${options[$selected]}"
-        menu_tty_printf '\n'
+        menu_tty_printf '\033[?25h\n'
         printf '%s\n' "$value"
         return 0
         ;;
@@ -1063,7 +1072,7 @@ read_menu_choice_from_tty() {
       $'\x7f'|$'\b')
         local back_value=""
         back_value="$(menu_back_value "${options[@]}")"
-        menu_tty_printf '\n'
+        menu_tty_printf '\033[?25h\n'
         if [ -n "$back_value" ]; then
           printf '%s\n' "$back_value"
         else

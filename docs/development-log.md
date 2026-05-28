@@ -1,3 +1,17 @@
+## p2.16a4 Terminal UI frame and step polish
+
+Date: 2026-05-28
+
+Scope:
+
+- Fixed the terminal menu frame redraw model so interactive installer selections redraw the whole panel instead of leaving stale right-border fragments.
+- Replaced the placeholder `Step interactive` footer with explicit step labels such as `Step 2/5`, `Step 3/5`, `Step 4/5`, and `Step 5/5`.
+- Narrowed interactive panels to a calmer 72-88 column range and applied the same footer convention to `dsproxy config wizard`.
+
+Release boundary:
+
+- Internal development only. No public Release tag or GitHub Release asset is moved.
+
 ## p2.16a3 Terminal UI layout redesign
 
 Date: 2026-05-28

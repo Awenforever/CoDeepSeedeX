@@ -4656,8 +4656,7 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
 
 
 def _wizard_terminal_width() -> int:
-    return min(96, max(72, shutil.get_terminal_size((88, 24)).columns))
-
+    return min(88, max(72, shutil.get_terminal_size((88, 24)).columns))
 
 def _wizard_wrap_lines(text: str, width: int) -> list[str]:
     import textwrap
@@ -4695,18 +4694,15 @@ def _wizard_print_box_separator(*, width: int | None = None) -> None:
     print(f"\033[38;5;33m├{'─' * max(1, width - 2)}┤\033[0m", file=sys.stderr)
 
 
-def _wizard_print_step_footer(label: str = "Step interactive", *, width: int | None = None) -> None:
+def _wizard_print_step_footer(label: str = "Step 2/5", *, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
-    inner = max(40, width - 2)
-    text = str(label or "Step")
-    if len(text) > inner - 4:
-        text = text[: max(1, inner - 5)] + "…"
-    fill = "─" * max(1, inner - len(text) - 3)
-    print(f"\033[38;5;33m╰─ {text} {fill}╯\033[0m", file=sys.stderr)
+    text = str(label or "Step 2/5")
+    prefix = f"╰─ {text} "
+    suffix = "╯"
+    fill = "─" * max(1, width - len(prefix) - len(suffix))
+    print(f"\033[38;5;33m{prefix}{fill}{suffix}\033[0m", file=sys.stderr)
 
-
-
-def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step interactive") -> None:
+def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step 2/5") -> None:
     width = _wizard_terminal_width()
     _wizard_print_box_top("CoDeepSeedeX", width=width)
     _wizard_print_box_line("", width=width)
@@ -4719,6 +4715,17 @@ def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step in
         _wizard_print_box_line(line, width=width, style=style)
     _wizard_print_box_line("", width=width)
     _wizard_print_step_footer(footer, width=width)
+
+
+def _wizard_step_label_for_prompt(prompt: str) -> str:
+    value = str(prompt or "")
+    if "image" in value.lower() or "qwen image" in value.lower():
+        return "Step 4/5"
+    if "web search" in value.lower():
+        return "Step 3/5"
+    if "model" in value.lower() or "zhipu" in value.lower() or "z.ai" in value.lower() or "dashscope" in value.lower():
+        return "Step 2/5"
+    return "Step 2/5"
 
 
 def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
@@ -4734,10 +4741,11 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
     _wizard_print_box_top("CoDeepSeedeX", width=width)
     _wizard_print_box_line("", width=width)
     _wizard_print_box_line(prompt, width=width, style="\033[1;38;5;75m")
-    if help_text:
-        _wizard_print_box_line("", width=width)
-        _wizard_print_box_line(f"Hint: {help_text}", width=width, style="\033[2m")
     _wizard_print_box_line("", width=width)
+    if help_text:
+        _wizard_print_box_line("Hint:", width=width, style="\033[2m")
+        _wizard_print_box_line(help_text, width=width, style="\033[2m")
+        _wizard_print_box_line("", width=width)
     _wizard_print_box_separator(width=width)
     _wizard_print_box_line("", width=width)
     for idx, (value, label, status) in enumerate(options):
@@ -4757,8 +4765,9 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
         else:
             _wizard_print_box_line(row, width=width)
     _wizard_print_box_line("", width=width)
+    _wizard_print_box_separator(width=width)
     _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", width=width, style="\033[2m")
-    _wizard_print_step_footer("Step interactive", width=width)
+    _wizard_print_step_footer(_wizard_step_label_for_prompt(prompt), width=width)
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
