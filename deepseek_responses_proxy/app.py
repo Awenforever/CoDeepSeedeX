@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.0-alpha"
-PROXY_INTERNAL_VERSION = "p2.14a10-release-metadata-env-sanitization"
+PROXY_INTERNAL_VERSION = "p2.15a1-codex-0134-profile-custom-provider-wizard-ux"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -6331,7 +6331,7 @@ def _runtime_token_first_context_contract_for_payload(
     payload = payload or {}
     profile = active_profile or _runtime_token_first_profile_name_for_payload(payload)
     sections = _runtime_parse_simple_toml_sections(_runtime_codex_config_path())
-    profile_section = sections.get(f"profiles.{profile}", {})
+    profile_section, profile_source, profile_path = _runtime_codex_profile_section(profile, sections)
     if not isinstance(profile_section, dict):
         profile_section = {}
 
@@ -6388,6 +6388,9 @@ def _runtime_token_first_context_contract_for_payload(
         "profile": profile,
         "profile_source": "active_route" if active_profile else "runtime_profile_detection",
         "codex_config": str(_runtime_codex_config_path()),
+        "codex_profile_layout": "split_profile_files",
+        "codex_profile_config": str(profile_path),
+        "profile_source": profile_source,
         "profile_found": bool(profile_section),
         "model": str((payload or {}).get("model") or DEFAULT_MODEL),
         "model_context_window_tokens": model_context_window_tokens,
@@ -16891,6 +16894,49 @@ def _runtime_codex_config_path() -> Path:
     return Path(os.environ.get("CODEX_CONFIG_FILE", str(Path.home() / ".codex" / "config.toml"))).expanduser()
 
 
+def _runtime_codex_profile_config_path(profile: str, codex_config: Path | None = None) -> Path:
+    main = (codex_config or _runtime_codex_config_path()).expanduser()
+    return main.parent / f"{profile}.config.toml"
+
+
+def _runtime_parse_top_level_toml_values(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    current: str | None = None
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if re.match(r"^\[[^\]]+\]\s*$", stripped):
+            current = stripped
+            continue
+        if current is not None or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if value.startswith('"') and value.endswith('"'):
+            value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        else:
+            value = value.split("#", 1)[0].strip()
+        values[key] = value
+    return values
+
+
+def _runtime_codex_profile_section(profile: str, sections: dict[str, dict[str, str]] | None = None, codex_config: Path | None = None) -> tuple[dict[str, str], str, Path]:
+    main = codex_config or _runtime_codex_config_path()
+    profile_path = _runtime_codex_profile_config_path(profile, main)
+    if profile_path.exists():
+        return _runtime_parse_top_level_toml_values(profile_path), "split_profile_file", profile_path
+    if sections is None:
+        sections = _runtime_parse_simple_toml_sections(main)
+    legacy = dict(sections.get(f"profiles.{profile}", {}))
+    if legacy:
+        return legacy, "legacy_profile_table", profile_path
+    return {}, "missing", profile_path
+
+
 def _runtime_parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
     if not path.exists():
         return {}
@@ -18083,26 +18129,38 @@ def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
 def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[str, Any]:
     allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
     invalid: list[dict[str, Any]] = []
-    for section, values in sections.items():
-        if not section.startswith("profiles."):
-            continue
+    legacy_profile_tables = sorted(
+        section.removeprefix("profiles.")
+        for section in sections
+        if section.startswith("profiles.")
+    )
+    for profile in ("deepseek", "deepseek-thinking"):
+        values, source, profile_path = _runtime_codex_profile_section(profile, sections)
         effort = values.get("model_reasoning_effort")
         if effort is not None and effort not in allowed:
             invalid.append({
-                "profile": section.removeprefix("profiles."),
+                "profile": profile,
                 "field": "model_reasoning_effort",
                 "value": effort,
+                "source": source,
+                "profile_config": str(profile_path),
                 "allowed": sorted(allowed),
             })
+    warnings: list[str] = []
+    if legacy_profile_tables:
+        warnings.append("legacy_profile_tables_present")
     return {
-        "codex_config_loadable": not invalid,
+        "codex_profile_layout": "split_profile_files",
+        "codex_config_loadable": not invalid and not legacy_profile_tables,
+        "legacy_profile_tables_present": bool(legacy_profile_tables),
+        "legacy_profile_tables": legacy_profile_tables,
         "invalid_profile_fields": invalid,
-        "warnings": [],
+        "warnings": warnings,
     }
-
 
 
 def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
@@ -18182,7 +18240,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
             "auto_compact_ratio": auto_compact_ratio,
             "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
-            "source": "codex_config.profiles.<profile>",
+            "source": "codex_split_profile_file",
         },
         "model_catalog": model_catalog,
         "effective_display": {
@@ -18261,7 +18319,7 @@ def _runtime_effort_contract(profile_section: dict[str, str]) -> dict[str, Any]:
 def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
     codex_path = _runtime_codex_config_path()
     sections = _runtime_parse_simple_toml_sections(codex_path)
-    profile_section = sections.get(f"profiles.{profile}", {})
+    profile_section, profile_source, profile_path = _runtime_codex_profile_section(profile, sections, codex_path)
     provider_name = profile_section.get("model_provider") or f"{profile}-proxy"
     provider_section = sections.get(f"model_providers.{provider_name}", {})
     health = _runtime_codex_config_health(sections)
@@ -18279,8 +18337,11 @@ def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
     payload = {
         "status": "ok" if not invalid else "error",
         "profile": profile,
-        "profile_source": "codex_config",
+        "profile_source": profile_source,
+        "codex_profile_layout": "split_profile_files",
         "codex_config": str(codex_path),
+        "codex_main_config": str(codex_path),
+        "codex_profile_config": str(profile_path),
         "model": model,
         "effort": _runtime_effort_contract(profile_section),
         "thinking": {

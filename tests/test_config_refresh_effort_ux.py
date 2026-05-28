@@ -6,6 +6,11 @@ from pathlib import Path
 
 from deepseek_responses_proxy import cli
 
+def _codex_profile_text(config_path: Path, profile: str = "deepseek-thinking") -> str:
+    path = config_path.parent / f"{profile}.config.toml"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 
 def test_post_config_apply_skips_when_disabled(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", "off")
@@ -63,7 +68,8 @@ def test_cli_effort_compatibility_normalizes_medium_to_high(tmp_path, monkeypatc
     assert output["effort"] == "high"
     assert output["post_config_apply"]["message"] == "all updates applied"
     assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
-    assert 'model_reasoning_effort = "high"' in codex_config.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in _codex_profile_text(codex_config)
+    assert "[profiles.deepseek-thinking]" not in codex_config.read_text(encoding="utf-8")
 
 
 def test_cli_effort_canonicalizer_accepts_codex_compatibility_values():

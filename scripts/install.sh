@@ -1896,7 +1896,7 @@ repair_codeepseedex_managed_profile_contract() {
 
   if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
     printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
-    printf 'Run for details: %s profile repair --managed-only --json\n' "\$DSPROXY" >&2
+    printf 'Run for details: %s profile repair --managed-only --json; legacy profile tables must not remain in ~/.codex/config.toml\n' "\$DSPROXY" >&2
     return 1
   fi
 
@@ -2406,7 +2406,7 @@ step "Done"
 
 # codeepseedex_repair_codex_model_catalog_json_v2746a1
 if [ "$DRY_RUN" != "1" ]; then
-  backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"
+  backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex main config"
   "$PYTHON_BIN" - "$HOME/.codex/config.toml" "$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json" <<'PYCODEXCAT'
 from __future__ import annotations
 

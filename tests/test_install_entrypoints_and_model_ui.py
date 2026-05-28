@@ -240,7 +240,7 @@ def test_installer_recognizes_only_codeepseedex_managed_local_bins() -> None:
     assert "CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|deepseek-responses-proxy|start_dsproxy_profile" in text
     assert "CoDeepSeedeX|deepseek-responses-proxy|\\.venv/bin/dsproxy" in text
     assert 'backup_local_file_before_overwrite "$ENV_FILE" "local env file"' in text
-    assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"' in text
+    assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex main config"' in text
 
 
 def test_installer_sync_checkout_logging_uses_defined_shell_command() -> None:
@@ -271,7 +271,7 @@ def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() 
     assert 'backup_local_file_before_overwrite "$ENV_FILE" "local env file"' in text
     assert 'require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1' in text
     assert 'require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1' in text
-    assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex config"' in text
+    assert 'backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex main config"' in text
     assert 'write_dsproxy_wrapper' in text
     assert 'write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"' in text
 

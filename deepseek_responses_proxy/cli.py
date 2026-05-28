@@ -582,6 +582,29 @@ def default_codex_config_path() -> Path:
     return Path(os.environ.get("CODEX_CONFIG_FILE", Path.home() / ".codex" / "config.toml")).expanduser()
 
 
+def codex_profile_config_path(profile_name: str, codex_config: Path | None = None) -> Path:
+    """Return the Codex 0.134+ split profile file path.
+
+    Codex 0.134+ loads the main ~/.codex/config.toml first, then overlays
+    ~/.codex/<profile>.config.toml for --profile <profile>. CoDeepSeedeX keeps
+    provider blocks in the main config and writes managed profile bodies to
+    these split profile files.
+    """
+    main_path = (codex_config or default_codex_config_path()).expanduser()
+    return main_path.parent / f"{profile_name}.config.toml"
+
+
+def codex_profile_layout_contract() -> dict[str, object]:
+    return {
+        "name": "split_profile_files",
+        "codex_cli_min_version": "0.134.0",
+        "main_config_contains": ["model_providers"],
+        "profile_config_contains": ["profile_body"],
+        "legacy_profile_tables_allowed": False,
+        "legacy_profile_selector_allowed": False,
+    }
+
+
 def _toml_quote(value: str) -> str:
     escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
@@ -634,6 +657,117 @@ def _upsert_toml_table(text: str, header: str, block: str) -> tuple[str, bool]:
     return block.rstrip() + "\n", existed
 
 
+def _parse_simple_toml_key_values_from_text(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    current_section: str | None = None
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if re.match(r"^\[[^\]]+\]\s*$", stripped):
+            current_section = stripped
+            continue
+        if current_section is not None or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if value.startswith('"') and value.endswith('"'):
+            value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        else:
+            value = value.split("#", 1)[0].strip()
+        values[key] = value
+    return values
+
+
+def _render_simple_toml_key_values(values: dict[str, object]) -> str:
+    order = [
+        "model",
+        "model_provider",
+        "model_context_window",
+        "model_auto_compact_token_limit",
+        "tool_output_token_limit",
+        "model_reasoning_summary",
+        "model_supports_reasoning_summaries",
+        "model_reasoning_effort",
+        "plan_mode_reasoning_effort",
+        "model_catalog_json",
+    ]
+    lines: list[str] = []
+    emitted: set[str] = set()
+    for key in order + sorted(k for k in values if k not in order):
+        if key in emitted or key not in values:
+            continue
+        value = values.get(key)
+        if value is None:
+            continue
+        emitted.add(key)
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, int):
+            rendered = str(value)
+        else:
+            text = str(value)
+            if text.lower() in {"true", "false"} and key == "model_supports_reasoning_summaries":
+                rendered = text.lower()
+            elif re.fullmatch(r"-?\d+", text) and key in {"model_context_window", "model_auto_compact_token_limit", "tool_output_token_limit"}:
+                rendered = text
+            else:
+                rendered = _toml_quote(text)
+        lines.append(f"{key} = {rendered}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _remove_top_level_codex_profile_selector(text: str) -> tuple[str, bool]:
+    changed = False
+    current_section: str | None = None
+    out: list[str] = []
+    for raw_line in text.splitlines(keepends=True):
+        stripped = raw_line.strip()
+        if re.match(r"^\[[^\]]+\]\s*$", stripped):
+            current_section = stripped
+            out.append(raw_line)
+            continue
+        if current_section is None and re.match(r'^profile\s*=\s*"(deepseek|deepseek-thinking)"\s*(#.*)?$', stripped):
+            changed = True
+            continue
+        out.append(raw_line)
+    return "".join(out), changed
+
+
+def _cleanup_main_codex_config_for_profile(text: str, profile_name: str) -> tuple[str, dict[str, bool]]:
+    cleaned, legacy_table_removed = _remove_toml_table(text, f"[profiles.{profile_name}]")
+    cleaned, legacy_selector_removed = _remove_top_level_codex_profile_selector(cleaned)
+    return cleaned, {
+        "legacy_profile_table_removed": legacy_table_removed,
+        "legacy_profile_selector_removed": legacy_selector_removed,
+    }
+
+
+def _legacy_profile_values_from_main_config(config_path: Path, profile_name: str) -> dict[str, str]:
+    sections = _parse_simple_toml_sections(config_path)
+    return dict(sections.get(f"profiles.{profile_name}", {}))
+
+
+def _read_codex_profile_values(config_path: Path, profile_name: str) -> tuple[dict[str, str], str, Path]:
+    profile_path = codex_profile_config_path(profile_name, config_path)
+    if profile_path.exists():
+        return _parse_simple_toml_key_values_from_text(
+            profile_path.read_text(encoding="utf-8", errors="replace")
+        ), "split_profile_file", profile_path
+    legacy = _legacy_profile_values_from_main_config(config_path, profile_name)
+    if legacy:
+        return legacy, "legacy_profile_table", profile_path
+    return {}, "missing", profile_path
+
+
+def _write_codex_profile_values(config_path: Path, profile_name: str, values: dict[str, object]) -> Path:
+    profile_path = codex_profile_config_path(profile_name, config_path)
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(_render_simple_toml_key_values(values), encoding="utf-8")
+    return profile_path
+
+
 def _codex_profile_blocks(
     *,
     profile_name: str,
@@ -647,7 +781,9 @@ def _codex_profile_blocks(
     model_catalog_json: str | None,
 ) -> tuple[str, str, str, str]:
     provider_header = f"[model_providers.{provider_name}]"
-    profile_header = f"[profiles.{profile_name}]"
+    # Codex 0.134+ profile bodies are written to ~/.codex/<profile>.config.toml
+    # and must not include a [profiles.<name>] table header.
+    profile_header = ""
 
     provider_defaults = _managed_profile_provider_defaults(profile_name) or {}
     provider_label = provider_defaults.get("provider_label") or (
@@ -661,33 +797,33 @@ def _codex_profile_blocks(
         'wire_api = "responses"',
     ]
 
-    profile_lines = [
-        profile_header,
-        f"model = {_toml_quote(model)}",
-        f"model_provider = {_toml_quote(provider_name)}",
-        f"model_context_window = {int(context_window)}",
-        f"model_auto_compact_token_limit = {int(auto_compact_token_limit)}",
-        f"tool_output_token_limit = {int(tool_output_token_limit)}",
-        'model_reasoning_summary = "none"',
-        "model_supports_reasoning_summaries = false",
-        f"model_reasoning_effort = {_toml_quote(reasoning_effort)}",
-        'plan_mode_reasoning_effort = "high"',
-    ]
+    profile_values: dict[str, object] = {
+        "model": model,
+        "model_provider": provider_name,
+        "model_context_window": int(context_window),
+        "model_auto_compact_token_limit": int(auto_compact_token_limit),
+        "tool_output_token_limit": int(tool_output_token_limit),
+        "model_reasoning_summary": "none",
+        "model_supports_reasoning_summaries": False,
+        "model_reasoning_effort": reasoning_effort,
+        "plan_mode_reasoning_effort": "high",
+    }
     if model_catalog_json:
-        profile_lines.append(f"model_catalog_json = {_toml_quote(model_catalog_json)}")
+        profile_values["model_catalog_json"] = model_catalog_json
 
-    return provider_header, "\n".join(provider_lines), profile_header, "\n".join(profile_lines)
+    return provider_header, "\n".join(provider_lines), profile_header, _render_simple_toml_key_values(profile_values)
 
 
 def _install_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
     profile_name = args.name
+    profile_path = codex_profile_config_path(profile_name, config_path)
     provider_name = args.provider_name or f"{profile_name}-proxy"
     auto_compact_ratio = _auto_compact_ratio_from_env_values(explicit=getattr(args, "auto_compact_ratio", None))
     derived_auto_compact_token_limit = _derive_auto_compact_token_limit(args.context_window, auto_compact_ratio)
     legacy_auto_compact_token_limit = getattr(args, "auto_compact_token_limit", None)
 
-    provider_header, provider_block, profile_header, profile_block = _codex_profile_blocks(
+    provider_header, provider_block, _profile_header, profile_block = _codex_profile_blocks(
         profile_name=profile_name,
         provider_name=provider_name,
         base_url=args.base_url,
@@ -701,16 +837,23 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
 
     original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     text, provider_existed = _upsert_toml_table(original, provider_header, provider_block)
-    text, profile_existed = _upsert_toml_table(text, profile_header, profile_block)
+    text, cleanup = _cleanup_main_codex_config_for_profile(text, profile_name)
+    profile_existed = profile_path.exists() or cleanup["legacy_profile_table_removed"]
 
     result = {
         "path": str(config_path),
+        "codex_profile_layout": "split_profile_files",
+        "layout_contract": codex_profile_layout_contract(),
+        "main_config": str(config_path),
+        "profile_config": str(profile_path),
         "profile": profile_name,
         "provider": provider_name,
         "base_url": args.base_url,
         "model": args.model,
         "provider_existed": provider_existed,
         "profile_existed": profile_existed,
+        "legacy_profile_table_removed": cleanup["legacy_profile_table_removed"],
+        "legacy_profile_selector_removed": cleanup["legacy_profile_selector_removed"],
         "dry_run": bool(args.dry_run),
         "context_window_tokens": int(args.context_window),
         "auto_compact_ratio": auto_compact_ratio,
@@ -723,20 +866,25 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         result["config_preview"] = text
+        result["profile_config_preview"] = profile_block
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    if config_path.exists() and not args.no_backup:
+    if (config_path.exists() or profile_path.exists()) and not args.no_backup:
         backup = config_path.with_suffix(config_path.suffix + ".bak")
         backup.write_text(original, encoding="utf-8")
         result["backup"] = str(backup)
+        if profile_path.exists():
+            profile_backup = profile_path.with_suffix(profile_path.suffix + ".bak")
+            profile_backup.write_text(profile_path.read_text(encoding="utf-8"), encoding="utf-8")
+            result["profile_backup"] = str(profile_backup)
 
     config_path.write_text(text, encoding="utf-8")
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(profile_block, encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
-
-
 
 def _canonical_cli_reasoning_effort(value: object) -> str | None:
     normalized = str(value or "").strip().lower()
@@ -802,31 +950,20 @@ def _managed_profile_targets(profile_value: object) -> list[str]:
     return [raw]
 
 
-def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, value: str) -> bool:
-    if not config_path.exists():
-        return False
-    text = config_path.read_text(encoding="utf-8")
-    header = f"[profiles.{profile_name}]"
-    table_range = _toml_table_range(text, header)
-    if table_range is None:
-        return False
-    start, end = table_range
-    block = text[start:end]
-    lines = block.rstrip().splitlines()
-    out: list[str] = []
-    replaced = False
-    for line in lines:
-        if line.strip().startswith(f"{key} = "):
-            out.append(f"{key} = {_toml_quote(value)}")
-            replaced = True
-        else:
-            out.append(line)
-    if not replaced:
-        out.append(f"{key} = {_toml_quote(value)}")
-    patched = "\n".join(out) + "\n"
-    config_path.write_text(text[:start] + patched + text[end:], encoding="utf-8")
-    return True
 
+def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, value: str) -> bool:
+    values, source, profile_path = _read_codex_profile_values(config_path, profile_name)
+    changed = values.get(key) != str(value)
+    values[key] = str(value)
+    _write_codex_profile_values(config_path, profile_name, values)
+
+    original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    cleaned, cleanup = _cleanup_main_codex_config_for_profile(original, profile_name)
+    if cleanup["legacy_profile_table_removed"] or cleanup["legacy_profile_selector_removed"]:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(cleaned, encoding="utf-8")
+        changed = True
+    return changed or source != "split_profile_file"
 
 
 def _parse_simple_toml_sections_from_text(text: str) -> dict[str, dict[str, str]]:
@@ -861,33 +998,62 @@ def _parse_simple_toml_sections(path: Path) -> dict[str, dict[str, str]]:
     )
 
 
+
 def _codex_config_health(config_path: Path) -> dict[str, object]:
     sections = _parse_simple_toml_sections(config_path)
     invalid_fields: list[dict[str, object]] = []
     warnings: list[str] = []
-    if not config_path.exists():
+    legacy_profile_tables = sorted(
+        section.removeprefix("profiles.")
+        for section in sections
+        if section.startswith("profiles.")
+    )
+    legacy_profile_selectors: list[str] = []
+    if config_path.exists():
+        current_section: str | None = None
+        for raw_line in config_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = raw_line.strip()
+            if re.match(r"^\[[^\]]+\]\s*$", stripped):
+                current_section = stripped
+                continue
+            if current_section is None:
+                match = re.match(r'^profile\s*=\s*"([^"]+)"', stripped)
+                if match and match.group(1) in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+                    legacy_profile_selectors.append(match.group(1))
+    else:
         warnings.append("codex_config_missing")
-    for section, values in sections.items():
-        if not section.startswith("profiles."):
-            continue
-        profile_name = section.removeprefix("profiles.")
+
+    for profile_name in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+        values, source, profile_path = _read_codex_profile_values(config_path, profile_name)
         effort = values.get("model_reasoning_effort")
         if effort is not None and effort not in CODEX_MODEL_REASONING_EFFORT_ALLOWED:
             invalid_fields.append({
                 "profile": profile_name,
                 "field": "model_reasoning_effort",
                 "value": effort,
+                "source": source,
+                "profile_config": str(profile_path),
                 "allowed": sorted(CODEX_MODEL_REASONING_EFFORT_ALLOWED),
                 "suggested_repair_command": f"dsproxy profile set-effort {profile_name} max --json",
             })
+    if legacy_profile_tables:
+        warnings.append("legacy_profile_tables_present")
+    if legacy_profile_selectors:
+        warnings.append("legacy_profile_selector_present")
+
     return {
         "codex_config": str(config_path),
+        "codex_profile_layout": "split_profile_files",
+        "layout_contract": codex_profile_layout_contract(),
         "codex_config_exists": config_path.exists(),
-        "codex_config_loadable": not invalid_fields,
+        "codex_config_loadable": not invalid_fields and not legacy_profile_tables and not legacy_profile_selectors,
+        "legacy_profile_tables_present": bool(legacy_profile_tables),
+        "legacy_profile_tables": legacy_profile_tables,
+        "legacy_profile_selectors_present": bool(legacy_profile_selectors),
+        "legacy_profile_selectors": legacy_profile_selectors,
         "invalid_profile_fields": invalid_fields,
         "warnings": warnings,
     }
-
 
 
 def _env_value_truthy(value: object) -> bool:
@@ -1402,12 +1568,13 @@ def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("status") == "ok" else 1
 
+
 def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, codex_config: Path | None = None) -> dict[str, object]:
     env_path = env_file or default_env_file_path()
     codex_path = codex_config or default_codex_config_path()
     env_values = _read_env_exports(env_path)
     sections = _parse_simple_toml_sections(codex_path)
-    profile_section = sections.get(f"profiles.{profile_name}", {})
+    profile_section, profile_source, profile_path = _read_codex_profile_values(codex_path, profile_name)
     provider_name = profile_section.get("model_provider") or f"{profile_name}-proxy"
     provider_section = sections.get(f"model_providers.{provider_name}", {})
 
@@ -1435,10 +1602,14 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         warnings.append("codex_profile_model_differs_from_effective_upstream_model")
 
     payload = {
-        "status": "ok" if not profile_invalid else "error",
+        "status": "ok" if not profile_invalid and health["codex_config_loadable"] else "error",
         "profile": profile_name,
-        "profile_source": "codex_config",
+        "profile_source": profile_source,
+        "codex_profile_layout": "split_profile_files",
+        "main_config": str(codex_path),
         "codex_config": str(codex_path),
+        "codex_main_config": str(codex_path),
+        "codex_profile_config": str(profile_path),
         "env_file": str(env_path),
         "model": model_contract,
         "effort": {
@@ -1446,19 +1617,22 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "deepseek_reasoning_effort": deepseek_effort,
             "codex_model_reasoning_effort": codex_effort,
             "expected_codex_model_reasoning_effort": expected_codex_effort,
-            "source": "dsproxy_config",
+            "source": "dsproxy_env_and_split_codex_profile",
             "codex_profile_valid": codex_effort in CODEX_MODEL_REASONING_EFFORT_ALLOWED if codex_effort else False,
             "normalized": codex_effort == expected_codex_effort,
         },
         "thinking": {
             "enabled": profile_name.endswith("thinking"),
-            "source": "profile_route",
+            "source": "profile_name",
         },
         "context_window": context_contract,
         "health": {
             "codex_config_loadable": bool(health["codex_config_loadable"]),
             "invalid_profile_fields": profile_invalid,
             "warnings": warnings,
+            "legacy_profile_tables_present": health.get("legacy_profile_tables_present"),
+            "legacy_profile_tables": health.get("legacy_profile_tables"),
+            "legacy_profile_selectors_present": health.get("legacy_profile_selectors_present"),
         },
     }
     payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
@@ -1544,6 +1718,7 @@ def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_p
 
 
 
+
 def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
     target_profiles = _managed_profile_targets("__managed__" if bool(getattr(args, "managed_only", False)) else getattr(args, "profile", "__managed__"))
@@ -1560,16 +1735,25 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     updated_profiles: list[str] = []
     skipped_profiles: list[str] = []
     post_validation_errors: list[dict[str, object]] = []
+    profile_writes: dict[str, str] = {}
 
     for profile_name in target_profiles:
         provider_defaults = _managed_profile_provider_defaults(profile_name)
         before_sections = _parse_simple_toml_sections_from_text(working_text)
-        before_profile_section = before_sections.get(f"profiles.{profile_name}", {})
+        before_profile_section, before_profile_source, profile_path = _read_codex_profile_values(codex_path, profile_name)
+        if profile_name in profile_writes:
+            before_profile_section = _parse_simple_toml_key_values_from_text(profile_writes[profile_name])
+            before_profile_source = "split_profile_file_pending_write"
         before_provider_name = before_profile_section.get("model_provider") or (provider_defaults or {}).get("provider_name") or f"{profile_name}-proxy"
         before_provider_section = before_sections.get(f"model_providers.{before_provider_name}", {})
 
         before_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
-        model_info = before_payload.get("model", {}) if isinstance(before_payload, dict) else {}
+        if profile_name in profile_writes:
+            tmp_profile_section = before_profile_section
+            model_info = _profile_model_contract(tmp_profile_section, env_values)
+            model_info["model_provider"] = before_provider_name
+        else:
+            model_info = before_payload.get("model", {}) if isinstance(before_payload, dict) else {}
         effective_model = str(model_info.get("effective_model") or "").strip()
         codex_model = str(model_info.get("codex_model") or "").strip()
 
@@ -1577,16 +1761,22 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         expected_effort = str(effort_info.get("expected_codex_model_reasoning_effort") or "").strip() or "high"
 
         if not effective_model or effective_model == "unknown":
-            skipped_profiles.append(profile_name)
-            profile_results.append({
-                "profile": profile_name,
-                "status": "skipped",
-                "reason": "effective_model_unknown",
-                "codex_model_before": codex_model or None,
-                "effective_model": effective_model or None,
-                "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
-            })
-            continue
+            env_model = env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL")
+            if env_model:
+                effective_model = env_model
+            else:
+                skipped_profiles.append(profile_name)
+                profile_results.append({
+                    "profile": profile_name,
+                    "status": "skipped",
+                    "reason": "effective_model_unknown",
+                    "codex_model_before": codex_model or None,
+                    "effective_model": effective_model or None,
+                    "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+                    "codex_profile_layout": "split_profile_files",
+                    "profile_config": str(profile_path),
+                })
+                continue
 
         model_context_window = _int_or_zero(before_profile_section.get("model_context_window")) or DEFAULT_CONTEXT_WINDOW_TOKENS
         expected_auto_compact_token_limit = _derive_auto_compact_token_limit(
@@ -1597,145 +1787,97 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         tool_output_token_limit = _int_or_zero(before_profile_section.get("tool_output_token_limit")) or 12_000
         model_catalog_json = before_profile_section.get("model_catalog_json")
 
-        if provider_defaults:
-            provider_name = provider_defaults["provider_name"]
-            base_url = provider_defaults["base_url"]
-            _provider_header, provider_block, _profile_header, profile_block = _codex_profile_blocks(
-                profile_name=profile_name,
-                provider_name=provider_name,
-                base_url=base_url,
-                model=effective_model,
-                reasoning_effort=expected_effort,
-                context_window=model_context_window,
-                auto_compact_token_limit=expected_auto_compact_token_limit,
-                tool_output_token_limit=tool_output_token_limit,
-                model_catalog_json=model_catalog_json,
-            )
-            provider_header = f"[model_providers.{provider_name}]"
-            profile_header = f"[profiles.{profile_name}]"
-            candidate_text, provider_existed = _upsert_toml_table(working_text, provider_header, provider_block)
-            candidate_text, profile_existed = _upsert_toml_table(candidate_text, profile_header, profile_block)
-            changed = candidate_text != working_text
-            working_text = candidate_text
+        provider_name = (provider_defaults or {}).get("provider_name") or before_provider_name
+        base_url = (provider_defaults or {}).get("base_url") or before_provider_section.get("base_url") or ""
+        _provider_header, provider_block, _profile_header, profile_block = _codex_profile_blocks(
+            profile_name=profile_name,
+            provider_name=provider_name,
+            base_url=base_url,
+            model=effective_model,
+            reasoning_effort=expected_effort,
+            context_window=model_context_window,
+            auto_compact_token_limit=expected_auto_compact_token_limit,
+            tool_output_token_limit=tool_output_token_limit,
+            model_catalog_json=model_catalog_json,
+        )
+        provider_header = f"[model_providers.{provider_name}]"
+        candidate_text, provider_existed = _upsert_toml_table(working_text, provider_header, provider_block)
+        candidate_text, cleanup = _cleanup_main_codex_config_for_profile(candidate_text, profile_name)
+        changed_main = candidate_text != working_text
+        working_text = candidate_text
 
-            after_sections = _parse_simple_toml_sections_from_text(working_text)
-            after_profile_section = after_sections.get(f"profiles.{profile_name}", {})
-            after_provider_section = after_sections.get(f"model_providers.{provider_name}", {})
-            provider_needs_patch = (
-                before_provider_name != provider_name
-                or before_provider_section.get("base_url") != base_url
-                or before_provider_section.get("wire_api") != "responses"
-                or before_provider_section.get("env_key") != "DEEPSEEK_API_KEY"
-            )
-            model_needs_patch = codex_model != effective_model
-            effort_needs_patch = before_profile_section.get("model_reasoning_effort") != expected_effort
-            plan_needs_patch = before_profile_section.get("plan_mode_reasoning_effort") != "high"
-            auto_compact_needs_patch = current_auto_compact_token_limit != expected_auto_compact_token_limit
+        before_profile_text = profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
+        changed_profile = before_profile_text != profile_block
+        profile_writes[profile_name] = profile_block
 
-            if changed:
-                updated_profiles.append(profile_name)
-
-            profile_results.append({
-                "profile": profile_name,
-                "status": "ok",
-                "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
-                "managed_profile": True,
-                "provider": provider_name,
-                "provider_before": before_provider_name,
-                "provider_existed": provider_existed,
-                "profile_existed": profile_existed,
-                "provider_needs_patch": provider_needs_patch,
-                "provider_patched": bool(changed and provider_needs_patch and not dry_run),
-                "provider_base_url": base_url,
-                "provider_base_url_after": after_provider_section.get("base_url"),
-                "wire_api_after": after_provider_section.get("wire_api"),
-                "env_key_after": after_provider_section.get("env_key"),
-                "codex_model_before": codex_model or None,
-                "effective_model": effective_model,
-                "codex_model_after": after_profile_section.get("model"),
-                "model_needs_patch": model_needs_patch,
-                "model_patched": bool(changed and model_needs_patch and not dry_run),
-                "model_reasoning_effort": expected_effort,
-                "model_reasoning_effort_after": after_profile_section.get("model_reasoning_effort"),
-                "model_reasoning_effort_needs_patch": effort_needs_patch,
-                "model_reasoning_effort_patched": bool(changed and effort_needs_patch and not dry_run),
-                "plan_mode_reasoning_effort": "high",
-                "plan_mode_reasoning_effort_after": after_profile_section.get("plan_mode_reasoning_effort"),
-                "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
-                "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
-                "model_context_window_tokens": model_context_window,
-                "auto_compact_ratio": managed_auto_compact_ratio,
-                "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
-                "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
-                "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
-                "model_auto_compact_token_limit_patched": bool(changed and auto_compact_needs_patch and not dry_run),
-                "future_compatibility_policy": "regenerate managed profile/provider from dsproxy contract and fail closed if the Codex-visible model still differs",
-            })
-            continue
-
-        provider_name = str(model_info.get("model_provider") or f"{profile_name}-proxy")
+        after_profile_section = _parse_simple_toml_key_values_from_text(profile_block)
+        after_sections = _parse_simple_toml_sections_from_text(working_text)
+        after_provider_section = after_sections.get(f"model_providers.{provider_name}", {})
+        provider_needs_patch = (
+            before_provider_name != provider_name
+            or before_provider_section.get("base_url") != base_url
+            or before_provider_section.get("wire_api") != "responses"
+            or before_provider_section.get("env_key") != "DEEPSEEK_API_KEY"
+        )
         model_needs_patch = codex_model != effective_model
         effort_needs_patch = before_profile_section.get("model_reasoning_effort") != expected_effort
         plan_needs_patch = before_profile_section.get("plan_mode_reasoning_effort") != "high"
         auto_compact_needs_patch = current_auto_compact_token_limit != expected_auto_compact_token_limit
-        changed = False
-        for key, value in [
-            ("model", effective_model),
-            ("model_reasoning_effort", expected_effort),
-            ("plan_mode_reasoning_effort", "high"),
-            ("model_auto_compact_token_limit", str(expected_auto_compact_token_limit)),
-        ]:
-            profile_header = f"[profiles.{profile_name}]"
-            table_range = _toml_table_range(working_text, profile_header)
-            if table_range is None:
-                continue
-            start, end = table_range
-            block = working_text[start:end]
-            lines = block.rstrip().splitlines()
-            out: list[str] = []
-            replaced = False
-            for line in lines:
-                if line.strip().startswith(f"{key} = "):
-                    out.append(f"{key} = {_toml_quote(value)}")
-                    replaced = True
-                else:
-                    out.append(line)
-            if not replaced:
-                out.append(f"{key} = {_toml_quote(value)}")
-            patched = "\n".join(out) + "\n"
-            new_text = working_text[:start] + patched + working_text[end:]
-            changed = changed or new_text != working_text
-            working_text = new_text
+        changed = changed_main or changed_profile
+
         if changed:
             updated_profiles.append(profile_name)
+
         profile_results.append({
             "profile": profile_name,
             "status": "ok",
             "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
-            "managed_profile": False,
+            "codex_profile_layout": "split_profile_files",
+            "profile_source_before": before_profile_source,
+            "profile_config": str(profile_path),
+            "managed_profile": bool(provider_defaults),
             "provider": provider_name,
+            "provider_before": before_provider_name,
+            "provider_existed": provider_existed,
+            "profile_existed": profile_path.exists() or cleanup["legacy_profile_table_removed"],
+            "legacy_profile_table_removed": cleanup["legacy_profile_table_removed"],
+            "legacy_profile_selector_removed": cleanup["legacy_profile_selector_removed"],
+            "provider_needs_patch": provider_needs_patch,
+            "provider_patched": bool(changed_main and provider_needs_patch and not dry_run),
+            "provider_base_url": base_url,
+            "provider_base_url_after": after_provider_section.get("base_url"),
+            "wire_api_after": after_provider_section.get("wire_api"),
+            "env_key_after": after_provider_section.get("env_key"),
             "codex_model_before": codex_model or None,
             "effective_model": effective_model,
-            "codex_model_after": effective_model if model_needs_patch else codex_model,
+            "codex_model_after": after_profile_section.get("model"),
             "model_needs_patch": model_needs_patch,
-            "model_patched": bool(changed and model_needs_patch and not dry_run),
+            "model_patched": bool(changed_profile and model_needs_patch and not dry_run),
             "model_reasoning_effort": expected_effort,
+            "model_reasoning_effort_after": after_profile_section.get("model_reasoning_effort"),
             "model_reasoning_effort_needs_patch": effort_needs_patch,
-            "model_reasoning_effort_patched": bool(changed and effort_needs_patch and not dry_run),
+            "model_reasoning_effort_patched": bool(changed_profile and effort_needs_patch and not dry_run),
             "plan_mode_reasoning_effort": "high",
+            "plan_mode_reasoning_effort_after": after_profile_section.get("plan_mode_reasoning_effort"),
             "plan_mode_reasoning_effort_needs_patch": plan_needs_patch,
-            "plan_mode_reasoning_effort_patched": bool(changed and plan_needs_patch and not dry_run),
+            "plan_mode_reasoning_effort_patched": bool(changed_profile and plan_needs_patch and not dry_run),
             "model_context_window_tokens": model_context_window,
             "auto_compact_ratio": managed_auto_compact_ratio,
             "current_model_auto_compact_token_limit": current_auto_compact_token_limit,
             "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
             "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
-            "model_auto_compact_token_limit_patched": bool(changed and auto_compact_needs_patch and not dry_run),
+            "model_auto_compact_token_limit_patched": bool(changed_profile and auto_compact_needs_patch and not dry_run),
+            "future_compatibility_policy": "regenerate split managed profile/provider from dsproxy contract and fail closed if the Codex-visible model still differs",
         })
 
-    if not dry_run and working_text != original_text:
-        codex_path.parent.mkdir(parents=True, exist_ok=True)
-        codex_path.write_text(working_text, encoding="utf-8")
+    if not dry_run:
+        if working_text != original_text:
+            codex_path.parent.mkdir(parents=True, exist_ok=True)
+            codex_path.write_text(working_text, encoding="utf-8")
+        for profile_name, profile_text in profile_writes.items():
+            profile_path = codex_profile_config_path(profile_name, codex_path)
+            profile_path.parent.mkdir(parents=True, exist_ok=True)
+            profile_path.write_text(profile_text, encoding="utf-8")
 
     if not dry_run:
         for profile_name in target_profiles:
@@ -1749,7 +1891,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
                     "reason": "managed_profile_model_conflict_after_repair",
                     "codex_model": model_info.get("codex_model"),
                     "effective_model": model_info.get("effective_model"),
-                    "action": "inspect Codex config schema changes before launching Codex",
+                    "action": "inspect Codex split profile files before launching Codex",
                 })
 
     health = _codex_config_health(codex_path)
@@ -1757,6 +1899,8 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         "status": "error" if post_validation_errors or not health["codex_config_loadable"] else "ok",
         "operation": "profile_repair",
         "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+        "codex_profile_layout": "split_profile_files",
+        "layout_contract": codex_profile_layout_contract(),
         "managed_auto_compact_ratio": managed_auto_compact_ratio,
         "auto_compact_ratio_source": (
             "arg.auto_compact_ratio"
@@ -1765,6 +1909,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         ),
         "env_file": str(env_file),
         "codex_config": str(codex_path),
+        "codex_main_config": str(codex_path),
         "managed_only": bool(getattr(args, "managed_only", False)),
         "target_profiles": target_profiles,
         "updated_profiles": updated_profiles,
@@ -1773,13 +1918,16 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         "post_validation_errors": post_validation_errors,
         "codex_config_loadable": health["codex_config_loadable"],
         "invalid_profile_fields": health["invalid_profile_fields"],
+        "legacy_profile_tables_present": health.get("legacy_profile_tables_present"),
         "dry_run": dry_run,
         "config_preview": working_text if dry_run else None,
+        "profile_config_previews": profile_writes if dry_run else None,
         "post_config_apply": None if dry_run else _post_config_apply(),
-        "future_compatibility_policy": "Managed CoDeepSeedeX profiles are regenerated from dsproxy contract before Codex launch; launch must fail closed if profile model conflict remains.",
+        "future_compatibility_policy": "Managed CoDeepSeedeX profiles are regenerated as Codex 0.134+ split profile files before Codex launch; launch must fail closed if profile model conflict remains.",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if output["status"] == "ok" else 1
+
 
 def _profile(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
@@ -2093,22 +2241,30 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
     return payload
 
 
+
 def _uninstall_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
     profile_name = args.name
     provider_name = args.provider_name or f"{profile_name}-proxy"
+    profile_path = codex_profile_config_path(profile_name, config_path)
     provider_header = f"[model_providers.{provider_name}]"
-    profile_header = f"[profiles.{profile_name}]"
 
     original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-    text, profile_removed = _remove_toml_table(original, profile_header)
+    text, cleanup = _cleanup_main_codex_config_for_profile(original, profile_name)
     text, provider_removed = _remove_toml_table(text, provider_header)
+    profile_file_removed = profile_path.exists()
 
     result = {
         "path": str(config_path),
+        "codex_profile_layout": "split_profile_files",
+        "main_config": str(config_path),
+        "profile_config": str(profile_path),
         "profile": profile_name,
         "provider": provider_name,
-        "profile_removed": profile_removed,
+        "profile_removed": bool(cleanup["legacy_profile_table_removed"] or profile_file_removed),
+        "profile_file_removed": profile_file_removed,
+        "legacy_profile_table_removed": cleanup["legacy_profile_table_removed"],
+        "legacy_profile_selector_removed": cleanup["legacy_profile_selector_removed"],
         "provider_removed": provider_removed,
         "dry_run": bool(args.dry_run),
     }
@@ -2118,13 +2274,19 @@ def _uninstall_codex_profile(args: argparse.Namespace) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
-    if config_path.exists() and not args.no_backup:
+    if (config_path.exists() or profile_path.exists()) and not args.no_backup:
         backup = config_path.with_suffix(config_path.suffix + ".bak")
         backup.write_text(original, encoding="utf-8")
         result["backup"] = str(backup)
+        if profile_path.exists():
+            profile_backup = profile_path.with_suffix(profile_path.suffix + ".bak")
+            profile_backup.write_text(profile_path.read_text(encoding="utf-8"), encoding="utf-8")
+            result["profile_backup"] = str(profile_backup)
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(text, encoding="utf-8")
+    if profile_path.exists():
+        profile_path.unlink()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -4385,6 +4547,36 @@ def _maybe_print_startup_release_update_notice() -> None:
         print(f"[CoDeepSeedeX] release notes: {release_url}", file=sys.stderr)
 
 
+def _model_api_config_status(env_file: Path | None = None, values: dict[str, str] | None = None) -> dict[str, Any]:
+    path = env_file or default_env_file_path()
+    env_values = values if values is not None else _read_env_exports(path)
+    provider = _canonical_model_api_provider(env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    try:
+        provider_config = _model_api_provider_config(provider)
+    except ValueError:
+        provider_config = {"base_url": "", "model": "", "validation_path": "/models", "display_name": provider}
+    base_url = str(env_values.get("DEEPSEEK_BASE_URL") or provider_config.get("base_url") or "").strip().rstrip("/")
+    model = str(env_values.get("DEEPSEEK_PROXY_MODEL") or provider_config.get("model") or "").strip()
+    api_key = env_values.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+    validation_path = str(provider_config.get("validation_path") or "/models")
+    validation_url = (
+        str(getattr(argparse.Namespace(), "x", "") or "")
+        or (_model_api_validation_url(base_url, validation_path) if base_url else "")
+    )
+    return {
+        "provider": provider,
+        "base_url": base_url,
+        "model": model,
+        "configured": bool(api_key and base_url and (model or provider != "custom")),
+        "api_key_source": "env_file" if env_values.get("DEEPSEEK_API_KEY") else ("environment" if os.environ.get("DEEPSEEK_API_KEY") else None),
+        "api_key_preview": _mask_api_key(api_key),
+        "validation_command": "dsproxy config test-api-key",
+        "validation_url": validation_url,
+        "validation_method": "deepseek_balance" if provider == "deepseek" else "openai_compatible_models",
+        "may_consume_quota": False,
+    }
+
+
 def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
     path = env_file or default_env_file_path()
     values = _read_env_exports(path)
@@ -4414,8 +4606,9 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "FAL_API_KEY",
         "DEEPSEEK_PROXY_FAL_API_KEY",
     ]
+    model_api = _model_api_config_status(path, values)
     missing = {
-        "model_api": not bool(values.get("DEEPSEEK_API_KEY")),
+        "model_api": not bool(model_api.get("configured")),
         "web_search_api": not any(bool(values.get(key)) for key in web_search_keys),
         "image_generation_api": not any(bool(values.get(key)) for key in image_keys),
     }
@@ -4423,6 +4616,7 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "env_file": str(path),
         "missing": missing,
         "all_configured": not any(missing.values()),
+        "model_api": model_api,
         "commands": {
             "guided": "dsproxy config wizard",
             "model_api": "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom",
@@ -4441,11 +4635,10 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         },
     }
 
-
 def _wizard_read_line(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
         return default
-    suffix = f" [{default}]" if default else ""
+    suffix = f" \033[2m[Press Enter to keep default: {default}]\033[0m" if default else ""
     print(f"{prompt}{suffix}: ", end="", file=sys.stderr, flush=True)
     value = sys.stdin.readline().strip()
     return value or default
@@ -4457,23 +4650,176 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
     import getpass
 
     suffix = " [hidden, press Enter to keep saved]" if default else " [hidden]"
-    value = getpass.getpass(f"{prompt}{suffix}: ", stream=sys.stderr).strip()
+    value = getpass.getpass(f"{prompt}\033[2m{suffix}\033[0m: ", stream=sys.stderr).strip()
     return value or default
 
 
+def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
+    print("", file=sys.stderr)
+    print(prompt, file=sys.stderr)
+    if help_text:
+        print(f"  \033[2m{help_text}\033[0m", file=sys.stderr)
+    print("  \033[2mUse ↑/↓ or j/k to move, Enter to select, Backspace to go back.\033[0m", file=sys.stderr)
+    for idx, (_value, label, status) in enumerate(options):
+        marker = "▶ " if idx == selected else "  "
+        suffix = f"  \033[2m[{status}]\033[0m" if status else ""
+        if idx == selected:
+            print(f"\033[7m{marker}{label}{suffix}\033[0m", file=sys.stderr)
+        else:
+            print(f"{marker}{label}{suffix}", file=sys.stderr)
+
+
+def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
+    if non_interactive or not sys.stdin.isatty():
+        return default
+    try:
+        import termios
+        import tty
+    except Exception:
+        return default
+
+    selected = 0
+    for idx, (value, _label, _status) in enumerate(options):
+        if value == default:
+            selected = idx
+            break
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            print("\033[2J\033[H", end="", file=sys.stderr)
+            _wizard_render_menu(prompt, options, selected, help_text=help_text)
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    selected = (selected - 1) % len(options)
+                elif seq == "[B":
+                    selected = (selected + 1) % len(options)
+                continue
+            if ch in {"j", "J"}:
+                selected = (selected + 1) % len(options)
+                continue
+            if ch in {"k", "K"}:
+                selected = (selected - 1) % len(options)
+                continue
+            if ch in {"\r", "\n"}:
+                return options[selected][0]
+            if ch in {"\x7f", "\b"}:
+                return "0"
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print("", file=sys.stderr)
+
+
 def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
-    value = _wizard_read_line(prompt, default, non_interactive=non_interactive).strip().lower()
-    return value in {"y", "yes", "1", "true", "on"}
+    default_value = "Y" if str(default).strip().lower().startswith("y") else "N"
+    value = _wizard_read_menu_choice(
+        prompt,
+        [("Y", "Yes", ""), ("N", "No", "")],
+        default_value,
+        non_interactive=non_interactive,
+    )
+    return value == "Y"
 
 
 def _print_wizard_catalog(title: str, options: list[tuple[str, str, bool]], *, stream: Any = sys.stderr) -> None:
+    # Retained only for compatibility with old tests/imports. The interactive
+    # wizard uses the shared arrow-key menu contract instead of numeric catalogs.
     print(f"\n{title}", file=stream)
+    print("  Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", file=stream)
     for number, name, supported in options:
-        status = "Supported" if supported else "Unsupported"
-        prefix = "✓" if supported else "·"
-        print(f"  {number}. {prefix} {name} ({status})", file=stream)
+        status = "Supported" if supported else "Experimental"
+        print(f"  {number}. {name} [{status}]", file=stream)
     print("  0. Skip", file=stream)
 
+
+def _wizard_model_provider_choice(*, non_interactive: bool = False) -> str:
+    family = _wizard_read_menu_choice(
+        "Select model provider family",
+        [
+            ("deepseek", "DeepSeek", "Supported"),
+            ("kimi", "Kimi / Moonshot", "Experimental"),
+            ("zhipu", "ZhipuAI / BigModel", "Experimental"),
+            ("zai", "Z.AI", "Experimental"),
+            ("qwen", "Qwen / DashScope", "Experimental"),
+            ("custom", "Other OpenAI-compatible server", "Custom"),
+            ("mimo", "Mimo", "Unsupported"),
+            ("baichuan", "Baichuan", "Unsupported"),
+            ("0", "Skip", ""),
+        ],
+        "deepseek",
+        non_interactive=non_interactive,
+    )
+    if family == "zhipu":
+        return _wizard_read_menu_choice(
+            "Select ZhipuAI / BigModel endpoint",
+            [("zhipu", "Token API", "Experimental"), ("zhipu-coding", "Coding Plan", "Experimental"), ("0", "Back", "")],
+            "zhipu",
+            non_interactive=non_interactive,
+        )
+    if family == "zai":
+        return _wizard_read_menu_choice(
+            "Select Z.AI endpoint",
+            [("zai", "Token API", "Experimental"), ("zai-coding", "Coding Plan", "Experimental"), ("0", "Back", "")],
+            "zai",
+            non_interactive=non_interactive,
+        )
+    if family == "qwen":
+        return _wizard_read_menu_choice(
+            "Select Qwen / DashScope endpoint",
+            [("qwen-beijing", "Beijing", "Experimental"), ("qwen-singapore", "Singapore", "Experimental"), ("qwen-us", "US Virginia", "Experimental"), ("0", "Back", "")],
+            "qwen-beijing",
+            non_interactive=non_interactive,
+        )
+    return family
+
+
+def _wizard_web_provider_choice(*, non_interactive: bool = False) -> str:
+    return _wizard_read_menu_choice(
+        "Select web search provider",
+        [
+            ("serpapi", "SerpAPI", "Experimental"),
+            ("tavily", "Tavily", "Experimental"),
+            ("exa", "Exa", "Experimental"),
+            ("firecrawl", "Firecrawl", "Experimental"),
+            ("0", "Skip", ""),
+        ],
+        "serpapi",
+        non_interactive=non_interactive,
+    )
+
+
+def _wizard_image_provider_choice(*, non_interactive: bool = False) -> str:
+    family = _wizard_read_menu_choice(
+        "Select image generation provider family",
+        [
+            ("zhipu", "ZhipuAI / BigModel", "Experimental"),
+            ("zai", "Z.AI", "Experimental"),
+            ("qwen", "Qwen Image / DashScope", "Experimental"),
+            ("stability", "Stability AI", "Experimental"),
+            ("fal", "fal.ai", "Experimental"),
+            ("0", "Skip", ""),
+        ],
+        "zhipu",
+        non_interactive=non_interactive,
+    )
+    if family == "qwen":
+        return _wizard_read_menu_choice(
+            "Select Qwen Image / DashScope region",
+            [
+                ("qwen_image_beijing", "Beijing", "Validated"),
+                ("qwen_image_singapore", "Singapore", "Validated"),
+                ("qwen_image_us", "US Virginia", "Model availability varies"),
+                ("qwen_image_germany", "Germany Frankfurt", "Model availability varies"),
+                ("0", "Back", ""),
+            ],
+            "qwen_image_beijing",
+            non_interactive=non_interactive,
+        )
+    return family
 
 
 def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_json: bool = True) -> dict[str, Any]:
@@ -4495,6 +4841,11 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
             "skipped": ["interactive_prompt_unavailable"],
             "unsupported": unsupported,
             "validation_results": validation_results,
+            "ui_contract": {
+                "mode": "installer_matching_arrow_menu",
+                "keybindings": "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.",
+                "tty_numeric_fallback": False,
+            },
         }
         if emit_json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -4503,56 +4854,14 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
     print("\nCoDeepSeedeX guided API configuration", file=sys.stderr)
     print("You can skip any item and configure it later.", file=sys.stderr)
 
-    if _wizard_yes_no("Configure model API now? [Y/n]", "Y", non_interactive=non_interactive):
-        _print_wizard_catalog(
-            "Model API providers",
-            [
-                ("1", "DeepSeek", True),
-                ("2", "Kimi / Moonshot", True),
-                ("3", "ZhipuAI / BigModel token API", True),
-                ("4", "ZhipuAI / BigModel Coding Plan", True),
-                ("5", "Z.AI token API", True),
-                ("6", "Z.AI Coding Plan", True),
-                ("7", "Qwen / DashScope Beijing", True),
-                ("8", "Qwen / DashScope Singapore", True),
-                ("9", "Qwen / DashScope US Virginia", True),
-                ("10", "Other OpenAI-compatible server", True),
-                ("11", "Mimo", False),
-                ("12", "Baichuan", False),
-            ],
-        )
-        choice = _wizard_read_line("Select model API provider", "1", non_interactive=non_interactive).strip().lower()
-        model_provider_map = {
-            "1": "deepseek",
-            "deepseek": "deepseek",
-            "2": "kimi",
-            "kimi": "kimi",
-            "moonshot": "kimi",
-            "3": "zhipu",
-            "zhipu": "zhipu",
-            "bigmodel": "zhipu",
-            "4": "zhipu-coding",
-            "zhipu-coding": "zhipu-coding",
-            "bigmodel-coding": "zhipu-coding",
-            "5": "zai",
-            "zai": "zai",
-            "z.ai": "zai",
-            "6": "zai-coding",
-            "zai-coding": "zai-coding",
-            "7": "qwen-beijing",
-            "qwen": "qwen-beijing",
-            "qwen-beijing": "qwen-beijing",
-            "dashscope": "qwen-beijing",
-            "8": "qwen-singapore",
-            "qwen-singapore": "qwen-singapore",
-            "9": "qwen-us",
-            "qwen-us": "qwen-us",
-            "10": "custom",
-            "custom": "custom",
-            "other": "custom",
-        }
-        if choice in model_provider_map:
-            provider = model_provider_map[choice]
+    if _wizard_yes_no("Configure model API now?", "Y", non_interactive=non_interactive):
+        provider = _wizard_model_provider_choice(non_interactive=non_interactive)
+        if provider in {"0", "mimo", "baichuan"}:
+            skipped.append("model_api" if provider == "0" else f"model_api:{provider}_unsupported")
+            if provider in {"mimo", "baichuan"}:
+                unsupported.append(f"model_api:{provider}")
+                print("Selected model provider is currently unsupported. Configure it as custom only if it is OpenAI-compatible.", file=sys.stderr)
+        else:
             provider_config = _model_api_provider_config(provider)
             base_url = str(provider_config.get("base_url") or "").strip()
             model = str(provider_config.get("model") or "").strip()
@@ -4586,40 +4895,19 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         print(f"Model API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
                 else:
                     skipped.append("model_api")
-        elif choice in {"0", "skip"}:
-            skipped.append("model_api")
-        else:
-            unsupported.append("model_api")
-            print("Selected model provider is currently unsupported.", file=sys.stderr)
     else:
         skipped.append("model_api")
 
-    if _wizard_yes_no("Configure web search API now? [y/N]", "N", non_interactive=non_interactive):
-        _print_wizard_catalog(
-            "Web search providers",
-            [
-                ("1", "SerpAPI", True),
-                ("2", "Tavily", True),
-                ("4", "Exa", True),
-                ("5", "Firecrawl", True),
-                ("6", "Bing Web Search", False),
-                ("7", "Google Programmable Search", False),
-                ("8", "Other custom server", False),
-            ],
-        )
-        choice = _wizard_read_line("Select web search provider", "1", non_interactive=non_interactive).strip().lower()
+    if _wizard_yes_no("Configure web search API now?", "N", non_interactive=non_interactive):
+        provider = _wizard_web_provider_choice(non_interactive=non_interactive)
         web_provider_map = {
-            "1": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
             "serpapi": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
-            "2": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
             "tavily": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
-            "4": ("exa", "Exa API key", "EXA_API_KEY"),
             "exa": ("exa", "Exa API key", "EXA_API_KEY"),
-            "5": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
             "firecrawl": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
         }
-        if choice in web_provider_map:
-            provider, prompt, env_key = web_provider_map[choice]
+        if provider in web_provider_map:
+            provider, prompt, env_key = web_provider_map[provider]
             key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
             if key:
                 validation = _validate_web_search_api_key(provider, key, timeout=10.0)
@@ -4637,110 +4925,48 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     print(f"Web search API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("web_search_api")
-        elif choice in {"9", "other", "custom"}:
-            skipped.append("web_search_api:other_custom_server")
-            print("Custom web search servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
-        elif choice in {"0", "skip"}:
-            skipped.append("web_search_api")
         else:
-            unsupported.append("web_search_api")
-            print("Selected web search provider is currently unsupported.", file=sys.stderr)
+            skipped.append("web_search_api")
     else:
         skipped.append("web_search_api")
 
-    if _wizard_yes_no("Configure image generation API now? [y/N]", "N", non_interactive=non_interactive):
-        _print_wizard_catalog(
-            "Image generation providers",
-            [
-                ("1", "ZhipuAI / BigModel (domestic CogView)", True),
-                ("2", "Z.AI / CogView (international)", True),
-                ("3", "Qwen Image / DashScope Beijing", True),
-                ("10", "Qwen Image / DashScope Singapore", True),
-                ("11", "Qwen Image / DashScope US Virginia (model unavailable)", False),
-                ("12", "Qwen Image / DashScope Germany Frankfurt (model unavailable)", False),
-                ("4", "Stability AI", True),
-                ("5", "fal.ai", True),
-                ("6", "Kolors", False),
-                ("7", "Hunyuan Image", False),
-                ("8", "Volcengine Ark", False),
-                ("9", "Other custom server", False),
-            ],
-        )
-        choice = _wizard_read_line("Select image generation provider", "1", non_interactive=non_interactive).strip().lower()
+    if _wizard_yes_no("Configure image generation API now?", "N", non_interactive=non_interactive):
+        provider = _wizard_image_provider_choice(non_interactive=non_interactive)
         image_provider_map = {
-            "1": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
-            "zhipu": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
-            "zhipuai": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
-            "bigmodel": ("zhipu", "cogView-4-250304", "ZhipuAI / BigModel image API key"),
-            "2": ("zai", "cogView-4-250304", "Z.AI image API key"),
-            "zai": ("zai", "cogView-4-250304", "Z.AI image API key"),
-            "z.ai": ("zai", "cogView-4-250304", "Z.AI image API key"),
-            "glm": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
-            "cogview": ("zai", "cogView-4-250304", "GLM / Z.AI image API key"),
-            "3": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
-            "qwen": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "qwen_image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "qwen-image": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "dashscope": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "aliyun": ("qwen_image", "qwen-image-2.0-pro", "DashScope API key"),
-            "qwen_image_beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
-            "qwen-image-beijing": ("qwen_image_beijing", "qwen-image-2.0-pro", "DashScope Beijing API key"),
-            "10": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
-            "qwen_image_singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
-            "qwen-image-singapore": ("qwen_image_singapore", "qwen-image-2.0-pro", "DashScope Singapore API key"),
-            "11": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
-            "qwen_image_us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
-            "qwen-image-us": ("qwen_image_us", "qwen-image-2.0-pro", "DashScope US Virginia API key"),
-            "12": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
-            "qwen_image_germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
-            "qwen-image-germany": ("qwen_image_germany", "qwen-image-2.0-pro", "DashScope Germany Frankfurt API key"),
-            "4": ("stability", "stable-image-core", "Stability AI API key"),
-            "stability": ("stability", "stable-image-core", "Stability AI API key"),
-            "stability_ai": ("stability", "stable-image-core", "Stability AI API key"),
-            "stable_image": ("stability", "stable-image-core", "Stability AI API key"),
-            "5": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
-            "fal": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
-            "fal_ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
-            "fal.ai": ("fal", "fal-ai/flux/schnell", "fal.ai API key"),
+            "zhipu": ("zhipu", "ZhipuAI / BigModel image API key", "ZHIPUAI_API_KEY"),
+            "zai": ("zai", "Z.AI image API key", "ZAI_API_KEY"),
+            "qwen_image_beijing": ("qwen_image_beijing", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+            "qwen_image_singapore": ("qwen_image_singapore", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+            "qwen_image_us": ("qwen_image_us", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+            "qwen_image_germany": ("qwen_image_germany", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+            "stability": ("stability", "Stability AI API key", "STABILITY_API_KEY"),
+            "fal": ("fal", "fal.ai API key", "FAL_KEY"),
         }
-        if choice in image_provider_map:
-            provider, default_model, prompt = image_provider_map[choice]
-            provider_env_key = _image_provider_primary_env_key(provider)
-            saved_default = values.get(provider_env_key, values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", ""))
+        if provider in image_provider_map:
+            provider, prompt, env_key = image_provider_map[provider]
+            saved_default = values.get(env_key, "") or values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", "")
             key = _wizard_read_secret(prompt, saved_default, non_interactive=non_interactive)
             if key:
                 validation = _validate_image_api_key(provider, key, timeout=10.0)
                 validation_results.append(validation)
                 if validation.get("ok"):
+                    canonical = _canonical_image_generation_provider(provider)
                     values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                    values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = provider
-                    values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", default_model)
-                    values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-                    values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-                    values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-                    base_url = _image_generation_base_url_for_provider(provider)
+                    values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical
+                    values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                    values[env_key] = key
+                    base_url = _image_generation_base_url_for_provider(canonical)
                     if base_url:
                         values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
-                    else:
-                        values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
-                    provider_env_key = _image_provider_primary_env_key(provider)
-                    values[provider_env_key] = key
-                    values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                    configured.append(f"image_generation_api:{provider}")
-                    print(f"Image generation API key validated for provider: {provider}.", file=sys.stderr)
+                    configured.append(f"image_generation_api:{canonical}")
+                    print(f"Image generation API key validated for provider: {canonical}.", file=sys.stderr)
                 else:
                     skipped.append(f"image_generation_api:{provider}_validation_failed")
                     print(f"Image generation API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
             else:
                 skipped.append("image_generation_api")
-        elif choice in {"9", "other", "custom"}:
-            skipped.append("image_generation_api:other_custom_server")
-            print("Custom image generation servers are configured manually. Ask your agent to read docs/custom_api_handoff.md for handoff instructions.", file=sys.stderr)
-        elif choice in {"0", "skip"}:
-            skipped.append("image_generation_api")
         else:
-            unsupported.append("image_generation_api")
-            print("Selected image generation provider is currently unsupported.", file=sys.stderr)
+            skipped.append("image_generation_api")
     else:
         skipped.append("image_generation_api")
 
@@ -4752,17 +4978,22 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         "status": "ok",
         "mode": "config_wizard",
         "interactive": True,
+        "ui_contract": {
+            "mode": "installer_matching_arrow_menu",
+            "keybindings": "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.",
+            "tty_numeric_fallback": False,
+        },
         "env_file": str(env_file),
+        "configuration_status_before": before,
+        "configuration_status": after,
         "configured": configured,
         "skipped": skipped,
         "unsupported": unsupported,
         "validation_results": validation_results,
-        "configuration_status": after,
     }
     if emit_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
-
 
 def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, legacy_command: bool) -> int:
     provider_arg = getattr(args, "provider", None)
@@ -4820,7 +5051,8 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
             "status": "ok",
             "env_file": str(env_file),
             "model": model_value,
-            "codex_config": str(codex_path),
+                        "codex_config": str(codex_path),
+            "codex_profile_config": str(codex_profile_config_path(getattr(args, "profile", "deepseek-thinking"), codex_path)),
             "codex_profile": getattr(args, "profile", "deepseek-thinking"),
             "codex_profile_patched": patched,
             "post_config_apply": _post_config_apply(),
@@ -4905,7 +5137,8 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         "base_url": base_url_value,
         "model": resolved_model,
         "validation": validation_result,
-        "codex_config": str(codex_path),
+                "codex_config": str(codex_path),
+        "codex_profile_config": str(codex_profile_config_path(getattr(args, "profile", "deepseek-thinking"), codex_path)),
         "codex_profile": getattr(args, "profile", "deepseek-thinking"),
         "codex_profile_patched": patched,
         "preferred_command": f"dsproxy config set-model {resolved_model} --provider {provider}",
@@ -4954,6 +5187,7 @@ def _config(args: argparse.Namespace) -> int:
         print(json.dumps({
             "env_file": str(env_file),
             "values": safe_values,
+            "model_api": _model_api_config_status(env_file, values),
             "tool_routing": _tool_routing_config_status(env_file, values),
         }, ensure_ascii=False, indent=2))
         return 0
@@ -4965,32 +5199,48 @@ def _config(args: argparse.Namespace) -> int:
         return _configure_model_api_command(args, env_file, legacy_command=True)
 
     if args.config_command == "test-api-key":
-        provider = _canonical_model_api_provider(getattr(args, "provider", "deepseek"))
+        env_values = _read_env_exports(env_file)
+        provider_arg = getattr(args, "provider", None)
+        provider = _canonical_model_api_provider(provider_arg or env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
         api_key, source = _load_deepseek_api_key(env_file=env_file)
-        base_url = str(getattr(args, "base_url", "") or "").strip().rstrip("/")
-        if provider == "deepseek":
+        try:
+            provider_config = _model_api_provider_config(provider)
+        except ValueError:
+            print(json.dumps({
+                "status": "error",
+                "error": "unsupported_model_api_provider",
+                "provider": provider,
+                "supported_providers": _supported_model_api_providers(),
+            }, ensure_ascii=False, indent=2))
+            return 1
+        base_url = str(getattr(args, "base_url", "") or env_values.get("DEEPSEEK_BASE_URL") or provider_config.get("base_url", "") or "").strip().rstrip("/")
+        model = str(env_values.get("DEEPSEEK_PROXY_MODEL") or provider_config.get("model", "") or "").strip()
+        if provider == "custom" and (not base_url or not model):
+            result = {
+                "ok": False,
+                "status": "error",
+                "kind": "model_api",
+                "provider": provider,
+                "error": "missing_custom_model_api_details",
+                "message": "Custom model API validation requires DEEPSEEK_BASE_URL and DEEPSEEK_PROXY_MODEL, or --base-url plus a configured model.",
+                "base_url": base_url,
+                "model": model,
+            }
+        elif provider == "deepseek":
             result = _check_deepseek_api_key(
                 api_key,
                 url=args.url,
                 timeout=float(args.timeout),
             )
+            result["kind"] = "model_api"
+            result["provider"] = "deepseek"
             if not base_url:
                 base_url = "https://api.deepseek.com"
-            model = "deepseek-v4-pro"
+            if not model:
+                model = "deepseek-v4-pro"
         else:
-            try:
-                provider_config = _model_api_provider_config(provider)
-            except ValueError:
-                print(json.dumps({
-                    "status": "error",
-                    "error": "unsupported_model_api_provider",
-                    "provider": provider,
-                    "supported_providers": _supported_model_api_providers(),
-                }, ensure_ascii=False, indent=2))
-                return 1
-            base_url = base_url or provider_config.get("base_url", "")
-            model = provider_config.get("model", "")
             result = _validate_model_api_key(provider, api_key, base_url=base_url, timeout=float(args.timeout))
+        validation_url = result.get("url") or (args.url if provider == "deepseek" else (_model_api_validation_url(base_url, provider_config.get("validation_path", "/models")) if base_url else ""))
         result["env_file"] = str(env_file)
         result["api_key_source"] = source
         result["model_api_key_configured"] = bool(api_key)
@@ -4998,6 +5248,9 @@ def _config(args: argparse.Namespace) -> int:
         result["model_provider"] = provider
         result["base_url"] = base_url
         result["model"] = model
+        result["validation_url"] = validation_url
+        result["validation_method"] = "deepseek_balance" if provider == "deepseek" else "openai_compatible_models"
+        result["may_consume_quota"] = False
         if provider == "deepseek":
             result["deepseek_api_key_configured"] = bool(api_key)
             result["deepseek_api_key_preview"] = _mask_api_key(api_key)
@@ -6432,7 +6685,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_test_api_key = config_sub.add_parser("test-api-key", help="validate model API key")
     config_test_api_key.add_argument("--env-file")
-    config_test_api_key.add_argument("--provider", default="deepseek", choices=_supported_model_api_providers())
+    config_test_api_key.add_argument("--provider", choices=_supported_model_api_providers(), help="model API provider; defaults to DEEPSEEK_PROXY_MODEL_PROVIDER from env")
     config_test_api_key.add_argument("--base-url", help="OpenAI-compatible base URL for --provider custom or provider override")
     config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)

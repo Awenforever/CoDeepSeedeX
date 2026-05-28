@@ -67,8 +67,8 @@ def test_cli_install_profile_derives_auto_compact_threshold_from_ratio(tmp_path:
     assert result["auto_compact_ratio"] == 0.9
     assert result["auto_compact_token_limit"] == 900_000
     assert result["auto_compact_token_limit_source"] == "derived_from_context_window_tokens_and_auto_compact_ratio"
-    assert "model_context_window = 1000000" in result["config_preview"]
-    assert "model_auto_compact_token_limit = 900000" in result["config_preview"]
+    assert "model_context_window = 1000000" in result["profile_config_preview"]
+    assert "model_auto_compact_token_limit = 900000" in result["profile_config_preview"]
 
 
 def test_cli_legacy_auto_compact_token_limit_argument_is_ignored_in_favor_of_ratio(tmp_path: Path, capsys) -> None:
@@ -87,7 +87,7 @@ def test_cli_legacy_auto_compact_token_limit_argument_is_ignored_in_favor_of_rat
     assert result["auto_compact_ratio"] == 0.9
     assert result["auto_compact_token_limit"] == 900_000
     assert result["ignored_legacy_auto_compact_token_limit"] == 750_000
-    assert "model_auto_compact_token_limit = 900000" in result["config_preview"]
+    assert "model_auto_compact_token_limit = 900000" in result["profile_config_preview"]
 
 
 def test_runtime_token_first_compaction_budget_uses_profile_threshold(tmp_path: Path, monkeypatch) -> None:

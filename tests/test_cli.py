@@ -6,6 +6,25 @@ import deepseek_responses_proxy.cli as cli_module
 from deepseek_responses_proxy.cli import default_config_path, main
 
 
+
+def _codex_profile_file(config_path, profile="deepseek-thinking"):
+    return config_path.parent / f"{profile}.config.toml"
+
+
+def _codex_profile_text(config_path, profile="deepseek-thinking"):
+    path = _codex_profile_file(config_path, profile)
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+
+
+def _write_split_codex_profile(config_path, profile="deepseek-thinking", body=""):
+    profile_path = _codex_profile_file(config_path, profile)
+    profile_path.write_text(body, encoding="utf-8")
+    return profile_path
+
+
+
 def _clear_provider_probe_test_env(monkeypatch):
     for key in [
         "SERPAPI_API_KEY",
@@ -266,12 +285,13 @@ def test_cli_install_codex_profile_writes_profile(tmp_path, capsys):
     assert "[features]" in text
     assert "[model_providers.deepseek-thinking-proxy]" in text
     assert 'base_url = "http://127.0.0.1:8001/v1"' in text
-    assert "[profiles.deepseek-thinking]" in text
-    assert 'model = "deepseek-v4-pro"' in text
-    assert 'model_provider = "deepseek-thinking-proxy"' in text
-    assert 'model_reasoning_effort = "xhigh"' in text
-    assert 'model_context_window = 1000000' in text
-    assert 'model_auto_compact_token_limit = 900000' in text
+    assert "[profiles.deepseek-thinking]" not in text
+    profile_text = _codex_profile_text(config_path)
+    assert 'model = "deepseek-v4-pro"' in profile_text
+    assert 'model_provider = "deepseek-thinking-proxy"' in profile_text
+    assert 'model_reasoning_effort = "xhigh"' in profile_text
+    assert 'model_context_window = 1000000' in profile_text
+    assert 'model_auto_compact_token_limit = 900000' in profile_text
     assert result["context_window_tokens"] == 1000000
     assert result["auto_compact_ratio"] == 0.9
     assert result["auto_compact_token_limit"] == 900000
@@ -289,8 +309,10 @@ def test_cli_install_codex_profile_dry_run_does_not_write(tmp_path, capsys):
 
     result = json.loads(capsys.readouterr().out)
     assert result["dry_run"] is True
-    assert "[profiles.deepseek-thinking]" in result["config_preview"]
+    assert "[profiles.deepseek-thinking]" not in result["config_preview"]
+    assert 'model = "deepseek-v4-pro"' in result["profile_config_preview"]
     assert not config_path.exists()
+    assert not _codex_profile_file(config_path).exists()
 
 
 def test_cli_uninstall_codex_profile_removes_profile_and_provider(tmp_path, capsys):
@@ -317,6 +339,7 @@ def test_cli_uninstall_codex_profile_removes_profile_and_provider(tmp_path, caps
     text = config_path.read_text(encoding="utf-8")
     assert "[profiles.deepseek-thinking]" not in text
     assert "[model_providers.deepseek-thinking-proxy]" not in text
+    assert not _codex_profile_file(config_path).exists()
 
 
 def test_cli_config_set_model_updates_env_and_codex_profile(tmp_path, capsys):
@@ -328,7 +351,7 @@ def test_cli_config_set_model_updates_env_and_codex_profile(tmp_path, capsys):
     assert result["model"] == "deepseek-v4-flash"
     assert result["codex_profile_patched"] is True
     assert "DEEPSEEK_PROXY_MODEL=deepseek-v4-flash" in env_file.read_text(encoding="utf-8")
-    assert 'model = "deepseek-v4-flash"' in config_path.read_text(encoding="utf-8")
+    assert 'model = "deepseek-v4-flash"' in _codex_profile_text(config_path)
 
 
 def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
@@ -340,7 +363,7 @@ def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
     assert result["effort"] == "high"
     assert result["codex_profile_patched"] is True
     assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
-    assert 'model_reasoning_effort = "high"' in config_path.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in _codex_profile_text(config_path)
 
 
 
@@ -355,7 +378,7 @@ def test_cli_config_set_effort_accepts_codex_medium_as_high(tmp_path, capsys):
     assert result["requested_effort"] == "medium"
     assert result["effort"] == "high"
     assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
-    assert 'model_reasoning_effort = "high"' in config_path.read_text(encoding="utf-8")
+    assert 'model_reasoning_effort = "high"' in _codex_profile_text(config_path)
 
 
 def test_cli_balance_missing_api_key(monkeypatch, tmp_path, capsys):
@@ -1279,7 +1302,7 @@ def test_cli_install_codex_profile_writes_model_catalog_json(tmp_path, capsys):
 
     result = json.loads(capsys.readouterr().out)
     assert result["profile"] == "deepseek-thinking"
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path)
     assert "model_catalog_json" in text
     assert "/tmp/deepseek-proxy-models.json" in text
 
@@ -2562,7 +2585,7 @@ def test_cli_install_codex_profile_writes_plan_mode_reasoning_effort(tmp_path, c
 
     result = json.loads(capsys.readouterr().out)
     assert result["profile"] == "deepseek-thinking"
-    profile_text = config_path.read_text(encoding="utf-8")
+    profile_text = _codex_profile_text(config_path)
     assert 'model_reasoning_effort = "xhigh"' in profile_text
     assert 'plan_mode_reasoning_effort = "high"' in profile_text
 
@@ -2575,7 +2598,7 @@ def test_cli_config_set_effort_pins_codex_plan_mode_to_high(tmp_path, capsys):
     assert main(["config", "set-effort", "medium", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    patched = config_path.read_text(encoding="utf-8")
+    patched = _codex_profile_text(config_path)
     assert result["requested_effort"] == "medium"
     assert result["effort"] == "high"
     assert result["codex_plan_mode_reasoning_effort"] == "high"
@@ -2601,7 +2624,7 @@ def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp
     assert main(["config", "set-effort", "max", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "deepseek-thinking")
     assert result["requested_effort"] == "max"
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
@@ -2620,7 +2643,7 @@ def test_cli_config_set_effort_xhigh_is_compat_input_for_max(tmp_path, capsys):
     assert main(["config", "set-effort", "xhigh", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path)
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
     assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
@@ -2641,7 +2664,7 @@ def test_cli_config_set_effort_high_repairs_previous_codex_max(tmp_path, capsys)
     assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path)
     assert result["deepseek_reasoning_effort"] == "high"
     assert result["codex_model_reasoning_effort"] == "high"
     assert result["codex_config_loadable"] is True
@@ -2685,7 +2708,7 @@ def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path,
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "deepseek-thinking")
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
     assert result["post_config_apply"]["status"] == "skipped"
@@ -2729,7 +2752,7 @@ def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, cap
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path)
     assert result["codex_profile"] == "deepseek-thinking"
     assert result["target_profiles"] == ["deepseek-thinking"]
     assert result["deepseek_reasoning_effort"] == "max"
@@ -2747,15 +2770,18 @@ def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
     env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
     config_path.write_text(
         "[model_providers.deepseek-thinking-proxy]\n"
-        "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n",
+        encoding="utf-8",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
-        encoding="utf-8",
     )
 
     assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
@@ -2788,19 +2814,20 @@ def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
     assert result["health"]["invalid_profile_fields"][0]["value"] == "max"
 
 
+
 def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     from deepseek_responses_proxy import cli as cli_module
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
-    config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
-        encoding="utf-8",
     )
     monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
@@ -2828,7 +2855,6 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
     assert result["balance"]["action"] == "start the selected dsproxy route and re-run dsproxy status --weclaw-json"
 
     assert result["runtime_status"]["available"] is False
-
 
 def test_cli_status_weclaw_json_exposes_legacy_compact_audit_when_runtime_weclaw_unavailable(monkeypatch, tmp_path, capsys):
     from deepseek_responses_proxy import cli as cli_module
@@ -2893,6 +2919,7 @@ def test_cli_status_weclaw_json_exposes_legacy_compact_audit_when_runtime_weclaw
     assert result["runtime_payload_guard"]["compaction"]["compact_audit"]["available"] is True
 
 
+
 def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
@@ -2902,18 +2929,19 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
         "export DEEPSEEK_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
-    config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
         "model = \"glm-5.1\"\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n",
-        encoding="utf-8",
     )
 
     assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
+    assert result["profile_source"] == "split_profile_file"
     model = result["model"]
     assert model["codex_model"] == "glm-5.1"
     assert model["effective_model"] == "deepseek-v4-flash"
@@ -2924,7 +2952,6 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     assert model["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
     assert model["user_visible"] is False
     assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
-
 
 def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_model_conflict(tmp_path, capsys, monkeypatch):
     config_path = tmp_path / "codex.toml"
@@ -2975,17 +3002,18 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
     assert repaired["model_auto_compact_token_limit_patched"] is True
 
     text = config_path.read_text(encoding="utf-8")
+    profile_text = _codex_profile_text(config_path)
     assert '[model_providers.deepseek-thinking-proxy]' in text
     assert 'name = "DeepSeek Thinking Responses Proxy"' in text
     assert 'base_url = "http://127.0.0.1:8001/v1"' in text
     assert 'env_key = "DEEPSEEK_API_KEY"' in text
     assert 'wire_api = "responses"' in text
-    assert '[profiles.deepseek-thinking]' in text
-    assert 'model = "deepseek-v4-flash"' in text
-    assert 'model = "glm-5.1"' not in text
-    assert 'model_auto_compact_token_limit = 900000' in text
-    assert 'model_reasoning_effort = "xhigh"' in text
-    assert 'plan_mode_reasoning_effort = "high"' in text
+    assert '[profiles.deepseek-thinking]' not in text
+    assert 'model = "deepseek-v4-flash"' in profile_text
+    assert 'model = "glm-5.1"' not in profile_text
+    assert 'model_auto_compact_token_limit = 900000' in profile_text
+    assert 'model_reasoning_effort = "xhigh"' in profile_text
+    assert 'plan_mode_reasoning_effort = "high"' in profile_text
 
     assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     status = json.loads(capsys.readouterr().out)
@@ -3185,7 +3213,7 @@ def test_cli_profile_repair_managed_models_syncs_effective_models(tmp_path, caps
     assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = codex_config.read_text(encoding="utf-8")
+    text = _codex_profile_text(codex_config, "deepseek") + _codex_profile_text(codex_config, "deepseek-thinking")
     assert result["status"] == "ok"
     assert result["target_profiles"] == ["deepseek", "deepseek-thinking"]
     assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
@@ -3275,24 +3303,30 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     return_idx = text.index('return "$codex_rc"', cleanup_idx)
     assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
 
+
 def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_path, capsys):
     catalog_path = tmp_path / "models.json"
     catalog_path.write_text(
         json.dumps({"models": {"deepseek-v4-flash": {"context_window_tokens": 1000000}}}),
         encoding="utf-8",
     )
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\nexport DEEPSEEK_REASONING_EFFORT=max\n", encoding="utf-8")
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n",
+        encoding="utf-8",
+    )
+    _write_split_codex_profile(
+        codex_config,
+        "deepseek-thinking",
         "model = \"deepseek-v4-flash\"\n"
         "model_provider = \"deepseek-thinking-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
-        f"model_catalog_json = \"{catalog_path}\"\n"
-        "\n[model_providers.deepseek-thinking-proxy]\n"
-        "base_url = \"http://127.0.0.1:8001/v1\"\n",
-        encoding="utf-8",
+        f"model_catalog_json = \"{catalog_path}\"\n",
     )
 
     assert main([
@@ -3300,18 +3334,20 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
         "status",
         "deepseek-thinking",
         "--json",
+        "--env-file",
+        str(env_file),
         "--codex-config",
         str(codex_config),
     ]) == 0
     result = json.loads(capsys.readouterr().out)
 
+    assert result["profile_source"] == "split_profile_file"
     assert result["context_window"]["model_catalog"]["available"] is True
     assert result["context_window"]["model_catalog"]["context_window_tokens"] == 1000000
     assert result["context_window"]["used_tokens_action"]
     assert result["context_window"]["used_tokens_precision"] == "unavailable"
     paths = {item["path"] for item in result["diagnostics"]["degraded_fields"]}
     assert "context_window.used_tokens" in paths
-
 
 def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, capsys):
     import deepseek_responses_proxy.cli as cli_module
@@ -3418,7 +3454,7 @@ def test_cli_profile_repair_ignores_env_ratio_without_shrinking_window(tmp_path,
     assert profile["model_context_window_tokens"] == 1_000_000
     assert profile["expected_model_auto_compact_token_limit"] == 900_000
 
-    text = config_path.read_text(encoding="utf-8")
+    text = _codex_profile_text(config_path)
     assert "model_context_window = 1000000" in text
     assert "model_context_window = 12000" not in text
     assert "model_auto_compact_token_limit = 900000" in text
@@ -3466,5 +3502,5 @@ def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_thresh
     result = json.loads(capsys.readouterr().out)
     assert result["managed_auto_compact_ratio"] == 0.05
     assert result["auto_compact_ratio_source"] == "arg.auto_compact_ratio"
-    assert "model_context_window = 1000000" in config_path.read_text(encoding="utf-8")
-    assert "model_auto_compact_token_limit = 50000" in config_path.read_text(encoding="utf-8")
+    assert "model_context_window = 1000000" in _codex_profile_text(config_path, "deepseek")
+    assert "model_auto_compact_token_limit = 50000" in _codex_profile_text(config_path, "deepseek")

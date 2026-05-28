@@ -1,3 +1,20 @@
+## p2.15a1 Codex 0.134 profile, custom provider, and wizard UX contract
+
+Date: 2026-05-28
+
+Scope:
+
+- Adapt managed Codex profiles to the Codex 0.134+ split profile file layout.
+- Keep provider blocks in the main Codex config and write profile bodies to `deepseek.config.toml` and `deepseek-thinking.config.toml`.
+- Treat legacy `[profiles.*]` tables and top-level `profile = "deepseek*"` selectors as migration input only.
+- Make `dsproxy config test-api-key` read the configured model provider/base URL/model from env by default, so custom providers validate against their configured `/models` endpoint instead of DeepSeek official `/user/balance`.
+- Align `dsproxy config wizard` with the installer arrow-key menu contract.
+
+Release boundary:
+
+- Internal patch node only unless the maintainer explicitly starts a `v0.4.0-alpha` Release update.
+- Public tag `v0.4.0-alpha` remains pinned before a separate Release task.
+
 ## p2.14a10 Release metadata environment sanitization
 
 Date: 2026-05-27

@@ -26,15 +26,15 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Primary branch: `master`
 - Current public Release: `v0.4.0-alpha`
-- Current public Release kind: pre-release
+- Current public Release kind: ordinary Latest Release
 - Current public Release commit: resolved from `v0.4.0-alpha` tag after publication
-- GitHub Latest ordinary Release: `v0.3.9-alpha`
+- GitHub Latest ordinary Release: `v0.4.0-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.4.0-alpha`
-- GitHub Release state: non-draft pre-release
-- GitHub Release flags: `isDraft=false`, `isPrerelease=true`
+- GitHub Release state: non-draft non-prerelease
+- GitHub Release flags: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.14a10-release-metadata-env-sanitization`
-- Latest closed documentation sync checkpoint: `p2.14a10-release-metadata-env-sanitization`
+- Current internal development checkpoint: `p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
+- Latest closed documentation sync checkpoint: `p2.15a1-codex-0134-profile-custom-provider-wizard-ux`
 - Current public Release note synchronization checkpoint: `p2.14a8-v040-alpha-release`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
@@ -1922,6 +1922,16 @@ Rules:
 5. `--skip-profile` maps to installer `--no-codex-profile`; `--no-restart` is informational because the installer fallback does not start proxy processes.
 6. Same-public-version non-git upgrades are skipped unless `--force` is used, because a non-git install cannot safely compare the target tag commit without a checkout.
 7. Publishing the fix still requires a separate public Release decision: update the existing `v0.4.0-alpha` pre-release or publish a later alpha tag.
+
+## p2.15a1 Codex 0.134 profile, custom provider, and wizard UX contract
+
+p2.15a1 fixes three P0 surfaces:
+
+1. Codex 0.134+ managed profiles use split profile files. The main `~/.codex/config.toml` must contain provider blocks only; managed profile bodies live in `~/.codex/deepseek.config.toml` and `~/.codex/deepseek-thinking.config.toml`. Legacy `[profiles.deepseek]`, `[profiles.deepseek-thinking]`, and top-level `profile = "deepseek*"` entries are migration inputs only and must be removed by install/repair/set-effort/uninstall paths.
+2. Custom model API validation must use the configured `DEEPSEEK_PROXY_MODEL_PROVIDER`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_PROXY_MODEL`. `dsproxy config test-api-key` must not default to DeepSeek official `/user/balance` when the env selects `custom`.
+3. `dsproxy config wizard` must follow the same arrow-key UI contract as the one-line installer: `↑/↓` or `j/k` to move, Enter to select, Backspace to go back, with no TTY numeric prompt.
+
+This node does not move `v0.4.0-alpha` or rebuild Release assets unless a separate Release task is explicitly started.
 
 ## p2.14a10 Release metadata environment sanitization
 

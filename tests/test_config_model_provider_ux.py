@@ -7,6 +7,11 @@ from pathlib import Path
 cli = importlib.import_module("deepseek_responses_proxy.cli")
 ROOT = Path(__file__).resolve().parents[1]
 
+def _codex_profile_text(config_path: Path, profile: str = "deepseek-thinking") -> str:
+    path = config_path.parent / f"{profile}.config.toml"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 
 def _patch_post_config(monkeypatch):
     monkeypatch.setattr(cli, "_post_config_apply", lambda: {"status": "ok", "message": "all updates applied"})
@@ -44,7 +49,8 @@ def test_set_model_can_configure_provider_key_and_model(tmp_path, monkeypatch, c
     assert values["DEEPSEEK_API_KEY"] == "sk-kimi-test-123456"
     assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "kimi"
     assert values["DEEPSEEK_PROXY_MODEL"] == "moonshot-v1-8k"
-    assert 'model = "moonshot-v1-8k"' in codex_config.read_text(encoding="utf-8")
+    assert 'model = "moonshot-v1-8k"' in _codex_profile_text(codex_config)
+    assert "[profiles.deepseek-thinking]" not in codex_config.read_text(encoding="utf-8")
 
 
 def test_set_api_key_remains_compatibility_alias(tmp_path, monkeypatch, capsys):
