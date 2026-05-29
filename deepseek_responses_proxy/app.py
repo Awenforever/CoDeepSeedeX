@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.2-alpha"
-PROXY_INTERNAL_VERSION = "p2.17a5-custom-provider-chat-compat"
+PROXY_INTERNAL_VERSION = "p2.17a6-provider-capability-profiles"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -15278,14 +15278,9 @@ def _upstream_exception_to_http_exception(exc: Exception) -> HTTPException:
         return exc
 
     if isinstance(exc, httpx.TimeoutException):
-        return HTTPException(
-            status_code=504,
-            detail={
-                "upstream": "deepseek",
-                "error_type": "timeout",
-                "message": str(exc),
-            },
-        )
+        detail = _upstream_error_detail(status_code=504, body=str(exc))
+        detail.update({"error_type": "timeout", "message": str(exc)})
+        return HTTPException(status_code=504, detail=detail)
 
     if isinstance(exc, httpx.HTTPStatusError):
         response = exc.response
@@ -15298,22 +15293,13 @@ def _upstream_exception_to_http_exception(exc: Exception) -> HTTPException:
 
         return HTTPException(
             status_code=proxy_status,
-            detail={
-                "upstream": "deepseek",
-                "status_code": status_code,
-                "body": body,
-            },
+            detail=_upstream_error_detail(status_code=status_code, body=body),
         )
 
     if isinstance(exc, httpx.RequestError):
-        return HTTPException(
-            status_code=502,
-            detail={
-                "upstream": "deepseek",
-                "error_type": "network",
-                "message": str(exc),
-            },
-        )
+        detail = _upstream_error_detail(status_code=502, body=str(exc))
+        detail.update({"error_type": "network", "message": str(exc)})
+        return HTTPException(status_code=502, detail=detail)
 
     return HTTPException(
         status_code=502,
@@ -15611,6 +15597,7 @@ def _configured_base_url_host(base_url: str | None = None) -> str | None:
         return None
 
 
+
 def _chat_payload_compat_mode() -> str:
     explicit = str(os.environ.get("DEEPSEEK_PROXY_CHAT_COMPAT_MODE") or "").strip().lower().replace("-", "_")
     if explicit in {"deepseek", "openai_compatible"}:
@@ -15623,6 +15610,55 @@ def _chat_payload_compat_mode() -> str:
     return "deepseek" if provider == "deepseek" else "openai_compatible"
 
 
+_OPENAI_COMPATIBLE_CHAT_PARAMS = {
+    "model",
+    "messages",
+    "stream",
+    "max_tokens",
+    "temperature",
+    "top_p",
+    "stop",
+    "response_format",
+    "tools",
+    "tool_choice",
+}
+
+_DEEPSEEK_CHAT_EXTENSION_PARAMS = {"user_id", "thinking", "reasoning_effort"}
+
+
+def _split_chat_param_list(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    params: set[str] = set()
+    for part in re.split(r"[,\s]+", str(raw)):
+        item = part.strip()
+        if not item:
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", item):
+            params.add(item)
+    return params
+
+
+def _chat_extra_params_from_env() -> dict[str, Any]:
+    raw = os.environ.get("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON")
+    if raw is None:
+        raw = os.environ.get("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS")
+    if not raw or not raw.strip():
+        return {}
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        key_text = str(key).strip()
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key_text):
+            cleaned[key_text] = item
+    return cleaned
+
+
 def _chat_payload_supports_deepseek_extensions() -> bool:
     override = _env_flag_value("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
     if override is not None:
@@ -15630,42 +15666,148 @@ def _chat_payload_supports_deepseek_extensions() -> bool:
     return _chat_payload_compat_mode() == "deepseek"
 
 
-def _unsupported_deepseek_extension_chat_params() -> set[str]:
-    return {"user_id", "thinking", "reasoning_effort"}
+def _chat_capability_profile() -> dict[str, Any]:
+    """Return the provider chat capability profile used by the payload adapter.
+
+    The default for custom/OpenAI-compatible providers is a conservative common
+    chat/completions allowlist. Provider-specific behavior is opt-in through
+    explicit allow/drop/extra env declarations instead of inferred from the
+    provider name alone.
+    """
+    provider = _configured_model_provider()
+    compat_mode = _chat_payload_compat_mode()
+    supports_deepseek_extensions = _chat_payload_supports_deepseek_extensions()
+    explicit_allow = _split_chat_param_list(os.environ.get("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS"))
+    explicit_drop = _split_chat_param_list(os.environ.get("DEEPSEEK_PROXY_CHAT_DROP_PARAMS"))
+    extra_params = _chat_extra_params_from_env()
+    extra_keys = set(extra_params)
+
+    if compat_mode == "deepseek":
+        default_allowed: set[str] | None = None
+        default_dropped: set[str] = set()
+    else:
+        default_allowed = set(_OPENAI_COMPATIBLE_CHAT_PARAMS)
+        if supports_deepseek_extensions:
+            default_allowed.update(_DEEPSEEK_CHAT_EXTENSION_PARAMS)
+            default_dropped = set()
+        else:
+            default_dropped = set(_DEEPSEEK_CHAT_EXTENSION_PARAMS)
+
+    effective_allowed = None if default_allowed is None else set(default_allowed) | explicit_allow | extra_keys
+    effective_drop = set(explicit_drop)
+    if default_allowed is None:
+        # DeepSeek mode keeps known DeepSeek extensions unless explicitly dropped.
+        effective_drop.update(explicit_drop)
+    else:
+        # In allowlist mode, unsupported defaults are excluded by absence from the
+        # allowlist. Explicit allow overrides the default DeepSeek-extension drop.
+        effective_drop.update(default_dropped - explicit_allow - extra_keys)
+
+    return {
+        "provider": provider,
+        "base_url_host": _configured_base_url_host(),
+        "chat_compat_mode": compat_mode,
+        "supports_deepseek_extensions": supports_deepseek_extensions,
+        "allow_all_params": effective_allowed is None,
+        "allowed_params": None if effective_allowed is None else sorted(effective_allowed),
+        "default_allowed_params": None if default_allowed is None else sorted(default_allowed),
+        "allow_params": sorted(explicit_allow),
+        "drop_params": sorted(effective_drop),
+        "explicit_drop_params": sorted(explicit_drop),
+        "extra_params": sorted(extra_keys),
+        "extra_params_payload": extra_params,
+    }
+
+
+def _chat_capability_profile_for_diagnostics() -> dict[str, Any]:
+    profile = _chat_capability_profile()
+    return {
+        "provider": profile["provider"],
+        "base_url_host": profile["base_url_host"],
+        "chat_compat_mode": profile["chat_compat_mode"],
+        "supports_deepseek_extensions": profile["supports_deepseek_extensions"],
+        "allow_all_params": profile["allow_all_params"],
+        "allowed_params": profile["allowed_params"],
+        "allow_params": profile["allow_params"],
+        "drop_params": profile["drop_params"],
+        "explicit_drop_params": profile["explicit_drop_params"],
+        "extra_params": profile["extra_params"],
+    }
+
+
+def _unsupported_parameter_names_from_body(body: str) -> list[str]:
+    if not body:
+        return []
+    found: set[str] = set()
+    for pattern in [
+        r"Unsupported parameter\(s\):\s*`([^`]+)`",
+        r"unsupported parameter\(s\).*?`([^`]+)`",
+        r"unsupported.*?parameter.*?[\"'`]([A-Za-z_][A-Za-z0-9_]*)[\"'`]",
+    ]:
+        for match in re.finditer(pattern, body, flags=re.I | re.S):
+            for part in re.split(r"[,\s]+", match.group(1)):
+                item = part.strip(" `\"'")
+                if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", item):
+                    found.add(item)
+    return sorted(found)
+
+
+def _apply_chat_capability_profile(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return payload, _chat_capability_profile_for_diagnostics()
+    profile = _chat_capability_profile()
+    allowed_params = None if profile["allowed_params"] is None else set(profile["allowed_params"])
+    drop_params = set(profile["drop_params"])
+    extra_params = dict(profile.get("extra_params_payload") or {})
+
+    cleaned: dict[str, Any] = {}
+    dropped_by_allowlist: set[str] = set()
+    dropped_by_drop: set[str] = set()
+    for key, value in payload.items():
+        if allowed_params is not None and key not in allowed_params:
+            dropped_by_allowlist.add(key)
+            continue
+        if key in drop_params:
+            dropped_by_drop.add(key)
+            continue
+        cleaned[key] = value
+
+    for key, value in extra_params.items():
+        if key in drop_params:
+            dropped_by_drop.add(key)
+            continue
+        cleaned[key] = value
+
+    diagnostics = _chat_capability_profile_for_diagnostics()
+    diagnostics.update(
+        {
+            "input_params": sorted(payload),
+            "output_params": sorted(cleaned),
+            "dropped_by_allowlist": sorted(dropped_by_allowlist),
+            "dropped_by_drop_params": sorted(dropped_by_drop),
+        }
+    )
+    return cleaned, diagnostics
 
 
 def _sanitize_chat_payload_for_upstream(payload: dict[str, Any]) -> dict[str, Any]:
-    """Remove vendor-specific chat params for generic OpenAI-compatible custom providers.
-
-    DeepSeek official accepts extensions such as user_id/thinking/reasoning_effort.
-    Many custom OpenAI-compatible providers reject those fields with 400 errors. The
-    default for DEEPSEEK_PROXY_MODEL_PROVIDER=custom is therefore fail-safe: keep the
-    standard chat/completions allowlist and strip DeepSeek-only extensions. Operators
-    using a DeepSeek-compatible custom endpoint can opt back in with
-    DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS=1 or
-    DEEPSEEK_PROXY_CHAT_COMPAT_MODE=deepseek.
-    """
-    if not isinstance(payload, dict):
-        return payload
-    if _chat_payload_supports_deepseek_extensions():
-        return payload
-    cleaned = dict(payload)
-    for key in _unsupported_deepseek_extension_chat_params():
-        cleaned.pop(key, None)
+    cleaned, _diagnostics = _apply_chat_capability_profile(payload)
     return cleaned
 
 
 def _upstream_error_detail(*, status_code: int, body: str) -> dict[str, Any]:
     provider = _configured_model_provider()
-    return {
+    detail = {
         "upstream": provider,
         "upstream_provider": provider,
         "base_url_host": _configured_base_url_host(),
         "chat_compat_mode": _chat_payload_compat_mode(),
+        "chat_capability_profile": _chat_capability_profile_for_diagnostics(),
+        "unsupported_parameters": _unsupported_parameter_names_from_body(body),
         "status_code": status_code,
         "body": body,
     }
-
+    return detail
 
 def _build_chat_payload(
     *,

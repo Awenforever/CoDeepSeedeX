@@ -11,6 +11,8 @@ from deepseek_responses_proxy.app import (
     DeepSeekClient,
     InMemoryResponseStore,
     _build_compaction_material,
+    _build_chat_payload,
+    _chat_capability_profile,
     _codex_native_compact_status_from_report,
     _protected_compaction_summary_observation,
     create_app,
@@ -723,3 +725,108 @@ def test_codex_native_compact_status_reports_inline_expected_path():
     assert status["profile_contract"]["expected_compact_path"] == "ordinary_responses_inline_compact"
     assert status["remote_compact_guard"]["unexpected_remote_compact_call_seen"] is False
     assert status["fallback_policy"]["dsproxy_runtime_compact_role"] == "fallback_only"
+
+
+def test_custom_chat_capability_profile_filters_to_openai_common_params(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", raising=False)
+
+    payload = _build_chat_payload(
+        model="deepseek-v4-flash-ascend",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        reasoning_effort="max",
+        request_payload={"max_output_tokens": 8},
+    )
+
+    assert payload["model"] == "deepseek-v4-flash-ascend"
+    assert payload["max_tokens"] == 8
+    assert "user_id" not in payload
+    assert "thinking" not in payload
+    assert "reasoning_effort" not in payload
+    profile = _chat_capability_profile()
+    assert profile["chat_compat_mode"] == "openai_compatible"
+    assert profile["allow_all_params"] is False
+    assert "user_id" in profile["drop_params"]
+
+
+def test_chat_capability_profile_allows_custom_vendor_extensions(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", "vendor_trace_id user_id")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
+
+    payload = _build_chat_payload(
+        model="custom-model",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        reasoning_effort="max",
+        request_payload={"max_output_tokens": 8},
+    )
+
+    assert payload["vendor_trace_id"] == "trace-1"
+    assert "user_id" in payload
+    assert "reasoning_effort" not in payload
+
+
+def test_chat_capability_profile_drop_params_overrides_extra_params(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", "vendor_trace_id")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", "vendor_trace_id")
+    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
+
+    payload = _build_chat_payload(
+        model="custom-model",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        reasoning_effort=None,
+        request_payload={"max_output_tokens": 8},
+    )
+
+    assert "vendor_trace_id" not in payload
+
+
+def test_deepseek_chat_capability_profile_keeps_deepseek_extensions(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
+
+    payload = _build_chat_payload(
+        model="deepseek-v4-pro",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        reasoning_effort="max",
+        request_payload={"max_output_tokens": 8},
+    )
+
+    assert payload["thinking"] == {"type": "enabled"}
+    assert payload["reasoning_effort"] == "max"
+    assert "user_id" in payload
+    profile = _chat_capability_profile()
+    assert profile["allow_all_params"] is True
+    assert profile["chat_compat_mode"] == "deepseek"
+
+
+def test_upstream_error_detail_reports_custom_provider_capability(monkeypatch):
+    from deepseek_responses_proxy.app import _upstream_error_detail
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+
+    detail = _upstream_error_detail(
+        status_code=400,
+        body='Validation: Unsupported parameter(s): `user_id`',
+    )
+
+    assert detail["upstream"] == "custom"
+    assert detail["upstream_provider"] == "custom"
+    assert detail["base_url_host"] == "api.llm.ustc.edu.cn"
+    assert detail["chat_compat_mode"] == "openai_compatible"
+    assert detail["unsupported_parameters"] == ["user_id"]
+    assert detail["chat_capability_profile"]["allow_all_params"] is False

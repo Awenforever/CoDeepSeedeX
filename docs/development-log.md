@@ -1,4 +1,21 @@
 
+## p2.17a6 Provider capability profiles
+
+Date: 2026-05-29
+
+Scope:
+
+- Add a provider capability profile layer for chat/completions payload adaptation.
+- Keep custom/OpenAI-compatible providers on a conservative common-parameter allowlist by default.
+- Support explicit `DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS`, `DEEPSEEK_PROXY_CHAT_DROP_PARAMS`, and `DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON` overrides for provider-specific custom extensions.
+- Keep DeepSeek official extensions enabled for the official provider, while letting custom providers opt in explicitly.
+- Enrich upstream error diagnostics with provider, base URL host, compatibility mode, capability profile, and unsupported parameter extraction.
+
+Release boundary:
+
+- Internal development node only. No public Release or asset update.
+
+
 ## p2.17a5 Custom provider chat compatibility
 
 Date: 2026-05-29
