@@ -23,6 +23,25 @@ def test_terminal_tui_render_menu_stays_within_visible_width() -> None:
     assert "● [zh-CN] 简体中文" in rendered
 
 
+def test_terminal_tui_layout_is_left_aligned_and_compact() -> None:
+    rendered = render_menu(
+        "Configure model API now?",
+        [TerminalMenuOption("Y", "Yes", ""), TerminalMenuOption("N", "No", "")],
+        selected=0,
+        footer_label="Step 2/5",
+        width=72,
+    )
+    lines = rendered.splitlines()
+    title_line = next(line for line in lines if "Configure model API now?" in line)
+    yes_line = next(line for line in lines if "[Y] Yes" in line)
+    no_line = next(line for line in lines if "[N] No" in line)
+    assert display_width(title_line) <= 72
+    assert title_line.startswith("  ")
+    assert yes_line.startswith("  ")
+    assert no_line.startswith("  ")
+    assert "   " * 8 not in yes_line
+
+
 def test_terminal_tui_render_panel_has_open_layout_without_right_border() -> None:
     rendered = render_panel("Setup plan", ["Only user-facing decisions are prompted."], footer_label="Step 0/5", width=50)
     assert "CoDeepSeedeX" in rendered
