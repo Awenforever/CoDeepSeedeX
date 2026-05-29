@@ -32,16 +32,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Explicit pre-release channel, currently `v0.4.1-alpha`:
+Explicit pre-release channel, currently `v0.4.2-alpha`:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.1-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.1-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.2-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.2-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.4.1-alpha"
+tag="v0.4.2-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -225,7 +225,7 @@ dsproxy upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-dsproxy upgrade --tag v0.4.1-alpha
+dsproxy upgrade --tag v0.4.2-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -263,7 +263,7 @@ The uninstaller must not delete unrelated user files or non-CoDeepSeedeX configu
 
 CoDeepSeedeX can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
 
-If WeClaw integration is used with CoDeepSeedeX `v0.4.1-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`, WeClaw must be at least:
+If WeClaw integration is used with CoDeepSeedeX `v0.4.2-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`, WeClaw must be at least:
 
 ```text
 weclaw_dev >= v0.1.9-alpha

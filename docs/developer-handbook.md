@@ -25,23 +25,23 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Local project path: `~/projects/deepseek-responses-proxy`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Primary branch: `master`
-- Current public Release: `v0.4.1-alpha`
+- Current public Release: `v0.4.2-alpha`
 - Current public Release kind: pre-release
-- Current public Release commit: resolved from `v0.4.1-alpha` tag after publication
+- Current public Release commit: resolved from `v0.4.2-alpha` tag after publication
 - GitHub Latest ordinary Release: `v0.4.0-alpha`
-- GitHub Release title: `CoDeepSeedeX v0.4.1-alpha`
+- GitHub Release title: `CoDeepSeedeX v0.4.2-alpha`
 - GitHub Release state: non-draft non-prerelease
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.17a3-restore-p216a7-terminal-ui`
-- Latest closed documentation sync checkpoint: `p2.17a3-restore-p216a7-terminal-ui`
-- Current public Release note synchronization checkpoint: `p2.17a3-restore-p216a7-terminal-ui`
+- Current internal development checkpoint: `p2.17a4-release-v042-alpha`
+- Latest closed documentation sync checkpoint: `p2.17a4-release-v042-alpha`
+- Current public Release note synchronization checkpoint: `p2.17a4-release-v042-alpha`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line remains compatible with the dsproxy-owned status contracts. p2.14 adds managed native tool routing, routing diagnostics, and web/image provider bridge validation.
 - Release requirement: if WeClaw integration is used, `weclaw_dev` must be at least `v0.1.9-alpha`.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.4.1-alpha = resolved by release tag`
+  - `v0.4.2-alpha = resolved by release tag`
   - `v0.3.9-alpha = 82a4428` as the previous public Latest ordinary Release peeled commit.
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -1946,13 +1946,13 @@ Rules:
 5. Do not mark `v0.4.0-alpha` as Latest until VM validation shows `dsproxy --version` with the updated peeled public/internal commit after installation and forced non-git upgrade.
 
 
-## p2.15a4 v0.4.1-alpha pre-release
+## p2.15a4 v0.4.2-alpha pre-release
 
-p2.15a4 publishes the p2.15 Codex 0.134+ profile-layout and custom-provider fixes as the public `v0.4.1-alpha` pre-release.
+p2.15a4 publishes the p2.15 Codex 0.134+ profile-layout and custom-provider fixes as the public `v0.4.2-alpha` pre-release.
 
 Release boundary:
 
-1. `v0.4.1-alpha` is non-draft and pre-release.
+1. `v0.4.2-alpha` is non-draft and pre-release.
 2. GitHub Latest ordinary Release remains `v0.4.0-alpha` unless a later explicit promotion task changes it.
 3. Public assets remain `bootstrap.sh` and `install.sh`.
 4. The Release note is written from a temporary `/tmp` file only; no tracked per-release note source is maintained under `docs/`.

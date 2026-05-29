@@ -1,5 +1,22 @@
 ## p2.17a3 Restore p2.16a7 terminal UI
 
+## p2.17a4 Release v0.4.2-alpha
+
+Date: 2026-05-29
+
+Scope:
+
+- Publish `v0.4.2-alpha` as the current public Release from the restored stable open terminal UI line.
+- Keep the user-facing Release notes focused on upgrade impact rather than internal checkpoint names.
+- Include image payload preservation and installer/wizard usability improvements since `v0.4.1-alpha`.
+
+Release boundary:
+
+- Public tag: `v0.4.2-alpha`.
+- Internal checkpoint: `p2.17a4-release-v042-alpha`.
+- GitHub Release should be non-draft, non-prerelease, and Latest after promotion.
+
+
 Date: 2026-05-29
 
 Scope:
@@ -22,7 +39,7 @@ Scope:
 
 Release boundary:
 
-- Internal development node only. Public Release remains `v0.4.1-alpha` until a later explicit release update.
+- Internal development node only. Public Release remains `v0.4.2-alpha` until a later explicit release update.
 
 
 ## p2.16a6 Terminal UI flow language and automatic ports
@@ -39,7 +56,7 @@ Scope:
 
 Release boundary:
 
-- Internal development node only. It does not move `v0.4.1-alpha` and does not update public Release assets.
+- Internal development node only. It does not move `v0.4.2-alpha` and does not update public Release assets.
 
 
 ## p2.16a5 Terminal UI frame and Backspace correctness
@@ -80,7 +97,7 @@ Scope:
 - Reworked the installer and `dsproxy config wizard` terminal panels from compact box-only output into a more spacious framed layout.
 - Separated the main question, hint/details, option list, and keybinding footer so long guidance does not visually crowd the selection rows.
 - Kept non-interactive and dry-run output machine-readable; this node only changes interactive TTY presentation.
-- Public `v0.4.1-alpha` is not moved in this internal UI iteration.
+- Public `v0.4.2-alpha` is not moved in this internal UI iteration.
 
 ## p2.16a2 Terminal UI polish
 
@@ -104,7 +121,7 @@ Scope:
 
 Release boundary:
 
-- Internal development node only. It does not move `v0.4.1-alpha` and does not update GitHub Release assets.
+- Internal development node only. It does not move `v0.4.2-alpha` and does not update GitHub Release assets.
 
 ## p2.15a6-installer-env-file-precedence installer env-file precedence for non-interactive upgrades
 
@@ -114,11 +131,11 @@ Scope:
 
 - Fixed the installer non-interactive upgrade path so an existing env file remains the source of truth for model provider, base URL, upstream model, web-search provider/key, and image provider/key.
 - Prevented ambient shell variables from another HOME/session from overriding the target install HOME env file during Release/VM validation and real user upgrades.
-- This closes the v0.4.1-alpha VM validation gap where a legacy custom provider env was overwritten back to DeepSeek official defaults.
+- This closes the v0.4.2-alpha VM validation gap where a legacy custom provider env was overwritten back to DeepSeek official defaults.
 
 Release boundary:
 
-- The existing `v0.4.1-alpha` pre-release is updated to this internal checkpoint for VM validation.
+- The existing `v0.4.2-alpha` pre-release is updated to this internal checkpoint for VM validation.
 - GitHub Latest remains `v0.4.0-alpha` until VM validation passes and promotion is explicitly requested.
 
 
@@ -128,22 +145,22 @@ Date: 2026-05-28
 
 Scope:
 
-- Fix the `v0.4.1-alpha` VM validation failure where non-interactive install rewrote an existing env file without loading its configured model provider before choosing defaults.
+- Fix the `v0.4.2-alpha` VM validation failure where non-interactive install rewrote an existing env file without loading its configured model provider before choosing defaults.
 - Preserve existing `DEEPSEEK_PROXY_MODEL_PROVIDER`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_PROXY_MODEL` values during non-interactive install/upgrade.
 - Use the resolved non-DeepSeek/custom model when generating managed Codex split profile files, so upgraded Codex 0.134+ users keep their configured upstream model.
 
 Release boundary:
 
-- This node updates the existing `v0.4.1-alpha` pre-release candidate only after tests pass. VM legacy-config validation remains required before any Latest promotion.
+- This node updates the existing `v0.4.2-alpha` pre-release candidate only after tests pass. VM legacy-config validation remains required before any Latest promotion.
 
-## p2.15a4 v0.4.1-alpha pre-release
+## p2.15a4 v0.4.2-alpha pre-release
 
 Date: 2026-05-28
 
 Scope:
 
-- Publish the p2.15 Codex 0.134+ split-profile fix line as `v0.4.1-alpha`.
-- Keep `v0.4.0-alpha` as the GitHub Latest ordinary Release; `v0.4.1-alpha` is a non-draft pre-release.
+- Publish the p2.15 Codex 0.134+ split-profile fix line as `v0.4.2-alpha`.
+- Keep `v0.4.0-alpha` as the GitHub Latest ordinary Release; `v0.4.2-alpha` is a non-draft pre-release.
 - Release coverage: split Codex profile files for Codex 0.134+, legacy profile-table migration/removal, custom provider default API validation, and wizard/installer provider UX alignment.
 - Validate the old-user path with an isolated HOME containing legacy `[profiles.*]` config before install/repair.
 
