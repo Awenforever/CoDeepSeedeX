@@ -4679,15 +4679,15 @@ def _wizard_print_box_line(text: str = "", *, width: int | None = None, style: s
         print(f"\033[38;5;33m│\033[0m {padded} \033[38;5;33m│\033[0m", file=sys.stderr)
 
 
+
 def _wizard_print_box_top(title: str = "CoDeepSeedeX", *, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
-    inner = max(40, width - 4)
     label = str(title or "CoDeepSeedeX")
-    if len(label) > inner - 8:
-        label = label[: max(1, inner - 9)] + "…"
-    fill = "─" * max(1, inner - len(label) - 3)
+    max_label = max(8, width - 12)
+    if len(label) > max_label:
+        label = label[: max(1, max_label - 1)] + "…"
+    fill = "─" * max(1, width - len(label) - 5)
     print(f"\n\033[38;5;33m╭─ {label} {fill}╮\033[0m", file=sys.stderr)
-
 
 def _wizard_print_box_separator(*, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
@@ -4728,6 +4728,7 @@ def _wizard_step_label_for_prompt(prompt: str) -> str:
     return "Step 2/5"
 
 
+
 def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
     width = _wizard_terminal_width()
     inner = max(40, width - 4)
@@ -4743,10 +4744,9 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
     _wizard_print_box_line(prompt, width=width, style="\033[1;38;5;75m")
     _wizard_print_box_line("", width=width)
     if help_text:
-        _wizard_print_box_line("Hint:", width=width, style="\033[2m")
+        _wizard_print_box_line("Hint", width=width, style="\033[2m")
         _wizard_print_box_line(help_text, width=width, style="\033[2m")
         _wizard_print_box_line("", width=width)
-    _wizard_print_box_separator(width=width)
     _wizard_print_box_line("", width=width)
     for idx, (value, label, status) in enumerate(options):
         marker = "●" if idx == selected else "○"
@@ -4765,8 +4765,7 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
         else:
             _wizard_print_box_line(row, width=width)
     _wizard_print_box_line("", width=width)
-    _wizard_print_box_separator(width=width)
-    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to go back.", width=width, style="\033[2m")
+    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step.", width=width, style="\033[2m")
     _wizard_print_step_footer(_wizard_step_label_for_prompt(prompt), width=width)
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
@@ -4789,7 +4788,7 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
     try:
         tty.setraw(fd)
         while True:
-            print("\033[2J\033[H", end="", file=sys.stderr)
+            print("\033[2J\033[3J\033[H", end="", file=sys.stderr)
             _wizard_render_menu(prompt, options, selected, help_text=help_text)
             ch = sys.stdin.read(1)
             if ch == "\x1b":
@@ -4808,7 +4807,7 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
             if ch in {"\r", "\n"}:
                 return options[selected][0]
             if ch in {"\x7f", "\b"}:
-                return "0"
+                return "__CODEEPSEEDEX_BACK__"
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         print("", file=sys.stderr)

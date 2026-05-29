@@ -433,7 +433,7 @@ def test_installer_guided_provider_menus_use_arrow_selector() -> None:
     assert "read_yes_no_menu()" in text
     assert "menu_render_option_line()" in text
     assert "menu_truncate_line()" in text
-    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in text
     assert 'family="$(read_menu_choice_from_tty "Select model provider family" "1"' in text
     assert 'endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1"' in text
     assert 'family="$(read_menu_choice_from_tty "Select image generation provider family" "1"' in text
@@ -502,7 +502,7 @@ def test_installer_arrow_menu_uses_dev_tty_when_stdout_is_logged() -> None:
     assert "[ ! -t 0 ]" not in menu_func
     assert "[ ! -t 1 ]" not in menu_func
     assert "printf \"$@\" > /dev/tty" in text
-    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in menu_func
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in menu_func
 
 
 def test_installer_source_logging_uses_install_log_variable() -> None:
@@ -565,8 +565,8 @@ def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     assert "menu_terminal_cols()" in text
     assert "menu_truncate_line()" in text
     assert "menu_render_option_line()" in text
-    assert "menu_back_value()" in text
-    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
+    assert "__CODEEPSEEDEX_BACK__" in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in text
     assert "Press a listed number for a quick choice" not in text
     assert "Type a number/text for fallback" not in text
     assert "menu_value_exists()" not in text
@@ -626,13 +626,17 @@ def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
 
 def test_installer_menu_prints_detail_between_prompt_and_global_help() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    help_line = "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back."
+    help_line = "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step."
     assert "CODEEPSEEDEX_NEXT_MENU_DETAIL" in text
     assert 'local detail="${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}"' in text
-    assert 'ui_box_line "Hint:" "$width"' in text
-    assert 'ui_box_line "$detail" "$width"' in text
+    hint_marker = 'ui_box_line_styled "Hint" "$width" "\\033[2m"'
+    assert hint_marker in text
+    hint_pos = text.index(hint_marker)
+    help_pos = text.index(help_line)
+    detail_block = text[hint_pos:help_pos]
+    assert "$detail" in detail_block
     assert 'CODEEPSEEDEX_NEXT_MENU_DETAIL=""' in text
-    assert text.index('ui_box_line "Hint:" "$width"') < text.index(help_line)
+    assert hint_pos < help_pos
 
 def test_installer_wrapper_help_not_printed_as_standalone_line() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -762,7 +766,7 @@ def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> No
     text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
     assert "Select model API provider" not in text
     assert "Select image generation provider" not in text
-    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in text
 
 
 
@@ -797,5 +801,23 @@ def test_terminal_ui_uses_fixed_step_labels_instead_of_interactive_placeholder()
     assert "Step interactive" not in cli_text
     assert "Step 2/5" in install_text
     assert "Step 5/5" in install_text
+    assert "__CODEEPSEEDEX_BACK__" in install_text
     assert "Step 2/5" in cli_text
-    assert "\\033[2J\\033[H" in install_text
+    assert "\\033[2J\\033[3J\\033[H" in install_text
+
+
+def test_installer_backspace_returns_previous_step_sentinel() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "printf '%s\\n' \"__CODEEPSEEDEX_BACK__\"" in text
+    assert 'WRAPPER_CHOICE" = "__CODEEPSEEDEX_BACK__"' in text
+    assert 'guided_step=4' in text
+    assert 'return 20' in text
+
+
+def test_terminal_ui_omits_inner_menu_separators_for_boxed_layout() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start = text.index("read_menu_choice_from_tty() {")
+    end = text.index("\nread_yes_no_menu()", start)
+    menu_func = text[start:end]
+    assert "ui_box_separator" not in menu_func
+    assert "\\033[2J\\033[3J\\033[H" in menu_func

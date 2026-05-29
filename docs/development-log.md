@@ -1,3 +1,19 @@
+
+## p2.16a5 Terminal UI frame and Backspace correctness
+
+Date: 2026-05-29
+
+Scope:
+
+- Fixed terminal frame width calculation so top/body/footer borders use the same display width.
+- Removed inner menu separator lines from boxed interactive menus in favor of whitespace sections.
+- Changed Backspace from a skip/default shortcut into an explicit previous-step sentinel in installer menus.
+- Added a guided installer step loop for model, web, image, and wrapper configuration.
+
+Release boundary:
+
+- Internal development node only. Public Release assets were not updated.
+
 ## p2.16a4 Terminal UI frame and step polish
 
 Date: 2026-05-28

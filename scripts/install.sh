@@ -170,14 +170,14 @@ ui_wrap_text() {
   printf '%s\n' "$text"
 }
 
+
 ui_box_top() {
   local title="${1:-CoDeepSeedeX}"
   local width="${2:-$(ui_terminal_width)}"
-  local inner=$((width - 4))
   local clipped=""
   local fill_count=0
-  clipped="$(ui_trim_text "$title" "$((inner - 8))")"
-  fill_count=$((inner - ${#clipped} - 3))
+  clipped="$(ui_trim_text "$title" "$((width - 12))")"
+  fill_count=$((width - ${#clipped} - 5))
   if [ "$fill_count" -lt 1 ]; then
     fill_count=1
   fi
@@ -971,6 +971,7 @@ menu_step_label_for_prompt() {
   esac
 }
 
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -1010,17 +1011,16 @@ read_menu_choice_from_tty() {
 
   local render_panel
   render_panel() {
-    menu_tty_printf '\033[2J\033[H'
+    menu_tty_printf '\033[?25l\033[2J\033[3J\033[H'
     ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
     ui_box_line_styled "$prompt" "$width" "\033[1;38;5;75m" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
     if [ -n "$detail" ]; then
-      ui_box_line "Hint:" "$width" > /dev/tty
-      ui_box_line "$detail" "$width" > /dev/tty
+      ui_box_line_styled "Hint" "$width" "\033[2m" > /dev/tty
+      ui_box_line_styled "$detail" "$width" "\033[2m" > /dev/tty
       ui_box_line "" "$width" > /dev/tty
     fi
-    ui_box_separator "$width" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
@@ -1031,8 +1031,7 @@ read_menu_choice_from_tty() {
       fi
     done
     ui_box_line "" "$width" > /dev/tty
-    ui_box_separator "$width" > /dev/tty
-    ui_box_line "Use ↑/↓ or j/k to move, Enter to select, Backspace to go back." "$width" > /dev/tty
+    ui_box_line_styled "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." "$width" "\033[2m" > /dev/tty
     ui_step_footer "$step_label" "$width" > /dev/tty
   }
 
@@ -1070,20 +1069,15 @@ read_menu_choice_from_tty() {
         selected=$(( (selected + 1) % count ))
         ;;
       $'\x7f'|$'\b')
-        local back_value=""
-        back_value="$(menu_back_value "${options[@]}")"
         menu_tty_printf '\033[?25h\n'
-        if [ -n "$back_value" ]; then
-          printf '%s\n' "$back_value"
-        else
-          printf '%s\n' "$default"
-        fi
+        printf '%s\n' "__CODEEPSEEDEX_BACK__"
         return 0
         ;;
       *) ;;
     esac
   done
 }
+
 
 read_yes_no_menu() {
   local prompt="$1"
@@ -1154,6 +1148,7 @@ prompt_deepseek_api_key() {
   local configure=""
   configure="$(read_yes_no_menu "Configure model API now?" "Y")"
   case "$configure" in
+    __CODEEPSEEDEX_BACK__) return 20 ;;
     n|N|no|NO|No)
       warn "Model API skipped. Configure later with: dsproxy config wizard"
       return 0
@@ -1173,6 +1168,9 @@ prompt_deepseek_api_key() {
     "7|Baichuan|unsupported" \
     "8|Other OpenAI-compatible server|custom" \
     "0|Skip|skip")"
+  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
 
   case "$family" in
     1|deepseek|DeepSeek|DEEPSEEK)
@@ -1187,6 +1185,10 @@ prompt_deepseek_api_key() {
         "1|Domestic Token API / general endpoint|experimental" \
         "2|Domestic Coding Plan API endpoint|experimental" \
         "0|Back / skip|skip")"
+      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+        prompt_deepseek_api_key
+        return $?
+      fi
       case "$endpoint" in
         1|token|general|domestic) PROMPTED_MODEL_PROVIDER="zhipu" ;;
         2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zhipu-coding" ;;
@@ -1320,6 +1322,7 @@ prompt_serpapi_api_key() {
   local configure=""
   configure="$(read_yes_no_menu "Configure web search API now?" "N")"
   case "$configure" in
+    __CODEEPSEEDEX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
     *)
       warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
@@ -1339,6 +1342,9 @@ prompt_serpapi_api_key() {
     "6|Google Programmable Search|unsupported" \
     "7|Other custom server|unsupported" \
     "0|Skip|skip")"
+  if [ "$provider" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
   case "$provider" in
     1|serpapi|SerpAPI|SERPAPI) PROMPTED_WEB_SEARCH_PROVIDER="serpapi"; prompt="SerpAPI API key" ;;
     2|tavily|Tavily|TAVILY) PROMPTED_WEB_SEARCH_PROVIDER="tavily"; prompt="Tavily API key" ;;
@@ -1409,6 +1415,7 @@ prompt_image_generation_api_key() {
   local configure=""
   configure="$(read_yes_no_menu "Configure image generation API now?" "N")"
   case "$configure" in
+    __CODEEPSEEDEX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
     *)
       warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
@@ -1431,6 +1438,9 @@ prompt_image_generation_api_key() {
     "8|Volcengine Ark|unsupported" \
     "9|Other custom server|unsupported" \
     "0|Skip|skip")"
+  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
   case "$family" in
     1|zhipu|ZHIPU|zhipuai|ZHIPUAI|bigmodel|BIGMODEL) PROMPTED_IMAGE_PROVIDER="zhipu"; prompt="ZhipuAI / BigModel image API key" ;;
     2|glm|GLM|cogview|CogView|zai|ZAI|z.ai|Z.AI) PROMPTED_IMAGE_PROVIDER="zai"; prompt="Z.AI image API key" ;;
@@ -2332,22 +2342,55 @@ DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
 DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
 STABLE_PORT="$(read_from_tty "Non-Thinking proxy port" "$DEFAULT_STABLE_PORT")"
 THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
-prompt_deepseek_api_key
-API_KEY="$PROMPTED_API_KEY"
-menu_print_separator
-prompt_serpapi_api_key
-SERPAPI_KEY="$PROMPTED_SERPAPI_API_KEY"
-menu_print_separator
-prompt_image_generation_api_key
-IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
-menu_print_separator
-CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically."
-WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
 
-case "$WRAPPER_CHOICE" in
-  n|N|no|NO|No) INSTALL_CODEX_WRAPPER=0 ;;
-  *) INSTALL_CODEX_WRAPPER=1 ;;
-esac
+guided_step=2
+while true; do
+  case "$guided_step" in
+    2)
+      prompt_deepseek_api_key
+      step_rc=$?
+      if [ "$step_rc" = "20" ]; then
+        guided_step=2
+        continue
+      fi
+      API_KEY="$PROMPTED_API_KEY"
+      guided_step=3
+      ;;
+    3)
+      prompt_serpapi_api_key
+      step_rc=$?
+      if [ "$step_rc" = "20" ]; then
+        guided_step=2
+        continue
+      fi
+      SERPAPI_KEY="$PROMPTED_SERPAPI_API_KEY"
+      guided_step=4
+      ;;
+    4)
+      prompt_image_generation_api_key
+      step_rc=$?
+      if [ "$step_rc" = "20" ]; then
+        guided_step=3
+        continue
+      fi
+      IMAGE_API_KEY="$PROMPTED_IMAGE_API_KEY"
+      guided_step=5
+      ;;
+    5)
+      CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically."
+      WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
+      if [ "$WRAPPER_CHOICE" = "__CODEEPSEEDEX_BACK__" ]; then
+        guided_step=4
+        continue
+      fi
+      case "$WRAPPER_CHOICE" in
+        n|N|no|NO|No) INSTALL_CODEX_WRAPPER=0 ;;
+        *) INSTALL_CODEX_WRAPPER=1 ;;
+      esac
+      break
+      ;;
+  esac
+done
 
 if [ -z "$API_KEY" ]; then
   if [ -n "$PROMPTED_MODEL_PROVIDER" ]; then
