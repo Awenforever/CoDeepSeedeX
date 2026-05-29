@@ -22,15 +22,6 @@ from pathlib import Path
 from typing import Any
 
 from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
-from .terminal_tui import (
-    BACK_EVENT as _TUI_BACK_EVENT,
-    TerminalMenuOption as _TuiMenuOption,
-    render_panel as _tui_render_panel,
-    render_menu as _tui_render_menu,
-    select_menu as _tui_select_menu,
-    terminal_width as _tui_terminal_width,
-    wrap_display_text as _tui_wrap_display_text,
-)
 
 
 APP_NAME = "deepseek-responses-proxy"
@@ -4666,25 +4657,39 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
 
 
 
-
 def _wizard_terminal_width() -> int:
-    return _tui_terminal_width(default=78, minimum=64, maximum=86)
+    return min(86, max(64, shutil.get_terminal_size((86, 24)).columns))
 
 
 def _wizard_wrap_lines(text: str, width: int) -> list[str]:
-    return _tui_wrap_display_text(str(text or ""), max(24, width))
+    import textwrap
+
+    value = str(text or "")
+    if not value:
+        return [""]
+    return textwrap.wrap(value, width=max(24, width), replace_whitespace=False, drop_whitespace=True) or [""]
 
 
 def _wizard_print_box_line(text: str = "", *, width: int | None = None, style: str = "") -> None:
-    from .terminal_tui import line as _tui_line
-
-    print(_tui_line(str(text or ""), width=width or _wizard_terminal_width(), style=style), file=sys.stderr)
+    width = width or _wizard_terminal_width()
+    inner = max(40, width - 4)
+    for line in _wizard_wrap_lines(text, inner):
+        if len(line) > inner:
+            line = line[: max(1, inner - 1)] + "…"
+        if style:
+            print(f"  {style}{line}\033[0m\033[K", file=sys.stderr)
+        else:
+            print(f"  {line}\033[K", file=sys.stderr)
 
 
 def _wizard_print_box_top(title: str = "CoDeepSeedeX", *, width: int | None = None) -> None:
-    from .terminal_tui import header as _tui_header
-
-    print(_tui_header(str(title or "CoDeepSeedeX"), width=width or _wizard_terminal_width()), file=sys.stderr)
+    width = width or _wizard_terminal_width()
+    label = str(title or "CoDeepSeedeX")
+    max_label = max(8, width - 8)
+    if len(label) > max_label:
+        label = label[: max(1, max_label - 1)] + "…"
+    fill = "─" * max(4, width - len(label) - 4)
+    print(f"\n\033[38;5;33m─ {label} {fill}\033[0m\033[K", file=sys.stderr)
 
 
 def _wizard_print_box_separator(*, width: int | None = None) -> None:
@@ -4692,13 +4697,25 @@ def _wizard_print_box_separator(*, width: int | None = None) -> None:
 
 
 def _wizard_print_step_footer(label: str = "Step 2/5", *, width: int | None = None) -> None:
-    from .terminal_tui import footer as _tui_footer
-
-    print(_tui_footer(str(label or "Step 2/5"), width=width or _wizard_terminal_width()), file=sys.stderr)
-
+    width = width or _wizard_terminal_width()
+    text = str(label or "Step 2/5")
+    prefix = f"─ {text} "
+    fill = "─" * max(4, width - len(prefix))
+    print(f"\033[38;5;33m{prefix}{fill}\033[0m\033[K", file=sys.stderr)
 
 def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step 2/5") -> None:
-    print(_tui_render_panel(str(title or ""), list(lines or []), footer_label=footer, width=_wizard_terminal_width()), file=sys.stderr)
+    width = _wizard_terminal_width()
+    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line(title, width=width, style="\033[1;38;5;75m")
+    body = list(lines or [])
+    if body:
+        _wizard_print_box_line("", width=width)
+    for line in body:
+        style = "\033[2m" if str(line).startswith("Hint:") else ""
+        _wizard_print_box_line(line, width=width, style=style)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_step_footer(footer, width=width)
 
 
 def _wizard_step_label_for_prompt(prompt: str) -> str:
@@ -4712,33 +4729,90 @@ def _wizard_step_label_for_prompt(prompt: str) -> str:
     return "Step 2/5"
 
 
+
 def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], selected: int, *, help_text: str | None = None) -> None:
-    tui_options = [_TuiMenuOption(str(value), str(label), str(status or "")) for value, label, status in options]
-    print(
-        _tui_render_menu(
-            str(prompt or ""),
-            tui_options,
-            selected,
-            help_text=help_text,
-            footer_label=_wizard_step_label_for_prompt(prompt),
-            width=_wizard_terminal_width(),
-        ),
-        file=sys.stderr,
-    )
+    width = _wizard_terminal_width()
+    inner = max(40, width - 4)
+
+    def fit(value: str) -> str:
+        value = str(value)
+        if len(value) > inner:
+            value = value[: max(1, inner - 1)] + "…"
+        return value.ljust(inner)
+
+    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line(prompt, width=width, style="\033[1;38;5;75m")
+    _wizard_print_box_line("", width=width)
+    if help_text:
+        _wizard_print_box_line("Hint", width=width, style="\033[2m")
+        _wizard_print_box_line(help_text, width=width, style="\033[2m")
+        _wizard_print_box_line("", width=width)
+    _wizard_print_box_line("", width=width)
+    for idx, (value, label, status) in enumerate(options):
+        marker = "●" if idx == selected else "○"
+        suffix = f"  [{status}]" if status else ""
+        row = fit(f"{marker} [{value}] {label}{suffix}")
+        if idx == selected:
+            _wizard_print_box_line(row, width=width, style="\033[1;38;5;75m")
+        elif status.lower() == "supported":
+            _wizard_print_box_line(row, width=width, style="\033[38;5;114m")
+        elif status.lower() in {"experimental", "validated"}:
+            _wizard_print_box_line(row, width=width, style="\033[38;5;177m")
+        elif status.lower() in {"custom", "model availability varies"}:
+            _wizard_print_box_line(row, width=width, style="\033[38;5;215m")
+        elif status.lower() == "unsupported":
+            _wizard_print_box_line(row, width=width, style="\033[2m")
+        else:
+            _wizard_print_box_line(row, width=width)
+    _wizard_print_box_line("", width=width)
+    _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step.", width=width, style="\033[2m")
+    _wizard_print_step_footer(_wizard_step_label_for_prompt(prompt), width=width)
 
 
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
-    tui_options = [_TuiMenuOption(str(value), str(label), str(status or "")) for value, label, status in options]
-    return _tui_select_menu(
-        str(prompt or ""),
-        tui_options,
-        str(default),
-        help_text=help_text,
-        footer_label=_wizard_step_label_for_prompt(prompt),
-        input_stream=sys.stdin,
-        output_stream=sys.stderr,
-        non_interactive=non_interactive,
-    )
+    if non_interactive or not sys.stdin.isatty():
+        return default
+    try:
+        import termios
+        import tty
+    except Exception:
+        return default
+
+    selected = 0
+    for idx, (value, _label, _status) in enumerate(options):
+        if value == default:
+            selected = idx
+            break
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            print("\033[?25l\033[H\033[J\033[3J", end="", file=sys.stderr)
+            _wizard_render_menu(prompt, options, selected, help_text=help_text)
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    selected = (selected - 1) % len(options)
+                elif seq == "[B":
+                    selected = (selected + 1) % len(options)
+                continue
+            if ch in {"j", "J"}:
+                selected = (selected + 1) % len(options)
+                continue
+            if ch in {"k", "K"}:
+                selected = (selected - 1) % len(options)
+                continue
+            if ch in {"\r", "\n"}:
+                return options[selected][0]
+            if ch in {"\x7f", "\b"}:
+                return "__CODEEPSEEDEX_BACK__"
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print("\033[?25h", file=sys.stderr)
 
 def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
     default_value = "Y" if str(default).strip().lower().startswith("y") else "N"

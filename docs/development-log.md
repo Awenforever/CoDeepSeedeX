@@ -1,31 +1,13 @@
-## p2.17a2 Python TUI layout redesign
+## p2.17a3 Restore p2.16a7 terminal UI
 
 Date: 2026-05-29
 
 Scope:
 
-- Redesign the Python terminal TUI renderer from a centered prototype to a compact, left-aligned open layout.
-- Keep CJK/ANSI display-width accounting, line clearing, and Backspace event handling in the shared Python renderer.
-- Ensure menu options are rendered as one coherent vertical block with bounded width, readable spacing, and stable Step footer output.
-
-Release boundary:
-
-- Internal development node only. No public Release, tag, or asset update.
-
-
-## p2.17a1 Python TUI foundation
-
-Date: 2026-05-29
-
-Scope:
-
-- Add a Python-side terminal TUI foundation with ANSI-aware stripping, CJK-aware display-width accounting, width-bounded open-layout panels, and keyboard menu selection.
-- Route `dsproxy config wizard` menu rendering through the Python TUI renderer while keeping non-TTY and non-interactive behavior machine-readable.
-- Keep shell installer UI on the p2.16 stable open layout for now; full installer handoff to Python TUI is planned as a follow-up node after this foundation is validated.
-
-Release boundary:
-
-- Internal development node only. Does not move `v0.4.1-alpha` or update GitHub Release assets.
+- Reverted the p2.17 Python TUI foundation and layout redesign after visual review showed the Python TUI prototype did not meet the expected terminal UI quality bar.
+- Restored the p2.16a7 stable open-layout terminal UI as the active guided configuration surface.
+- Kept the restoration as a normal forward commit instead of rewriting public or shared history.
+- This node does not update the public Release.
 
 
 ## p2.16a7 Terminal UI stable open layout

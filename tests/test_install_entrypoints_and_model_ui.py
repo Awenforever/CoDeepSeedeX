@@ -763,39 +763,33 @@ def test_legacy_profile_markers_are_absent_from_production_sources() -> None:
     assert offenders == []
 
 
-
 def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> None:
-    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
-    tui_text = (ROOT / "deepseek_responses_proxy" / "terminal_tui.py").read_text(encoding="utf-8")
-    combined = cli_text + "\n" + tui_text
-    assert "Select model API provider" not in cli_text
-    assert "Select image generation provider" not in cli_text
-    assert "Use ↑/↓ or j/k to move" in combined
-    assert "Enter" in combined
-    assert "Backspace" in combined
-    assert "previous step" in combined
-
+    text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "Select model API provider" not in text
+    assert "Select image generation provider" not in text
+    assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in text
 
 def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
     cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
-    tui_text = (ROOT / "deepseek_responses_proxy" / "terminal_tui.py").read_text(encoding="utf-8")
-    combined_python_ui = cli_text + "\n" + tui_text
     assert "ui_terminal_width()" in install_text
     assert "ui_wrap_text()" in install_text
     assert "ui_step_footer()" in install_text
+    assert "ui_box_top \"CoDeepSeedeX\"" in install_text
     assert "menu_render_option_line()" in install_text
     assert "\\033[7;1m" not in install_text
     assert "╭─ %s %s╮" not in install_text
     assert "╰" not in install_text
     assert "\\033[K" in install_text
     assert "Step interactive" not in install_text
-    assert "from .terminal_tui import" in cli_text
-    assert "_tui_select_menu(" in cli_text
-    assert "def strip_ansi" in tui_text
-    assert "def display_width" in tui_text
-    assert "def render_menu" in tui_text
-    assert ("\\x1b[K" in combined_python_ui) or ("\\033[K" in combined_python_ui) or ("[K" in combined_python_ui)
+    assert "_wizard_render_panel(" in cli_text
+    assert "_wizard_print_box_line(" in cli_text
+    assert "_wizard_render_menu(" in cli_text
+    assert "\\033[K" in cli_text
+    assert "textwrap.wrap" in cli_text
+    assert "\\033[1;44m" not in cli_text
+    assert "Step interactive" not in cli_text
+    assert "Step 2/5" in cli_text
 
 def test_terminal_ui_uses_fixed_step_labels_instead_of_interactive_placeholder() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
