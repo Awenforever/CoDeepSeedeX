@@ -1,4 +1,19 @@
 
+## p2.16a7 Terminal UI stable open layout
+
+Date: 2026-05-29
+
+Scope:
+
+- Replace fragile closed-box shell/Python menu rendering with an open-layout terminal panel that avoids right-border alignment errors and stale border remnants.
+- Keep the modern visual hierarchy from the p2.16 UI line while removing the right frame edge until a proper Python TUI renderer can own Unicode/ANSI-aware layout.
+- Preserve Step x/5 labels, language-first flow, auto port handling, and Backspace previous-step semantics from p2.16a6.
+
+Release boundary:
+
+- Internal development node only. Public Release remains `v0.4.1-alpha` until a later explicit release update.
+
+
 ## p2.16a6 Terminal UI flow language and automatic ports
 
 Date: 2026-05-29

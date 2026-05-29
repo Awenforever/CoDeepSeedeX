@@ -174,33 +174,28 @@ ui_wrap_text() {
 }
 
 
+
 ui_box_top() {
   local title="${1:-CoDeepSeedeX}"
   local width="${2:-$(ui_terminal_width)}"
   local clipped=""
   local fill_count=0
-  clipped="$(ui_trim_text "$title" "$((width - 12))")"
-  fill_count=$((width - ${#clipped} - 5))
-  if [ "$fill_count" -lt 1 ]; then
-    fill_count=1
+  clipped="$(ui_trim_text "$title" "$((width - 8))")"
+  fill_count=$((width - ${#clipped} - 4))
+  if [ "$fill_count" -lt 4 ]; then
+    fill_count=4
   fi
-  printf '\n\033[38;5;33m╭─ %s %s╮\033[0m\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
+  printf '\n\033[38;5;33m─ %s %s\033[0m\033[K\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
 }
-
 
 ui_box_separator() {
-  local width="${1:-$(ui_terminal_width)}"
-  ui_box_line "" "$width"
+  printf '\n'
 }
-
-
 
 ui_box_bottom() {
   local width="${1:-$(ui_terminal_width)}"
-  local inner=$((width - 2))
-  printf '\033[38;5;33m╰%s╯\033[0m\n' "$(ui_repeat "─" "$inner")"
+  printf '\033[38;5;33m%s\033[0m\033[K\n' "$(ui_repeat "─" "$width")"
 }
-
 
 ui_box_line() {
   local text="${1:-}"
@@ -217,9 +212,9 @@ ui_box_line_styled() {
   while IFS= read -r line; do
     line="$(ui_trim_text "$line" "$inner")"
     if [ -n "$style" ]; then
-      printf '\033[38;5;33m│\033[0m %b%-*s\033[0m \033[38;5;33m│\033[0m\n' "$style" "$inner" "$line"
+      printf '  %b%s\033[0m\033[K\n' "$style" "$line"
     else
-      printf '\033[38;5;33m│\033[0m %-*s \033[38;5;33m│\033[0m\n' "$inner" "$line"
+      printf '  %s\033[K\n' "$line"
     fi
   done < <(ui_wrap_text "$text" "$inner")
 }
@@ -227,13 +222,12 @@ ui_box_line_styled() {
 ui_step_footer() {
   local text="${1:-Step 1/1}"
   local width="${2:-$(ui_terminal_width)}"
-  local prefix="╰─ ${text} "
-  local suffix="╯"
-  local fill_len=$((width - ${#prefix} - ${#suffix}))
-  if [ "$fill_len" -lt 1 ]; then
-    fill_len=1
+  local prefix="─ ${text} "
+  local fill_len=$((width - ${#prefix}))
+  if [ "$fill_len" -lt 4 ]; then
+    fill_len=4
   fi
-  printf '\033[38;5;33m%s%s%s\033[0m\n' "$prefix" "$(ui_repeat "─" "$fill_len")" "$suffix"
+  printf '\033[38;5;33m%s%s\033[0m\033[K\n' "$prefix" "$(ui_repeat "─" "$fill_len")"
 }
 
 print_install_logs() {
@@ -903,6 +897,7 @@ menu_status_suffix() {
   esac
 }
 
+
 menu_render_option_line() {
   local selected="$1"
   local value="$2"
@@ -927,16 +922,15 @@ menu_render_option_line() {
   fi
 
   rendered="$(menu_truncate_line "$row" "$inner")"
-  rendered="$(printf "%-${inner}s" "$rendered")"
   if [ "$selected" = "1" ]; then
-    menu_tty_printf '\033[38;5;33m│\033[0m \033[1;38;5;75m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered"
+    menu_tty_printf '  \033[1;38;5;75m%s\033[0m\033[K\n' "$rendered"
   else
     case "$status" in
-      supported) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;114m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
-      experimental) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;177m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
-      custom) menu_tty_printf '\033[38;5;33m│\033[0m \033[38;5;215m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
-      "model unavailable"|unsupported) menu_tty_printf '\033[38;5;33m│\033[0m \033[2m%s\033[0m \033[38;5;33m│\033[0m\n' "$rendered" ;;
-      *) menu_tty_printf '\033[38;5;33m│\033[0m %s \033[38;5;33m│\033[0m\n' "$rendered" ;;
+      supported) menu_tty_printf '  \033[38;5;114m%s\033[0m\033[K\n' "$rendered" ;;
+      experimental) menu_tty_printf '  \033[38;5;177m%s\033[0m\033[K\n' "$rendered" ;;
+      custom) menu_tty_printf '  \033[38;5;215m%s\033[0m\033[K\n' "$rendered" ;;
+      "model unavailable"|unsupported) menu_tty_printf '  \033[2m%s\033[0m\033[K\n' "$rendered" ;;
+      *) menu_tty_printf '  %s\033[K\n' "$rendered" ;;
     esac
   fi
 }

@@ -4656,8 +4656,10 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
 
 
 
+
 def _wizard_terminal_width() -> int:
-    return min(82, max(72, shutil.get_terminal_size((82, 24)).columns))
+    return min(86, max(64, shutil.get_terminal_size((86, 24)).columns))
+
 
 def _wizard_wrap_lines(text: str, width: int) -> list[str]:
     import textwrap
@@ -4674,34 +4676,32 @@ def _wizard_print_box_line(text: str = "", *, width: int | None = None, style: s
     for line in _wizard_wrap_lines(text, inner):
         if len(line) > inner:
             line = line[: max(1, inner - 1)] + "…"
-        padded = line.ljust(inner)
         if style:
-            padded = f"{style}{padded}\033[0m"
-        print(f"\033[38;5;33m│\033[0m {padded} \033[38;5;33m│\033[0m", file=sys.stderr)
-
+            print(f"  {style}{line}\033[0m\033[K", file=sys.stderr)
+        else:
+            print(f"  {line}\033[K", file=sys.stderr)
 
 
 def _wizard_print_box_top(title: str = "CoDeepSeedeX", *, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
     label = str(title or "CoDeepSeedeX")
-    max_label = max(8, width - 12)
+    max_label = max(8, width - 8)
     if len(label) > max_label:
         label = label[: max(1, max_label - 1)] + "…"
-    fill = "─" * max(1, width - len(label) - 5)
-    print(f"\n\033[38;5;33m╭─ {label} {fill}╮\033[0m", file=sys.stderr)
+    fill = "─" * max(4, width - len(label) - 4)
+    print(f"\n\033[38;5;33m─ {label} {fill}\033[0m\033[K", file=sys.stderr)
+
 
 def _wizard_print_box_separator(*, width: int | None = None) -> None:
-    width = width or _wizard_terminal_width()
-    print(f"\033[38;5;33m├{'─' * max(1, width - 2)}┤\033[0m", file=sys.stderr)
+    print("", file=sys.stderr)
 
 
 def _wizard_print_step_footer(label: str = "Step 2/5", *, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
     text = str(label or "Step 2/5")
-    prefix = f"╰─ {text} "
-    suffix = "╯"
-    fill = "─" * max(1, width - len(prefix) - len(suffix))
-    print(f"\033[38;5;33m{prefix}{fill}{suffix}\033[0m", file=sys.stderr)
+    prefix = f"─ {text} "
+    fill = "─" * max(4, width - len(prefix))
+    print(f"\033[38;5;33m{prefix}{fill}\033[0m\033[K", file=sys.stderr)
 
 def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step 2/5") -> None:
     width = _wizard_terminal_width()

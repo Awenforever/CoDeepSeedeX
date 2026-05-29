@@ -769,31 +769,27 @@ def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> No
     assert "Select image generation provider" not in text
     assert "Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step." in text
 
-
-
-
 def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
     cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
     assert "ui_terminal_width()" in install_text
     assert "ui_wrap_text()" in install_text
-    assert "ui_box_separator()" in install_text
     assert "ui_step_footer()" in install_text
     assert "ui_box_top \"CoDeepSeedeX\"" in install_text
     assert "menu_render_option_line()" in install_text
     assert "\\033[7;1m" not in install_text
-    assert "╭─ %s %s╮" in install_text
-    assert "ui_step_footer()" in install_text
+    assert "╭─ %s %s╮" not in install_text
+    assert "╰" not in install_text
+    assert "\\033[K" in install_text
     assert "Step interactive" not in install_text
     assert "_wizard_render_panel(" in cli_text
     assert "_wizard_print_box_line(" in cli_text
     assert "_wizard_render_menu(" in cli_text
-    assert '_wizard_print_box_line("", width=width)' in cli_text
+    assert "\\033[K" in cli_text
     assert "textwrap.wrap" in cli_text
     assert "\\033[1;44m" not in cli_text
     assert "Step interactive" not in cli_text
     assert "Step 2/5" in cli_text
-
 
 def test_terminal_ui_uses_fixed_step_labels_instead_of_interactive_placeholder() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
@@ -815,14 +811,19 @@ def test_installer_backspace_returns_previous_step_sentinel() -> None:
     assert 'return 20' in text
 
 
+
 def test_terminal_ui_omits_inner_menu_separators_for_boxed_layout() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     start = text.index("read_menu_choice_from_tty() {")
     end = text.index("\nread_yes_no_menu()", start)
     menu_func = text[start:end]
     assert "ui_box_separator" not in menu_func
+    assert "╭" not in menu_func
+    assert "╮" not in menu_func
+    assert "╰" not in menu_func
+    assert "│" not in menu_func
     assert "\\033[2J\\033[3J\\033[H" in menu_func
-
+    assert "\\033[K" in text
 
 def test_installer_language_choice_is_first_user_decision() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
