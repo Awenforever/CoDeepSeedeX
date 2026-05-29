@@ -1,3 +1,20 @@
+
+## p2.17a5 Custom provider chat compatibility
+
+Date: 2026-05-29
+
+Scope:
+
+- Added provider-aware chat payload compatibility for custom OpenAI-compatible providers.
+- Custom providers now strip DeepSeek-only chat extensions such as `user_id`, `thinking`, and `reasoning_effort` by default before `/chat/completions` calls.
+- DeepSeek official keeps stable `user_id` and DeepSeek-specific fields for cache/accounting compatibility.
+- Upstream error details now report the configured provider and base URL host so custom-provider failures are not mislabeled as DeepSeek official failures.
+- Operators can opt into DeepSeek extension passthrough for compatible custom endpoints with `DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS=1` or `DEEPSEEK_PROXY_CHAT_COMPAT_MODE=deepseek`.
+
+Release boundary:
+
+- Internal development node only. Public Release remains `v0.4.2-alpha` until a release update is explicitly requested.
+
 ## p2.17a3 Restore p2.16a7 terminal UI
 
 ## p2.17a4 Release v0.4.2-alpha

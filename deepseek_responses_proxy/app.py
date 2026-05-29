@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.2-alpha"
-PROXY_INTERNAL_VERSION = "p2.17a4-release-v042-alpha"
+PROXY_INTERNAL_VERSION = "p2.17a5-custom-provider-chat-compat"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -9326,6 +9326,7 @@ class DeepSeekClient:
         context_trimming_report["source"] = "live_request_payload"
         context_trimming_report["current_chars_source"] = "live_request_payload"
         context_trimming_report["current_chars_precision"] = "exact"
+        payload = _sanitize_chat_payload_for_upstream(payload)
         self.last_context_trimming_report = context_trimming_report
 
         # Debug aid: keep the last upstream payload without secrets.
@@ -9366,11 +9367,7 @@ class DeepSeekClient:
             print(f"[deepseek-responses-proxy] body={body}")
             raise HTTPException(
                 status_code=502,
-                detail={
-                    "upstream": "deepseek",
-                    "status_code": response.status_code,
-                    "body": body,
-                },
+                detail=_upstream_error_detail(status_code=response.status_code, body=body),
             )
 
         return response.json()
@@ -15581,6 +15578,95 @@ def _deepseek_cache_user_id(request_payload: dict[str, Any] | None, *, model: st
     return f"codeepseedex_{route}_{digest}"[:128]
 
 
+def _env_flag_value(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _configured_model_provider() -> str:
+    return str(os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek").strip().lower() or "deepseek"
+
+
+def _configured_base_url() -> str:
+    return str(os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
+
+
+def _configured_base_url_host(base_url: str | None = None) -> str | None:
+    value = (base_url or _configured_base_url()).strip()
+    if not value:
+        return None
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(value)
+        return parsed.netloc or parsed.path.split("/", 1)[0] or None
+    except Exception:
+        return None
+
+
+def _chat_payload_compat_mode() -> str:
+    explicit = str(os.environ.get("DEEPSEEK_PROXY_CHAT_COMPAT_MODE") or "").strip().lower().replace("-", "_")
+    if explicit in {"deepseek", "openai_compatible"}:
+        return explicit
+
+    provider = _configured_model_provider()
+    if provider in {"custom", "openai", "openai_compatible", "openai-compatible"}:
+        return "openai_compatible"
+
+    return "deepseek" if provider == "deepseek" else "openai_compatible"
+
+
+def _chat_payload_supports_deepseek_extensions() -> bool:
+    override = _env_flag_value("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
+    if override is not None:
+        return override
+    return _chat_payload_compat_mode() == "deepseek"
+
+
+def _unsupported_deepseek_extension_chat_params() -> set[str]:
+    return {"user_id", "thinking", "reasoning_effort"}
+
+
+def _sanitize_chat_payload_for_upstream(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove vendor-specific chat params for generic OpenAI-compatible custom providers.
+
+    DeepSeek official accepts extensions such as user_id/thinking/reasoning_effort.
+    Many custom OpenAI-compatible providers reject those fields with 400 errors. The
+    default for DEEPSEEK_PROXY_MODEL_PROVIDER=custom is therefore fail-safe: keep the
+    standard chat/completions allowlist and strip DeepSeek-only extensions. Operators
+    using a DeepSeek-compatible custom endpoint can opt back in with
+    DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS=1 or
+    DEEPSEEK_PROXY_CHAT_COMPAT_MODE=deepseek.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    if _chat_payload_supports_deepseek_extensions():
+        return payload
+    cleaned = dict(payload)
+    for key in _unsupported_deepseek_extension_chat_params():
+        cleaned.pop(key, None)
+    return cleaned
+
+
+def _upstream_error_detail(*, status_code: int, body: str) -> dict[str, Any]:
+    provider = _configured_model_provider()
+    return {
+        "upstream": provider,
+        "upstream_provider": provider,
+        "base_url_host": _configured_base_url_host(),
+        "chat_compat_mode": _chat_payload_compat_mode(),
+        "status_code": status_code,
+        "body": body,
+    }
+
+
 def _build_chat_payload(
     *,
     model: str,
@@ -15628,7 +15714,7 @@ def _build_chat_payload(
         else:
             payload["tool_choice"] = "auto"
 
-    return payload
+    return _sanitize_chat_payload_for_upstream(payload)
 
 
 def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
