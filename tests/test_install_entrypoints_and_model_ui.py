@@ -578,11 +578,12 @@ def test_installer_menu_renderer_is_arrow_only_and_backspace_aware() -> None:
     assert "ui_box_line" in text
     assert "ui_box_line_styled()" in text
 
-def test_installer_port_prompts_use_dim_default_hint() -> None:
+def test_installer_ports_are_auto_selected_without_prompting() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'read_from_tty "Non-Thinking proxy port" "$DEFAULT_STABLE_PORT"' in text
-    assert 'read_from_tty "Stable proxy port" "$DEFAULT_STABLE_PORT"' not in text
-    assert 'read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT"' in text
+    assert 'choose_available_port "$DEFAULT_STABLE_PORT"' in text
+    assert 'choose_available_port "$DEFAULT_THINKING_PORT" "$STABLE_PORT"' in text
+    assert 'read_from_tty "Non-Thinking proxy port"' not in text
+    assert 'read_from_tty "Thinking proxy port"' not in text
     assert "press Enter to keep default" not in text
     assert "\\033[2m[Enter keeps %s]\\033[0m: " in text
 
@@ -821,3 +822,18 @@ def test_terminal_ui_omits_inner_menu_separators_for_boxed_layout() -> None:
     menu_func = text[start:end]
     assert "ui_box_separator" not in menu_func
     assert "\\033[2J\\033[3J\\033[H" in menu_func
+
+
+def test_installer_language_choice_is_first_user_decision() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "choose_installer_language" in text
+    assert "Choose your language / 选择语言" in text
+    assert "zh-CN|简体中文" in text
+    assert "Step 1/5" in text
+
+
+def test_installer_backspace_step_loop_is_sete_safe() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "if prompt_image_generation_api_key; then" in text
+    assert "step_rc=$?" in text
+    assert "__CODEEPSEEDEX_BACK__" in text

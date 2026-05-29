@@ -1,4 +1,21 @@
 
+## p2.16a6 Terminal UI flow language and automatic ports
+
+Date: 2026-05-29
+
+Scope:
+
+- Add the installer language choice as the first user-facing decision, with English and Simplified Chinese options.
+- Align the setup plan with the five guided user decisions: language, model API, web search API, image generation API, and Codex wrapper.
+- Remove manual dsproxy port prompts from the guided path; installer selects available non-thinking and thinking ports automatically.
+- Make installer Backspace handling safe under `set -e` so the previous-step sentinel is consumed by the step loop instead of ending installation.
+- Keep the boxed UI compact and avoid inner separator clutter.
+
+Release boundary:
+
+- Internal development node only. It does not move `v0.4.1-alpha` and does not update public Release assets.
+
+
 ## p2.16a5 Terminal UI frame and Backspace correctness
 
 Date: 2026-05-29

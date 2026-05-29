@@ -40,14 +40,14 @@ def test_public_runtime_version_matches_declared_release_tag() -> None:
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p2.16a5-terminal-ui-frame-backspace-correctness"
+    assert PROXY_INTERNAL_VERSION == "p2.16a6-terminal-ui-flow-language-auto-port"
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.16a5-terminal-ui-frame-backspace-correctness"
+    assert PROXY_INTERNAL_VERSION == "p2.16a6-terminal-ui-flow-language-auto-port"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:

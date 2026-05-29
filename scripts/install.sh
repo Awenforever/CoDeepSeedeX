@@ -105,22 +105,25 @@ sub_title() {
 }
 
 
+
 ui_terminal_width() {
   local cols="${COLUMNS:-}"
   if [ -z "$cols" ] && command -v tput >/dev/null 2>&1; then
     cols="$(tput cols 2>/dev/null || true)"
   fi
   case "$cols" in
-    ''|*[!0-9]*) cols=88 ;;
+    ''|*[!0-9]*) cols=82 ;;
   esac
   if [ "$cols" -lt 72 ]; then
     cols=72
   fi
-  if [ "$cols" -gt 88 ]; then
-    cols=88
+  if [ "$cols" -gt 82 ]; then
+    cols=82
   fi
   printf '%s\n' "$cols"
 }
+
+
 
 ui_repeat() {
   local char="$1"
@@ -184,11 +187,13 @@ ui_box_top() {
   printf '\n\033[38;5;33m╭─ %s %s╮\033[0m\n' "$clipped" "$(ui_repeat "─" "$fill_count")"
 }
 
+
 ui_box_separator() {
   local width="${1:-$(ui_terminal_width)}"
-  local inner=$((width - 2))
-  printf '\033[38;5;33m├%s┤\033[0m\n' "$(ui_repeat "─" "$inner")"
+  ui_box_line "" "$width"
 }
+
+
 
 ui_box_bottom() {
   local width="${1:-$(ui_terminal_width)}"
@@ -972,6 +977,7 @@ menu_step_label_for_prompt() {
 }
 
 
+
 read_menu_choice_from_tty() {
   local prompt="$1"
   local default="${2:-}"
@@ -999,8 +1005,6 @@ read_menu_choice_from_tty() {
     fi
   done
 
-  local width
-  width="$(ui_terminal_width)"
   local step_label="${CODEEPSEEDEX_MENU_STEP:-}"
   if [ -z "$step_label" ]; then
     step_label="$(menu_step_label_for_prompt "$prompt")"
@@ -1011,6 +1015,8 @@ read_menu_choice_from_tty() {
 
   local render_panel
   render_panel() {
+    local width
+    width="$(ui_terminal_width)"
     menu_tty_printf '\033[?25l\033[2J\033[3J\033[H'
     ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
@@ -1021,7 +1027,6 @@ read_menu_choice_from_tty() {
       ui_box_line_styled "$detail" "$width" "\033[2m" > /dev/tty
       ui_box_line "" "$width" > /dev/tty
     fi
-    ui_box_line "" "$width" > /dev/tty
     for i in "${!options[@]}"; do
       IFS='|' read -r value label status <<< "${options[$i]}"
       if [ "$i" -eq "$selected" ]; then
@@ -1079,6 +1084,8 @@ read_menu_choice_from_tty() {
 }
 
 
+
+
 read_yes_no_menu() {
   local prompt="$1"
   local default="${2:-N}"
@@ -1093,6 +1100,72 @@ read_yes_no_menu() {
       read_menu_choice_from_tty "$prompt" "N" "Y|$yes_label|plain" "N|$no_label|plain"
       ;;
   esac
+}
+
+choose_installer_language() {
+  local existing="${CODEEPSEEDEX_INSTALL_LOCALE:-}"
+  if [ -z "$existing" ]; then
+    existing="$(env_file_value DEEPSEEK_PROXY_LOCALE)"
+  fi
+  case "$existing" in
+    zh|zh-CN|zh_CN|cn|CN) existing="zh-CN" ;;
+    *) existing="en" ;;
+  esac
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    CODEEPSEEDEX_INSTALL_LOCALE="$existing"
+    return 0
+  fi
+  CODEEPSEEDEX_MENU_STEP="Step 1/5"
+  local chosen=""
+  chosen="$(read_menu_choice_from_tty "Choose your language / 选择语言" "$existing" \
+    "en|English|plain" \
+    "zh-CN|简体中文|plain")"
+  CODEEPSEEDEX_MENU_STEP=""
+  case "$chosen" in
+    __CODEEPSEEDEX_BACK__|"") chosen="$existing" ;;
+  esac
+  CODEEPSEEDEX_INSTALL_LOCALE="$chosen"
+}
+
+port_is_available() {
+  local port="$1"
+  "$PYTHON_BIN" - "$port" <<'PYCODEEPSEEDEX_PORT_CHECK'
+import socket, sys
+port = int(sys.argv[1])
+ok = "0"
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("127.0.0.1", port))
+    ok = "1"
+except OSError:
+    ok = "0"
+finally:
+    s.close()
+print(ok)
+PYCODEEPSEEDEX_PORT_CHECK
+}
+
+choose_available_port() {
+  local preferred="$1"
+  local avoid="${2:-}"
+  local port=""
+  case "$preferred" in
+    ''|*[!0-9]*) preferred=8000 ;;
+  esac
+  port="$preferred"
+  while [ "$port" -lt $((preferred + 80)) ]; do
+    if [ -n "$avoid" ] && [ "$port" = "$avoid" ]; then
+      port=$((port + 1))
+      continue
+    fi
+    if [ "$(port_is_available "$port")" = "1" ]; then
+      printf '%s\n' "$port"
+      return 0
+    fi
+    port=$((port + 1))
+  done
+  printf '%s\n' "$preferred"
 }
 
 provider_option_line() {
@@ -2295,28 +2368,27 @@ if [ "$UNINSTALL" = "1" ]; then
   exit 0
 fi
 
+choose_installer_language
+divider
 logo
 printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
 
-divider
 setup_width="$(ui_terminal_width)"
 ui_box_top "CoDeepSeedeX" "$setup_width"
 ui_box_line "" "$setup_width"
 ui_box_line_styled "Setup plan" "$setup_width" "\033[1;38;5;75m"
-ui_box_line "This installer prepares dsproxy, managed Codex profiles, provider configuration, and the optional Codex wrapper." "$setup_width"
+ui_box_line "This installer only asks for decisions that affect your setup. Internal repository, Python, dsproxy, profile, and port steps are handled automatically." "$setup_width"
 ui_box_line "" "$setup_width"
-ui_box_line "[1] Check Python and Git" "$setup_width"
-ui_box_line "[2] Install or update repository" "$setup_width"
-ui_box_line "[3] Create virtual environment" "$setup_width"
-ui_box_line "[4] Install dsproxy" "$setup_width"
-ui_box_line "[5] Guided API configuration and local env file" "$setup_width"
-ui_box_line "[6] Install Codex profiles" "$setup_width"
-ui_box_line "[7] Install safe Codex wrapper, recommended" "$setup_width"
+ui_box_line "[1] Language" "$setup_width"
+ui_box_line "[2] Model API" "$setup_width"
+ui_box_line "[3] Web search API" "$setup_width"
+ui_box_line "[4] Image generation API" "$setup_width"
+ui_box_line "[5] Codex wrapper" "$setup_width"
 ui_box_line "" "$setup_width"
-ui_box_line "You can skip API setup now and run dsproxy config wizard later." "$setup_width"
-ui_step_footer "Step 0/7" "$setup_width"
+ui_box_line "Proxy ports are selected automatically; occupied defaults are skipped." "$setup_width"
+ui_step_footer "Step 0/5" "$setup_width"
 print_install_logs
 
 step "Checking requirements"
@@ -2338,17 +2410,27 @@ ok "Git available"
 
 step "Guided configuration"
 
-DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
-DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-STABLE_PORT="$(read_from_tty "Non-Thinking proxy port" "$DEFAULT_STABLE_PORT")"
-THINKING_PORT="$(read_from_tty "Thinking proxy port" "$DEFAULT_THINKING_PORT")"
+DEFAULT_STABLE_PORT="$(env_file_value DEEPSEEK_PROXY_PORT)"
+if [ -z "$DEFAULT_STABLE_PORT" ]; then
+  DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
+fi
+DEFAULT_THINKING_PORT="$(env_file_value DEEPSEEK_PROXY_THINKING_PORT)"
+if [ -z "$DEFAULT_THINKING_PORT" ]; then
+  DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
+fi
+STABLE_PORT="$(choose_available_port "$DEFAULT_STABLE_PORT" "")"
+THINKING_PORT="$(choose_available_port "$DEFAULT_THINKING_PORT" "$STABLE_PORT")"
+ok "Proxy ports selected automatically: non-thinking=$STABLE_PORT, thinking=$THINKING_PORT"
 
 guided_step=2
 while true; do
   case "$guided_step" in
     2)
-      prompt_deepseek_api_key
-      step_rc=$?
+      if prompt_deepseek_api_key; then
+        step_rc=0
+      else
+        step_rc=$?
+      fi
       if [ "$step_rc" = "20" ]; then
         guided_step=2
         continue
@@ -2357,8 +2439,11 @@ while true; do
       guided_step=3
       ;;
     3)
-      prompt_serpapi_api_key
-      step_rc=$?
+      if prompt_serpapi_api_key; then
+        step_rc=0
+      else
+        step_rc=$?
+      fi
       if [ "$step_rc" = "20" ]; then
         guided_step=2
         continue
@@ -2367,8 +2452,11 @@ while true; do
       guided_step=4
       ;;
     4)
-      prompt_image_generation_api_key
-      step_rc=$?
+      if prompt_image_generation_api_key; then
+        step_rc=0
+      else
+        step_rc=$?
+      fi
       if [ "$step_rc" = "20" ]; then
         guided_step=3
         continue

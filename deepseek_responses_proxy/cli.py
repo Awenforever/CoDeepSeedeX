@@ -4655,8 +4655,9 @@ def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool
 
 
 
+
 def _wizard_terminal_width() -> int:
-    return min(88, max(72, shutil.get_terminal_size((88, 24)).columns))
+    return min(82, max(72, shutil.get_terminal_size((82, 24)).columns))
 
 def _wizard_wrap_lines(text: str, width: int) -> list[str]:
     import textwrap
@@ -4768,6 +4769,7 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
     _wizard_print_box_line("Use ↑/↓ or j/k to move, Enter to select, Backspace to previous step.", width=width, style="\033[2m")
     _wizard_print_step_footer(_wizard_step_label_for_prompt(prompt), width=width)
 
+
 def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], default: str, *, help_text: str | None = None, non_interactive: bool = False) -> str:
     if non_interactive or not sys.stdin.isatty():
         return default
@@ -4788,7 +4790,7 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
     try:
         tty.setraw(fd)
         while True:
-            print("\033[2J\033[3J\033[H", end="", file=sys.stderr)
+            print("\033[?25l\033[H\033[J\033[3J", end="", file=sys.stderr)
             _wizard_render_menu(prompt, options, selected, help_text=help_text)
             ch = sys.stdin.read(1)
             if ch == "\x1b":
@@ -4810,8 +4812,7 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
                 return "__CODEEPSEEDEX_BACK__"
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        print("", file=sys.stderr)
-
+        print("\033[?25h", file=sys.stderr)
 
 def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
     default_value = "Y" if str(default).strip().lower().startswith("y") else "N"
