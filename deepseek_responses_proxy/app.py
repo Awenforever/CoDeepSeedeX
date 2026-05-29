@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.1-alpha"
-PROXY_INTERNAL_VERSION = "p2.16a7-terminal-ui-stable-open-layout"
+PROXY_INTERNAL_VERSION = "p2.17a1-python-tui-foundation"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
