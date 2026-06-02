@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.2-alpha"
-PROXY_INTERNAL_VERSION = "p2.17a6-provider-capability-profiles"
+PROXY_INTERNAL_VERSION = "p2.17a7-custom-reasoning-output-diagnostics"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -8031,16 +8031,19 @@ def _resolve_compaction_budget_policy(
 
 
 
+
 def _extract_deepseek_message_text(deepseek_response: dict[str, Any]) -> str:
     try:
         choices = deepseek_response.get("choices") or []
         if not choices:
             return ""
         message = choices[0].get("message") or {}
-        return _plain_text_from_content(message.get("content", ""))
+        content = _plain_text_from_content(message.get("content", ""))
+        if content:
+            return content
+        return _plain_text_from_content(message.get("reasoning_content", ""))
     except Exception:
         return ""
-
 
 def _summarize_large_tool_output_for_compaction(content: str, *, limit: int = 5000) -> str:
     if len(content) <= limit:
@@ -15104,6 +15107,12 @@ async def _run_chat_with_tool_bridge(
     return deepseek_response, history_messages
 
 
+
+def _deepseek_message_reasoning_text(message: dict[str, Any]) -> str:
+    reasoning_content = message.get("reasoning_content")
+    return _plain_text_from_content(reasoning_content if reasoning_content is not None else "")
+
+
 def _deepseek_message_to_output_items(
     message: dict[str, Any],
     mcp_tool_mapping: dict[str, dict[str, str]] | None = None,
@@ -15111,6 +15120,14 @@ def _deepseek_message_to_output_items(
     output_items: list[dict[str, Any]] = []
 
     content = _plain_text_from_content(message.get("content", ""))
+    if not content:
+        # Some OpenAI-compatible reasoning providers, including LiteLLM-backed
+        # endpoints, can return only `reasoning_content` when max_tokens is too
+        # small or the model has not reached final answer content yet. Treat this
+        # as a mappable assistant output instead of returning a completed empty
+        # Responses object; the stricter empty-output guard remains active when
+        # both content and reasoning_content are absent.
+        content = _deepseek_message_reasoning_text(message)
     if content:
         output_items.append(
             {
@@ -15148,7 +15165,6 @@ def _deepseek_message_to_output_items(
         output_items.append(output_item)
 
     return output_items
-
 
 def _image_result_output_items_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Surface generated image URLs/file paths in the final Responses output.
@@ -15301,14 +15317,9 @@ def _upstream_exception_to_http_exception(exc: Exception) -> HTTPException:
         detail.update({"error_type": "network", "message": str(exc)})
         return HTTPException(status_code=502, detail=detail)
 
-    return HTTPException(
-        status_code=502,
-        detail={
-            "upstream": "deepseek",
-            "error_type": "unexpected",
-            "message": str(exc),
-        },
-    )
+    detail = _upstream_error_detail(status_code=502, body=str(exc))
+    detail.update({"error_type": "unexpected", "message": str(exc)})
+    return HTTPException(status_code=502, detail=detail)
 
 
 def _build_response_envelope(
@@ -15367,22 +15378,34 @@ def _ensure_completed_response_output_contract(
     completion_tokens = int((usage or {}).get("completion_tokens") or 0)
     has_tool_calls = bool(assistant_message.get("tool_calls"))
     assistant_content = _plain_text_from_content(assistant_message.get("content", ""))
+    assistant_reasoning_content = _deepseek_message_reasoning_text(assistant_message)
+    finish_reason = None
+    try:
+        choices = deepseek_response.get("choices") or []
+        if choices:
+            finish_reason = choices[0].get("finish_reason")
+    except Exception:
+        finish_reason = None
 
     if completion_tokens > 0 and not has_tool_calls:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "upstream": "deepseek",
+        detail = _upstream_error_detail(status_code=502, body="completed_response_without_assistant_output")
+        detail.update(
+            {
                 "error_type": "invalid_responses_output_contract",
                 "reason": "completed_response_without_assistant_output",
-                "message": "DeepSeek reported completion tokens but dsproxy could not map any assistant text or tool call into Responses output.",
+                "message": "Upstream reported completion tokens but dsproxy could not map any assistant text, reasoning_content, or tool call into Responses output.",
                 "completion_tokens": completion_tokens,
                 "assistant_content_available": bool(assistant_content.strip()),
+                "assistant_reasoning_content_available": bool(assistant_reasoning_content.strip()),
+                "finish_reason": finish_reason,
                 "output_item_count": len(output_items) if isinstance(output_items, list) else 0,
                 "output_text_empty": True,
-                "action": "inspect upstream choices[0].message.content and Responses mapping before returning completed output",
-            },
+                "action": "inspect upstream choices[0].message.content/reasoning_content and Responses mapping before returning completed output",
+            }
         )
+        if str(finish_reason or "").lower() == "length":
+            detail["action"] = "increase max_output_tokens or inspect why the upstream returned neither assistant content nor reasoning_content before length stop"
+        raise HTTPException(status_code=502, detail=detail)
 
 
 def _sse_event(event: str, data: dict[str, Any] | str) -> bytes:

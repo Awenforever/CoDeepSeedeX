@@ -671,6 +671,82 @@ async def test_non_stream_response_rejects_completed_empty_output_with_completio
 
 
 @pytest.mark.asyncio
+async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+
+    client, transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_reasoning_only",
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "reasoning_content": "好的，用户只发了一个 hi。",
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 8, "total_tokens": 12},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={
+            "model": "deepseek-v4-flash-ascend",
+            "input": "hi",
+            "max_output_tokens": 8,
+            "stream": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["output_text"] == "好的，用户只发了一个 hi。"
+    assert body["output"][0]["content"][0]["text"] == "好的，用户只发了一个 hi。"
+    assert "user_id" not in transport.requests[0]
+
+
+@pytest.mark.asyncio
+async def test_empty_output_contract_reports_custom_provider_diagnostics(monkeypatch, client_factory):
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+
+    client, _transport = await client_factory(
+        [
+            {
+                "id": "chatcmpl_empty_custom",
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"role": "assistant", "content": None},
+                    }
+                ],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 8, "total_tokens": 12},
+            }
+        ]
+    )
+
+    response = await client.post(
+        "/v1/responses",
+        json={"model": "deepseek-v4-flash-ascend", "input": "hi", "max_output_tokens": 8},
+    )
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["upstream"] == "custom"
+    assert detail["upstream_provider"] == "custom"
+    assert detail["base_url_host"] == "api.llm.ustc.edu.cn"
+    assert detail["chat_compat_mode"] == "openai_compatible"
+    assert detail["assistant_reasoning_content_available"] is False
+    assert detail["finish_reason"] == "length"
+
+
+@pytest.mark.asyncio
 async def test_stream_response_rejects_completed_empty_output_before_sse(client_factory):
     client, _transport = await client_factory(
         [

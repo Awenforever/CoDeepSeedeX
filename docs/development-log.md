@@ -1,4 +1,20 @@
 
+## p2.17a7 Custom reasoning output diagnostics
+
+Date: 2026-05-30
+
+Scope:
+
+- Handle OpenAI-compatible custom providers that return `reasoning_content` without ordinary assistant `content` in a Chat Completions response.
+- Map reasoning-only assistant text into a valid Responses `output_text` instead of returning a completed empty-output contract error.
+- Preserve the strict empty-output guard when neither assistant content, reasoning content, nor tool calls are available.
+- Improve diagnostics for invalid output contract failures so custom provider errors include provider, base URL host, chat compatibility mode, and capability profile metadata instead of misleading DeepSeek-only wording.
+
+Release boundary:
+
+- Internal runtime node only. Public Release assets are not updated in this step.
+
+
 ## p2.17a6 Provider capability profiles
 
 Date: 2026-05-29

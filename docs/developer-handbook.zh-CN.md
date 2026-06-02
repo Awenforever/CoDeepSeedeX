@@ -31,9 +31,9 @@
 - GitHub Release状态：非draft，非pre-release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=true`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.17a6-provider-capability-profiles`
-- 最新闭合文档同步检查点：`p2.17a6-provider-capability-profiles`
-- 当前公开Release note同步检查点：`p2.17a6-provider-capability-profiles`
+- 当前内部开发检查点：`p2.17a7-custom-reasoning-output-diagnostics`
+- 最新闭合文档同步检查点：`p2.17a7-custom-reasoning-output-diagnostics`
+- 当前公开Release note同步检查点：`p2.17a7-custom-reasoning-output-diagnostics`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`
 - WeClaw状态：当前CoDeepSeedeX与WeClaw集成线仍兼容dsproxy拥有的status契约。p2.14新增managed native tool routing、routing diagnostics以及web/image provider bridge验证。
