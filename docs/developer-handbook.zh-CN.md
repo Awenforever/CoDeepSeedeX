@@ -23,23 +23,23 @@
 - 本地项目路径：`~/projects/deepseek-responses-proxy`
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
-- 当前公开Release：`v0.4.2-alpha`
+- 当前公开Release：`v0.4.3-alpha`
 - 当前公开Release类型：pre-release
-- 当前公开Release提交：发布后由`v0.4.2-alpha` tag解析
+- 当前公开Release提交：发布后由`v0.4.3-alpha` tag解析
 - GitHub Latest普通Release：`v0.4.0-alpha`
-- GitHub Release标题：`CoDeepSeedeX v0.4.2-alpha`
+- GitHub Release标题：`CoDeepSeedeX v0.4.3-alpha`
 - GitHub Release状态：非draft，非pre-release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=true`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.17a7-custom-reasoning-output-diagnostics`
-- 最新闭合文档同步检查点：`p2.17a7-custom-reasoning-output-diagnostics`
-- 当前公开Release note同步检查点：`p2.17a7-custom-reasoning-output-diagnostics`
+- 当前内部开发检查点：`p2.17a8-release-v043-alpha`
+- 最新闭合文档同步检查点：`p2.17a8-release-v043-alpha`
+- 当前公开Release note同步检查点：`p2.17a8-release-v043-alpha`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`
 - WeClaw状态：当前CoDeepSeedeX与WeClaw集成线仍兼容dsproxy拥有的status契约。p2.14新增managed native tool routing、routing diagnostics以及web/image provider bridge验证。
 - Release要求：如果使用WeClaw集成，`weclaw_dev`必须不低于`v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.4.2-alpha = resolved by release tag`
+  - `v0.4.3-alpha = resolved by release tag`
   - `v0.3.9-alpha = 82a4428`，这是上一版公开Latest普通Release的peeled commit。
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -1920,14 +1920,18 @@ p2.14a10修复旧env文件和shell环境中的陈旧Release metadata污染问题
 5. 在VM验证显示安装后和forced non-git upgrade后`dsproxy --version`都返回更新后的peeled public/internal commit前，不得把`v0.4.0-alpha`标记为Latest。
 
 
-## p2.15a4 v0.4.2-alpha pre-release
+## p2.15a4 v0.4.3-alpha pre-release
 
-p2.15a4将p2.15的Codex 0.134+ profile布局和custom provider修复发布为公开`v0.4.2-alpha` pre-release。
+p2.15a4将p2.15的Codex 0.134+ profile布局和custom provider修复发布为公开`v0.4.3-alpha` pre-release。
 
 Release边界：
 
-1. `v0.4.2-alpha`为非draft、pre-release。
+1. `v0.4.3-alpha`为非draft、pre-release。
 2. 除非后续有显式promotion任务，GitHub Latest普通Release仍保持`v0.4.0-alpha`。
 3. 公开资产仍只包含`bootstrap.sh`和`install.sh`。
 4. Release note只从`/tmp`临时文件写入，不在`docs/`下维护tracked per-release note源文件。
 5. 验证必须包含隔离旧用户legacy Codex config迁移检查：旧`[profiles.*]`和`profile = "deepseek*"`配置应迁移到split `~/.codex/<profile>.config.toml`文件，并从主config移除。
+
+### p2.17a8-release-v043-alpha Release note 规范
+
+`v0.4.3-alpha` 的公开 Release note 必须面向用户：说明 custom provider 兼容性、reasoning-only 响应处理、图片 payload 保护和安装/配置引导改进。不要把内部补丁节点、VM流水账或 GitHub Release 管理步骤写进公开 Release note。

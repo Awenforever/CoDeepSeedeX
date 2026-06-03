@@ -35,19 +35,19 @@ def _expected_public_commit() -> str:
     return PROXY_PUBLIC_COMMIT
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
-    assert PROXY_PUBLIC_VERSION == "v0.4.2-alpha"
+    assert PROXY_PUBLIC_VERSION == "v0.4.3-alpha"
     assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p2.17a7-custom-reasoning-output-diagnostics"
+    assert PROXY_INTERNAL_VERSION == "p2.17a8-release-v043-alpha"
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.17a7-custom-reasoning-output-diagnostics"
+    assert PROXY_INTERNAL_VERSION == "p2.17a8-release-v043-alpha"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
@@ -64,7 +64,7 @@ def test_cli_version_output_includes_public_and_internal_versions() -> None:
         check=True,
     )
     output = result.stdout.strip()
-    assert "public version: v0.4.2-alpha |" in output
+    assert "public version: v0.4.3-alpha |" in output
     assert "internal version: p" in output
 
 
@@ -85,7 +85,7 @@ def test_version_metadata_formatter_shape() -> None:
 
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
-    assert data["public_version"] == "v0.4.2-alpha"
+    assert data["public_version"] == "v0.4.3-alpha"
     assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7
