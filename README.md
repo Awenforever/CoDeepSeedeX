@@ -230,6 +230,8 @@ dsproxy upgrade --tag v0.4.3-alpha
 
 Do not combine `--alpha` and `--tag`.
 
+Managed tokenizer resources are ignored by the upgrade dirty-worktree guard, so a clean release install can be upgraded without passing `--allow-dirty`.
+
 Older installations that do not have `dsproxy upgrade` should rerun the installer. Source-archive/non-git installs on versions with the p2.14a9 fallback can also use `dsproxy upgrade --alpha`; the command reruns the release bootstrap installer with the resolved `--install-ref`.
 
 ## Uninstall

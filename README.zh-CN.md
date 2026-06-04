@@ -230,6 +230,8 @@ dsproxy upgrade --tag v0.4.3-alpha
 
 不要同时使用`--alpha`和`--tag`。
 
+升级检查会忽略安装器管理的tokenizer资源目录，因此干净的Release安装不会因为`resources/`目录被误判为dirty而阻断升级。
+
 如果旧安装还没有`dsproxy upgrade`，重新运行安装命令。带有p2.14a9 fallback的source-archive/非git安装也可以使用`dsproxy upgrade --alpha`；该命令会用解析出的`--install-ref`重新运行Release bootstrap安装器。
 
 ## 卸载

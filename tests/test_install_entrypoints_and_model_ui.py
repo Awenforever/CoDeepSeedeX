@@ -838,3 +838,12 @@ def test_installer_backspace_step_loop_is_sete_safe() -> None:
     assert "if prompt_image_generation_api_key; then" in text
     assert "step_rc=$?" in text
     assert "__CODEEPSEEDEX_BACK__" in text
+
+
+def test_installer_excludes_managed_resources_from_git_status() -> None:
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "ensure_managed_resources_git_excluded" in text
+    assert "git -C \"$INSTALL_DIR\" rev-parse --git-path info/exclude" in text
+    assert "resources/" in text
+    assert "resources/tokenizers/" in text

@@ -1788,6 +1788,41 @@ model_catalog_json_value() {
   json_string "$catalog_path"
 }
 
+ensure_managed_resources_git_excluded() {
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ ! -d "$INSTALL_DIR" ]; then
+    return 0
+  fi
+
+  local exclude_path
+  exclude_path="$(git -C "$INSTALL_DIR" rev-parse --git-path info/exclude 2>> "$INSTALL_LOG" || true)"
+  if [ -z "$exclude_path" ]; then
+    return 0
+  fi
+  case "$exclude_path" in
+    /*) ;;
+    *) exclude_path="$INSTALL_DIR/$exclude_path" ;;
+  esac
+
+  mkdir -p "$(dirname "$exclude_path")" 2>> "$INSTALL_LOG" || return 0
+  touch "$exclude_path" 2>> "$INSTALL_LOG" || return 0
+
+  local changed="0"
+  local pattern
+  for pattern in "resources/" "resources/tokenizers/"; do
+    if ! grep -Fxq "$pattern" "$exclude_path" 2>/dev/null; then
+      printf '%s\n' "$pattern" >> "$exclude_path" || return 0
+      changed="1"
+    fi
+  done
+  if [ "$changed" = "1" ]; then
+    printf '+ Managed resource git excludes updated: %s\n' "$exclude_path" >> "$INSTALL_LOG"
+  fi
+  return 0
+}
+
 sync_deepseek_tokenizer_resource() {
   if [ "$DRY_RUN" = "1" ]; then
     printf '+ DEEPSEEK_PROXY_INSTALL_DIR=%q DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q %q tokenizer sync deepseek --json --resource-dir %q\n' "$INSTALL_DIR" "$INSTALL_DIR/resources/tokenizers" "$INSTALL_DIR/.venv/bin/dsproxy" "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG"
@@ -2679,6 +2714,7 @@ ok "Install target ref: $INSTALL_TARGET_REF"
 prepare_install_checkout "$INSTALL_TARGET_REF"
 
 sync_install_checkout_to_ref "$INSTALL_TARGET_REF"
+ensure_managed_resources_git_excluded
 
 INSTALL_TARGET_COMMIT="$(resolve_install_commit_for_metadata "$INSTALL_TARGET_REF")"
 if [ -n "$INSTALL_TARGET_COMMIT" ]; then

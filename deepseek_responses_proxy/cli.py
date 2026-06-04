@@ -5565,6 +5565,26 @@ def _git_status_porcelain(repo_root: Path) -> str:
     return result.stdout.strip()
 
 
+def _is_upgrade_managed_resource_dirty_line(line: str) -> bool:
+    stripped = str(line or "").rstrip("\n")
+    if not stripped.startswith("?? "):
+        return False
+    path = stripped[3:].strip().strip('"')
+    return path in {"resources", "resources/"} or path.startswith("resources/")
+
+
+def _filter_upgrade_dirty_worktree_status(status: str) -> tuple[str, str]:
+    kept: list[str] = []
+    ignored: list[str] = []
+    for line in str(status or "").splitlines():
+        if not line.strip():
+            continue
+        if _is_upgrade_managed_resource_dirty_line(line):
+            ignored.append(line)
+        else:
+            kept.append(line)
+    return "\n".join(kept).strip(), "\n".join(ignored).strip()
+
 
 def _git_commit_for_ref_in_repo(repo_root: Path, ref: str) -> str:
     if not ref:
@@ -6051,8 +6071,12 @@ def _upgrade(args: argparse.Namespace) -> int:
 
     result["repo_root"] = str(repo_root)
 
-    dirty = _git_status_porcelain(repo_root)
+    dirty_raw = _git_status_porcelain(repo_root)
+    dirty, ignored_managed_resources = _filter_upgrade_dirty_worktree_status(dirty_raw)
     result["git_dirty"] = bool(dirty)
+    if ignored_managed_resources:
+        result["git_dirty_ignored_managed_resources"] = ignored_managed_resources
+        result["git_dirty_raw"] = dirty_raw
     if dirty and not args.allow_dirty:
         result.update({"status": "error", "error": "dirty_worktree", "git_status": dirty, "hint": "Commit, stash, or pass --allow-dirty if you understand the risk."})
         print(json.dumps(result, ensure_ascii=False, indent=2))

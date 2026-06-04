@@ -1,4 +1,4 @@
-## p2.17a8-release-v043-alpha — v0.4.3-alpha public release
+## p2.17a9-upgrade-ignore-managed-resources-dirty — v0.4.3-alpha public release
 
 Date: 2026-06-03
 
@@ -11,7 +11,7 @@ Scope:
 Release boundary:
 
 - Public tag: `v0.4.3-alpha`.
-- Internal checkpoint: `p2.17a8-release-v043-alpha`.
+- Internal checkpoint: `p2.17a9-upgrade-ignore-managed-resources-dirty`.
 - Release assets: `bootstrap.sh` and `install.sh`.
 
 ## p2.17a7 Custom reasoning output diagnostics

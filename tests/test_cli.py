@@ -433,6 +433,86 @@ def test_cli_upgrade_dry_run_outputs_plan(monkeypatch, tmp_path, capsys):
     assert not any(" start" in cmd or " stop" in cmd for cmd in commands)
 
 
+
+def test_cli_upgrade_dry_run_ignores_managed_resource_directory_dirty(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    class FakeCompleted:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["rev-parse", "--show-toplevel"]:
+            return FakeCompleted(stdout=str(repo) + "\n")
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["status", "--porcelain"]:
+            return FakeCompleted(stdout="?? resources/\n")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert main([
+        "upgrade",
+        "--repo",
+        str(repo),
+        "--tag",
+        "v9.9-test",
+        "--dry-run",
+        "--skip-profile",
+        "--no-restart",
+        "--no-backup",
+    ]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "ok"
+    assert data["git_dirty"] is False
+    assert data["git_dirty_ignored_managed_resources"] == "?? resources/"
+
+
+def test_cli_upgrade_still_rejects_real_dirty_worktree_with_managed_resources(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    class FakeCompleted:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["rev-parse", "--show-toplevel"]:
+            return FakeCompleted(stdout=str(repo) + "\n")
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["status", "--porcelain"]:
+            return FakeCompleted(stdout="?? resources/\n M deepseek_responses_proxy/cli.py\n")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert main([
+        "upgrade",
+        "--repo",
+        str(repo),
+        "--tag",
+        "v9.9-test",
+        "--dry-run",
+        "--skip-profile",
+        "--no-restart",
+        "--no-backup",
+    ]) == 1
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "error"
+    assert data["error"] == "dirty_worktree"
+    assert data["git_status"] == "M deepseek_responses_proxy/cli.py"
+    assert data["git_dirty_ignored_managed_resources"] == "?? resources/"
+
+
 def test_cli_upgrade_non_git_checkout_dry_run_uses_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
     import deepseek_responses_proxy.cli as cli
 
