@@ -785,6 +785,8 @@ def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     assert "_wizard_render_panel(" in cli_text
     assert "_wizard_print_box_line(" in cli_text
     assert "_wizard_render_menu(" in cli_text
+    assert "_wizard_yes_no_choice(" in cli_text
+    assert "wizard_step = 2" in cli_text
     assert "\\033[K" in cli_text
     assert "textwrap.wrap" in cli_text
     assert "\\033[1;44m" not in cli_text
@@ -847,3 +849,10 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
     assert "git -C \"$INSTALL_DIR\" rev-parse --git-path info/exclude" in text
     assert "resources/" in text
     assert "resources/tokenizers/" in text
+
+
+def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert 'CODEEPSEEDEX_PUBLIC_RELEASE_TAG="${DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"' in text
+    assert "Latest Release API fallback used" in text
+    assert "falling back to packaged public release tag" in text

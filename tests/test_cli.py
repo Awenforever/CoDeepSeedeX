@@ -513,6 +513,45 @@ def test_cli_upgrade_still_rejects_real_dirty_worktree_with_managed_resources(mo
     assert data["git_dirty_ignored_managed_resources"] == "?? resources/"
 
 
+def test_cli_upgrade_latest_release_resolution_fallback_uses_runtime_public_tag(monkeypatch, tmp_path, capsys):
+    import urllib.error
+
+    import deepseek_responses_proxy.cli as cli
+
+    repo = tmp_path / "not-git"
+    repo.mkdir()
+
+    class FakeCompleted:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["rev-parse", "--show-toplevel"]:
+            return FakeCompleted(returncode=128, stderr="not a git repository")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    def fake_urlopen(request, timeout=0):
+        raise urllib.error.HTTPError(getattr(request, "full_url", "https://example.test"), 403, "rate limit exceeded", {}, None)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert main(["upgrade", "--repo", str(repo), "--dry-run"]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] in {"ok", "already_up_to_date"}
+    assert data["target_ref"] == cli.PROXY_PUBLIC_VERSION
+    assert data["target_source"] == "latest_release_resolution_fallback"
+    assert data["latest_release"]["resolution_fallback"] is True
+    assert data["latest_release"]["fallback_reason"] == "latest_release_resolution_failed"
+    if data["status"] == "ok":
+        assert any(step["label"] == "download_release_bootstrap" and step["skipped"] is True for step in data["steps"])
+    else:
+        assert data["skip_reason"] == "same_public_version_non_git_install"
+
+
 def test_cli_upgrade_non_git_checkout_dry_run_uses_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
     import deepseek_responses_proxy.cli as cli
 
@@ -618,6 +657,75 @@ def test_cli_upgrade_non_git_checkout_executes_release_bootstrap_fallback(monkey
     assert data["target_ref"] == "v9.9-alpha"
     assert calls["bootstrap_cmds"]
     assert any("releases/download/v9.9-alpha/bootstrap.sh" in url for url in calls["bootstrap_urls"])
+
+
+def test_cli_upgrade_git_fetch_failure_uses_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
+    import deepseek_responses_proxy.cli as cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls = {"bootstrap_cmds": [], "bootstrap_urls": []}
+
+    class FakeCompleted:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["rev-parse", "--show-toplevel"]:
+            return FakeCompleted(stdout=str(repo) + "\n")
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["status", "--porcelain"]:
+            return FakeCompleted(stdout="")
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:6] == ["ls-remote", "--tags", "origin"]:
+            return FakeCompleted(stdout="abc1234567890 refs/tags/v9.9-alpha\n")
+        if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["fetch", "--tags", "origin"]:
+            return FakeCompleted(returncode=128, stderr="ssh unavailable")
+        if len(argv) >= 4 and argv[0] == "bash" and argv[2:4] == ["--install-ref", "v9.9-alpha"]:
+            calls["bootstrap_cmds"].append(argv)
+            assert "--non-interactive" in argv
+            assert "--install-dir" in argv
+            assert str(repo) in argv
+            return FakeCompleted(returncode=0, stdout="installed via fallback\n")
+        raise AssertionError(f"unexpected command: {argv}")
+
+    class FakeUrlResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"#!/usr/bin/env bash\nprintf bootstrap\n"
+
+    def fake_urlopen(request, timeout=0):
+        calls["bootstrap_urls"].append(getattr(request, "full_url", str(request)))
+        return FakeUrlResponse()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+
+    assert main([
+        "upgrade",
+        "--repo",
+        str(repo),
+        "--tag",
+        "v9.9-alpha",
+        "--skip-profile",
+        "--no-restart",
+        "--skip-config-wizard",
+    ]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "ok"
+    assert data["upgrade_path"] == "git_fetch_failed_release_bootstrap"
+    assert data["non_git_install"] is False
+    assert data["git_upgrade_fallback_reason"] == "git_fetch_tags"
+    assert calls["bootstrap_cmds"]
+    assert any("releases/download/v9.9-alpha/bootstrap.sh" in url for url in calls["bootstrap_urls"])
+
+
 
 
 

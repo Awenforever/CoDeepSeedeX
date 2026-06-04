@@ -1,3 +1,19 @@
+## p2.18a1-unified-guided-ui-upgrade-fallback — unified guided UI and upgrade fallback
+
+Date: 2026-06-04
+
+Scope:
+
+- Keep `v0.4.3-alpha` as the public Latest line while hardening the user upgrade path.
+- Add a latest-release resolution fallback so `dsproxy upgrade` can continue with the current public release tag when the GitHub Latest Release API is rate-limited.
+- Let git-backed installs fall back to the release bootstrap installer if `git fetch` fails, preserving the same safe backup/install path used by non-git installs.
+- Keep installer and `dsproxy config wizard` guided surfaces aligned with the arrow-key open terminal UI contract.
+
+Validation focus:
+
+- `dsproxy upgrade --tag v0.4.3-alpha` remains the reliable legacy path for already-installed old runtimes whose own code cannot be patched retroactively.
+- Future `dsproxy upgrade` from this checkpoint should report structured fallback metadata instead of stopping at `latest_release_resolution_failed` when GitHub API resolution fails.
+
 ## p2.17a9-upgrade-ignore-managed-resources-dirty — v0.4.3-alpha public release
 
 Date: 2026-06-03

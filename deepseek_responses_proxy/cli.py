@@ -4814,15 +4814,18 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         print("\033[?25h", file=sys.stderr)
 
-def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
+def _wizard_yes_no_choice(prompt: str, default: str = "N", *, non_interactive: bool = False) -> str:
     default_value = "Y" if str(default).strip().lower().startswith("y") else "N"
-    value = _wizard_read_menu_choice(
+    return _wizard_read_menu_choice(
         prompt,
         [("Y", "Yes", ""), ("N", "No", "")],
         default_value,
         non_interactive=non_interactive,
     )
-    return value == "Y"
+
+
+def _wizard_yes_no(prompt: str, default: str = "N", *, non_interactive: bool = False) -> bool:
+    return _wizard_yes_no_choice(prompt, default, non_interactive=non_interactive) == "Y"
 
 
 def _wizard_model_provider_choice(*, non_interactive: bool = False) -> str:
@@ -4945,126 +4948,158 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
         [
             "You can skip any item and configure it later.",
             "Secrets are hidden. Saved values are kept when you press Enter.",
+            "Use Backspace from a menu to return to the previous guided step.",
         ],
-        footer="Step 1/3",
+        footer="Step 0/5",
     )
 
-    if _wizard_yes_no("Configure model API now?", "Y", non_interactive=non_interactive):
-        provider = _wizard_model_provider_choice(non_interactive=non_interactive)
-        if provider in {"0", "mimo", "baichuan"}:
-            skipped.append("model_api" if provider == "0" else f"model_api:{provider}_unsupported")
-            if provider in {"mimo", "baichuan"}:
-                unsupported.append(f"model_api:{provider}")
-                print("Selected model provider is currently unsupported. Configure it as custom only if it is OpenAI-compatible.", file=sys.stderr)
-        else:
-            provider_config = _model_api_provider_config(provider)
-            base_url = str(provider_config.get("base_url") or "").strip()
-            model = str(provider_config.get("model") or "").strip()
-            if provider == "custom":
-                base_url = _wizard_read_line("OpenAI-compatible base URL", values.get("DEEPSEEK_BASE_URL", ""), non_interactive=non_interactive).strip()
-                model = _wizard_read_line("Upstream model name", values.get("DEEPSEEK_PROXY_MODEL", ""), non_interactive=non_interactive).strip()
-                if not base_url or not model:
-                    skipped.append("model_api:custom_missing_details")
-                    print("Custom model API skipped because base URL or model name is empty.", file=sys.stderr)
-                    provider = ""
-            if provider:
-                key = _wizard_read_secret(f"{provider_config['display_name']} API key", values.get("DEEPSEEK_API_KEY", ""), non_interactive=non_interactive)
-                if key:
-                    if provider == "deepseek":
-                        validation = _check_deepseek_api_key(key, url="https://api.deepseek.com/user/balance", timeout=10.0)
-                        validation["kind"] = "model_api"
-                        validation["provider"] = "deepseek"
-                    else:
-                        validation = _validate_model_api_key(provider, key, base_url=base_url, timeout=10.0)
-                    validation_results.append(validation)
-                    if validation.get("ok"):
-                        values["DEEPSEEK_API_KEY"] = key
-                        values["DEEPSEEK_BASE_URL"] = base_url
-                        values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider
-                        values["DEEPSEEK_PROXY_MODEL"] = model
-                        values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-                        configured.append(f"model_api:{provider}")
-                        print(f"Model API key validated for provider: {provider}.", file=sys.stderr)
-                    else:
-                        skipped.append(f"model_api:{provider}_validation_failed")
-                        print(f"Model API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+    wizard_step = 2
+    while wizard_step <= 4:
+        if wizard_step == 2:
+            choice = _wizard_yes_no_choice("Configure model API now?", "Y", non_interactive=non_interactive)
+            if choice == "__CODEEPSEEDEX_BACK__":
+                wizard_step = 2
+                continue
+            if choice == "Y":
+                provider = _wizard_model_provider_choice(non_interactive=non_interactive)
+                if provider == "__CODEEPSEEDEX_BACK__":
+                    wizard_step = 2
+                    continue
+                if provider in {"0", "mimo", "baichuan"}:
+                    skipped.append("model_api" if provider == "0" else f"model_api:{provider}_unsupported")
+                    if provider in {"mimo", "baichuan"}:
+                        unsupported.append(f"model_api:{provider}")
+                        print("Selected model provider is currently unsupported. Configure it as custom only if it is OpenAI-compatible.", file=sys.stderr)
                 else:
-                    skipped.append("model_api")
-    else:
-        skipped.append("model_api")
+                    provider_config = _model_api_provider_config(provider)
+                    base_url = str(provider_config.get("base_url") or "").strip()
+                    model = str(provider_config.get("model") or "").strip()
+                    if provider == "custom":
+                        base_url = _wizard_read_line("OpenAI-compatible base URL", values.get("DEEPSEEK_BASE_URL", ""), non_interactive=non_interactive).strip()
+                        model = _wizard_read_line("Upstream model name", values.get("DEEPSEEK_PROXY_MODEL", ""), non_interactive=non_interactive).strip()
+                        if not base_url or not model:
+                            skipped.append("model_api:custom_missing_details")
+                            print("Custom model API skipped because base URL or model name is empty.", file=sys.stderr)
+                            provider = ""
+                    if provider:
+                        key = _wizard_read_secret(f"{provider_config['display_name']} API key", values.get("DEEPSEEK_API_KEY", ""), non_interactive=non_interactive)
+                        if key:
+                            if provider == "deepseek":
+                                validation = _check_deepseek_api_key(key, url="https://api.deepseek.com/user/balance", timeout=10.0)
+                                validation["kind"] = "model_api"
+                                validation["provider"] = "deepseek"
+                            else:
+                                validation = _validate_model_api_key(provider, key, base_url=base_url, timeout=10.0)
+                            validation_results.append(validation)
+                            if validation.get("ok"):
+                                values["DEEPSEEK_API_KEY"] = key
+                                values["DEEPSEEK_BASE_URL"] = base_url
+                                values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider
+                                values["DEEPSEEK_PROXY_MODEL"] = model
+                                values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+                                configured.append(f"model_api:{provider}")
+                                print(f"Model API key validated for provider: {provider}.", file=sys.stderr)
+                            else:
+                                skipped.append(f"model_api:{provider}_validation_failed")
+                                print(f"Model API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+                        else:
+                            skipped.append("model_api")
+            else:
+                skipped.append("model_api")
+            wizard_step = 3
+            continue
 
-    if _wizard_yes_no("Configure web search API now?", "N", non_interactive=non_interactive):
-        provider = _wizard_web_provider_choice(non_interactive=non_interactive)
-        web_provider_map = {
-            "serpapi": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
-            "tavily": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
-            "exa": ("exa", "Exa API key", "EXA_API_KEY"),
-            "firecrawl": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
-        }
-        if provider in web_provider_map:
-            provider, prompt, env_key = web_provider_map[provider]
-            key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
-            if key:
-                validation = _validate_web_search_api_key(provider, key, timeout=10.0)
-                validation_results.append(validation)
-                if validation.get("ok"):
-                    values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                    values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
-                    values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
-                    values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
-                    values[env_key] = key
-                    configured.append(f"web_search_api:{provider}")
-                    print(f"Web search API key validated for provider: {provider}.", file=sys.stderr)
+        if wizard_step == 3:
+            choice = _wizard_yes_no_choice("Configure web search API now?", "N", non_interactive=non_interactive)
+            if choice == "__CODEEPSEEDEX_BACK__":
+                wizard_step = 2
+                continue
+            if choice == "Y":
+                provider = _wizard_web_provider_choice(non_interactive=non_interactive)
+                if provider == "__CODEEPSEEDEX_BACK__":
+                    wizard_step = 3
+                    continue
+                web_provider_map = {
+                    "serpapi": ("serpapi", "SerpAPI API key", "SERPAPI_API_KEY"),
+                    "tavily": ("tavily", "Tavily API key", "TAVILY_API_KEY"),
+                    "exa": ("exa", "Exa API key", "EXA_API_KEY"),
+                    "firecrawl": ("firecrawl", "Firecrawl API key", "FIRECRAWL_API_KEY"),
+                }
+                if provider in web_provider_map:
+                    provider, prompt, env_key = web_provider_map[provider]
+                    key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
+                    if key:
+                        validation = _validate_web_search_api_key(provider, key, timeout=10.0)
+                        validation_results.append(validation)
+                        if validation.get("ok"):
+                            values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                            values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
+                            values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
+                            values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+                            values[env_key] = key
+                            configured.append(f"web_search_api:{provider}")
+                            print(f"Web search API key validated for provider: {provider}.", file=sys.stderr)
+                        else:
+                            skipped.append(f"web_search_api:{provider}_validation_failed")
+                            print(f"Web search API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+                    else:
+                        skipped.append("web_search_api")
                 else:
-                    skipped.append(f"web_search_api:{provider}_validation_failed")
-                    print(f"Web search API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+                    skipped.append("web_search_api")
             else:
                 skipped.append("web_search_api")
-        else:
-            skipped.append("web_search_api")
-    else:
-        skipped.append("web_search_api")
+            wizard_step = 4
+            continue
 
-    if _wizard_yes_no("Configure image generation API now?", "N", non_interactive=non_interactive):
-        provider = _wizard_image_provider_choice(non_interactive=non_interactive)
-        image_provider_map = {
-            "zhipu": ("zhipu", "ZhipuAI / BigModel image API key", "ZHIPUAI_API_KEY"),
-            "zai": ("zai", "Z.AI image API key", "ZAI_API_KEY"),
-            "qwen_image_beijing": ("qwen_image_beijing", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
-            "qwen_image_singapore": ("qwen_image_singapore", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
-            "qwen_image_us": ("qwen_image_us", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
-            "qwen_image_germany": ("qwen_image_germany", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
-            "stability": ("stability", "Stability AI API key", "STABILITY_API_KEY"),
-            "fal": ("fal", "fal.ai API key", "FAL_KEY"),
-        }
-        if provider in image_provider_map:
-            provider, prompt, env_key = image_provider_map[provider]
-            saved_default = values.get(env_key, "") or values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", "")
-            key = _wizard_read_secret(prompt, saved_default, non_interactive=non_interactive)
-            if key:
-                validation = _validate_image_api_key(provider, key, timeout=10.0)
-                validation_results.append(validation)
-                if validation.get("ok"):
-                    canonical = _canonical_image_generation_provider(provider)
-                    values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                    values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical
-                    values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
-                    values[env_key] = key
-                    base_url = _image_generation_base_url_for_provider(canonical)
-                    if base_url:
-                        values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
-                    configured.append(f"image_generation_api:{canonical}")
-                    print(f"Image generation API key validated for provider: {canonical}.", file=sys.stderr)
+        if wizard_step == 4:
+            choice = _wizard_yes_no_choice("Configure image generation API now?", "N", non_interactive=non_interactive)
+            if choice == "__CODEEPSEEDEX_BACK__":
+                wizard_step = 3
+                continue
+            if choice == "Y":
+                provider = _wizard_image_provider_choice(non_interactive=non_interactive)
+                if provider == "__CODEEPSEEDEX_BACK__":
+                    wizard_step = 4
+                    continue
+                image_provider_map = {
+                    "zhipu": ("zhipu", "ZhipuAI / BigModel image API key", "ZHIPUAI_API_KEY"),
+                    "zai": ("zai", "Z.AI image API key", "ZAI_API_KEY"),
+                    "qwen_image_beijing": ("qwen_image_beijing", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+                    "qwen_image_singapore": ("qwen_image_singapore", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+                    "qwen_image_us": ("qwen_image_us", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+                    "qwen_image_germany": ("qwen_image_germany", "DashScope Qwen Image API key", "DASHSCOPE_API_KEY"),
+                    "stability": ("stability", "Stability AI API key", "STABILITY_API_KEY"),
+                    "fal": ("fal", "fal.ai API key", "FAL_KEY"),
+                }
+                if provider in image_provider_map:
+                    provider, prompt, env_key = image_provider_map[provider]
+                    saved_default = values.get(env_key, "") or values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", "")
+                    key = _wizard_read_secret(prompt, saved_default, non_interactive=non_interactive)
+                    if key:
+                        validation = _validate_image_api_key(provider, key, timeout=10.0)
+                        validation_results.append(validation)
+                        if validation.get("ok"):
+                            canonical = _canonical_image_generation_provider(provider)
+                            values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+                            values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical
+                            values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                            values[env_key] = key
+                            base_url = _image_generation_base_url_for_provider(canonical)
+                            if base_url:
+                                values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
+                            configured.append(f"image_generation_api:{canonical}")
+                            print(f"Image generation API key validated for provider: {canonical}.", file=sys.stderr)
+                        else:
+                            skipped.append(f"image_generation_api:{provider}_validation_failed")
+                            print(f"Image generation API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+                    else:
+                        skipped.append("image_generation_api")
                 else:
-                    skipped.append(f"image_generation_api:{provider}_validation_failed")
-                    print(f"Image generation API key validation failed for provider {provider}. It was not saved.", file=sys.stderr)
+                    skipped.append("image_generation_api")
             else:
                 skipped.append("image_generation_api")
-        else:
-            skipped.append("image_generation_api")
-    else:
-        skipped.append("image_generation_api")
-
+            wizard_step = 5
+            continue
     if configured:
         _write_env_exports(env_file, values)
 
@@ -5734,14 +5769,17 @@ def _upgrade_non_git_install(
     repo_hint: Path,
     args: argparse.Namespace,
     dry_run: bool,
+    upgrade_path: str = "non_git_release_bootstrap",
+    non_git_install: bool = True,
+    hint: str | None = None,
 ) -> int:
     result.update({
         "status": "ok",
-        "upgrade_path": "non_git_release_bootstrap",
-        "non_git_install": True,
-        "repo_root": None,
-        "hint": "This install is not a git checkout, so dsproxy upgrade will rerun the release bootstrap installer with an explicit install ref.",
-        "fallback": "If the automatic non-git upgrade fails, rerun the one-line installer shown in one_line_upgrade.",
+        "upgrade_path": upgrade_path,
+        "non_git_install": non_git_install,
+        "repo_root": None if non_git_install else str(repo_hint),
+        "hint": hint or "This install is not a git checkout, so dsproxy upgrade will rerun the release bootstrap installer with an explicit install ref.",
+        "fallback": "If the automatic release-bootstrap upgrade fails, rerun the one-line installer shown in one_line_upgrade.",
     })
     same_public_version = _release_tag_matches_runtime(target_ref, str(result.get("current_public_version") or ""))
     result["same_public_version"] = same_public_version
@@ -5918,6 +5956,38 @@ LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/
 ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases?per_page=50"
 
 
+def _default_latest_release_fallback_tag() -> str:
+    configured = str(os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG") or "").strip()
+    if configured:
+        return configured
+    current = str(PROXY_PUBLIC_VERSION or "").strip()
+    if re.match(r"^v\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.-]+)?$", current):
+        return current
+    return ""
+
+
+def _latest_release_resolution_fallback(
+    *,
+    release_url: str,
+    exc: BaseException,
+) -> tuple[str, dict[str, Any]] | None:
+    fallback_tag = _default_latest_release_fallback_tag()
+    if not fallback_tag:
+        return None
+    return fallback_tag, {
+        "api_url": release_url,
+        "tag_name": fallback_tag,
+        "name": f"CoDeepSeedeX {fallback_tag}",
+        "html_url": f"https://github.com/Awenforever/CoDeepSeedeX/releases/tag/{fallback_tag}",
+        "prerelease": False,
+        "draft": False,
+        "resolution_fallback": True,
+        "fallback_reason": "latest_release_resolution_failed",
+        "resolution_error": f"{type(exc).__name__}: {exc}",
+        "fallback_source": "DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG_or_runtime_public_version",
+    }
+
+
 def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
     url = api_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
     request = urllib.request.Request(
@@ -6014,25 +6084,40 @@ def _upgrade(args: argparse.Namespace) -> int:
                 error_code = "latest_prerelease_resolution_failed"
                 hint = "Alpha upgrades follow the newest non-draft GitHub pre-release. Pass --tag <tag-or-branch> to select an explicit ref, or publish a pre-release first."
                 url_key = "alpha_release_url"
-            else:
-                release_url = args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
-                error_code = "latest_release_resolution_failed"
-                hint = "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer."
-                url_key = "latest_release_url"
-            result = {
-                "status": "error",
-                "operation": "upgrade",
-                "current_runtime_version": PROXY_VERSION,
-                "error": error_code,
-                "detail": f"{type(exc).__name__}: {exc}",
-                url_key: release_url,
-                "repo_hint": str(repo_hint),
-                "dry_run": dry_run,
-                "mode": "dsproxy_upgrade",
-                "hint": hint,
-            }
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 1
+                result = {
+                    "status": "error",
+                    "operation": "upgrade",
+                    "current_runtime_version": PROXY_VERSION,
+                    "error": error_code,
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    url_key: release_url,
+                    "repo_hint": str(repo_hint),
+                    "dry_run": dry_run,
+                    "mode": "dsproxy_upgrade",
+                    "hint": hint,
+                }
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 1
+
+            release_url = args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
+            fallback = _latest_release_resolution_fallback(release_url=release_url, exc=exc)
+            if fallback is None:
+                result = {
+                    "status": "error",
+                    "operation": "upgrade",
+                    "current_runtime_version": PROXY_VERSION,
+                    "error": "latest_release_resolution_failed",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    "latest_release_url": release_url,
+                    "repo_hint": str(repo_hint),
+                    "dry_run": dry_run,
+                    "mode": "dsproxy_upgrade",
+                    "hint": "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer.",
+                }
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 1
+            target_ref, latest_release = fallback
+            target_source = "latest_release_resolution_fallback"
 
     release_channel = "explicit" if target_source == "explicit_ref" else ("alpha" if target_source == "latest_prerelease" else "latest")
     version_metadata = _version_metadata()
@@ -6094,9 +6179,19 @@ def _upgrade(args: argparse.Namespace) -> int:
         for label, argv, allow_failure in commands:
             ok = _upgrade_run_step(result, label=label, argv=argv, cwd=repo_root, dry_run=False, allow_failure=allow_failure)
             if not ok:
-                result.update({"status": "error", "error": "upgrade_step_failed", "failed_step": label})
-                print(json.dumps(result, ensure_ascii=False, indent=2))
-                return 1
+                result["git_upgrade_fallback_reason"] = label
+                result["git_upgrade_fallback"] = "release_bootstrap_installer"
+                return _upgrade_non_git_install(
+                    result,
+                    target_ref=target_ref,
+                    target_source=target_source,
+                    repo_hint=repo_root,
+                    args=args,
+                    dry_run=dry_run,
+                    upgrade_path="git_fetch_failed_release_bootstrap",
+                    non_git_install=False,
+                    hint="Git fetch failed for this installed checkout, so dsproxy upgrade is falling back to the release bootstrap installer with an explicit install ref.",
+                )
         if not target_commit:
             target_commit = _git_commit_for_ref_in_repo(repo_root, target_ref)
         result["target_commit"] = target_commit or None

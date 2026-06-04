@@ -5,6 +5,7 @@ INSTALL_DIR="${DEEPSEEK_PROXY_INSTALL_DIR:-$HOME/.local/share/deepseek-responses
 REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${DEEPSEEK_PROXY_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${DEEPSEEK_PROXY_INSTALL_REF:-}"
+CODEEPSEEDEX_PUBLIC_RELEASE_TAG="${DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"
 BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}"
 ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
@@ -298,15 +299,25 @@ resolve_install_ref() {
     return 0
   fi
 
-  local tag
-  tag="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 "$LATEST_RELEASE_API_URL" |
-    sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' |
-    head -n 1)"
-  if [ -z "$tag" ]; then
-    echo "ERROR: could not resolve GitHub Latest Release tag; set DEEPSEEK_PROXY_INSTALL_REF or pass --install-ref" >&2
-    return 1
+  local raw=""
+  local tag=""
+  if raw="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 "$LATEST_RELEASE_API_URL" 2>> "$INSTALL_LOG")"; then
+    tag="$(printf '%s\n' "$raw" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)"
   fi
-  printf '%s\n' "$tag"
+  if [ -n "$tag" ]; then
+    printf '%s\n' "$tag"
+    return 0
+  fi
+
+  if [ -n "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG" ]; then
+    warn "Could not resolve GitHub Latest Release tag through API; falling back to packaged public release tag: $CODEEPSEEDEX_PUBLIC_RELEASE_TAG"
+    printf '+ Latest Release API fallback used: %s\n' "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG" >> "$INSTALL_LOG"
+    printf '%s\n' "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG"
+    return 0
+  fi
+
+  echo "ERROR: could not resolve GitHub Latest Release tag; set DEEPSEEK_PROXY_INSTALL_REF or pass --install-ref" >&2
+  return 1
 }
 
 read_from_tty() {
