@@ -1,3 +1,16 @@
+## p2.18a7-model-api-review-back — model API review/back step
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Add an installer Step 2 model API review page after provider/base URL/model/API key collection.
+- The review page hides API key material and supports Continue, Edit base URL, Edit model name, Edit API key, Back to provider selection, and Skip model API.
+- Preserve p2.18a4 stable splash entry, p2.18a5 model input guard, and p2.18a6 completion hold.
+- Non-interactive installs remain non-blocking and keep the existing field guard.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a6-install-completion-hold — install completion hold
 
 Date: 2026-06-05

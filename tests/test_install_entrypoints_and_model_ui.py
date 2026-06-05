@@ -961,3 +961,30 @@ def test_p218a6_installer_has_completion_hold() -> None:
     call_idx = install_text.rindex("show_install_completion_hold")
     assert call_idx > completion_idx
     assert install_text.rindex("print_install_logs") < call_idx
+
+
+def test_p218a7_installer_model_api_review_back_contract() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "review_model_api_config()" in install_text
+    assert "Review model API configuration" in install_text
+    assert "Continue with this configuration" in install_text
+    assert "Edit base URL" in install_text
+    assert "Edit model name" in install_text
+    assert "Edit API key" in install_text
+    assert "Back to provider selection" in install_text
+    assert "Skip model API" in install_text
+
+    assert "model_api_key_state_label()" in install_text
+    assert "configured, hidden" in install_text
+    assert "API key material is never displayed" in install_text
+
+    assert "prompt_model_base_url_field()" in install_text
+    assert "prompt_model_name_field()" in install_text
+    assert "prompt_model_api_key_field()" in install_text
+    assert "choose_model_provider_family()" in install_text
+
+    assert "PROMPTED_API_KEY=\"\"" in install_text
+    assert "PROMPTED_MODEL_PROVIDER=\"\"" in install_text
+    assert "PROMPTED_MODEL_BASE_URL=\"\"" in install_text
+    assert "PROMPTED_MODEL_NAME=\"\"" in install_text

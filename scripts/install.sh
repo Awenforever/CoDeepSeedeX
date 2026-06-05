@@ -1326,171 +1326,57 @@ provider_option_line() {
 
 
 
-prompt_deepseek_api_key() {
-  PROMPTED_API_KEY=""
-  PROMPTED_MODEL_PROVIDER=""
-  PROMPTED_MODEL_BASE_URL=""
-  PROMPTED_MODEL_NAME=""
-
-  if [ "$NON_INTERACTIVE" = "1" ]; then
-    # Existing installer env file is the migration source of truth for non-interactive upgrades.
-    # Ambient shell variables can belong to another HOME/session; use them only when no env file value exists.
-    PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
-    if [ -z "$PROMPTED_API_KEY" ]; then
-      PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
-    fi
-    PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
-    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
-      PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
-    fi
-    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
-      PROMPTED_MODEL_PROVIDER="deepseek"
-    fi
-    PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
-    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
-      PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
-    fi
-    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
-      PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
-    fi
-    PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
-    if [ -z "$PROMPTED_MODEL_NAME" ]; then
-      PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
-    fi
-    if [ -z "$PROMPTED_MODEL_NAME" ]; then
-      PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
-    fi
-    return 0
+model_api_key_state_label() {
+  if [ -n "${PROMPTED_API_KEY:-}" ]; then
+    printf '%s\n' "configured, hidden"
+  else
+    printf '%s\n' "empty"
   fi
+}
 
-  local configure=""
-  configure="$(read_yes_no_menu "Configure model API now?" "Y")"
-  case "$configure" in
-    __CODEEPSEEDEX_BACK__) return 20 ;;
-    n|N|no|NO|No)
-      warn "Model API skipped. Configure later with: dsproxy config wizard"
-      return 0
-      ;;
-  esac
+review_model_api_config() {
+  local key_state
+  key_state="$(model_api_key_state_label)"
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="Provider: ${PROMPTED_MODEL_PROVIDER:-<unset>} · Base URL: ${PROMPTED_MODEL_BASE_URL:-<empty>} · Model: ${PROMPTED_MODEL_NAME:-<empty>} · API key: ${key_state}. API key material is never displayed."
+  read_menu_choice_from_tty "Review model API configuration" "1" \
+    "1|Continue with this configuration|supported" \
+    "2|Edit base URL|custom" \
+    "3|Edit model name|custom" \
+    "4|Edit API key|custom" \
+    "5|Back to provider selection|experimental" \
+    "0|Skip model API|skip"
+}
 
-  sub_title "Model providers"
-  printf '  %s\n' "Only DeepSeek is marked Supported. Other implemented model providers are Experimental until full Codex workflow validation passes."
-  local family=""
-  family="$(read_menu_choice_from_tty "Select model provider family" "1" \
-    "1|DeepSeek|supported" \
-    "2|Kimi / Moonshot|experimental" \
-    "3|ZhipuAI / BigModel|experimental" \
-    "4|Z.AI|experimental" \
-    "5|Qwen / DashScope|experimental" \
-    "6|Mimo|unsupported" \
-    "7|Baichuan|unsupported" \
-    "8|Other OpenAI-compatible server|custom" \
-    "0|Skip|skip")"
-  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
-    return 20
-  fi
+prompt_model_base_url_field() {
+  CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
+  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+  CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint. If you paste /chat/completions, it will be normalized to the base /v1 URL."
+  PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
+  PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$PROMPTED_MODEL_BASE_URL")"
+  CODEEPSEEDEX_INPUT_TITLE=""
+  CODEEPSEEDEX_INPUT_STEP=""
+  CODEEPSEEDEX_INPUT_DETAIL=""
+}
 
-  case "$family" in
-    1|deepseek|DeepSeek|DEEPSEEK)
-      PROMPTED_MODEL_PROVIDER="deepseek"
-      ;;
-    2|kimi|moonshot|Kimi|Moonshot|KIMI|MOONSHOT)
-      PROMPTED_MODEL_PROVIDER="kimi"
-      ;;
-    3|zhipu|zhipuai|bigmodel|ZHIPU|ZHIPUAI|BIGMODEL)
-      local endpoint=""
-      endpoint="$(read_menu_choice_from_tty "Select ZhipuAI / BigModel endpoint" "1" \
-        "1|Domestic Token API / general endpoint|experimental" \
-        "2|Domestic Coding Plan API endpoint|experimental" \
-        "0|Back / skip|skip")"
-      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
-        prompt_deepseek_api_key
-        return $?
-      fi
-      case "$endpoint" in
-        1|token|general|domestic) PROMPTED_MODEL_PROVIDER="zhipu" ;;
-        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zhipu-coding" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zhipu"; return 0 ;;
-      esac
-      ;;
-    4|zai|z.ai|ZAI|Z.AI)
-      local endpoint=""
-      endpoint="$(read_menu_choice_from_tty "Select Z.AI endpoint" "1" \
-        "1|International Token API / general endpoint|experimental" \
-        "2|International Coding Plan API endpoint|experimental" \
-        "0|Back / skip|skip")"
-      case "$endpoint" in
-        1|token|general|international) PROMPTED_MODEL_PROVIDER="zai" ;;
-        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zai-coding" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zai"; return 0 ;;
-      esac
-      ;;
-    5|qwen|dashscope|aliyun|QWEN|DASHSCOPE)
-      local endpoint=""
-      endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1" \
-        "1|Beijing pay-as-you-go OpenAI-compatible endpoint|experimental" \
-        "2|Singapore pay-as-you-go OpenAI-compatible endpoint|experimental" \
-        "3|US Virginia pay-as-you-go OpenAI-compatible endpoint|experimental" \
-        "0|Back / skip|skip")"
-      case "$endpoint" in
-        1|beijing|cn) PROMPTED_MODEL_PROVIDER="qwen-beijing" ;;
-        2|singapore|sg) PROMPTED_MODEL_PROVIDER="qwen-singapore" ;;
-        3|us|us-virginia|virginia) PROMPTED_MODEL_PROVIDER="qwen-us" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider qwen-beijing"; return 0 ;;
-      esac
-      ;;
-    6|mimo|Mimo|MIMO)
-      warn "Mimo is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
-      return 0
-      ;;
-    7|baichuan|Baichuan|BAICHUAN)
-      warn "Baichuan is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
-      return 0
-      ;;
-    8|custom|other|Other|CUSTOM)
-      PROMPTED_MODEL_PROVIDER="custom"
-      ;;
-    0|skip|Skip|SKIP)
-      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
-      return 0
-      ;;
-    *)
-      warn "Selected model provider is currently unsupported. Configure as custom only if it is OpenAI-compatible."
-      return 0
-      ;;
-  esac
-
-  PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
-  PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
-  if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+prompt_model_name_field() {
+  while true; do
     CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint. If you paste /chat/completions, it will be normalized to the base /v1 URL."
-    PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${DEEPSEEK_BASE_URL:-}")"
-    PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$PROMPTED_MODEL_BASE_URL")"
-
-    while true; do
-      CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}. Enter only the model id, for example: deepseek-v4-flash-ascend"
-      PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${DEEPSEEK_PROXY_MODEL:-}")"
-      PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
-      if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
-        break
-      fi
-      warn "Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend"
-      PROMPTED_MODEL_NAME=""
-    done
-
+    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}. Enter only the model id, for example: deepseek-v4-flash-ascend"
+    PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
+    PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
-    if [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; then
-      warn "Custom model API skipped because base URL or model name is empty."
-      PROMPTED_API_KEY=""
-      PROMPTED_MODEL_PROVIDER=""
+    if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
       return 0
     fi
-  fi
+    warn "Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend"
+    PROMPTED_MODEL_NAME=""
+  done
+}
 
+prompt_model_api_key_field() {
   local attempts=0
   local empty_attempts=0
   local candidate=""
@@ -1533,11 +1419,245 @@ prompt_deepseek_api_key() {
     fi
 
     attempts=$((attempts + 1))
-    warn "Model API key validation failed (${attempts}/3). Paste it again, or press Enter three times to skip."
+    warn "Model API key validation failed (${attempts}/3). Paste it again, use the review page to edit earlier fields, or press Enter three times to skip."
   done
 
   PROMPTED_API_KEY=""
   warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+  return 0
+}
+
+choose_model_provider_family() {
+  local family=""
+  sub_title "Model providers"
+  printf '  %s\n' "Only DeepSeek is marked Supported. Other implemented model providers are Experimental until full Codex workflow validation passes."
+  family="$(read_menu_choice_from_tty "Select model provider family" "1" \
+    "1|DeepSeek|supported" \
+    "2|Kimi / Moonshot|experimental" \
+    "3|ZhipuAI / BigModel|experimental" \
+    "4|Z.AI|experimental" \
+    "5|Qwen / DashScope|experimental" \
+    "6|Mimo|unsupported" \
+    "7|Baichuan|unsupported" \
+    "8|Other OpenAI-compatible server|custom" \
+    "0|Skip|skip")"
+  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
+
+  case "$family" in
+    1|deepseek|DeepSeek|DEEPSEEK)
+      PROMPTED_MODEL_PROVIDER="deepseek"
+      ;;
+    2|kimi|moonshot|Kimi|Moonshot|KIMI|MOONSHOT)
+      PROMPTED_MODEL_PROVIDER="kimi"
+      ;;
+    3|zhipu|zhipuai|bigmodel|ZHIPU|ZHIPUAI|BIGMODEL)
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select ZhipuAI / BigModel endpoint" "1" \
+        "1|Domestic Token API / general endpoint|experimental" \
+        "2|Domestic Coding Plan API endpoint|experimental" \
+        "0|Back / skip|skip")"
+      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+        return 21
+      fi
+      case "$endpoint" in
+        1|token|general|domestic) PROMPTED_MODEL_PROVIDER="zhipu" ;;
+        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zhipu-coding" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zhipu"; return 30 ;;
+      esac
+      ;;
+    4|zai|z.ai|ZAI|Z.AI)
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select Z.AI endpoint" "1" \
+        "1|International Token API / general endpoint|experimental" \
+        "2|International Coding Plan API endpoint|experimental" \
+        "0|Back / skip|skip")"
+      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+        return 21
+      fi
+      case "$endpoint" in
+        1|token|general|international) PROMPTED_MODEL_PROVIDER="zai" ;;
+        2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zai-coding" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zai"; return 30 ;;
+      esac
+      ;;
+    5|qwen|dashscope|aliyun|QWEN|DASHSCOPE)
+      local endpoint=""
+      endpoint="$(read_menu_choice_from_tty "Select Qwen / DashScope endpoint" "1" \
+        "1|Beijing pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "2|Singapore pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "3|US Virginia pay-as-you-go OpenAI-compatible endpoint|experimental" \
+        "0|Back / skip|skip")"
+      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+        return 21
+      fi
+      case "$endpoint" in
+        1|beijing|cn) PROMPTED_MODEL_PROVIDER="qwen-beijing" ;;
+        2|singapore|sg) PROMPTED_MODEL_PROVIDER="qwen-singapore" ;;
+        3|us|us-virginia|virginia) PROMPTED_MODEL_PROVIDER="qwen-us" ;;
+        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider qwen-beijing"; return 30 ;;
+      esac
+      ;;
+    6|mimo|Mimo|MIMO)
+      warn "Mimo is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
+      return 30
+      ;;
+    7|baichuan|Baichuan|BAICHUAN)
+      warn "Baichuan is listed for visibility but is currently unsupported in the guided installer. Configure manually as custom only if you have an OpenAI-compatible endpoint."
+      return 30
+      ;;
+    8|custom|other|Other|CUSTOM)
+      PROMPTED_MODEL_PROVIDER="custom"
+      ;;
+    0|skip|Skip|SKIP)
+      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
+      return 30
+      ;;
+    *)
+      warn "Selected model provider is currently unsupported. Configure as custom only if it is OpenAI-compatible."
+      return 30
+      ;;
+  esac
+  return 0
+}
+
+prompt_deepseek_api_key() {
+  PROMPTED_API_KEY=""
+  PROMPTED_MODEL_PROVIDER=""
+  PROMPTED_MODEL_BASE_URL=""
+  PROMPTED_MODEL_NAME=""
+
+  if [ "$NON_INTERACTIVE" = "1" ]; then
+    # Existing installer env file is the migration source of truth for non-interactive upgrades.
+    # Ambient shell variables can belong to another HOME/session; use them only when no env file value exists.
+    PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
+    if [ -z "$PROMPTED_API_KEY" ]; then
+      PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
+    fi
+    PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
+      PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
+    fi
+    if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
+      PROMPTED_MODEL_PROVIDER="deepseek"
+    fi
+    PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
+    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
+      PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
+    fi
+    if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
+      PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
+    fi
+    PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+    if [ -z "$PROMPTED_MODEL_NAME" ]; then
+      PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
+    fi
+    if [ -z "$PROMPTED_MODEL_NAME" ]; then
+      PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+    fi
+    return 0
+  fi
+
+  local configure=""
+  local provider_rc=0
+  local review_choice=""
+
+  configure="$(read_yes_no_menu "Configure model API now?" "Y")"
+  case "$configure" in
+    __CODEEPSEEDEX_BACK__) return 20 ;;
+    n|N|no|NO|No)
+      warn "Model API skipped. Configure later with: dsproxy config wizard"
+      return 0
+      ;;
+  esac
+
+  while true; do
+    PROMPTED_API_KEY=""
+    PROMPTED_MODEL_PROVIDER=""
+    PROMPTED_MODEL_BASE_URL=""
+    PROMPTED_MODEL_NAME=""
+
+    choose_model_provider_family
+    provider_rc=$?
+    case "$provider_rc" in
+      0) ;;
+      20) return 20 ;;
+      21) continue ;;
+      30) return 0 ;;
+      *) return "$provider_rc" ;;
+    esac
+
+    PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
+    PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+
+    if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+      prompt_model_base_url_field
+      prompt_model_name_field
+      if [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; then
+        warn "Custom model API skipped because base URL or model name is empty."
+        PROMPTED_API_KEY=""
+        PROMPTED_MODEL_PROVIDER=""
+        return 0
+      fi
+    fi
+
+    while true; do
+      prompt_model_api_key_field
+
+      review_choice="$(review_model_api_config)"
+      case "$review_choice" in
+        1|continue|Continue)
+          return 0
+          ;;
+        2|base|base-url|edit-base-url)
+          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+            prompt_model_base_url_field
+          else
+            warn "Base URL editing is only available for custom OpenAI-compatible providers. Select Back to provider selection to change provider."
+          fi
+          ;;
+        3|model|edit-model)
+          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+            prompt_model_name_field
+          else
+            CODEEPSEEDEX_INPUT_TITLE="Model API"
+            CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+            CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_MODEL_PROVIDER. Enter only the model id."
+            PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "$PROMPTED_MODEL_NAME")"
+            PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
+            CODEEPSEEDEX_INPUT_TITLE=""
+            CODEEPSEEDEX_INPUT_STEP=""
+            CODEEPSEEDEX_INPUT_DETAIL=""
+            if ! is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
+              warn "Invalid upstream model name. Returning to review."
+              PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+            fi
+          fi
+          ;;
+        4|key|api-key|edit-api-key)
+          PROMPTED_API_KEY=""
+          ;;
+        5|back|provider|provider-selection)
+          break
+          ;;
+        0|skip|Skip)
+          warn "Model API skipped. Configure later with: dsproxy config wizard"
+          PROMPTED_API_KEY=""
+          PROMPTED_MODEL_PROVIDER=""
+          PROMPTED_MODEL_BASE_URL=""
+          PROMPTED_MODEL_NAME=""
+          return 0
+          ;;
+        __CODEEPSEEDEX_BACK__)
+          break
+          ;;
+        *)
+          warn "Unknown review choice; returning to review."
+          ;;
+      esac
+    done
+  done
 }
 
 prompt_serpapi_api_key() {

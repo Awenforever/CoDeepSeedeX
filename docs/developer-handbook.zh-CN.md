@@ -31,9 +31,9 @@
 - GitHub Release状态：非draft，非pre-release
 - GitHub Release标志：`isDraft=false`，`isPrerelease=true`
 - Release资产：`bootstrap.sh`，`install.sh`
-- 当前内部开发检查点：`p2.18a6-install-completion-hold`
-- 最新闭合文档同步检查点：`p2.18a6-install-completion-hold`
-- 当前公开Release note同步检查点：`p2.18a6-install-completion-hold`
+- 当前内部开发检查点：`p2.18a7-model-api-review-back`
+- 最新闭合文档同步检查点：`p2.18a7-model-api-review-back`
+- 当前公开Release note同步检查点：`p2.18a7-model-api-review-back`
 - 已完成P0基线检查点：`p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - 最新WeClaw-facing运行时检查点：`p2.14a8-v040-alpha-release`
 - WeClaw状态：当前CoDeepSeedeX与WeClaw集成线仍兼容dsproxy拥有的status契约。p2.14新增managed native tool routing、routing diagnostics以及web/image provider bridge验证。
@@ -1932,6 +1932,6 @@ Release边界：
 4. Release note只从`/tmp`临时文件写入，不在`docs/`下维护tracked per-release note源文件。
 5. 验证必须包含隔离旧用户legacy Codex config迁移检查：旧`[profiles.*]`和`profile = "deepseek*"`配置应迁移到split `~/.codex/<profile>.config.toml`文件，并从主config移除。
 
-### p2.18a6-install-completion-hold Release note 规范
+### p2.18a7-model-api-review-back Release note 规范
 
 `v0.4.3-alpha` 的公开 Release note 必须面向用户：说明 custom provider 兼容性、reasoning-only 响应处理、图片 payload 保护和安装/配置引导改进。不要把内部补丁节点、VM流水账或 GitHub Release 管理步骤写进公开 Release note。
