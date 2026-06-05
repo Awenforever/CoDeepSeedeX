@@ -1,3 +1,16 @@
+## p2.18a3-stable-guided-ui-input-contract — stable guided UI input contract
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Replace the risky `p2.18a2` full-screen input clearing behavior with stable panel rendering.
+- Preserve a visible brand/setup plan before Step 1 language selection.
+- Sanitize TTY input, handle Backspace/DEL control characters, normalize custom OpenAI-compatible base URLs, and reject URL/path-like model names.
+- Apply the same input contract to installer and `dsproxy config wizard`.
+- Keep `dsproxy upgrade` TTY panels but avoid refreshing the public release in this patch step.
+
 ## p2.18a2-end-to-end-guided-ui — end-to-end guided UI
 
 Date: 2026-06-05

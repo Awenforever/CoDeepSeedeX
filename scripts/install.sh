@@ -320,6 +320,57 @@ resolve_install_ref() {
   return 1
 }
 
+
+clean_tty_input_value() {
+  local py="${PYTHON_BIN:-python3}"
+  "$py" - "$1" <<'PYCODEEPSEEDEX_CLEAN_TTY_INPUT_P218A3'
+import sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+buf = []
+for ch in raw:
+    code = ord(ch)
+    if ch in ("\b", "\x7f"):
+        if buf:
+            buf.pop()
+        continue
+    if code < 32 and ch != "\t":
+        continue
+    if code == 127:
+        if buf:
+            buf.pop()
+        continue
+    buf.append(ch)
+print("".join(buf).strip())
+PYCODEEPSEEDEX_CLEAN_TTY_INPUT_P218A3
+}
+
+normalize_openai_base_url() {
+  local py="${PYTHON_BIN:-python3}"
+  "$py" - "$1" <<'PYCODEEPSEEDEX_NORMALIZE_BASE_URL_P218A3'
+import re
+import sys
+url = sys.argv[1] if len(sys.argv) > 1 else ""
+url = re.sub(r"[\x00-\x1f\x7f]", "", url).strip().rstrip("/")
+for suffix in ("/chat/completions", "/responses", "/models"):
+    if url.endswith(suffix):
+        url = url[: -len(suffix)]
+        break
+url = url.rstrip("/")
+print(url)
+PYCODEEPSEEDEX_NORMALIZE_BASE_URL_P218A3
+}
+
+is_valid_model_name_value() {
+  local value="$1"
+  [ -n "$value" ] || return 1
+  case "$value" in
+    http://*|https://*|*/*|*$'\177'*|*$'\b'*)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 ui_render_input_panel() {
   local title="${1:-Input}"
   local prompt="${2:-}"
@@ -330,7 +381,7 @@ ui_render_input_panel() {
   local width
   width="$(ui_terminal_width)"
 
-  printf '\033[?25h\033[2J\033[3J\033[H' > /dev/tty
+  printf '\033[?25h' > /dev/tty 2>/dev/null || true
   ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "$title" "$width" "\033[1;38;5;75m" > /dev/tty
@@ -349,6 +400,7 @@ ui_render_input_panel() {
   ui_box_line "" "$width" > /dev/tty
   if [ "$kind" = "secret" ]; then
     ui_box_line_styled "Input is hidden. Press Enter to keep the existing value when one is available." "$width" "\033[2m" > /dev/tty
+    ui_box_line_styled "hidden · Enter keeps existing" "$width" "\033[2m" > /dev/tty
   else
     ui_box_line_styled "Press Enter to keep the default value." "$width" "\033[2m" > /dev/tty
   fi
@@ -368,14 +420,12 @@ read_from_tty() {
     return 0
   fi
 
+  stty sane < /dev/tty 2>/dev/null || true
   ui_render_input_panel "$title" "$prompt" "$default_value" "$helper" "$footer" "text"
-  printf '\n  %s\n' "$prompt" > /dev/tty
-  if [ -n "$default_value" ]; then
-    printf '  \033[2m[Enter keeps default]\033[0m\n' > /dev/tty
-  fi
-  printf '  > ' > /dev/tty
-  IFS= read -r value < /dev/tty || true
+  printf '\n  > ' > /dev/tty
+  IFS= read -r -e value < /dev/tty || true
   printf '\n' > /dev/tty
+  value="$(clean_tty_input_value "$value")"
   if [ -z "$value" ]; then
     value="$default_value"
   fi
@@ -414,27 +464,16 @@ read_secret_from_tty() {
     return 0
   fi
 
+  stty sane < /dev/tty 2>/dev/null || true
   ui_render_input_panel "$title" "$prompt" "$default_value" "$detail" "$footer" "secret"
-  printf '\n  %s\n' "$prompt" > /dev/tty
-  if [ -n "$default_value" ]; then
-    if [ -n "$helper" ]; then
-      printf '  \033[2m%s · hidden · Enter keeps existing\033[0m\n' "$helper" > /dev/tty
-    else
-      printf '  \033[2mhidden · Enter keeps existing\033[0m\n' > /dev/tty
-    fi
-  else
-    if [ -n "$helper" ]; then
-      printf '  \033[2m%s · hidden\033[0m\n' "$helper" > /dev/tty
-    else
-      printf '  \033[2mhidden\033[0m\n' > /dev/tty
-    fi
-  fi
-  printf '  > ' > /dev/tty
+  printf '\n  > ' > /dev/tty
+
   stty -echo < /dev/tty 2>/dev/null || true
   IFS= read -r value < /dev/tty || true
   stty echo < /dev/tty 2>/dev/null || true
   printf "\n\n" > /dev/tty
 
+  value="$(clean_tty_input_value "$value")"
   if [ -z "$value" ] && [ -n "$default_value" ]; then
     printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
     return 0
@@ -1366,10 +1405,21 @@ prompt_deepseek_api_key() {
   if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
     CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint and model name."
+    CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint. If you paste /chat/completions, it will be normalized to the base /v1 URL."
     PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${DEEPSEEK_BASE_URL:-}")"
-    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}"
-    PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${DEEPSEEK_PROXY_MODEL:-}")"
+    PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$PROMPTED_MODEL_BASE_URL")"
+
+    while true; do
+      CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}. Enter only the model id, for example: deepseek-v4-flash-ascend"
+      PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${DEEPSEEK_PROXY_MODEL:-}")"
+      PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
+      if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
+        break
+      fi
+      warn "Invalid upstream model name: enter only the model id, not a URL or path. Example: deepseek-v4-flash-ascend"
+      PROMPTED_MODEL_NAME=""
+    done
+
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
@@ -2477,6 +2527,14 @@ fi
 printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
+
+intro_width="$(ui_terminal_width)"
+logo
+ui_box_top "CoDeepSeedeX" "$intro_width"
+ui_box_line "" "$intro_width"
+ui_box_line_styled "Welcome" "$intro_width" "\033[1;38;5;75m"
+ui_box_line "This guided installer will configure language, model API, web search, image generation, and Codex wrapper in a single flow." "$intro_width"
+ui_step_footer "Step 1/5 · Language" "$intro_width"
 
 CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, dsproxy, profile repair, and ports are handled automatically."
 choose_installer_language

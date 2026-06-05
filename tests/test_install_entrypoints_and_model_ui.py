@@ -886,3 +886,30 @@ def test_cli_wizard_and_upgrade_use_end_to_end_guided_panels() -> None:
     assert "Upgrade running" in cli_text
     assert "Upgrade blocked" in cli_text
     assert "Upgrade complete" in cli_text
+
+
+def test_p218a3_stable_input_contract() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+
+    assert "clean_tty_input_value()" in install_text
+    assert "normalize_openai_base_url()" in install_text
+    assert "is_valid_model_name_value()" in install_text
+    assert "read -r -e value" in install_text
+    assert "Invalid upstream model name" in install_text
+    assert "ui_box_line_styled \"Welcome\"" in install_text
+    assert "PROMPTED_MODEL_BASE_URL=\"$(normalize_openai_base_url \"$PROMPTED_MODEL_BASE_URL\")\"" in install_text
+
+    assert "def _clean_wizard_input_value(" in cli_text
+    assert "def _normalize_openai_base_url_value(" in cli_text
+    assert "def _is_valid_model_name_value(" in cli_text
+    assert "Stable input panel: do not clear the whole terminal here." in cli_text
+    assert "Custom provider model must be a model id, not a URL or path" in cli_text
+
+    install_input = install_text[install_text.index("ui_render_input_panel() {"):install_text.index("read_from_tty() {")]
+    assert "\\033[2J" not in install_input
+    assert "\\033[3J" not in install_input
+
+    cli_input = cli_text[cli_text.index("def _wizard_render_input_panel("):cli_text.index("def _wizard_step_label_for_prompt")]
+    assert "\\033[J" not in cli_input
+    assert "\\033[3J" not in cli_input

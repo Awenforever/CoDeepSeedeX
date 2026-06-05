@@ -4635,6 +4635,45 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         },
     }
 
+
+def _clean_wizard_input_value(value: str) -> str:
+    buf: list[str] = []
+    for ch in value or "":
+        code = ord(ch)
+        if ch in ("\b", "\x7f"):
+            if buf:
+                buf.pop()
+            continue
+        if code < 32 and ch != "\t":
+            continue
+        if code == 127:
+            if buf:
+                buf.pop()
+            continue
+        buf.append(ch)
+    return "".join(buf).strip()
+
+
+def _normalize_openai_base_url_value(value: str) -> str:
+    url = re.sub(r"[\x00-\x1f\x7f]", "", value or "").strip().rstrip("/")
+    for suffix in ("/chat/completions", "/responses", "/models"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+            break
+    return url.rstrip("/")
+
+
+def _is_valid_model_name_value(value: str) -> bool:
+    if not value:
+        return False
+    if value.startswith(("http://", "https://")):
+        return False
+    if "/" in value:
+        return False
+    if "\x7f" in value or "\b" in value:
+        return False
+    return True
+
 def _wizard_read_line(
     prompt: str,
     default: str = "",
@@ -4658,9 +4697,9 @@ def _wizard_read_line(
     if default:
         print("  \033[2m[Enter keeps default]\033[0m", file=sys.stderr)
     print("  > ", end="", file=sys.stderr, flush=True)
-    value = sys.stdin.readline().strip()
+    value = sys.stdin.readline()
     print("", file=sys.stderr)
-    return value or default
+    return _clean_wizard_input_value(value) or default
 
 def _wizard_read_secret(
     prompt: str,
@@ -4695,11 +4734,11 @@ def _wizard_read_secret(
         new_settings = termios.tcgetattr(fd)
         new_settings[3] = new_settings[3] & ~termios.ECHO
         termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
-        value = sys.stdin.readline().strip()
+        value = sys.stdin.readline()
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         print("\n", file=sys.stderr)
-    return value or default
+    return _clean_wizard_input_value(value) or default
 
 def _wizard_terminal_width() -> int:
     return min(86, max(64, shutil.get_terminal_size((86, 24)).columns))
@@ -4771,7 +4810,7 @@ def _wizard_render_input_panel(
     footer: str = "Step 2/5",
     secret: bool = False,
 ) -> None:
-    print("\033[?25h\033[H\033[J\033[3J", end="", file=sys.stderr)
+    # Stable input panel: do not clear the whole terminal here.
     lines: list[str] = [prompt]
     if default:
         lines.append("Default: existing hidden value" if secret else f"Default: {default}")
@@ -5037,22 +5076,28 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     base_url = str(provider_config.get("base_url") or "").strip()
                     model = str(provider_config.get("model") or "").strip()
                     if provider == "custom":
-                        base_url = _wizard_read_line(
+                        base_url = _normalize_openai_base_url_value(_wizard_read_line(
                             "OpenAI-compatible base URL",
                             values.get("DEEPSEEK_BASE_URL", ""),
                             non_interactive=non_interactive,
                             title="Custom OpenAI-compatible model API",
                             footer="Step 2/5",
-                            detail="Enter the upstream endpoint used by the custom provider.",
-                        ).strip()
-                        model = _wizard_read_line(
-                            "Upstream model name",
-                            values.get("DEEPSEEK_PROXY_MODEL", ""),
-                            non_interactive=non_interactive,
-                            title="Custom OpenAI-compatible model API",
-                            footer="Step 2/5",
-                            detail=f"Endpoint: {base_url or '<empty>'}",
-                        ).strip()
+                            detail="Enter the upstream endpoint. /chat/completions will be normalized to the base /v1 URL.",
+                        ))
+                        while True:
+                            model = _clean_wizard_input_value(_wizard_read_line(
+                                "Upstream model name",
+                                values.get("DEEPSEEK_PROXY_MODEL", ""),
+                                non_interactive=non_interactive,
+                                title="Custom OpenAI-compatible model API",
+                                footer="Step 2/5",
+                                detail=f"Endpoint: {base_url or '<empty>'}. Enter only the model id, for example: deepseek-v4-flash-ascend",
+                            ))
+                            if not model or _is_valid_model_name_value(model):
+                                break
+                            if non_interactive:
+                                raise SystemExit("Custom provider model must be a model id, not a URL or path. Example: deepseek-v4-flash-ascend")
+                            print("Invalid upstream model name: enter only the model id, not a URL or path.", file=sys.stderr)
                         if not base_url or not model:
                             skipped.append("model_api:custom_missing_details")
                             print("Custom model API skipped because base URL or model name is empty.", file=sys.stderr)
