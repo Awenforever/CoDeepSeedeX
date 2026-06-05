@@ -913,3 +913,20 @@ def test_p218a3_stable_input_contract() -> None:
     cli_input = cli_text[cli_text.index("def _wizard_render_input_panel("):cli_text.index("def _wizard_step_label_for_prompt")]
     assert "\\033[J" not in cli_input
     assert "\\033[3J" not in cli_input
+
+
+def test_p218a4_installer_has_stable_splash_before_language_step() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Press Enter to start guided setup." in install_text
+    assert "CODEEPSEEDEX_START_SETUP" in install_text
+    assert "ui_step_footer \"Startup\"" in install_text
+
+    welcome_idx = install_text.index('ui_box_line_styled "Welcome"')
+    splash_idx = install_text.index("Press Enter to start guided setup.", welcome_idx)
+    start_setup_idx = install_text.index("CODEEPSEEDEX_START_SETUP", splash_idx)
+    language_call_idx = install_text.index("choose_installer_language", start_setup_idx)
+
+    assert welcome_idx < install_text.index("[1] Language", welcome_idx) < splash_idx
+    assert welcome_idx < install_text.index("[5] Codex wrapper", welcome_idx) < splash_idx
+    assert splash_idx < start_setup_idx < language_call_idx
+    assert 'if [ "$NON_INTERACTIVE" != "1" ]' in install_text[welcome_idx:language_call_idx]

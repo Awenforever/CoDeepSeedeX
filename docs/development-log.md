@@ -1,3 +1,14 @@
+## p2.18a4-stable-splash-entry — stable splash entry
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Add an explicit stable installer splash entry: users see the CoDeepSeedeX logo, Welcome panel, and setup summary first, then press Enter to start Step 1 language selection.
+- Keep non-interactive installs non-blocking.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a3-stable-guided-ui-input-contract — stable guided UI input contract
 
 Date: 2026-06-05

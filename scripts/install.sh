@@ -2534,7 +2534,21 @@ ui_box_top "CoDeepSeedeX" "$intro_width"
 ui_box_line "" "$intro_width"
 ui_box_line_styled "Welcome" "$intro_width" "\033[1;38;5;75m"
 ui_box_line "This guided installer will configure language, model API, web search, image generation, and Codex wrapper in a single flow." "$intro_width"
-ui_step_footer "Step 1/5 · Language" "$intro_width"
+ui_box_line "" "$intro_width"
+ui_box_line "[1] Language" "$intro_width"
+ui_box_line "[2] Model API" "$intro_width"
+ui_box_line "[3] Web search API" "$intro_width"
+ui_box_line "[4] Image generation API" "$intro_width"
+ui_box_line "[5] Codex wrapper" "$intro_width"
+ui_box_line "" "$intro_width"
+ui_box_line_styled "Press Enter to start guided setup." "$intro_width" "\033[1;38;5;75m"
+ui_step_footer "Startup" "$intro_width"
+
+if [ "$NON_INTERACTIVE" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  printf "\n  Press Enter to continue..." > /dev/tty
+  IFS= read -r CODEEPSEEDEX_START_SETUP < /dev/tty || true
+  printf "\n" > /dev/tty
+fi
 
 CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, dsproxy, profile repair, and ports are handled automatically."
 choose_installer_language
