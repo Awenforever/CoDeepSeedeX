@@ -1,3 +1,16 @@
+## p2.18a9-concise-model-api-validation-hold — concise model API panels and validation hold
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Make Step 2 model API input panels concise: Base URL, Model name, and API key no longer duplicate the panel heading.
+- Add an immediate model API validation result page after API-key validation before advancing to web search configuration.
+- The validation page shows provider/base URL/model/API-key state/status/method/URL/detail without exposing API-key material.
+- Preserve p2.18a8 stepwise Backspace semantics and final completion page summary.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a8-stepwise-backspace-validation-summary — stepwise Backspace and validation summary
 
 Date: 2026-06-05

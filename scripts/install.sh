@@ -433,6 +433,41 @@ ui_render_input_panel() {
   ui_step_footer "$footer" "$width" > /dev/tty
 }
 
+
+show_model_api_validation_hold() {
+  local width
+  local key_state
+  width="$(ui_terminal_width)"
+  key_state="$(model_api_key_state_label)"
+
+  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+    return 0
+  fi
+
+  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "Model API validation" "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Provider: ${PROMPTED_MODEL_PROVIDER:-<unset>}" "$width" > /dev/tty
+  ui_box_line "Base URL: ${PROMPTED_MODEL_BASE_URL:-<unset>}" "$width" > /dev/tty
+  ui_box_line "Model: ${PROMPTED_MODEL_NAME:-<unset>}" "$width" > /dev/tty
+  ui_box_line "API key: ${key_state}" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty
+  ui_box_line "Method: ${MODEL_API_VALIDATION_METHOD:-<not_run>}" "$width" > /dev/tty
+  ui_box_line "URL: ${MODEL_API_VALIDATION_URL:-<not_run>}" "$width" > /dev/tty
+  if [ -n "${MODEL_API_VALIDATION_ERROR:-}" ]; then
+    ui_box_line "Detail: ${MODEL_API_VALIDATION_ERROR}" "$width" > /dev/tty
+  fi
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "Press Enter to continue." "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_step_footer "Step 2/5" "$width" > /dev/tty
+
+  printf "\n  Press Enter to continue..." > /dev/tty
+  IFS= read -r CODEEPSEEDEX_MODEL_API_VALIDATION_CONTINUE < /dev/tty || true
+  printf "\n" > /dev/tty
+}
+
 show_install_completion_hold() {
   local width
   local public_version
@@ -1462,10 +1497,10 @@ review_model_api_config() {
 
 prompt_model_base_url_field() {
   local value=""
-  CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
+  CODEEPSEEDEX_INPUT_TITLE="Model API · Base URL"
   CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint. If you paste /chat/completions, it will be normalized to the base /v1 URL."
-  value="$(read_from_tty "OpenAI-compatible base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
+  CODEEPSEEDEX_INPUT_DETAIL="Custom OpenAI-compatible endpoint; /chat/completions is normalized to /v1."
+  value="$(read_from_tty "Base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
   CODEEPSEEDEX_INPUT_TITLE=""
   CODEEPSEEDEX_INPUT_STEP=""
   CODEEPSEEDEX_INPUT_DETAIL=""
@@ -1479,10 +1514,10 @@ prompt_model_base_url_field() {
 prompt_model_name_field() {
   local value=""
   while true; do
-    CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
+    CODEEPSEEDEX_INPUT_TITLE="Model API · Model name"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}. Enter only the model id, for example: deepseek-v4-flash-ascend"
-    value="$(read_from_tty "Upstream model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
+    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>} · model id only, for example: deepseek-v4-flash-ascend"
+    value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
@@ -1509,10 +1544,10 @@ prompt_model_api_key_field() {
   fi
 
   while [ "$attempts" -lt 3 ]; do
-    CODEEPSEEDEX_INPUT_TITLE="Model API key"
+    CODEEPSEEDEX_INPUT_TITLE="Model API · API key"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
     CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_MODEL_PROVIDER · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
-    candidate="$(read_secret_from_tty "Model API key" "$existing_api_key" "$prompt_hint")"
+    candidate="$(read_secret_from_tty "API key" "$existing_api_key" "$prompt_hint")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
@@ -1787,6 +1822,7 @@ prompt_deepseek_api_key() {
           fi
           continue
         fi
+        show_model_api_validation_hold
         return 0
         ;;
 
