@@ -425,8 +425,10 @@ ui_render_input_panel() {
   if [ "$kind" = "secret" ]; then
     ui_box_line_styled "Input is hidden. Press Enter to keep the existing value when one is available." "$width" "\033[2m" > /dev/tty
     ui_box_line_styled "hidden · Enter keeps existing" "$width" "\033[2m" > /dev/tty
+    ui_box_line_styled "Backspace on an empty input returns to the previous step." "$width" "\033[2m" > /dev/tty
   else
     ui_box_line_styled "Press Enter to keep the default value." "$width" "\033[2m" > /dev/tty
+    ui_box_line_styled "Backspace on an empty input returns to the previous step." "$width" "\033[2m" > /dev/tty
   fi
   ui_step_footer "$footer" "$width" > /dev/tty
 }
@@ -453,6 +455,17 @@ show_install_completion_hold() {
   ui_box_line "Env file: ${ENV_FILE:-<unknown>}" "$width" > /dev/tty
   ui_box_line "Codex dir: ${CODEX_HOME:-$HOME/.codex}" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Model API:" "$width" > /dev/tty
+  ui_box_line "  Provider: ${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-<unset>}}" "$width" > /dev/tty
+  ui_box_line "  Base URL: ${PROMPTED_MODEL_BASE_URL:-${RESOLVED_MODEL_BASE_URL:-<unset>}}" "$width" > /dev/tty
+  ui_box_line "  Model: ${PROMPTED_MODEL_NAME:-${RESOLVED_MODEL_NAME:-<unset>}}" "$width" > /dev/tty
+  ui_box_line "  Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty
+  ui_box_line "  Method: ${MODEL_API_VALIDATION_METHOD:-<not_run>}" "$width" > /dev/tty
+  ui_box_line "  URL: ${MODEL_API_VALIDATION_URL:-<not_run>}" "$width" > /dev/tty
+  if [ -n "${MODEL_API_VALIDATION_ERROR:-}" ]; then
+    ui_box_line "  Detail: ${MODEL_API_VALIDATION_ERROR}" "$width" > /dev/tty
+  fi
+  ui_box_line "" "$width" > /dev/tty
   ui_box_line "Next commands:" "$width" > /dev/tty
   ui_box_line "  export PATH=\"\$HOME/.local/bin:\$PATH\"" "$width" > /dev/tty
   ui_box_line "  dsproxy --version" "$width" > /dev/tty
@@ -474,6 +487,8 @@ read_from_tty() {
   local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
   local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
   local helper="${CODEEPSEEDEX_INPUT_DETAIL:-}"
+  local key=""
+  local old_stty=""
 
   if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     printf '%s\n' "$default_value"
@@ -483,13 +498,47 @@ read_from_tty() {
   stty sane < /dev/tty 2>/dev/null || true
   ui_render_input_panel "$title" "$prompt" "$default_value" "$helper" "$footer" "text"
   printf '\n  > ' > /dev/tty
-  IFS= read -r -e value < /dev/tty || true
+
+  old_stty="$(stty -g < /dev/tty 2>/dev/null || true)"
+  stty -icanon -echo min 1 time 0 < /dev/tty 2>/dev/null || true
+
+  while IFS= read -rsn1 key < /dev/tty; do
+    case "$key" in
+      "")
+        [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
+        printf '\n' > /dev/tty
+        value="$(clean_tty_input_value "$value")"
+        if [ -z "$value" ]; then
+          value="$default_value"
+        fi
+        printf '%s\n' "$value"
+        return 0
+        ;;
+      $'\x7f'|$'\b')
+        if [ -z "$value" ]; then
+          [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
+          printf '\n' > /dev/tty
+          printf '%s\n' "__CODEEPSEEDEX_BACK__"
+          return 0
+        fi
+        value="${value%?}"
+        printf '\b \b' > /dev/tty
+        ;;
+      $'\x1b')
+        # Ignore escape sequences in text input; arrow-key navigation is handled by menu surfaces.
+        local rest=""
+        IFS= read -rsn2 -t 0.05 rest < /dev/tty || true
+        ;;
+      *)
+        value="${value}${key}"
+        printf '%s' "$key" > /dev/tty
+        ;;
+    esac
+  done
+
+  [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
   printf '\n' > /dev/tty
-  value="$(clean_tty_input_value "$value")"
-  if [ -z "$value" ]; then
-    value="$default_value"
-  fi
-  printf '%s\n' "$value"
+  printf '%s\n' "$default_value"
 }
 
 read_yes_no() {
@@ -518,6 +567,8 @@ read_secret_from_tty() {
   local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
   local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
   local detail="${CODEEPSEEDEX_INPUT_DETAIL:-$helper}"
+  local key=""
+  local old_stty=""
 
   if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     printf '%s\n' "$default_value"
@@ -528,17 +579,46 @@ read_secret_from_tty() {
   ui_render_input_panel "$title" "$prompt" "$default_value" "$detail" "$footer" "secret"
   printf '\n  > ' > /dev/tty
 
-  stty -echo < /dev/tty 2>/dev/null || true
-  IFS= read -r value < /dev/tty || true
-  stty echo < /dev/tty 2>/dev/null || true
-  printf "\n\n" > /dev/tty
+  old_stty="$(stty -g < /dev/tty 2>/dev/null || true)"
+  stty -icanon -echo min 1 time 0 < /dev/tty 2>/dev/null || true
 
-  value="$(clean_tty_input_value "$value")"
-  if [ -z "$value" ] && [ -n "$default_value" ]; then
-    printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
-    return 0
-  fi
-  printf '%s\n' "$value"
+  while IFS= read -rsn1 key < /dev/tty; do
+    case "$key" in
+      "")
+        [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
+        printf "\n\n" > /dev/tty
+        value="$(clean_tty_input_value "$value")"
+        if [ -z "$value" ] && [ -n "$default_value" ]; then
+          printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
+          return 0
+        fi
+        printf '%s\n' "$value"
+        return 0
+        ;;
+      $'\x7f'|$'\b')
+        if [ -z "$value" ]; then
+          [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
+          printf "\n\n" > /dev/tty
+          printf '%s\n' "__CODEEPSEEDEX_BACK__"
+          return 0
+        fi
+        value="${value%?}"
+        printf '\b \b' > /dev/tty
+        ;;
+      $'\x1b')
+        local rest=""
+        IFS= read -rsn2 -t 0.05 rest < /dev/tty || true
+        ;;
+      *)
+        value="${value}${key}"
+        printf '*' > /dev/tty
+        ;;
+    esac
+  done
+
+  [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
+  printf "\n\n" > /dev/tty
+  printf '%s\n' "$default_value"
 }
 
 find_real_codex() {
@@ -1326,6 +1406,39 @@ provider_option_line() {
 
 
 
+model_api_validation_url_for_provider() {
+  local provider="$1"
+  local base_url="$2"
+  case "$provider" in
+    deepseek) printf '%s\n' "https://api.deepseek.com/user/balance" ;;
+    *) printf '%s\n' "${base_url%/}/models" ;;
+  esac
+}
+
+model_api_validation_method_for_provider() {
+  local provider="$1"
+  case "$provider" in
+    deepseek) printf '%s\n' "deepseek_balance" ;;
+    *) printf '%s\n' "openai_compatible_models" ;;
+  esac
+}
+
+reset_model_api_validation_summary() {
+  MODEL_API_VALIDATION_STATUS="not_run"
+  MODEL_API_VALIDATION_METHOD=""
+  MODEL_API_VALIDATION_URL=""
+  MODEL_API_VALIDATION_ERROR=""
+}
+
+record_model_api_validation_summary() {
+  local status="$1"
+  local error="${2:-}"
+  MODEL_API_VALIDATION_STATUS="$status"
+  MODEL_API_VALIDATION_METHOD="$(model_api_validation_method_for_provider "${PROMPTED_MODEL_PROVIDER:-}" "${PROMPTED_MODEL_BASE_URL:-}")"
+  MODEL_API_VALIDATION_URL="$(model_api_validation_url_for_provider "${PROMPTED_MODEL_PROVIDER:-}" "${PROMPTED_MODEL_BASE_URL:-}")"
+  MODEL_API_VALIDATION_ERROR="$error"
+}
+
 model_api_key_state_label() {
   if [ -n "${PROMPTED_API_KEY:-}" ]; then
     printf '%s\n' "configured, hidden"
@@ -1348,26 +1461,35 @@ review_model_api_config() {
 }
 
 prompt_model_base_url_field() {
+  local value=""
   CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
   CODEEPSEEDEX_INPUT_STEP="Step 2/5"
   CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint. If you paste /chat/completions, it will be normalized to the base /v1 URL."
-  PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
-  PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$PROMPTED_MODEL_BASE_URL")"
+  value="$(read_from_tty "OpenAI-compatible base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
   CODEEPSEEDEX_INPUT_TITLE=""
   CODEEPSEEDEX_INPUT_STEP=""
   CODEEPSEEDEX_INPUT_DETAIL=""
+  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
+  PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$value")"
+  return 0
 }
 
 prompt_model_name_field() {
+  local value=""
   while true; do
     CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
     CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}. Enter only the model id, for example: deepseek-v4-flash-ascend"
-    PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
-    PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
+    value="$(read_from_tty "Upstream model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
+    if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+      return 20
+    fi
+    PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"
     if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
       return 0
     fi
@@ -1394,8 +1516,13 @@ prompt_model_api_key_field() {
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
     CODEEPSEEDEX_INPUT_DETAIL=""
+
+    if [ "$candidate" = "__CODEEPSEEDEX_BACK__" ]; then
+      return 20
+    fi
     if [ "$candidate" = "__CODEEPSEEDEX_KEEP_EXISTING__" ]; then
       PROMPTED_API_KEY="$existing_api_key"
+      record_model_api_validation_summary "kept_existing"
       ok "Existing model API key kept for provider: $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
@@ -1403,10 +1530,11 @@ prompt_model_api_key_field() {
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
         PROMPTED_API_KEY=""
+        record_model_api_validation_summary "skipped" "empty_api_key"
         warn "Model API key skipped after three empty submissions. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
         return 0
       fi
-      warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
+      warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration, or Backspace on empty input to return to model."
       continue
     fi
 
@@ -1414,15 +1542,18 @@ prompt_model_api_key_field() {
     empty_attempts=0
     if test_model_api_key "$PROMPTED_MODEL_PROVIDER" "$candidate" "$PROMPTED_MODEL_BASE_URL"; then
       PROMPTED_API_KEY="$candidate"
+      record_model_api_validation_summary "ok"
       ok "Model API key validated for provider: $PROMPTED_MODEL_PROVIDER"
       return 0
     fi
 
     attempts=$((attempts + 1))
-    warn "Model API key validation failed (${attempts}/3). Paste it again, use the review page to edit earlier fields, or press Enter three times to skip."
+    record_model_api_validation_summary "error" "validation_failed"
+    warn "Model API key validation failed (${attempts}/3). Paste it again, press Backspace on empty input to edit model, or press Enter three times to skip."
   done
 
   PROMPTED_API_KEY=""
+  record_model_api_validation_summary "error" "validation_failed"
   warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
   return 0
 }
@@ -1527,6 +1658,7 @@ prompt_deepseek_api_key() {
   PROMPTED_MODEL_PROVIDER=""
   PROMPTED_MODEL_BASE_URL=""
   PROMPTED_MODEL_NAME=""
+  reset_model_api_validation_summary
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
     # Existing installer env file is the migration source of truth for non-interactive upgrades.
@@ -1556,107 +1688,112 @@ prompt_deepseek_api_key() {
     if [ -z "$PROMPTED_MODEL_NAME" ]; then
       PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
     fi
+    record_model_api_validation_summary "not_run" "non_interactive"
     return 0
   fi
 
   local configure=""
   local provider_rc=0
-  local review_choice=""
+  local field_step="provider"
+  local field_rc=0
 
   configure="$(read_yes_no_menu "Configure model API now?" "Y")"
   case "$configure" in
     __CODEEPSEEDEX_BACK__) return 20 ;;
     n|N|no|NO|No)
+      record_model_api_validation_summary "skipped" "user_skipped_model_api"
       warn "Model API skipped. Configure later with: dsproxy config wizard"
       return 0
       ;;
   esac
 
   while true; do
-    PROMPTED_API_KEY=""
-    PROMPTED_MODEL_PROVIDER=""
-    PROMPTED_MODEL_BASE_URL=""
-    PROMPTED_MODEL_NAME=""
-
-    choose_model_provider_family
-    provider_rc=$?
-    case "$provider_rc" in
-      0) ;;
-      20) return 20 ;;
-      21) continue ;;
-      30) return 0 ;;
-      *) return "$provider_rc" ;;
-    esac
-
-    PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
-    PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
-
-    if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
-      prompt_model_base_url_field
-      prompt_model_name_field
-      if [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; then
-        warn "Custom model API skipped because base URL or model name is empty."
+    case "$field_step" in
+      provider)
         PROMPTED_API_KEY=""
         PROMPTED_MODEL_PROVIDER=""
-        return 0
-      fi
-    fi
+        PROMPTED_MODEL_BASE_URL=""
+        PROMPTED_MODEL_NAME=""
+        reset_model_api_validation_summary
 
-    while true; do
-      prompt_model_api_key_field
-
-      review_choice="$(review_model_api_config)"
-      case "$review_choice" in
-        1|continue|Continue)
-          return 0
-          ;;
-        2|base|base-url|edit-base-url)
-          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
-            prompt_model_base_url_field
-          else
-            warn "Base URL editing is only available for custom OpenAI-compatible providers. Select Back to provider selection to change provider."
-          fi
-          ;;
-        3|model|edit-model)
-          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
-            prompt_model_name_field
-          else
-            CODEEPSEEDEX_INPUT_TITLE="Model API"
-            CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-            CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_MODEL_PROVIDER. Enter only the model id."
-            PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "$PROMPTED_MODEL_NAME")"
-            PROMPTED_MODEL_NAME="$(clean_tty_input_value "$PROMPTED_MODEL_NAME")"
-            CODEEPSEEDEX_INPUT_TITLE=""
-            CODEEPSEEDEX_INPUT_STEP=""
-            CODEEPSEEDEX_INPUT_DETAIL=""
-            if ! is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
-              warn "Invalid upstream model name. Returning to review."
-              PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+        choose_model_provider_family
+        provider_rc=$?
+        case "$provider_rc" in
+          0)
+            PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
+            PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
+            if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+              field_step="base_url"
+            else
+              field_step="api_key"
             fi
+            ;;
+          20) return 20 ;;
+          21) field_step="provider" ;;
+          30)
+            record_model_api_validation_summary "skipped" "user_skipped_model_api"
+            return 0
+            ;;
+          *) return "$provider_rc" ;;
+        esac
+        ;;
+
+      base_url)
+        prompt_model_base_url_field
+        field_rc=$?
+        if [ "$field_rc" = "20" ]; then
+          field_step="provider"
+          continue
+        fi
+        field_step="model"
+        ;;
+
+      model)
+        prompt_model_name_field
+        field_rc=$?
+        if [ "$field_rc" = "20" ]; then
+          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+            field_step="base_url"
+          else
+            field_step="provider"
           fi
-          ;;
-        4|key|api-key|edit-api-key)
-          PROMPTED_API_KEY=""
-          ;;
-        5|back|provider|provider-selection)
-          break
-          ;;
-        0|skip|Skip)
-          warn "Model API skipped. Configure later with: dsproxy config wizard"
+          continue
+        fi
+        if [ -z "$PROMPTED_MODEL_NAME" ]; then
+          warn "Model API skipped because model name is empty."
           PROMPTED_API_KEY=""
           PROMPTED_MODEL_PROVIDER=""
           PROMPTED_MODEL_BASE_URL=""
-          PROMPTED_MODEL_NAME=""
+          record_model_api_validation_summary "skipped" "empty_model"
           return 0
-          ;;
-        __CODEEPSEEDEX_BACK__)
-          break
-          ;;
-        *)
-          warn "Unknown review choice; returning to review."
-          ;;
-      esac
-    done
+        fi
+        field_step="api_key"
+        ;;
+
+      api_key)
+        if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ] && { [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; }; then
+          warn "Custom model API requires both base URL and model name."
+          field_step="base_url"
+          continue
+        fi
+
+        prompt_model_api_key_field
+        field_rc=$?
+        if [ "$field_rc" = "20" ]; then
+          if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+            field_step="model"
+          else
+            field_step="provider"
+          fi
+          continue
+        fi
+        return 0
+        ;;
+
+      *)
+        field_step="provider"
+        ;;
+    esac
   done
 }
 
@@ -2746,7 +2883,6 @@ ui_box_line "[5] Codex wrapper" "$setup_width"
 ui_box_line "" "$setup_width"
 ui_box_line "Proxy ports are selected automatically; occupied defaults are skipped." "$setup_width"
 ui_step_footer "Step 1/5" "$setup_width"
-print_install_logs
 
 step "Checking requirements"
 

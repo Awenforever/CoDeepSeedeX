@@ -1,3 +1,18 @@
+## p2.18a8-stepwise-backspace-validation-summary — stepwise Backspace and validation summary
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Replace Step 2 post-fill review as the primary path with a stepwise model API flow: provider → base URL → model → API key.
+- Text and secret inputs treat Backspace on an empty input as previous-step navigation while still allowing normal character deletion.
+- Custom provider fields can move backward from API key to model, model to base URL, and base URL to provider selection.
+- Store a redacted model API validation summary and show provider/base URL/model/status/method/URL on the final completion page.
+- Reduce early post-language log flashing by keeping install log paths for the completion page instead of printing them immediately after Step 1.
+- Preserve p2.18a4 stable splash entry, p2.18a5 model input guard, p2.18a6 completion hold, and p2.18a7 review helpers as non-primary helpers.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a7-model-api-review-back — model API review/back step
 
 Date: 2026-06-05

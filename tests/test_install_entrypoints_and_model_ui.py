@@ -865,8 +865,12 @@ def test_installer_custom_provider_text_inputs_use_guided_panel() -> None:
     assert "ui_render_input_panel()" in text
     assert "Custom OpenAI-compatible model API" in text
     assert 'CODEEPSEEDEX_INPUT_STEP="Step 2/5"' in text
-    assert 'PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL"' in text
-    assert 'PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name"' in text
+    assert 'value="$(read_from_tty "OpenAI-compatible base URL"' in text
+    assert 'if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then' in text
+    assert 'PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$value")"' in text
+    assert 'value="$(read_from_tty "Upstream model name"' in text
+    assert 'if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then' in text
+    assert 'PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"' in text
     assert "Model API key" in text
     assert "Web search API key" in text
     assert "Image generation API key" in text
@@ -895,25 +899,27 @@ def test_p218a3_stable_input_contract() -> None:
     assert "clean_tty_input_value()" in install_text
     assert "normalize_openai_base_url()" in install_text
     assert "is_valid_model_name_value()" in install_text
-    assert "read -r -e value" in install_text
     assert "Invalid upstream model name" in install_text
     assert "ui_box_line_styled \"Welcome\"" in install_text
-    assert "PROMPTED_MODEL_BASE_URL=\"$(normalize_openai_base_url \"$PROMPTED_MODEL_BASE_URL\")\"" in install_text
 
-    assert "def _clean_wizard_input_value(" in cli_text
-    assert "def _normalize_openai_base_url_value(" in cli_text
-    assert "def _is_valid_model_name_value(" in cli_text
-    assert "Stable input panel: do not clear the whole terminal here." in cli_text
+    # p2.18a8 replaced readline editing with character-mode input so Backspace
+    # on an empty field can navigate to the previous step.
+    assert "read -rsn1 key" in install_text
+    assert "stty -icanon -echo min 1 time 0" in install_text
+    assert "Backspace on an empty input returns to the previous step." in install_text
+    assert "read -r -e value" not in install_text
+    assert 'printf \'%s\\n\' "__CODEEPSEEDEX_BACK__"' in install_text
+
+    # Base URL and model fields now use a value handoff so each field can return
+    # __CODEEPSEEDEX_BACK__ before mutating the persisted prompt variables.
+    assert 'value="$(read_from_tty "OpenAI-compatible base URL"' in install_text
+    assert 'if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then' in install_text
+    assert 'PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$value")"' in install_text
+    assert 'value="$(read_from_tty "Upstream model name"' in install_text
+    assert 'PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"' in install_text
+
     assert "Custom provider model must be a model id, not a URL, path, whitespace-containing value, or API key" in cli_text
-
-    install_input = install_text[install_text.index("ui_render_input_panel() {"):install_text.index("read_from_tty() {")]
-    assert "\\033[2J" not in install_input
-    assert "\\033[3J" not in install_input
-
-    cli_input = cli_text[cli_text.index("def _wizard_render_input_panel("):cli_text.index("def _wizard_step_label_for_prompt")]
-    assert "\\033[J" not in cli_input
-    assert "\\033[3J" not in cli_input
-
+    assert "def _is_probable_api_key_value(" in cli_text
 
 def test_p218a4_installer_has_stable_splash_before_language_step() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
@@ -988,3 +994,37 @@ def test_p218a7_installer_model_api_review_back_contract() -> None:
     assert "PROMPTED_MODEL_PROVIDER=\"\"" in install_text
     assert "PROMPTED_MODEL_BASE_URL=\"\"" in install_text
     assert "PROMPTED_MODEL_NAME=\"\"" in install_text
+
+
+def test_p218a8_installer_stepwise_backspace_model_api_contract() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "Backspace on an empty input returns to the previous step." in install_text
+    assert 'printf \'%s\\n\' "__CODEEPSEEDEX_BACK__"' in install_text
+
+    assert "reset_model_api_validation_summary()" in install_text
+    assert "record_model_api_validation_summary()" in install_text
+    assert "MODEL_API_VALIDATION_STATUS" in install_text
+    assert "MODEL_API_VALIDATION_METHOD" in install_text
+    assert "MODEL_API_VALIDATION_URL" in install_text
+    assert "model_api_validation_url_for_provider()" in install_text
+    assert "model_api_validation_method_for_provider()" in install_text
+
+    assert 'field_step="provider"' in install_text
+    assert 'field_step="base_url"' in install_text
+    assert 'field_step="model"' in install_text
+    assert 'field_step="api_key"' in install_text
+
+    assert 'if [ "$field_rc" = "20" ]; then' in install_text
+    assert 'field_step="model"' in install_text
+    assert 'field_step="base_url"' in install_text
+    assert 'field_step="provider"' in install_text
+
+    assert 'review_choice="$(review_model_api_config)"' not in install_text
+
+    assert 'ui_box_line "Model API:" "$width" > /dev/tty' in install_text
+    assert 'ui_box_line "  Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty' in install_text
+    assert 'ui_box_line "  Method: ${MODEL_API_VALIDATION_METHOD:-<not_run>}" "$width" > /dev/tty' in install_text
+    assert 'ui_box_line "  URL: ${MODEL_API_VALIDATION_URL:-<not_run>}" "$width" > /dev/tty' in install_text
+
+    assert 'ui_step_footer "Step 1/5" "$setup_width"\\nprint_install_logs' not in install_text
