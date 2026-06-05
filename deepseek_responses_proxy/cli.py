@@ -4663,14 +4663,52 @@ def _normalize_openai_base_url_value(value: str) -> str:
     return url.rstrip("/")
 
 
+def _is_probable_api_key_value(value: str) -> bool:
+    value = (value or "").strip()
+    lower = value.lower()
+    if not value:
+        return False
+    if lower.startswith(("sk-", "sk_", "bearer ", "api-key", "apikey", "x-api-key")):
+        return True
+    if re.fullmatch(r"[A-Za-z0-9_.=-]{32,}", value):
+        model_words = (
+            "deepseek",
+            "gpt",
+            "glm",
+            "qwen",
+            "kimi",
+            "moonshot",
+            "zhipu",
+            "doubao",
+            "baichuan",
+            "mimo",
+            "flash",
+            "pro",
+            "chat",
+            "model",
+            "reasoner",
+            "coder",
+            "vision",
+            "image",
+            "embedding",
+        )
+        return not any(word in lower for word in model_words)
+    return False
+
+
 def _is_valid_model_name_value(value: str) -> bool:
     if not value:
         return False
+    value = _clean_wizard_input_value(value)
     if value.startswith(("http://", "https://")):
         return False
     if "/" in value:
         return False
     if "\x7f" in value or "\b" in value:
+        return False
+    if any(ch.isspace() for ch in value):
+        return False
+    if _is_probable_api_key_value(value):
         return False
     return True
 
@@ -5096,8 +5134,8 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                             if not model or _is_valid_model_name_value(model):
                                 break
                             if non_interactive:
-                                raise SystemExit("Custom provider model must be a model id, not a URL or path. Example: deepseek-v4-flash-ascend")
-                            print("Invalid upstream model name: enter only the model id, not a URL or path.", file=sys.stderr)
+                                raise SystemExit("Custom provider model must be a model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend")
+                            print("Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key.", file=sys.stderr)
                         if not base_url or not model:
                             skipped.append("model_api:custom_missing_details")
                             print("Custom model API skipped because base URL or model name is empty.", file=sys.stderr)

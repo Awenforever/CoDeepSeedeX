@@ -360,14 +360,38 @@ print(url)
 PYCODEEPSEEDEX_NORMALIZE_BASE_URL_P218A3
 }
 
+is_probable_api_key_value() {
+  local py="${PYTHON_BIN:-python3}"
+  "$py" - "$1" <<'PYCODEEPSEEDEX_PROBABLE_API_KEY_P218A5'
+import re
+import sys
+
+value = (sys.argv[1] if len(sys.argv) > 1 else "").strip()
+lower = value.lower()
+if not value:
+    raise SystemExit(1)
+if lower.startswith(("sk-", "sk_", "bearer ", "api-key", "apikey", "x-api-key")):
+    raise SystemExit(0)
+if re.fullmatch(r"[A-Za-z0-9_.=-]{32,}", value):
+    model_words = ("deepseek", "gpt", "glm", "qwen", "kimi", "moonshot", "zhipu", "doubao", "baichuan", "mimo", "flash", "pro", "chat", "model", "reasoner", "coder", "vision", "image", "embedding")
+    if not any(word in lower for word in model_words):
+        raise SystemExit(0)
+raise SystemExit(1)
+PYCODEEPSEEDEX_PROBABLE_API_KEY_P218A5
+}
+
 is_valid_model_name_value() {
   local value="$1"
+  value="$(clean_tty_input_value "$value")"
   [ -n "$value" ] || return 1
   case "$value" in
-    http://*|https://*|*/*|*$'\177'*|*$'\b'*)
+    http://*|https://*|*/*|*$'\177'*|*$'\b'*|*" "*|*$'\t'*)
       return 1
       ;;
   esac
+  if is_probable_api_key_value "$value"; then
+    return 1
+  fi
   return 0
 }
 
@@ -1416,7 +1440,7 @@ prompt_deepseek_api_key() {
       if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
         break
       fi
-      warn "Invalid upstream model name: enter only the model id, not a URL or path. Example: deepseek-v4-flash-ascend"
+      warn "Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend"
       PROMPTED_MODEL_NAME=""
     done
 
@@ -2613,6 +2637,16 @@ while true; do
         continue
       fi
       API_KEY="$PROMPTED_API_KEY"
+      if [ -n "$PROMPTED_MODEL_NAME" ] && ! is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
+        warn "Invalid upstream model name detected before writing configuration. Re-enter the model id; API keys must be entered only in the API key field."
+        if [ "$NON_INTERACTIVE" = "1" ]; then
+          echo "ERROR: invalid DEEPSEEK_PROXY_MODEL value; expected model id, got an API-key-like or URL/path value" >&2
+          return 1
+        fi
+        PROMPTED_MODEL_NAME=""
+        guided_step=2
+        continue
+      fi
       guided_step=3
       ;;
     3)

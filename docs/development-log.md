@@ -1,3 +1,14 @@
+## p2.18a5-model-input-guard — model input guard
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Add a final model-name guard for installer and `dsproxy config wizard`: URL/path/control-character values, whitespace, and API-key-like values such as `sk-*` or `Bearer ...` are rejected as model ids.
+- Preserve the p2.18a4 stable splash entry and p2.18a3 custom base URL normalization.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a4-stable-splash-entry — stable splash entry
 
 Date: 2026-06-05

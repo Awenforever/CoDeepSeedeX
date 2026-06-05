@@ -904,7 +904,7 @@ def test_p218a3_stable_input_contract() -> None:
     assert "def _normalize_openai_base_url_value(" in cli_text
     assert "def _is_valid_model_name_value(" in cli_text
     assert "Stable input panel: do not clear the whole terminal here." in cli_text
-    assert "Custom provider model must be a model id, not a URL or path" in cli_text
+    assert "Custom provider model must be a model id, not a URL, path, whitespace-containing value, or API key" in cli_text
 
     install_input = install_text[install_text.index("ui_render_input_panel() {"):install_text.index("read_from_tty() {")]
     assert "\\033[2J" not in install_input
@@ -930,3 +930,18 @@ def test_p218a4_installer_has_stable_splash_before_language_step() -> None:
     assert welcome_idx < install_text.index("[5] Codex wrapper", welcome_idx) < splash_idx
     assert splash_idx < start_setup_idx < language_call_idx
     assert 'if [ "$NON_INTERACTIVE" != "1" ]' in install_text[welcome_idx:language_call_idx]
+
+
+def test_p218a5_model_input_rejects_api_key_like_values() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+
+    assert "is_probable_api_key_value()" in install_text
+    assert "sk-" in install_text
+    assert "Bearer" in install_text
+    assert "API-key-like" in install_text
+    assert "Invalid upstream model name detected before writing configuration" in install_text
+
+    assert "def _is_probable_api_key_value(" in cli_text
+    assert "lower.startswith((\"sk-\", \"sk_\", \"bearer \"" in cli_text
+    assert "whitespace-containing value, or API key" in cli_text
