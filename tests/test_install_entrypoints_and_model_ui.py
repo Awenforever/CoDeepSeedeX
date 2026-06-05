@@ -585,7 +585,8 @@ def test_installer_ports_are_auto_selected_without_prompting() -> None:
     assert 'read_from_tty "Non-Thinking proxy port"' not in text
     assert 'read_from_tty "Thinking proxy port"' not in text
     assert "press Enter to keep default" not in text
-    assert "\\033[2m[Enter keeps %s]\\033[0m: " in text
+    assert "ui_render_input_panel()" in text
+    assert "Press Enter to keep the default value." in text
 
 
 def test_installer_logo_colors_version() -> None:
@@ -612,8 +613,9 @@ def test_installer_secret_prompt_keeps_existing_key_without_counting_it_as_new_i
     assert "Existing model API key kept for provider:" in text
     assert "optional, type a new key to replace the existing one" in text
     assert "Model API key (optional; press Enter three times to skip)" not in text
-    assert "\\033[2m(%s) [hidden, Enter keeps existing]\\033[0m: " in text
-    assert "\\033[2m(%s) [hidden]\\033[0m: " in text
+    assert "Input is hidden. Press Enter to keep the existing value when one is available." in text
+    assert "hidden · Enter keeps existing" in text
+    assert "hidden" in text
     assert "press Enter to keep existing" not in text
 
 
@@ -785,6 +787,7 @@ def test_terminal_ui_uses_boxed_install_and_wizard_surfaces() -> None:
     assert "_wizard_render_panel(" in cli_text
     assert "_wizard_print_box_line(" in cli_text
     assert "_wizard_render_menu(" in cli_text
+    assert "_wizard_render_input_panel(" in cli_text
     assert "_wizard_yes_no_choice(" in cli_text
     assert "wizard_step = 2" in cli_text
     assert "\\033[K" in cli_text
@@ -856,3 +859,30 @@ def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> Non
     assert 'CODEEPSEEDEX_PUBLIC_RELEASE_TAG="${DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
+
+def test_installer_custom_provider_text_inputs_use_guided_panel() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "ui_render_input_panel()" in text
+    assert "Custom OpenAI-compatible model API" in text
+    assert 'CODEEPSEEDEX_INPUT_STEP="Step 2/5"' in text
+    assert 'PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL"' in text
+    assert 'PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name"' in text
+    assert "Model API key" in text
+    assert "Web search API key" in text
+    assert "Image generation API key" in text
+    assert 'CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language' in text
+    assert 'ui_step_footer "Step 0/5"' not in text
+
+
+def test_cli_wizard_and_upgrade_use_end_to_end_guided_panels() -> None:
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "_wizard_render_input_panel(" in cli_text
+    assert "Custom OpenAI-compatible model API" in cli_text
+    assert "Model API key" in cli_text
+    assert "Web search API key" in cli_text
+    assert "Image generation API key" in cli_text
+    assert "_upgrade_render_tty_panel(" in cli_text
+    assert "Upgrade plan" in cli_text
+    assert "Upgrade running" in cli_text
+    assert "Upgrade blocked" in cli_text
+    assert "Upgrade complete" in cli_text

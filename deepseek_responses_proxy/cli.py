@@ -4635,27 +4635,71 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         },
     }
 
-def _wizard_read_line(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
+def _wizard_read_line(
+    prompt: str,
+    default: str = "",
+    *,
+    non_interactive: bool = False,
+    title: str | None = None,
+    footer: str | None = None,
+    detail: str | None = None,
+) -> str:
     if non_interactive or not sys.stdin.isatty():
         return default
-    suffix = f" \033[2m[Press Enter to keep default: {default}]\033[0m" if default else ""
-    print(f"{prompt}{suffix}: ", end="", file=sys.stderr, flush=True)
+    _wizard_render_input_panel(
+        title or prompt,
+        prompt,
+        default=default,
+        detail=detail,
+        footer=footer or _wizard_step_label_for_prompt(prompt),
+        secret=False,
+    )
+    print(f"\n  {prompt}", file=sys.stderr)
+    if default:
+        print("  \033[2m[Enter keeps default]\033[0m", file=sys.stderr)
+    print("  > ", end="", file=sys.stderr, flush=True)
     value = sys.stdin.readline().strip()
+    print("", file=sys.stderr)
     return value or default
 
-
-def _wizard_read_secret(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
+def _wizard_read_secret(
+    prompt: str,
+    default: str = "",
+    *,
+    non_interactive: bool = False,
+    title: str | None = None,
+    footer: str | None = None,
+    detail: str | None = None,
+) -> str:
     if non_interactive or not sys.stdin.isatty():
         return default
-    import getpass
+    import termios
 
-    suffix = " [hidden, press Enter to keep saved]" if default else " [hidden]"
-    value = getpass.getpass(f"{prompt}\033[2m{suffix}\033[0m: ", stream=sys.stderr).strip()
+    _wizard_render_input_panel(
+        title or prompt,
+        prompt,
+        default=default,
+        detail=detail,
+        footer=footer or _wizard_step_label_for_prompt(prompt),
+        secret=True,
+    )
+    print(f"\n  {prompt}", file=sys.stderr)
+    if default:
+        print("  \033[2mhidden · Enter keeps existing\033[0m", file=sys.stderr)
+    else:
+        print("  \033[2mhidden\033[0m", file=sys.stderr)
+    print("  > ", end="", file=sys.stderr, flush=True)
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        new_settings = termios.tcgetattr(fd)
+        new_settings[3] = new_settings[3] & ~termios.ECHO
+        termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+        value = sys.stdin.readline().strip()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print("\n", file=sys.stderr)
     return value or default
-
-
-
-
 
 def _wizard_terminal_width() -> int:
     return min(86, max(64, shutil.get_terminal_size((86, 24)).columns))
@@ -4717,6 +4761,24 @@ def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step 2/
     _wizard_print_box_line("", width=width)
     _wizard_print_step_footer(footer, width=width)
 
+
+def _wizard_render_input_panel(
+    title: str,
+    prompt: str,
+    *,
+    default: str = "",
+    detail: str | None = None,
+    footer: str = "Step 2/5",
+    secret: bool = False,
+) -> None:
+    print("\033[?25h\033[H\033[J\033[3J", end="", file=sys.stderr)
+    lines: list[str] = [prompt]
+    if default:
+        lines.append("Default: existing hidden value" if secret else f"Default: {default}")
+    if detail:
+        lines.append(f"Hint: {detail}")
+    lines.append("Input is hidden. Press Enter to keep the existing value when one is available." if secret else "Press Enter to keep the default value.")
+    _wizard_render_panel(title, lines, footer=footer)
 
 def _wizard_step_label_for_prompt(prompt: str) -> str:
     value = str(prompt or "")
@@ -4975,14 +5037,35 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     base_url = str(provider_config.get("base_url") or "").strip()
                     model = str(provider_config.get("model") or "").strip()
                     if provider == "custom":
-                        base_url = _wizard_read_line("OpenAI-compatible base URL", values.get("DEEPSEEK_BASE_URL", ""), non_interactive=non_interactive).strip()
-                        model = _wizard_read_line("Upstream model name", values.get("DEEPSEEK_PROXY_MODEL", ""), non_interactive=non_interactive).strip()
+                        base_url = _wizard_read_line(
+                            "OpenAI-compatible base URL",
+                            values.get("DEEPSEEK_BASE_URL", ""),
+                            non_interactive=non_interactive,
+                            title="Custom OpenAI-compatible model API",
+                            footer="Step 2/5",
+                            detail="Enter the upstream endpoint used by the custom provider.",
+                        ).strip()
+                        model = _wizard_read_line(
+                            "Upstream model name",
+                            values.get("DEEPSEEK_PROXY_MODEL", ""),
+                            non_interactive=non_interactive,
+                            title="Custom OpenAI-compatible model API",
+                            footer="Step 2/5",
+                            detail=f"Endpoint: {base_url or '<empty>'}",
+                        ).strip()
                         if not base_url or not model:
                             skipped.append("model_api:custom_missing_details")
                             print("Custom model API skipped because base URL or model name is empty.", file=sys.stderr)
                             provider = ""
                     if provider:
-                        key = _wizard_read_secret(f"{provider_config['display_name']} API key", values.get("DEEPSEEK_API_KEY", ""), non_interactive=non_interactive)
+                        key = _wizard_read_secret(
+                            f"{provider_config['display_name']} API key",
+                            values.get("DEEPSEEK_API_KEY", ""),
+                            non_interactive=non_interactive,
+                            title="Model API key",
+                            footer="Step 2/5",
+                            detail=f"Provider: {provider} · Model: {model or '<unset>'}",
+                        )
                         if key:
                             if provider == "deepseek":
                                 validation = _check_deepseek_api_key(key, url="https://api.deepseek.com/user/balance", timeout=10.0)
@@ -5027,7 +5110,14 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 }
                 if provider in web_provider_map:
                     provider, prompt, env_key = web_provider_map[provider]
-                    key = _wizard_read_secret(prompt, values.get(env_key, ""), non_interactive=non_interactive)
+                    key = _wizard_read_secret(
+                        prompt,
+                        values.get(env_key, ""),
+                        non_interactive=non_interactive,
+                        title="Web search API key",
+                        footer="Step 3/5",
+                        detail=f"Provider: {provider}",
+                    )
                     if key:
                         validation = _validate_web_search_api_key(provider, key, timeout=10.0)
                         validation_results.append(validation)
@@ -5074,7 +5164,14 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 if provider in image_provider_map:
                     provider, prompt, env_key = image_provider_map[provider]
                     saved_default = values.get(env_key, "") or values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", "")
-                    key = _wizard_read_secret(prompt, saved_default, non_interactive=non_interactive)
+                    key = _wizard_read_secret(
+                        prompt,
+                        saved_default,
+                        non_interactive=non_interactive,
+                        title="Image generation API key",
+                        footer="Step 4/5",
+                        detail=f"Provider: {provider}. Live validation may consume provider credits.",
+                    )
                     if key:
                         validation = _validate_image_api_key(provider, key, timeout=10.0)
                         validation_results.append(validation)
@@ -5672,6 +5769,17 @@ def _git_remote_tag_commit_in_repo(repo_root: Path, tag: str, remote: str = "ori
 
 
 
+def _upgrade_tty_enabled() -> bool:
+    return bool(sys.stdin.isatty() and sys.stderr.isatty() and os.environ.get("DEEPSEEK_PROXY_UPGRADE_JSON_ONLY") != "1")
+
+
+def _upgrade_render_tty_panel(title: str, lines: list[str], *, footer: str = "Upgrade") -> None:
+    if not _upgrade_tty_enabled():
+        return
+    print("\033[?25h\033[H\033[J\033[3J", end="", file=sys.stderr)
+    _wizard_render_panel(title, lines, footer=footer)
+
+
 def _upgrade_bootstrap_urls_for_ref(target_ref: str, *, target_source: str | None = None) -> list[str]:
     ref = str(target_ref or "").strip()
     urls: list[str] = []
@@ -5829,6 +5937,16 @@ def _upgrade_non_git_install(
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 
+        _upgrade_render_tty_panel(
+            "Upgrade fallback",
+            [
+                "This install will use the release bootstrap installer.",
+                f"Target: {target_ref}",
+                f"Install dir: {repo_hint}",
+            ],
+            footer="Upgrade",
+        )
+
         env = os.environ.copy()
         for metadata_key in (
             "DEEPSEEK_PROXY_PUBLIC_COMMIT",
@@ -5926,6 +6044,16 @@ def _upgrade_run_step(
     if dry_run:
         step["skipped"] = True
         return True
+
+    _upgrade_render_tty_panel(
+        "Upgrade running",
+        [
+            f"Step: {label}",
+            f"Target: {result.get('target_ref') or '<unknown>'}",
+            f"Repository: {result.get('repo_root') or cwd}",
+        ],
+        footer="Upgrade",
+    )
 
     try:
         completed = subprocess.run(
@@ -6143,6 +6271,17 @@ def _upgrade(args: argparse.Namespace) -> int:
         "no_restart": bool(args.no_restart),
     }
 
+    _upgrade_render_tty_panel(
+        "Upgrade plan",
+        [
+            f"Current: {version_metadata.get('public_version') or PROXY_VERSION} | {version_metadata.get('public_commit') or 'unknown'}",
+            f"Target: {target_ref}",
+            f"Mode: {target_source}",
+            f"Repository hint: {repo_hint}",
+        ],
+        footer="Upgrade",
+    )
+
     repo_root = _git_root_for(repo_hint)
     if repo_root is None:
         return _upgrade_non_git_install(
@@ -6164,6 +6303,15 @@ def _upgrade(args: argparse.Namespace) -> int:
         result["git_dirty_raw"] = dirty_raw
     if dirty and not args.allow_dirty:
         result.update({"status": "error", "error": "dirty_worktree", "git_status": dirty, "hint": "Commit, stash, or pass --allow-dirty if you understand the risk."})
+        _upgrade_render_tty_panel(
+            "Upgrade blocked",
+            [
+                "The installed checkout has local changes that are not managed resources.",
+                "Commit, stash, or pass --allow-dirty if you understand the risk.",
+                dirty,
+            ],
+            footer="Upgrade",
+        )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
 
@@ -6212,6 +6360,14 @@ def _upgrade(args: argparse.Namespace) -> int:
                 "skip_reason": "same_public_version_and_commit",
                 "message": f"Already up to date ({version_metadata.get('public_version')} | {version_metadata.get('public_commit')})",
             })
+            _upgrade_render_tty_panel(
+                "Already up to date",
+                [
+                    str(result.get("message") or "Already up to date."),
+                    f"Target: {target_ref}",
+                ],
+                footer="Upgrade",
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 
@@ -6316,6 +6472,15 @@ def _upgrade(args: argparse.Namespace) -> int:
         result["configuration_wizard"] = _run_guided_config(default_env_file_path(), emit_json=False)
         result["configuration_guidance"] = _api_configuration_status(default_env_file_path())
 
+    _upgrade_render_tty_panel(
+        "Upgrade complete",
+        [
+            f"Status: {result.get('status')}",
+            f"Target: {target_ref}",
+            "Run dsproxy --version and dsproxy config show to inspect the active runtime.",
+        ],
+        footer="Upgrade",
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

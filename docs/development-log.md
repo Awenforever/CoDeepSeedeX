@@ -1,3 +1,15 @@
+## p2.18a2-end-to-end-guided-ui — end-to-end guided UI
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep public version `v0.4.3-alpha` while making the interactive user path consistent across install, upgrade, and `dsproxy config wizard`.
+- Treat language selection as Step 1/5 in the guided installer instead of a pre-flow prompt.
+- Replace bare custom-provider text prompts with the same open terminal panel style used by arrow menus.
+- Add TTY upgrade panels for plan, progress, blocked-state, fallback bootstrap, and completion while keeping non-TTY / JSON output machine-readable.
+- Preserve non-interactive behavior and the existing custom provider / split-profile contracts.
+
 ## p2.18a1-unified-guided-ui-upgrade-fallback — unified guided UI and upgrade fallback
 
 Date: 2026-06-04

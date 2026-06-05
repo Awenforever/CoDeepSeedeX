@@ -320,24 +320,62 @@ resolve_install_ref() {
   return 1
 }
 
+ui_render_input_panel() {
+  local title="${1:-Input}"
+  local prompt="${2:-}"
+  local default_value="${3:-}"
+  local helper="${4:-}"
+  local footer="${5:-Step 2/5}"
+  local kind="${6:-text}"
+  local width
+  width="$(ui_terminal_width)"
+
+  printf '\033[?25h\033[2J\033[3J\033[H' > /dev/tty
+  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "$title" "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "$prompt" "$width" > /dev/tty
+  if [ -n "$default_value" ]; then
+    if [ "$kind" = "secret" ]; then
+      ui_box_line "Default: existing hidden value" "$width" > /dev/tty
+    else
+      ui_box_line "Default: $default_value" "$width" > /dev/tty
+    fi
+  fi
+  if [ -n "$helper" ]; then
+    ui_box_line_styled "Hint: $helper" "$width" "\033[2m" > /dev/tty
+  fi
+  ui_box_line "" "$width" > /dev/tty
+  if [ "$kind" = "secret" ]; then
+    ui_box_line_styled "Input is hidden. Press Enter to keep the existing value when one is available." "$width" "\033[2m" > /dev/tty
+  else
+    ui_box_line_styled "Press Enter to keep the default value." "$width" "\033[2m" > /dev/tty
+  fi
+  ui_step_footer "$footer" "$width" > /dev/tty
+}
+
 read_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
   local value=""
+  local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
+  local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
+  local helper="${CODEEPSEEDEX_INPUT_DETAIL:-}"
 
-  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ]; then
+  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     printf '%s\n' "$default_value"
     return 0
   fi
 
+  ui_render_input_panel "$title" "$prompt" "$default_value" "$helper" "$footer" "text"
+  printf '\n  %s\n' "$prompt" > /dev/tty
   if [ -n "$default_value" ]; then
-    printf "%s " "$prompt" > /dev/tty
-    printf '\033[2m[Enter keeps %s]\033[0m: ' "$default_value" > /dev/tty
-  else
-    printf "%s: " "$prompt" > /dev/tty
+    printf '  \033[2m[Enter keeps default]\033[0m\n' > /dev/tty
   fi
-
+  printf '  > ' > /dev/tty
   IFS= read -r value < /dev/tty || true
+  printf '\n' > /dev/tty
   if [ -z "$value" ]; then
     value="$default_value"
   fi
@@ -367,37 +405,40 @@ read_secret_from_tty() {
   local default_value="${2:-}"
   local helper="${3:-}"
   local value=""
+  local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
+  local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
+  local detail="${CODEEPSEEDEX_INPUT_DETAIL:-$helper}"
 
-  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ]; then
+  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     printf '%s\n' "$default_value"
     return 0
   fi
 
-  printf "%s " "$prompt" > /dev/tty
+  ui_render_input_panel "$title" "$prompt" "$default_value" "$detail" "$footer" "secret"
+  printf '\n  %s\n' "$prompt" > /dev/tty
   if [ -n "$default_value" ]; then
     if [ -n "$helper" ]; then
-      printf '\033[2m(%s) [hidden, Enter keeps existing]\033[0m: ' "$helper" > /dev/tty
+      printf '  \033[2m%s · hidden · Enter keeps existing\033[0m\n' "$helper" > /dev/tty
     else
-      printf '\033[2m[hidden, Enter keeps existing]\033[0m: ' > /dev/tty
+      printf '  \033[2mhidden · Enter keeps existing\033[0m\n' > /dev/tty
     fi
   else
     if [ -n "$helper" ]; then
-      printf '\033[2m(%s) [hidden]\033[0m: ' "$helper" > /dev/tty
+      printf '  \033[2m%s · hidden\033[0m\n' "$helper" > /dev/tty
     else
-      printf '\033[2m[hidden]\033[0m: ' > /dev/tty
+      printf '  \033[2mhidden\033[0m\n' > /dev/tty
     fi
   fi
-
+  printf '  > ' > /dev/tty
   stty -echo < /dev/tty 2>/dev/null || true
   IFS= read -r value < /dev/tty || true
   stty echo < /dev/tty 2>/dev/null || true
-  printf "\n" > /dev/tty
+  printf "\n\n" > /dev/tty
 
   if [ -z "$value" ] && [ -n "$default_value" ]; then
     printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
     return 0
   fi
-
   printf '%s\n' "$value"
 }
 
@@ -1323,8 +1364,15 @@ prompt_deepseek_api_key() {
   PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
   PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
   if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
+    CODEEPSEEDEX_INPUT_TITLE="Custom OpenAI-compatible model API"
+    CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+    CODEEPSEEDEX_INPUT_DETAIL="Enter the upstream OpenAI-compatible endpoint and model name."
     PROMPTED_MODEL_BASE_URL="$(read_from_tty "OpenAI-compatible base URL" "${DEEPSEEK_BASE_URL:-}")"
+    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>}"
     PROMPTED_MODEL_NAME="$(read_from_tty "Upstream model name" "${DEEPSEEK_PROXY_MODEL:-}")"
+    CODEEPSEEDEX_INPUT_TITLE=""
+    CODEEPSEEDEX_INPUT_STEP=""
+    CODEEPSEEDEX_INPUT_DETAIL=""
     if [ -z "$PROMPTED_MODEL_BASE_URL" ] || [ -z "$PROMPTED_MODEL_NAME" ]; then
       warn "Custom model API skipped because base URL or model name is empty."
       PROMPTED_API_KEY=""
@@ -1343,7 +1391,13 @@ prompt_deepseek_api_key() {
   fi
 
   while [ "$attempts" -lt 3 ]; do
+    CODEEPSEEDEX_INPUT_TITLE="Model API key"
+    CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_MODEL_PROVIDER · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
     candidate="$(read_secret_from_tty "Model API key" "$existing_api_key" "$prompt_hint")"
+    CODEEPSEEDEX_INPUT_TITLE=""
+    CODEEPSEEDEX_INPUT_STEP=""
+    CODEEPSEEDEX_INPUT_DETAIL=""
     if [ "$candidate" = "__CODEEPSEEDEX_KEEP_EXISTING__" ]; then
       PROMPTED_API_KEY="$existing_api_key"
       ok "Existing model API key kept for provider: $PROMPTED_MODEL_PROVIDER"
@@ -1446,7 +1500,13 @@ prompt_serpapi_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
+    CODEEPSEEDEX_INPUT_TITLE="Web search API key"
+    CODEEPSEEDEX_INPUT_STEP="Step 3/5"
+    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_WEB_SEARCH_PROVIDER"
     candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
+    CODEEPSEEDEX_INPUT_TITLE=""
+    CODEEPSEEDEX_INPUT_STEP=""
+    CODEEPSEEDEX_INPUT_DETAIL=""
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
@@ -1560,7 +1620,13 @@ prompt_image_generation_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
+    CODEEPSEEDEX_INPUT_TITLE="Image generation API key"
+    CODEEPSEEDEX_INPUT_STEP="Step 4/5"
+    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_IMAGE_PROVIDER · Live validation may consume provider credits."
     candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
+    CODEEPSEEDEX_INPUT_TITLE=""
+    CODEEPSEEDEX_INPUT_STEP=""
+    CODEEPSEEDEX_INPUT_DETAIL=""
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
@@ -2408,27 +2474,26 @@ if [ "$UNINSTALL" = "1" ]; then
   exit 0
 fi
 
-choose_installer_language
-divider
-logo
 printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
+
+CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, dsproxy, profile repair, and ports are handled automatically."
+choose_installer_language
 
 setup_width="$(ui_terminal_width)"
 ui_box_top "CoDeepSeedeX" "$setup_width"
 ui_box_line "" "$setup_width"
 ui_box_line_styled "Setup plan" "$setup_width" "\033[1;38;5;75m"
-ui_box_line "This installer only asks for decisions that affect your setup. Internal repository, Python, dsproxy, profile, and port steps are handled automatically." "$setup_width"
+ui_box_line "Step 1 Language is complete. The remaining prompts use the same guided UI." "$setup_width"
 ui_box_line "" "$setup_width"
-ui_box_line "[1] Language" "$setup_width"
 ui_box_line "[2] Model API" "$setup_width"
 ui_box_line "[3] Web search API" "$setup_width"
 ui_box_line "[4] Image generation API" "$setup_width"
 ui_box_line "[5] Codex wrapper" "$setup_width"
 ui_box_line "" "$setup_width"
 ui_box_line "Proxy ports are selected automatically; occupied defaults are skipped." "$setup_width"
-ui_step_footer "Step 0/5" "$setup_width"
+ui_step_footer "Step 1/5" "$setup_width"
 print_install_logs
 
 step "Checking requirements"
