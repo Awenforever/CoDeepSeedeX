@@ -1,3 +1,16 @@
+## p2.18a6-install-completion-hold — install completion hold
+
+Date: 2026-06-05
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Add a stable installer completion page after configuration/profile repair output so users can see the final result before the terminal returns.
+- The completion page summarizes public/internal version, install directory, config directory, Codex directory, and next commands.
+- Interactive TTY installs wait for Enter; non-interactive installs do not block.
+- Preserve p2.18a4 stable splash entry and p2.18a5 model input guard.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a5-model-input-guard — model input guard
 
 Date: 2026-06-05

@@ -945,3 +945,19 @@ def test_p218a5_model_input_rejects_api_key_like_values() -> None:
     assert "def _is_probable_api_key_value(" in cli_text
     assert "lower.startswith((\"sk-\", \"sk_\", \"bearer \"" in cli_text
     assert "whitespace-containing value, or API key" in cli_text
+
+
+def test_p218a6_installer_has_completion_hold() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "show_install_completion_hold()" in install_text
+    assert "Setup complete" in install_text
+    assert "Press Enter to finish." in install_text
+    assert "CODEEPSEEDEX_FINISH_SETUP" in install_text
+    assert "dsproxy config show" in install_text
+    assert "codex --profile deepseek-thinking" in install_text
+    assert 'if [ "$NON_INTERACTIVE" = "1" ]' in install_text
+
+    completion_idx = install_text.index("show_install_completion_hold()")
+    call_idx = install_text.rindex("show_install_completion_hold")
+    assert call_idx > completion_idx
+    assert install_text.rindex("print_install_logs") < call_idx

@@ -431,6 +431,42 @@ ui_render_input_panel() {
   ui_step_footer "$footer" "$width" > /dev/tty
 }
 
+show_install_completion_hold() {
+  local width
+  local public_version
+  local internal_version
+  width="$(ui_terminal_width)"
+  public_version="${DEEPSEEK_PROXY_PUBLIC_VERSION:-v0.4.3-alpha}"
+  internal_version="${DEEPSEEK_PROXY_INTERNAL_VERSION:-p2.18a6-install-completion-hold}"
+
+  if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+    return 0
+  fi
+
+  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "Setup complete" "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Version: ${public_version} / ${internal_version}" "$width" > /dev/tty
+  ui_box_line "Install dir: ${INSTALL_DIR:-<unknown>}" "$width" > /dev/tty
+  ui_box_line "Config dir: ${CONFIG_DIR:-<unknown>}" "$width" > /dev/tty
+  ui_box_line "Env file: ${ENV_FILE:-<unknown>}" "$width" > /dev/tty
+  ui_box_line "Codex dir: ${CODEX_HOME:-$HOME/.codex}" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Next commands:" "$width" > /dev/tty
+  ui_box_line "  export PATH=\"\$HOME/.local/bin:\$PATH\"" "$width" > /dev/tty
+  ui_box_line "  dsproxy --version" "$width" > /dev/tty
+  ui_box_line "  dsproxy config show" "$width" > /dev/tty
+  ui_box_line "  codex --profile deepseek-thinking" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line_styled "Press Enter to finish." "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_step_footer "Complete" "$width" > /dev/tty
+
+  printf "\n  Press Enter to finish..." > /dev/tty
+  IFS= read -r CODEEPSEEDEX_FINISH_SETUP < /dev/tty || true
+  printf "\n" > /dev/tty
+}
+
 read_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
@@ -3067,6 +3103,7 @@ sub_title "Uninstall integration"
 printf '  bash %s --uninstall\n' "$INSTALL_DIR/scripts/install.sh"
 
 print_install_logs
+show_install_completion_hold
 
 divider
 # Generated Codex profiles include: plan_mode_reasoning_effort = "high"
