@@ -4073,3 +4073,38 @@ def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path,
     assert result["real_codex"] == str(real_codex.resolve(strict=False))
     assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve(strict=False)))}" in text
     assert "CoDeepSeedeX codex wrapper" in text
+
+
+def test_p219a9_profile_status_context_window_source_follows_legacy_profile_table(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_REASONING_EFFORT=max\n"
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "plan_mode_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    codex_profile = result["context_window"]["codex_profile"]
+
+    assert result["profile_source"] == "legacy_profile_table"
+    assert result["codex_profile_layout"] == "legacy_profile_tables"
+    assert codex_profile["source"] == "codex_profile.legacy_profile_table"
+    assert codex_profile["profile_source"] == "legacy_profile_table"
+    assert codex_profile["codex_profile_layout"] == "legacy_profile_tables"
+    assert codex_profile["codex_profile_config"] == str(config_path)
+    assert codex_profile["source"] != "codex_split_profile_file"

@@ -1,3 +1,14 @@
+## p2.19a9-context-window-profile-source-consistency — Context-window profile source consistency
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep public `v0.4.3-alpha` unrefreshed until final VM validation and release refresh.
+- Align `context_window.codex_profile.source` with the profile source used by `dsproxy profile status`.
+- When `profile_source=legacy_profile_table`, report `context_window.codex_profile.source=codex_profile.legacy_profile_table` instead of the stale `codex_split_profile_file` label.
+- Preserve the p2.19a8 real Codex binary wrapper fix and p2.19a7 legacy layout status contract.
+
 ## p2.19a8-codex-wrapper-real-binary-resolution — Codex wrapper real binary resolution
 
 Date: 2026-06-06

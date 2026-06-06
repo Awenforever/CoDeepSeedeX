@@ -1798,6 +1798,13 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         effective_model=str(model_contract.get("effective_model") or model_contract.get("upstream_model") or model_contract.get("codex_model") or ""),
         env_values=env_values,
     )
+    codex_profile_contract = context_contract.get("codex_profile")
+    if isinstance(codex_profile_contract, dict):
+        codex_profile_contract["profile_source"] = profile_source
+        codex_profile_contract["codex_profile_layout"] = profile_layout
+        codex_profile_contract["codex_profile_config"] = str(profile_config_path)
+        if profile_source == "legacy_profile_table":
+            codex_profile_contract["source"] = "codex_profile.legacy_profile_table"
 
     warnings = list(health["warnings"])
     if bool(model_contract.get("model_conflict")):
