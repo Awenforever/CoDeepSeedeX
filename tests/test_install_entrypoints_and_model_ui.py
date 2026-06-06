@@ -1211,3 +1211,15 @@ def test_p219a7_codex_wrapper_preserves_legacy_profiles_for_old_codex() -> None:
     assert "legacy_profile_table" in body
     assert "profile repair --managed-only --json" in body
     assert body.index("repair_codeepseedex_managed_profile_contract()") < body.index("start_dsproxy_profile()")
+
+
+def test_p219a8_installer_skips_managed_wrappers_when_resolving_real_codex() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "is_codeepseedex_codex_wrapper_candidate()" in text
+    assert "is_valid_real_codex_candidate()" in text
+    assert "CODEEPSEEDEX_REAL_CODEX is not a valid real Codex binary" in text
+    assert "/tmp/codeepseedex-*/.local/bin/codex" in text
+    assert "CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy" in text
+    assert "real codex command not found; refusing to install Codex wrapper" in text
+    assert 'REAL_CODEX="$real_codex"' in text

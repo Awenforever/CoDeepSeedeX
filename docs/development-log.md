@@ -1,3 +1,14 @@
+## p2.19a8-codex-wrapper-real-binary-resolution — Codex wrapper real binary resolution
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep public `v0.4.3-alpha` unrefreshed until VM wrapper validation passes.
+- Fix installer real Codex resolution so CoDeepSeedeX never writes a wrapper whose `REAL_CODEX` points to another CoDeepSeedeX wrapper.
+- Skip managed wrappers, temporary `/tmp/codeepseedex-*` wrappers, and the destination wrapper path while resolving the real Codex command.
+- Fail closed for invalid `CODEEPSEEDEX_REAL_CODEX` and stale refresh-wrapper manifests that point to a managed wrapper.
+
 ## p2.19a7-codex-wrapper-env-and-status-layout — Codex wrapper environment and status layout
 
 Date: 2026-06-06

@@ -1384,6 +1384,32 @@ def _shell_quote(value: object) -> str:
     return shlex.quote(str(value or ""))
 
 
+
+def _is_codeepseedex_codex_wrapper_path(path: str | Path) -> bool:
+    candidate = Path(path).expanduser()
+    try:
+        resolved = candidate.resolve(strict=False)
+    except Exception:
+        resolved = candidate
+    resolved_text = str(resolved)
+    if resolved_text.startswith("/tmp/codeepseedex-") and resolved.name == "codex":
+        return True
+    if not candidate.exists() or not candidate.is_file():
+        return False
+    try:
+        text = candidate.read_text(encoding="utf-8", errors="replace")[:20000]
+    except Exception:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "CoDeepSeedeX codex wrapper",
+            "CODEEPSEEDEX_DSPROXY",
+            "start_dsproxy_profile",
+            "deepseek-responses-proxy",
+        )
+    )
+
 def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict[str, object]:
     manifest_path = _manifest_path_from_args(args)
     values = _read_manifest_exports(manifest_path)
@@ -1409,8 +1435,25 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
     if not real_codex:
         result.update({"status": "error", "error": "manifest_missing_REAL_CODEX"})
         return result
-    if not Path(real_codex).expanduser().exists():
+
+    real_codex_path = Path(real_codex).expanduser()
+    if not real_codex_path.exists():
         result.update({"status": "error", "error": "real_codex_missing"})
+        return result
+
+    try:
+        wrapper_resolved = wrapper_path.resolve(strict=False)
+        real_resolved = real_codex_path.resolve(strict=False)
+    except Exception:
+        wrapper_resolved = wrapper_path
+        real_resolved = real_codex_path
+
+    if real_resolved == wrapper_resolved or _is_codeepseedex_codex_wrapper_path(real_codex_path):
+        result.update({
+            "status": "error",
+            "error": "real_codex_points_to_codeepseedex_wrapper",
+            "hint": "Refusing to refresh a wrapper whose REAL_CODEX points to another CoDeepSeedeX wrapper. Reinstall with a clean PATH or set CODEEPSEEDEX_REAL_CODEX to the real Codex binary.",
+        })
         return result
 
     existing = wrapper_path.read_text(encoding="utf-8", errors="replace") if wrapper_path.exists() else ""
@@ -1581,8 +1624,7 @@ repair_codeepseedex_managed_profile_contract() {
   fi
 
   if [ ! -x "$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s
-' "$DSPROXY" >&2
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
     return 1
   fi
 
@@ -1595,38 +1637,30 @@ repair_codeepseedex_managed_profile_contract() {
     fi
 
     if ! repair_codeepseedex_legacy_managed_profiles; then
-      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.
-' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s
-' "$DSPROXY" "$profile_name" >&2
+      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.\n' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "$DSPROXY" "$profile_name" >&2
       return 1
     fi
   else
     if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.
-' >&2
-      printf 'Run for details: %s profile repair --managed-only --json
-' "$DSPROXY" >&2
+      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
+      printf 'Run for details: %s profile repair --managed-only --json\n' "$DSPROXY" >&2
       return 1
     fi
   fi
 
   if ! status_json="$("$DSPROXY" profile status "$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.
-' "$profile_name" >&2
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
     if [ "${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.
-' "$profile_name" >&2
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.
-' "$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json
-' "$DSPROXY" "$profile_name" >&2
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$DSPROXY" "$profile_name" >&2
     return 1
   fi
 }
@@ -1635,11 +1669,6 @@ start_dsproxy_profile() {
   local profile_name="$1"
   local start_args=()
   local status_args=()
-
-  if [ ! -x "$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
-    return 1
-  fi
 
   case "$profile_name" in
     deepseek)
@@ -1655,20 +1684,8 @@ start_dsproxy_profile() {
       ;;
   esac
 
-  if ! "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1; then
-    if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "$profile_name" >&2
-      printf 'Run for details: %s %s\n' "$DSPROXY" "${start_args[*]}" >&2
-      return 1
-    fi
-    return 0
-  fi
-
-  if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
-    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "$profile_name" >&2
-    printf 'Run for details: %s %s\n' "$DSPROXY" "${status_args[*]}" >&2
-    return 1
-  fi
+  "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1
+  "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1
 }
 
 run_codeepseedex_codex() {
@@ -1693,7 +1710,7 @@ run_codeepseedex_codex "$@"
 """
     wrapper = (
         wrapper_template
-        .replace("__REAL_CODEX__", _shell_quote(real_codex))
+        .replace("__REAL_CODEX__", _shell_quote(str(real_resolved)))
         .replace("__BIN_DIR__", bin_dir)
         .replace("__INSTALL_DIR__", install_dir)
         .replace("__ENV_FILE__", env_file)
@@ -1702,7 +1719,7 @@ run_codeepseedex_codex "$@"
 
     wrapper_path.parent.mkdir(parents=True, exist_ok=True)
     if bool(getattr(args, "dry_run", False)):
-        result["config_preview"] = wrapper
+        result["refreshed"] = True
         result["dry_run"] = True
         result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
         result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
@@ -1715,7 +1732,7 @@ run_codeepseedex_codex "$@"
     manifest_text = "\n".join([
         f"CODEX_WRAPPER_PATH={_shell_quote(str(wrapper_path))}",
         f"CODEX_WRAPPER_BACKUP={_shell_quote(backup_path)}",
-        f"REAL_CODEX={_shell_quote(real_codex)}",
+        f"REAL_CODEX={_shell_quote(str(real_resolved))}",
         f"ENV_FILE={_shell_quote(env_file)}",
         f"INSTALL_DIR={_shell_quote(install_dir)}",
         f"BIN_DIR={_shell_quote(bin_dir)}",
@@ -1729,10 +1746,10 @@ run_codeepseedex_codex "$@"
 
     result["refreshed"] = True
     result["dry_run"] = False
+    result["real_codex"] = str(real_resolved)
     result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
     result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
     return result
-
 
 def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
     result = _write_managed_codex_wrapper_from_manifest(args)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import shlex
 
 import json
 
@@ -4003,3 +4004,72 @@ def test_p219a7_runtime_status_reports_legacy_layout(monkeypatch, tmp_path):
     assert payload["profile_source"] == "legacy_profile_table"
     assert payload["codex_profile_layout"] == "legacy_profile_tables"
     assert payload["codex_profile_config"] == str(config_path)
+
+
+def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrapper(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    stale_wrapper = bin_dir / "stale-codex-wrapper"
+    dsproxy = bin_dir / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    stale_wrapper.write_text(
+        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        encoding="utf-8",
+    )
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, dsproxy, wrapper):
+        item.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={stale_wrapper}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "error"
+    assert result["error"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert "Refusing to refresh" in result["hint"]
+
+
+def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    dsproxy = bin_dir / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for item in (real_codex, dsproxy, wrapper):
+        item.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    text = wrapper.read_text(encoding="utf-8")
+
+    assert result["status"] == "ok"
+    assert result["real_codex"] == str(real_codex.resolve(strict=False))
+    assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve(strict=False)))}" in text
+    assert "CoDeepSeedeX codex wrapper" in text

@@ -683,25 +683,118 @@ read_secret_from_tty() {
   printf '%s\n' "$default_value"
 }
 
+is_codeepseedex_codex_wrapper_candidate() {
+  local path="$1"
+
+  if [ -z "$path" ] || [ ! -f "$path" ]; then
+    return 1
+  fi
+
+  case "$path" in
+    /tmp/codeepseedex-*/.local/bin/codex|/tmp/codeepseedex-*/*/codex)
+      return 0
+      ;;
+  esac
+
+  grep -qE 'CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy' "$path" 2>/dev/null
+}
+
+is_valid_real_codex_candidate() {
+  local candidate="$1"
+  local wrapper_path="$2"
+  local candidate_real=""
+  local wrapper_real=""
+
+  if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
+    return 1
+  fi
+
+  candidate_real="$(readlink -f "$candidate" 2>/dev/null || printf '%s\n' "$candidate")"
+  wrapper_real="$(readlink -f "$wrapper_path" 2>/dev/null || printf '%s\n' "$wrapper_path")"
+
+  if [ "$candidate" = "$wrapper_path" ] || [ "$candidate_real" = "$wrapper_real" ]; then
+    return 1
+  fi
+
+  if is_codeepseedex_codex_wrapper_candidate "$candidate"; then
+    return 1
+  fi
+  if [ "$candidate_real" != "$candidate" ] && is_codeepseedex_codex_wrapper_candidate "$candidate_real"; then
+    return 1
+  fi
+
+  case "$candidate_real" in
+    /tmp/codeepseedex-*/.local/bin/codex|/tmp/codeepseedex-*/*/codex)
+      return 1
+      ;;
+  esac
+
+  "$candidate" --version 2>/dev/null | grep -qE 'codex-cli|OpenAI Codex'
+}
+
 find_real_codex() {
   local wrapper_path="$1"
   local candidate=""
+  local candidate_real=""
+  local seen_file=""
 
-  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ] && [ -x "$CODEEPSEEDEX_REAL_CODEX" ]; then
-    printf '%s\n' "$CODEEPSEEDEX_REAL_CODEX"
-    return 0
-  fi
-
-  while IFS= read -r candidate; do
-    if [ "$candidate" != "$wrapper_path" ] && [ -x "$candidate" ]; then
-      printf '%s\n' "$candidate"
+  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ]; then
+    if is_valid_real_codex_candidate "$CODEEPSEEDEX_REAL_CODEX" "$wrapper_path"; then
+      readlink -f "$CODEEPSEEDEX_REAL_CODEX" 2>/dev/null || printf '%s
+' "$CODEEPSEEDEX_REAL_CODEX"
       return 0
     fi
-  done < <(type -P -a codex 2>/dev/null || true)
+    warn "CODEEPSEEDEX_REAL_CODEX is not a valid real Codex binary or points to a CoDeepSeedeX wrapper: $CODEEPSEEDEX_REAL_CODEX"
+    return 1
+  fi
 
+  seen_file="/tmp/codeepseedex-real-codex-candidates-$$.txt"
+  : > "$seen_file"
+
+  add_real_codex_candidate() {
+    local item="$1"
+    [ -n "$item" ] || return 0
+    if grep -Fxq "$item" "$seen_file" 2>/dev/null; then
+      return 0
+    fi
+    printf '%s
+' "$item" >> "$seen_file"
+    if is_valid_real_codex_candidate "$item" "$wrapper_path"; then
+      readlink -f "$item" 2>/dev/null || printf '%s
+' "$item"
+      rm -f "$seen_file"
+      return 0
+    fi
+    return 1
+  }
+
+  while IFS= read -r candidate; do
+    candidate="${candidate#codex is }"
+    candidate="${candidate#codex }"
+    add_real_codex_candidate "$candidate" && return 0
+  done < <(type -a codex 2>/dev/null | sed -n 's/^codex is //p')
+
+  if command -v npm >/dev/null 2>&1; then
+    local npm_prefix=""
+    npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [ -n "$npm_prefix" ] && [ "$npm_prefix" != "undefined" ] && [ "$npm_prefix" != "null" ]; then
+      add_real_codex_candidate "$npm_prefix/bin/codex" && return 0
+    fi
+  fi
+
+  for candidate in \
+    "$HOME/.npm-global/bin/codex" \
+    "$HOME/.local/share/npm/bin/codex" \
+    "$HOME/.node_modules/bin/codex" \
+    "/usr/local/bin/codex" \
+    "/usr/bin/codex"
+  do
+    add_real_codex_candidate "$candidate" && return 0
+  done
+
+  rm -f "$seen_file"
   return 1
 }
-
 
 json_string() {
   "$PYTHON_BIN" - "$1" <<'PY'
@@ -3073,8 +3166,8 @@ write_codex_wrapper() {
   fi
 
   if [ -z "$real_codex" ]; then
-    warn "real codex command not found; Codex wrapper skipped"
-    return 0
+    warn "real codex command not found; refusing to install Codex wrapper. Install Codex CLI or rerun with --no-codex-wrapper."
+    return 1
   fi
 
   cat > "$wrapper_path" <<EOF
