@@ -1104,13 +1104,18 @@ def test_p219a2_installer_custom_provider_guided_registry_ui() -> None:
     assert 'field_step="provider_name"' in text
     assert 'field_step="base_url"' in text
 
-    # Provider-name Backspace must return to provider selection, not loop on itself.
-    assert 'if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="base_url"' in text
-    assert 'if [ "$field_rc" = "20" ]; then\n          field_step="provider_name"\n          continue\n        fi\n        field_step="base_url"' not in text
+    # p2.19a4 refines p2.19a2: Backspace is strictly stepwise.
+    # Provider name returns to custom provider setup; Base URL returns to Provider name.
+    assert '      provider_name)\n        prompt_custom_provider_name_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="custom_mode"\n          continue\n        fi\n        field_step="base_url"\n        ;;\n' in text
+
+    assert '      base_url)\n        prompt_model_base_url_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider_name"\n          continue\n        fi\n        field_step="model"\n        ;;\n' in text
+
+    assert '      provider_name)\n        prompt_custom_provider_name_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="base_url"\n        ;;\n' not in text
+
+    assert '      base_url)\n        prompt_model_base_url_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="model"\n        ;;\n' not in text
 
     assert "registry_selected" in text
     assert "Saved custom provider was not found" in text
-
 
 def test_p219a3_custom_provider_name_has_no_site_specific_default() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -1120,3 +1125,19 @@ def test_p219a3_custom_provider_name_has_no_site_specific_default() -> None:
     assert 'value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"' in text
     assert 'value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-USTC}}")"' not in text
     assert 'PROMPTED_CUSTOM_PROVIDER_NAME="Custom Provider"' in text
+
+
+def test_p219a4_custom_provider_backspace_chain_is_stepwise() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "custom_mode)" in text
+    assert "provider_name)" in text
+    assert "base_url)" in text
+
+    assert '      provider_name)\n        prompt_custom_provider_name_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="custom_mode"\n          continue\n        fi\n        field_step="base_url"\n        ;;\n' in text
+
+    assert '      base_url)\n        prompt_model_base_url_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider_name"\n          continue\n        fi\n        field_step="model"\n        ;;\n' in text
+
+    assert '      provider_name)\n        prompt_custom_provider_name_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="base_url"\n        ;;\n' not in text
+
+    assert '      base_url)\n        prompt_model_base_url_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="model"\n        ;;\n' not in text

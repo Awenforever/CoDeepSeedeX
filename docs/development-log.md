@@ -1,3 +1,16 @@
+## p2.19a4-custom-provider-backstep-chain — custom provider Backspace chain
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Fix the custom provider setup Backspace chain so each field returns to the immediate previous step.
+- New custom provider path now follows: API key → Model name → Base URL → Provider name → Custom provider setup → provider family.
+- Existing-provider paths now return from provider-name selection to the custom provider setup menu, not directly to provider family.
+- Preserve p2.19a1 registry support, p2.19a2 guided custom provider UI, and p2.19a3 generic provider-name default.
+- Do not refresh Release assets in this patch step.
+
 ## p2.19a3-generic-custom-provider-default — generic custom provider default
 
 Date: 2026-06-06

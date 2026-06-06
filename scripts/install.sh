@@ -2133,7 +2133,7 @@ prompt_deepseek_api_key() {
               fi
               warn "Saved custom provider was not found. Add it again or choose a different provider."
             elif [ "$?" = "20" ]; then
-              field_step="provider"
+              field_step="custom_mode"
             fi
             ;;
           add_model|switch_model)
@@ -2150,7 +2150,7 @@ prompt_deepseek_api_key() {
               fi
               warn "Could not update saved custom provider/model."
             elif [ "$?" = "20" ]; then
-              field_step="provider"
+              field_step="custom_mode"
             fi
             ;;
           new|*)
@@ -2163,7 +2163,7 @@ prompt_deepseek_api_key() {
         prompt_custom_provider_name_field
         field_rc=$?
         if [ "$field_rc" = "20" ]; then
-          field_step="provider"
+          field_step="custom_mode"
           continue
         fi
         field_step="base_url"
@@ -2173,7 +2173,7 @@ prompt_deepseek_api_key() {
         prompt_model_base_url_field
         field_rc=$?
         if [ "$field_rc" = "20" ]; then
-          field_step="provider"
+          field_step="provider_name"
           continue
         fi
         field_step="model"
