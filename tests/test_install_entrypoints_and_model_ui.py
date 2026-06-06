@@ -10,13 +10,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = ROOT / "scripts" / "install.sh"
 
 
-def test_install_output_uses_absolute_uninstall_command() -> None:
+def test_p219a6_default_output_does_not_require_manual_followup_commands() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert 'bash %s --uninstall' in text
-    assert '"$INSTALL_DIR/scripts/install.sh"' in text
 
-
-
+    assert "Start using CoDeepSeedeX:" in text
+    assert "Optional verification:" in text
+    assert "Next commands:" not in text
+    assert 'sub_title "Next steps"' not in text
+    assert 'sub_title "Shell commands"' not in text
+    assert "current shell immediate PATH" not in text
+    assert "current shell may need" not in text
+    assert "CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY" in text
 
 def test_readmes_document_product_uninstall_entrypoint_and_scope() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -41,15 +45,16 @@ def test_readmes_document_product_uninstall_entrypoint_and_scope() -> None:
     assert "不得删除无关用户文件" in readme_zh
 
 
-def test_install_repairs_codex_model_catalog_before_final_output() -> None:
+def test_install_repairs_codex_model_catalog_before_completion_hold() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     marker = "codeepseedex_repair_codex_model_catalog_json_v2746a1"
-    final_output = 'sub_title "Installation files"'
+    completion_call = "\nshow_install_completion_hold\n"
+
     assert marker in text
-    assert text.index(marker) < text.index(final_output)
+    assert completion_call in text
+    assert text.index(marker) < text.rindex(completion_call)
     assert "profiles.deepseek-thinking" in text
     assert "model_catalog_json" in text
-
 
 def test_docs_include_latest_tag_fallback_install_domains() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -359,12 +364,12 @@ def test_installer_uninstall_restores_previous_codex_command_from_manifest_backu
     assert uninstall_body.index('rm -f "$wrapper_path"') < uninstall_body.index('mv "$backup_path" "$wrapper_path"')
 
 
-def test_installer_documents_codex_plan_effort_alias() -> None:
+def test_installer_keeps_codex_plan_effort_profile_contract() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "Plan mode reasoning is pinned to high for DeepSeek profiles" in text
-    assert 'plan_mode_reasoning_effort = "high"' in text
-    assert "Codex may display medium, proxy maps it to DeepSeek high" not in text
 
+    assert 'plan_mode_reasoning_effort = "high"' in text
+    assert '# Generated Codex profiles include: plan_mode_reasoning_effort = "high"' in text
+    assert "Plan mode reasoning is pinned to high for DeepSeek profiles" not in text
 
 def test_installer_guided_model_provider_catalogs_include_openai_compatible_options() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -1141,3 +1146,56 @@ def test_p219a4_custom_provider_backspace_chain_is_stepwise() -> None:
     assert '      provider_name)\n        prompt_custom_provider_name_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="base_url"\n        ;;\n' not in text
 
     assert '      base_url)\n        prompt_model_base_url_field\n        field_rc=$?\n        if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="model"\n        ;;\n' not in text
+
+
+def test_p219a6_custom_provider_empty_state_hides_unavailable_actions() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start = text.index("prompt_custom_provider_mode()")
+    end = text.index("prompt_existing_custom_provider_name_field()", start)
+    func = text[start:end]
+
+    assert 'if [ "${count:-0}" = "0" ]; then' in func
+    empty_branch = func.split('if [ "${count:-0}" = "0" ]; then', 1)[1].split('fi\n\n  CODEEPSEEDEX_NEXT_MENU_DETAIL=', 1)[0]
+    assert "No saved custom providers yet. Add a new custom provider first." in empty_branch
+    assert "Add new custom provider" in empty_branch
+    assert "Back to provider selection" in empty_branch
+    assert "Use existing custom provider" not in empty_branch
+    assert "Add model to existing provider" not in empty_branch
+    assert "Switch active model" not in empty_branch
+
+
+def test_p219a6_existing_custom_provider_uses_guided_menu_selection() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start = text.index("prompt_existing_custom_provider_name_field()")
+    end = text.index("prompt_existing_custom_provider_model_field()", start)
+    func = text[start:end]
+
+    assert "Custom Provider · Select provider" in func
+    assert "read_menu_choice_from_tty" in func
+    assert "MODEL_PROVIDER_REGISTRY_FILE" in func
+    assert "Enter the saved provider name exactly as displayed." not in func
+
+
+def test_p219a6_completion_page_uses_start_using_and_optional_verification() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    start = text.index("show_install_completion_hold()")
+    end = text.index("read_from_tty()", start)
+    func = text[start:end]
+
+    assert "Start using CoDeepSeedeX:" in func
+    assert "Optional verification:" in func
+    assert "codex --profile deepseek-thinking" in func
+    assert "dsproxy --version" in func
+    assert "dsproxy config show" in func
+    assert "Next commands:" not in func
+    assert 'export PATH="\\$HOME/.local/bin:\\$PATH"' not in func
+
+
+def test_p219a6_default_install_no_long_legacy_command_dump() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert 'sub_title "Next steps"' not in text
+    assert 'sub_title "Shell commands"' not in text
+    assert "current shell immediate PATH" not in text
+    assert "current shell may need" not in text
+    assert "CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY" in text

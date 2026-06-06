@@ -3912,3 +3912,38 @@ def test_p219a5_install_codex_profile_explicit_layout_overrides_version(tmp_path
     assert result["codex_profile_layout"] == "split_profile_files"
     assert result["layout_reason"] == "explicit_split_profile_files"
     assert "[profiles.deepseek-thinking]" not in config_path.read_text(encoding="utf-8")
+
+
+def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    config_path = tmp_path / "config.toml"
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.delenv("CODEEPSEEDEX_CODEX_CLI_VERSION", raising=False)
+    monkeypatch.delenv("CODEEPSEEDEX_CODEX_PROFILE_LAYOUT", raising=False)
+    monkeypatch.setenv("PATH", str(empty_bin))
+
+    assert main([
+        "install-codex-profile",
+        "--path",
+        str(config_path),
+        "--name",
+        "deepseek-thinking",
+        "--provider-name",
+        "deepseek-thinking-proxy",
+        "--base-url",
+        "http://127.0.0.1:8001/v1",
+        "--model",
+        "deepseek-v4-flash-ascend",
+        "--no-backup",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["codex_profile_layout"] == "legacy_profile_tables"
+    assert result["layout_reason"] == "codex_cli_unknown_default_legacy"
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "[model_providers.deepseek-thinking-proxy]" in text
+    assert "[profiles.deepseek-thinking]" in text
+    assert not (tmp_path / "deepseek-thinking.config.toml").exists()

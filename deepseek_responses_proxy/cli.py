@@ -667,11 +667,18 @@ def _resolve_codex_profile_layout(requested: str | None = None) -> dict[str, obj
             "codex_cli_version": codex_cli_version_text,
             "reason": "codex_cli_lt_0_134",
         }
+    if parsed is not None:
+        return {
+            "name": "split_profile_files",
+            "requested": requested,
+            "codex_cli_version": codex_cli_version_text,
+            "reason": "codex_cli_gte_0_134_or_unknown",
+        }
     return {
-        "name": "split_profile_files",
+        "name": "legacy_profile_tables",
         "requested": requested,
         "codex_cli_version": codex_cli_version_text,
-        "reason": "codex_cli_gte_0_134_or_unknown",
+        "reason": "codex_cli_unknown_default_legacy",
     }
 
 def _toml_quote(value: str) -> str:

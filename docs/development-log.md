@@ -1,3 +1,18 @@
+## p2.19a6-installer-ux-and-codex-detection-finalize — installer UX and Codex detection finalize
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Finalize the custom provider empty-state menu so unavailable existing-provider actions are not shown before a provider exists.
+- Render saved custom provider selection through the guided arrow-key UI instead of exact-name text entry.
+- Replace completion-page `Next commands` wording with `Start using CoDeepSeedeX` and `Optional verification`.
+- Remove the old post-install command dump from the default guided install path.
+- Make unknown Codex CLI version resolve to legacy main-config profile tables instead of split profile files.
+- Preserve explicit `--profile-layout split_profile_files` and the Codex `>= 0.134.0` split-profile path.
+- Do not refresh Release assets in this patch step.
+
 ## p2.19a5-codex-version-layout-compat — Codex version-aware profile layout compatibility
 
 Date: 2026-06-06

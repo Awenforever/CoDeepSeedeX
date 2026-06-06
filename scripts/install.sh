@@ -481,9 +481,25 @@ show_install_completion_hold() {
   local width
   local public_version
   local internal_version
+  local detected_public
+  local detected_internal
   width="$(ui_terminal_width)"
   public_version="${DEEPSEEK_PROXY_PUBLIC_VERSION:-v0.4.3-alpha}"
-  internal_version="${DEEPSEEK_PROXY_INTERNAL_VERSION:-p2.18a6-install-completion-hold}"
+  internal_version="${DEEPSEEK_PROXY_INTERNAL_VERSION:-}"
+
+  if [ -x "${INSTALL_DIR:-}/.venv/bin/dsproxy" ]; then
+    detected_public="$("${INSTALL_DIR}/.venv/bin/dsproxy" --version 2>/dev/null | sed -n 's/^public version: //p' | head -1 || true)"
+    detected_internal="$("${INSTALL_DIR}/.venv/bin/dsproxy" --version 2>/dev/null | sed -n 's/^internal version: //p' | head -1 || true)"
+    if [ -n "$detected_public" ]; then
+      public_version="$detected_public"
+    fi
+    if [ -n "$detected_internal" ]; then
+      internal_version="$detected_internal"
+    fi
+  fi
+  if [ -z "$internal_version" ]; then
+    internal_version="unknown"
+  fi
 
   if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     return 0
@@ -511,11 +527,12 @@ show_install_completion_hold() {
     ui_box_line "  Detail: ${MODEL_API_VALIDATION_ERROR}" "$width" > /dev/tty
   fi
   ui_box_line "" "$width" > /dev/tty
-  ui_box_line "Next commands:" "$width" > /dev/tty
-  ui_box_line "  export PATH=\"\$HOME/.local/bin:\$PATH\"" "$width" > /dev/tty
+  ui_box_line "Start using CoDeepSeedeX:" "$width" > /dev/tty
+  ui_box_line "  codex --profile deepseek-thinking" "$width" > /dev/tty
+  ui_box_line "" "$width" > /dev/tty
+  ui_box_line "Optional verification:" "$width" > /dev/tty
   ui_box_line "  dsproxy --version" "$width" > /dev/tty
   ui_box_line "  dsproxy config show" "$width" > /dev/tty
-  ui_box_line "  codex --profile deepseek-thinking" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "Press Enter to finish." "$width" "\033[1;38;5;75m" > /dev/tty
   ui_step_footer "Complete" "$width" > /dev/tty
@@ -1668,8 +1685,22 @@ prompt_custom_provider_mode() {
   local count
   local choice
   count="$(custom_provider_registry_count 2>/dev/null || printf '0')"
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'No saved custom providers yet.')"
-  choice="$(read_menu_choice_from_tty "Custom provider setup" "2" \
+
+  if [ "${count:-0}" = "0" ]; then
+    CODEEPSEEDEX_NEXT_MENU_DETAIL="No saved custom providers yet. Add a new custom provider first."
+    choice="$(read_menu_choice_from_tty "Custom provider setup" "2" \
+      "2|Add new custom provider|custom" \
+      "0|Back to provider selection|skip")"
+    case "$choice" in
+      __CODEEPSEEDEX_BACK__|0|back|Back) printf '%s\n' "back" ;;
+      2|new|add) printf '%s\n' "new" ;;
+      *) printf '%s\n' "new" ;;
+    esac
+    return 0
+  fi
+
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Saved custom providers are available.')"
+  choice="$(read_menu_choice_from_tty "Custom provider setup" "1" \
     "1|Use existing custom provider|supported" \
     "2|Add new custom provider|custom" \
     "3|Add model to existing provider|custom" \
@@ -1678,36 +1709,93 @@ prompt_custom_provider_mode() {
   case "$choice" in
     __CODEEPSEEDEX_BACK__) printf '%s\n' "back" ;;
     0|back|Back) printf '%s\n' "back" ;;
-    1|use|existing)
-      if [ "${count:-0}" = "0" ]; then
-        warn "No saved custom providers yet. Add a new custom provider first."
-        printf '%s\n' "new"
-      else
-        printf '%s\n' "use"
-      fi
-      ;;
+    1|use|existing) printf '%s\n' "use" ;;
     2|new|add) printf '%s\n' "new" ;;
     3|add-model) printf '%s\n' "add_model" ;;
     4|switch|switch-model) printf '%s\n' "switch_model" ;;
-    *) printf '%s\n' "new" ;;
+    *) printf '%s\n' "use" ;;
   esac
 }
 
 prompt_existing_custom_provider_name_field() {
-  local value=""
-  CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Select provider"
-  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Enter the saved provider name exactly as displayed.')"
-  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"
-  CODEEPSEEDEX_INPUT_TITLE=""
-  CODEEPSEEDEX_INPUT_STEP=""
-  CODEEPSEEDEX_INPUT_DETAIL=""
-  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
-    return 20
+  local options_file
+  local default_choice
+  local choice
+  local options=()
+  options_file="/tmp/codeepseedex-custom-provider-menu-options-$$.txt"
+
+  if ! "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" > "$options_file" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
+except Exception:
+    data = {}
+providers = data.get("providers") if isinstance(data, dict) else {}
+if not isinstance(providers, dict) or not providers:
+    raise SystemExit(2)
+
+active = data.get("active_provider")
+ordered = []
+if active in providers:
+    ordered.append(active)
+for key in sorted(providers):
+    if key not in ordered:
+        ordered.append(key)
+
+default = ordered[0]
+print(default)
+for key in ordered:
+    entry = providers.get(key)
+    if not isinstance(entry, dict):
+        continue
+    display = str(entry.get("display_name") or key)
+    model = str(entry.get("active_model") or "<no active model>")
+    suffix = " · active" if key == active else ""
+    label = f"{display} · {model}{suffix}"
+    label = label.replace("\n", " ").replace("|", "/")
+    print(f"{key}|{label}|custom")
+PYCODEEPSEEDEX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6
+  then
+    rm -f "$options_file"
+    warn "No saved custom providers yet. Add a new custom provider first."
+    return 30
   fi
-  PROMPTED_CUSTOM_PROVIDER_NAME="$(clean_tty_input_value "$value")"
+
+  default_choice="$(sed -n '1p' "$options_file" 2>/dev/null || true)"
+  if command -v mapfile >/dev/null 2>&1; then
+    mapfile -t options < <(tail -n +2 "$options_file")
+  else
+    while IFS= read -r line; do
+      options+=("$line")
+    done <<EOF
+$(tail -n +2 "$options_file")
+EOF
+  fi
+  rm -f "$options_file"
+
+  if [ "${#options[@]}" -eq 0 ]; then
+    warn "No saved custom providers yet. Add a new custom provider first."
+    return 30
+  fi
+
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Select a saved custom provider.')"
+  choice="$(read_menu_choice_from_tty "Custom Provider · Select provider" "$default_choice" \
+    "${options[@]}" \
+    "0|Back to custom provider setup|skip")"
+
+  case "$choice" in
+    __CODEEPSEEDEX_BACK__|0|back|Back)
+      return 20
+      ;;
+  esac
+
+  PROMPTED_CUSTOM_PROVIDER_NAME="$(clean_tty_input_value "$choice")"
   if [ -z "$PROMPTED_CUSTOM_PROVIDER_NAME" ]; then
-    warn "Provider name is required."
+    warn "Provider selection is required."
     return 30
   fi
   return 0
@@ -3756,54 +3844,15 @@ else
   ok "Codex model catalog linked"
 fi
 
-sub_title "Installation files"
-printf '%s\n' "  env file: $ENV_FILE"
-printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
-if [ -n "$SHELL_PROFILE_FILE" ]; then
-  printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"
-  printf '%s\n' "  current shell may need: source $SHELL_PROFILE_FILE"
-  printf '  current shell immediate PATH: export PATH="%s:$PATH"\n' "$BIN_DIR"
-  printf '  verify wrapper: command -v codex && command -v dsproxy\n'
-  if [ "$(command -v codex 2>/dev/null || true)" != "$BIN_DIR/codex" ]; then
-    printf '  current shell note: run the PATH command above before launching Codex in this shell\n'
+if [ "${CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY:-0}" = "1" ]; then
+  sub_title "Detailed install paths"
+  printf '%s\n' "  env file: $ENV_FILE"
+  printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
+  if [ -n "$SHELL_PROFILE_FILE" ]; then
+    printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"
   fi
+  printf '%s\n' "  uninstall: bash $INSTALL_DIR/scripts/install.sh --uninstall"
 fi
-
-sub_title "Next steps"
-printf '%s\n' "  codex --profile deepseek"
-printf '%s\n' "  codex --profile deepseek-thinking  # recommended"
-
-sub_title "Inside Codex TUI"
-printf '%s\n' "  /status       show session/runtime status"
-printf '%s\n' "  /model        switch model or reasoning effort"
-printf '%s\n' "  /plan         plan before implementation; Plan mode reasoning is pinned to high for DeepSeek profiles"
-printf '%s\n' "  check balance"
-
-sub_title "Shell commands"
-printf '%s\n' "  dsproxy start"
-printf '%s\n' "  dsproxy start thinking"
-printf '%s\n' "  dsproxy status"
-printf '%s\n' "  dsproxy status thinking"
-printf '%s\n' "  dsproxy stop"
-printf '%s\n' "  dsproxy stop thinking"
-printf '%s\n' "  dsproxy config test-api-key"
-printf '%s\n' "  dsproxy balance"
-printf '%s\n' "  dsproxy config show"
-printf '%s\n' "  dsproxy tokenizer status"
-printf '%s\n' "  dsproxy tokenizer sync deepseek --json"
-printf '%s\n' "  dsproxy config wizard"
-printf '%s\n' "  dsproxy config set-model --provider deepseek"
-printf '%s\n' "  dsproxy config test-api-key"
-printf '%s\n' "  dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
-printf '%s\n' "  dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
-printf '%s\n' "  dsproxy config set-model deepseek-v4-flash"
-printf '%s\n' "  dsproxy config set-effort high"
-
-sub_title "Continue a previous Codex conversation"
-printf '%s\n' "  codex --profile deepseek-thinking resume"
-
-sub_title "Uninstall integration"
-printf '  bash %s --uninstall\n' "$INSTALL_DIR/scripts/install.sh"
 
 print_install_logs
 show_install_completion_hold
