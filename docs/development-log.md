@@ -1,3 +1,17 @@
+## p2.19a5-codex-version-layout-compat — Codex version-aware profile layout compatibility
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Make managed Codex profile installation version-aware.
+- Codex CLI `>= 0.134.0` keeps the split profile file layout.
+- Codex CLI `< 0.134.0` uses legacy named profile tables for the managed deepseek and deepseek-thinking profiles in the main `config.toml` so older Codex can resolve profiles.
+- Expose `codex_cli_version`, `codex_profile_layout`, and `layout_reason` in install-codex-profile JSON output.
+- Preserve p2.19 custom provider registry and guided UI work.
+- Do not refresh Release assets in this patch step.
+
 ## p2.19a4-custom-provider-backstep-chain — custom provider Backspace chain
 
 Date: 2026-06-06

@@ -594,16 +594,85 @@ def codex_profile_config_path(profile_name: str, codex_config: Path | None = Non
     return main_path.parent / f"{profile_name}.config.toml"
 
 
-def codex_profile_layout_contract() -> dict[str, object]:
+def codex_profile_layout_contract(layout: str = "split_profile_files", codex_cli_version: str | None = None) -> dict[str, object]:
+    if layout == "legacy_profile_tables":
+        payload: dict[str, object] = {
+            "name": "legacy_profile_tables",
+            "codex_cli_max_version_exclusive": "0.134.0",
+            "main_config_contains": ["model_providers", "profiles"],
+            "profile_config_contains": [],
+            "legacy_profile_tables_allowed": True,
+            "legacy_profile_selector_allowed": False,
+        }
+    else:
+        payload = {
+            "name": "split_profile_files",
+            "codex_cli_min_version": "0.134.0",
+            "main_config_contains": ["model_providers"],
+            "profile_config_contains": ["profile_body"],
+            "legacy_profile_tables_allowed": False,
+            "legacy_profile_selector_allowed": False,
+        }
+    if codex_cli_version:
+        payload["codex_cli_version"] = codex_cli_version
+    return payload
+
+
+def _parse_codex_cli_version_text(text: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text or "")
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _detect_codex_cli_version_text() -> str:
+    override = os.environ.get("CODEEPSEEDEX_CODEX_CLI_VERSION", "").strip()
+    if override:
+        return override
+    try:
+        cp = subprocess.run(
+            ["codex", "--version"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=10,
+        )
+    except Exception:
+        return ""
+    return (cp.stdout or "").strip()
+
+
+def _resolve_codex_profile_layout(requested: str | None = None) -> dict[str, object]:
+    requested = (requested or os.environ.get("CODEEPSEEDEX_CODEX_PROFILE_LAYOUT") or "auto").strip()
+    codex_cli_version_text = _detect_codex_cli_version_text()
+    parsed = _parse_codex_cli_version_text(codex_cli_version_text)
+    if requested in {"split", "split_profile_files"}:
+        return {
+            "name": "split_profile_files",
+            "requested": requested,
+            "codex_cli_version": codex_cli_version_text,
+            "reason": "explicit_split_profile_files",
+        }
+    if requested in {"legacy", "legacy_profile_tables"}:
+        return {
+            "name": "legacy_profile_tables",
+            "requested": requested,
+            "codex_cli_version": codex_cli_version_text,
+            "reason": "explicit_legacy_profile_tables",
+        }
+    if parsed is not None and parsed < (0, 134, 0):
+        return {
+            "name": "legacy_profile_tables",
+            "requested": requested,
+            "codex_cli_version": codex_cli_version_text,
+            "reason": "codex_cli_lt_0_134",
+        }
     return {
         "name": "split_profile_files",
-        "codex_cli_min_version": "0.134.0",
-        "main_config_contains": ["model_providers"],
-        "profile_config_contains": ["profile_body"],
-        "legacy_profile_tables_allowed": False,
-        "legacy_profile_selector_allowed": False,
+        "requested": requested,
+        "codex_cli_version": codex_cli_version_text,
+        "reason": "codex_cli_gte_0_134_or_unknown",
     }
-
 
 def _toml_quote(value: str) -> str:
     escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
@@ -818,6 +887,8 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
     config_path = Path(args.path).expanduser() if args.path else default_codex_config_path()
     profile_name = args.name
     profile_path = codex_profile_config_path(profile_name, config_path)
+    layout_info = _resolve_codex_profile_layout(getattr(args, "profile_layout", "auto"))
+    layout_name = str(layout_info["name"])
     provider_name = args.provider_name or f"{profile_name}-proxy"
     auto_compact_ratio = _auto_compact_ratio_from_env_values(explicit=getattr(args, "auto_compact_ratio", None))
     derived_auto_compact_token_limit = _derive_auto_compact_token_limit(args.context_window, auto_compact_ratio)
@@ -837,15 +908,30 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
 
     original = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     text, provider_existed = _upsert_toml_table(original, provider_header, provider_block)
-    text, cleanup = _cleanup_main_codex_config_for_profile(text, profile_name)
-    profile_existed = profile_path.exists() or cleanup["legacy_profile_table_removed"]
+    if layout_name == "legacy_profile_tables":
+        text, legacy_selector_removed = _remove_top_level_codex_profile_selector(text)
+        profile_header = f"[profiles.{profile_name}]"
+        text, legacy_profile_existed = _remove_toml_table(text, profile_header)
+        legacy_profile_block = profile_header + "\n" + profile_block.strip() + "\n"
+        text = text.rstrip() + "\n\n" + legacy_profile_block
+        cleanup = {
+            "legacy_profile_table_removed": False,
+            "legacy_profile_selector_removed": legacy_selector_removed,
+        }
+        profile_existed = legacy_profile_existed or profile_path.exists()
+    else:
+        text, cleanup = _cleanup_main_codex_config_for_profile(text, profile_name)
+        profile_existed = profile_path.exists() or cleanup["legacy_profile_table_removed"]
 
     result = {
         "path": str(config_path),
-        "codex_profile_layout": "split_profile_files",
-        "layout_contract": codex_profile_layout_contract(),
+        "codex_profile_layout": layout_name,
+        "layout_contract": codex_profile_layout_contract(layout_name, str(layout_info.get("codex_cli_version") or "")),
+        "codex_cli_version": layout_info.get("codex_cli_version"),
+        "layout_reason": layout_info.get("reason"),
         "main_config": str(config_path),
-        "profile_config": str(profile_path),
+        "profile_config": str(config_path if layout_name == "legacy_profile_tables" else profile_path),
+        "split_profile_config": str(profile_path),
         "profile": profile_name,
         "provider": provider_name,
         "base_url": args.base_url,
@@ -867,6 +953,8 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
     if args.dry_run:
         result["config_preview"] = text
         result["profile_config_preview"] = profile_block
+        if layout_name == "legacy_profile_tables":
+            result["legacy_config_preview"] = text
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
@@ -881,8 +969,12 @@ def _install_codex_profile(args: argparse.Namespace) -> int:
             result["profile_backup"] = str(profile_backup)
 
     config_path.write_text(text, encoding="utf-8")
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(profile_block, encoding="utf-8")
+    if layout_name == "legacy_profile_tables":
+        if profile_path.exists():
+            profile_path.unlink()
+    else:
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_path.write_text(profile_block, encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -7610,6 +7702,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_profile.add_argument("--model-catalog-json")
     install_profile.add_argument("--dry-run", action="store_true")
     install_profile.add_argument("--no-backup", action="store_true")
+    install_profile.add_argument("--profile-layout", choices=["auto", "split_profile_files", "legacy_profile_tables", "split", "legacy"], default="auto", help="Codex profile layout; auto uses legacy tables for Codex < 0.134 and split profile files for newer Codex")
     install_profile.set_defaults(func=_install_codex_profile)
 
     uninstall_profile = sub.add_parser("uninstall-codex-profile", help="remove a Codex config profile")
