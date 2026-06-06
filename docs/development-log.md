@@ -1,3 +1,16 @@
+## p2.19a2-custom-provider-guided-ui — custom provider guided UI
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Connect installer custom provider setup to the p2.19a1 registry foundation.
+- Fix Provider name Backspace routing so it returns to provider-family selection rather than looping on itself.
+- Add installer custom-provider modes: use existing, add new, add model to existing, and switch active model.
+- Keep the active custom provider/model mirrored to the legacy env contract.
+- Do not refresh Release assets in this patch step.
+
 ## p2.19a1-custom-provider-registry-foundation — custom provider registry foundation
 
 Date: 2026-06-06

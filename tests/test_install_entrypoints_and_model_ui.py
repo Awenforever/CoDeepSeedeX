@@ -1084,3 +1084,29 @@ def test_p219a1_installer_custom_provider_registry_contract() -> None:
     assert "Provider configuration:" in text
     assert "Provider type:" in text
     assert "Active model:" in text
+
+
+def test_p219a2_installer_custom_provider_guided_registry_ui() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "prompt_custom_provider_mode()" in text
+    assert "custom_provider_registry_count()" in text
+    assert "custom_provider_registry_hint()" in text
+    assert "apply_custom_provider_from_registry()" in text
+
+    assert "Custom provider setup" in text
+    assert "Use existing custom provider" in text
+    assert "Add new custom provider" in text
+    assert "Add model to existing provider" in text
+    assert "Switch active model" in text
+
+    assert 'field_step="custom_mode"' in text
+    assert 'field_step="provider_name"' in text
+    assert 'field_step="base_url"' in text
+
+    # Provider-name Backspace must return to provider selection, not loop on itself.
+    assert 'if [ "$field_rc" = "20" ]; then\n          field_step="provider"\n          continue\n        fi\n        field_step="base_url"' in text
+    assert 'if [ "$field_rc" = "20" ]; then\n          field_step="provider_name"\n          continue\n        fi\n        field_step="base_url"' not in text
+
+    assert "registry_selected" in text
+    assert "Saved custom provider was not found" in text

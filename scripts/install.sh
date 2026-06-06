@@ -1619,6 +1619,205 @@ review_model_api_config() {
 }
 
 
+
+custom_provider_registry_count() {
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_COUNT_P219A2'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
+except Exception:
+    data = {}
+providers = data.get("providers") if isinstance(data, dict) else {}
+if not isinstance(providers, dict):
+    providers = {}
+print(len(providers))
+PYCODEEPSEEDEX_CUSTOM_PROVIDER_COUNT_P219A2
+}
+
+custom_provider_registry_hint() {
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_HINT_P219A2'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
+except Exception:
+    data = {}
+providers = data.get("providers") if isinstance(data, dict) else {}
+if not isinstance(providers, dict) or not providers:
+    print("No saved custom providers yet.")
+else:
+    active = data.get("active_provider")
+    parts = []
+    for key, entry in providers.items():
+        if not isinstance(entry, dict):
+            continue
+        marker = "*" if key == active else "-"
+        name = entry.get("display_name") or key
+        model = entry.get("active_model") or "<no active model>"
+        parts.append(f"{marker} {name}: {model}")
+    print("; ".join(parts[:6]))
+PYCODEEPSEEDEX_CUSTOM_PROVIDER_HINT_P219A2
+}
+
+prompt_custom_provider_mode() {
+  local count
+  local choice
+  count="$(custom_provider_registry_count 2>/dev/null || printf '0')"
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'No saved custom providers yet.')"
+  choice="$(read_menu_choice_from_tty "Custom provider setup" "2" \
+    "1|Use existing custom provider|supported" \
+    "2|Add new custom provider|custom" \
+    "3|Add model to existing provider|custom" \
+    "4|Switch active model|custom" \
+    "0|Back to provider selection|skip")"
+  case "$choice" in
+    __CODEEPSEEDEX_BACK__) printf '%s\n' "back" ;;
+    0|back|Back) printf '%s\n' "back" ;;
+    1|use|existing)
+      if [ "${count:-0}" = "0" ]; then
+        warn "No saved custom providers yet. Add a new custom provider first."
+        printf '%s\n' "new"
+      else
+        printf '%s\n' "use"
+      fi
+      ;;
+    2|new|add) printf '%s\n' "new" ;;
+    3|add-model) printf '%s\n' "add_model" ;;
+    4|switch|switch-model) printf '%s\n' "switch_model" ;;
+    *) printf '%s\n' "new" ;;
+  esac
+}
+
+prompt_existing_custom_provider_name_field() {
+  local value=""
+  CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Select provider"
+  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+  CODEEPSEEDEX_INPUT_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Enter the saved provider name exactly as displayed.')"
+  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"
+  CODEEPSEEDEX_INPUT_TITLE=""
+  CODEEPSEEDEX_INPUT_STEP=""
+  CODEEPSEEDEX_INPUT_DETAIL=""
+  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
+  PROMPTED_CUSTOM_PROVIDER_NAME="$(clean_tty_input_value "$value")"
+  if [ -z "$PROMPTED_CUSTOM_PROVIDER_NAME" ]; then
+    warn "Provider name is required."
+    return 30
+  fi
+  return 0
+}
+
+prompt_existing_custom_provider_model_field() {
+  local value=""
+  CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Active model"
+  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+  CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Leave empty to keep the provider's active model."
+  value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-}")"
+  CODEEPSEEDEX_INPUT_TITLE=""
+  CODEEPSEEDEX_INPUT_STEP=""
+  CODEEPSEEDEX_INPUT_DETAIL=""
+  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
+  PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"
+  return 0
+}
+
+apply_custom_provider_from_registry() {
+  local mode="$1"
+  local provider_name="$2"
+  local model_name="${3:-}"
+  local assign_file
+  assign_file="/tmp/codeepseedex-custom-provider-registry-assign-$$.sh"
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$assign_file" <<'PYCODEEPSEEDEX_APPLY_CUSTOM_PROVIDER_P219A2'
+import json
+import os
+import re
+import shlex
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+mode = sys.argv[2]
+provider_name = (sys.argv[3] or "").strip()
+model_name = (sys.argv[4] or "").strip()
+
+def slug(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-._")
+    return text or "custom-provider"
+
+try:
+    data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
+except Exception:
+    data = {}
+providers = data.get("providers") if isinstance(data, dict) else {}
+if not isinstance(providers, dict):
+    providers = {}
+
+provider_id = slug(provider_name)
+entry = providers.get(provider_id)
+if not isinstance(entry, dict):
+    raise SystemExit(2)
+
+models = entry.get("models")
+if not isinstance(models, list):
+    models = []
+entry["models"] = models
+
+if mode in {"add_model", "switch_model"}:
+    if not model_name:
+        raise SystemExit(3)
+    if model_name not in models:
+        models.append(model_name)
+    entry["active_model"] = model_name
+elif mode == "use":
+    if model_name:
+        if model_name not in models:
+            models.append(model_name)
+        entry["active_model"] = model_name
+
+active_model = entry.get("active_model") or (models[0] if models else "")
+if not active_model:
+    raise SystemExit(4)
+entry["active_model"] = active_model
+data["active_provider"] = provider_id
+data["version"] = 1
+providers[provider_id] = entry
+data["providers"] = providers
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+os.chmod(path, 0o600)
+
+assignments = {
+    "PROMPTED_MODEL_PROVIDER": "custom",
+    "PROMPTED_CUSTOM_PROVIDER_NAME": str(entry.get("display_name") or provider_name),
+    "PROMPTED_MODEL_BASE_URL": str(entry.get("base_url") or ""),
+    "PROMPTED_MODEL_NAME": str(entry.get("active_model") or active_model),
+}
+api_key = str(entry.get("api_key") or "")
+if api_key:
+    assignments["PROMPTED_API_KEY"] = api_key
+for key, value in assignments.items():
+    print(f"{key}={shlex.quote(value)}")
+PYCODEEPSEEDEX_APPLY_CUSTOM_PROVIDER_P219A2
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$assign_file"
+    return "$rc"
+  fi
+  # shellcheck disable=SC1090
+  . "$assign_file"
+  rm -f "$assign_file"
+  record_model_api_validation_summary "registry_selected"
+  return 0
+}
+
 prompt_custom_provider_name_field() {
   local value=""
   CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Provider name"
@@ -1904,7 +2103,7 @@ prompt_deepseek_api_key() {
             PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
             PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
             if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
-              field_step="provider_name"
+              field_step="custom_mode"
             else
               field_step="api_key"
             fi
@@ -1919,11 +2118,52 @@ prompt_deepseek_api_key() {
         esac
         ;;
 
+      custom_mode)
+        local custom_mode=""
+        custom_mode="$(prompt_custom_provider_mode)"
+        case "$custom_mode" in
+          back)
+            field_step="provider"
+            ;;
+          use)
+            if prompt_existing_custom_provider_name_field; then
+              if apply_custom_provider_from_registry "use" "$PROMPTED_CUSTOM_PROVIDER_NAME" ""; then
+                show_model_api_validation_hold
+                return 0
+              fi
+              warn "Saved custom provider was not found. Add it again or choose a different provider."
+            elif [ "$?" = "20" ]; then
+              field_step="provider"
+            fi
+            ;;
+          add_model|switch_model)
+            if prompt_existing_custom_provider_name_field; then
+              prompt_existing_custom_provider_model_field
+              field_rc=$?
+              if [ "$field_rc" = "20" ]; then
+                field_step="custom_mode"
+                continue
+              fi
+              if apply_custom_provider_from_registry "$custom_mode" "$PROMPTED_CUSTOM_PROVIDER_NAME" "$PROMPTED_MODEL_NAME"; then
+                show_model_api_validation_hold
+                return 0
+              fi
+              warn "Could not update saved custom provider/model."
+            elif [ "$?" = "20" ]; then
+              field_step="provider"
+            fi
+            ;;
+          new|*)
+            field_step="provider_name"
+            ;;
+        esac
+        ;;
+
       provider_name)
         prompt_custom_provider_name_field
         field_rc=$?
         if [ "$field_rc" = "20" ]; then
-          field_step="provider_name"
+          field_step="provider"
           continue
         fi
         field_step="base_url"
