@@ -1,3 +1,17 @@
+## p2.19a1-custom-provider-registry-foundation — custom provider registry foundation
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Add a minimal custom OpenAI-compatible provider registry at `model-providers.json` while preserving the legacy env mirror.
+- Let users assign a display-only custom provider name, store multiple custom providers, store multiple models per provider, and switch active provider/model.
+- Keep runtime compatibility by mirroring the active provider/model/key to `DEEPSEEK_PROXY_MODEL_PROVIDER=custom`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_PROXY_MODEL`, and `DEEPSEEK_API_KEY`.
+- Add CLI entry points for `dsproxy config custom-provider list|add|use|add-model`.
+- Keep API-key output redacted and registry files written with user-only permissions.
+- Do not refresh Release assets in this patch step.
+
 ## p2.18a9-concise-model-api-validation-hold — concise model API panels and validation hold
 
 Date: 2026-06-05

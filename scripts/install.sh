@@ -31,6 +31,10 @@ PROMPTED_MODEL_NAME=""
 RESOLVED_MODEL_PROVIDER=""
 RESOLVED_MODEL_BASE_URL=""
 RESOLVED_MODEL_NAME=""
+PROMPTED_CUSTOM_PROVIDER_NAME=""
+RESOLVED_MODEL_PROVIDER_DISPLAY_NAME=""
+RESOLVED_MODEL_PROVIDER_TYPE=""
+MODEL_PROVIDER_REGISTRY_FILE="${DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"
 
 show_version_source() {
   sub_title "Version source"
@@ -437,8 +441,12 @@ ui_render_input_panel() {
 show_model_api_validation_hold() {
   local width
   local key_state
+  local provider_label
+  local provider_type
   width="$(ui_terminal_width)"
   key_state="$(model_api_key_state_label)"
+  provider_label="$(model_api_provider_display_label)"
+  provider_type="$(model_api_provider_type_label)"
 
   if [ "$NON_INTERACTIVE" = "1" ] || [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
     return 0
@@ -446,11 +454,12 @@ show_model_api_validation_hold() {
 
   ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
-  ui_box_line_styled "Model API validation" "$width" "\033[1;38;5;75m" > /dev/tty
+  ui_box_line_styled "${provider_label} validation" "$width" "\033[1;38;5;75m" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
-  ui_box_line "Provider: ${PROMPTED_MODEL_PROVIDER:-<unset>}" "$width" > /dev/tty
+  ui_box_line "Provider: ${provider_label:-<unset>}" "$width" > /dev/tty
+  ui_box_line "Provider type: ${provider_type:-<unset>}" "$width" > /dev/tty
   ui_box_line "Base URL: ${PROMPTED_MODEL_BASE_URL:-<unset>}" "$width" > /dev/tty
-  ui_box_line "Model: ${PROMPTED_MODEL_NAME:-<unset>}" "$width" > /dev/tty
+  ui_box_line "Active model: ${PROMPTED_MODEL_NAME:-<unset>}" "$width" > /dev/tty
   ui_box_line "API key: ${key_state}" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line "Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty
@@ -490,10 +499,11 @@ show_install_completion_hold() {
   ui_box_line "Env file: ${ENV_FILE:-<unknown>}" "$width" > /dev/tty
   ui_box_line "Codex dir: ${CODEX_HOME:-$HOME/.codex}" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
-  ui_box_line "Model API:" "$width" > /dev/tty
-  ui_box_line "  Provider: ${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-<unset>}}" "$width" > /dev/tty
+  ui_box_line "Provider configuration:" "$width" > /dev/tty
+  ui_box_line "  Provider: ${PROMPTED_CUSTOM_PROVIDER_NAME:-${RESOLVED_MODEL_PROVIDER_DISPLAY_NAME:-${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-<unset>}}}}" "$width" > /dev/tty
+  ui_box_line "  Provider type: ${RESOLVED_MODEL_PROVIDER_TYPE:-$(model_api_provider_type_label)}" "$width" > /dev/tty
   ui_box_line "  Base URL: ${PROMPTED_MODEL_BASE_URL:-${RESOLVED_MODEL_BASE_URL:-<unset>}}" "$width" > /dev/tty
-  ui_box_line "  Model: ${PROMPTED_MODEL_NAME:-${RESOLVED_MODEL_NAME:-<unset>}}" "$width" > /dev/tty
+  ui_box_line "  Active model: ${PROMPTED_MODEL_NAME:-${RESOLVED_MODEL_NAME:-<unset>}}" "$width" > /dev/tty
   ui_box_line "  Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty
   ui_box_line "  Method: ${MODEL_API_VALIDATION_METHOD:-<not_run>}" "$width" > /dev/tty
   ui_box_line "  URL: ${MODEL_API_VALIDATION_URL:-<not_run>}" "$width" > /dev/tty
@@ -1474,6 +1484,119 @@ record_model_api_validation_summary() {
   MODEL_API_VALIDATION_ERROR="$error"
 }
 
+
+model_api_provider_display_label() {
+  local provider="${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-}}"
+  local custom_name="${PROMPTED_CUSTOM_PROVIDER_NAME:-${RESOLVED_MODEL_PROVIDER_DISPLAY_NAME:-}}"
+  if [ "$provider" = "custom" ]; then
+    if [ -n "$custom_name" ]; then
+      printf '%s\n' "$custom_name"
+    else
+      printf '%s\n' "Custom Provider"
+    fi
+    return 0
+  fi
+  case "$provider" in
+    deepseek) printf '%s\n' "DeepSeek Provider" ;;
+    kimi) printf '%s\n' "Kimi Provider" ;;
+    zhipu|zhipu-coding) printf '%s\n' "ZhipuAI Provider" ;;
+    zai|zai-coding) printf '%s\n' "Z.AI Provider" ;;
+    qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Qwen Provider" ;;
+    "") printf '%s\n' "Provider" ;;
+    *) printf '%s\n' "$provider" ;;
+  esac
+}
+
+model_api_provider_type_label() {
+  case "${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-}}" in
+    custom) printf '%s\n' "Custom OpenAI-compatible" ;;
+    deepseek) printf '%s\n' "DeepSeek official" ;;
+    kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Built-in OpenAI-compatible" ;;
+    *) printf '%s\n' "Model API" ;;
+  esac
+}
+
+write_model_provider_registry() {
+  local provider="$1"
+  local display_name="$2"
+  local base_url="$3"
+  local model_name="$4"
+  local api_key="$5"
+
+  if [ "$provider" != "custom" ]; then
+    return 0
+  fi
+  if [ -z "$display_name" ] || [ -z "$base_url" ] || [ -z "$model_name" ]; then
+    return 0
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ write %q with custom provider registry entry for %q\n' "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" >> "$INSTALL_LOG"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$MODEL_PROVIDER_REGISTRY_FILE")"
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" "$base_url" "$model_name" "$api_key" <<'PYCODEEPSEEDEX_MODEL_PROVIDER_REGISTRY_P219A1'
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+display_name = sys.argv[2].strip() or "Custom Provider"
+base_url = sys.argv[3].strip().rstrip("/")
+model_name = sys.argv[4].strip()
+api_key = sys.argv[5]
+
+def slug(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-._")
+    return text or "custom-provider"
+
+provider_id = slug(display_name)
+if path.exists():
+    try:
+        data = json.loads(path.read_text(encoding="utf-8") or "{}")
+    except Exception:
+        data = {}
+else:
+    data = {}
+
+if not isinstance(data, dict):
+    data = {}
+providers = data.setdefault("providers", {})
+if not isinstance(providers, dict):
+    providers = {}
+    data["providers"] = providers
+
+entry = providers.get(provider_id)
+if not isinstance(entry, dict):
+    entry = {}
+models = entry.get("models")
+if not isinstance(models, list):
+    models = []
+if model_name and model_name not in models:
+    models.append(model_name)
+
+entry.update({
+    "id": provider_id,
+    "type": "custom_openai_compatible",
+    "display_name": display_name,
+    "base_url": base_url,
+    "active_model": model_name,
+    "models": models,
+})
+if api_key:
+    entry["api_key"] = api_key
+
+providers[provider_id] = entry
+data["version"] = 1
+data["active_provider"] = provider_id
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+os.chmod(path, 0o600)
+PYCODEEPSEEDEX_MODEL_PROVIDER_REGISTRY_P219A1
+}
+
 model_api_key_state_label() {
   if [ -n "${PROMPTED_API_KEY:-}" ]; then
     printf '%s\n' "configured, hidden"
@@ -1495,11 +1618,31 @@ review_model_api_config() {
     "0|Skip model API|skip"
 }
 
+
+prompt_custom_provider_name_field() {
+  local value=""
+  CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Provider name"
+  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
+  CODEEPSEEDEX_INPUT_DETAIL="Provider name is only for your display and switching; it is not sent upstream."
+  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-USTC}}")"
+  CODEEPSEEDEX_INPUT_TITLE=""
+  CODEEPSEEDEX_INPUT_STEP=""
+  CODEEPSEEDEX_INPUT_DETAIL=""
+  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+    return 20
+  fi
+  PROMPTED_CUSTOM_PROVIDER_NAME="$(clean_tty_input_value "$value")"
+  if [ -z "$PROMPTED_CUSTOM_PROVIDER_NAME" ]; then
+    PROMPTED_CUSTOM_PROVIDER_NAME="Custom Provider"
+  fi
+  return 0
+}
+
 prompt_model_base_url_field() {
   local value=""
-  CODEEPSEEDEX_INPUT_TITLE="Model API · Base URL"
+  CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Base URL"
   CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="Custom OpenAI-compatible endpoint; /chat/completions is normalized to /v1."
+  CODEEPSEEDEX_INPUT_DETAIL="Base URL is sent to dsproxy/upstream. /chat/completions is normalized to /v1."
   value="$(read_from_tty "Base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
   CODEEPSEEDEX_INPUT_TITLE=""
   CODEEPSEEDEX_INPUT_STEP=""
@@ -1514,9 +1657,9 @@ prompt_model_base_url_field() {
 prompt_model_name_field() {
   local value=""
   while true; do
-    CODEEPSEEDEX_INPUT_TITLE="Model API · Model name"
+    CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Endpoint: ${PROMPTED_MODEL_BASE_URL:-<empty>} · model id only, for example: deepseek-v4-flash-ascend"
+    CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Example: deepseek-v4-flash-ascend"
     value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
@@ -1544,9 +1687,9 @@ prompt_model_api_key_field() {
   fi
 
   while [ "$attempts" -lt 3 ]; do
-    CODEEPSEEDEX_INPUT_TITLE="Model API · API key"
+    CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · API key"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_MODEL_PROVIDER · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
+    CODEEPSEEDEX_INPUT_DETAIL="Provider: $(model_api_provider_display_label) · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
     candidate="$(read_secret_from_tty "API key" "$existing_api_key" "$prompt_hint")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
@@ -1693,6 +1836,7 @@ prompt_deepseek_api_key() {
   PROMPTED_MODEL_PROVIDER=""
   PROMPTED_MODEL_BASE_URL=""
   PROMPTED_MODEL_NAME=""
+  PROMPTED_CUSTOM_PROVIDER_NAME=""
   reset_model_api_validation_summary
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
@@ -1703,6 +1847,7 @@ prompt_deepseek_api_key() {
       PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
     fi
     PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+    PROMPTED_CUSTOM_PROVIDER_NAME="$(env_file_value DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME)"
     if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
       PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
     fi
@@ -1749,6 +1894,7 @@ prompt_deepseek_api_key() {
         PROMPTED_MODEL_PROVIDER=""
         PROMPTED_MODEL_BASE_URL=""
         PROMPTED_MODEL_NAME=""
+        PROMPTED_CUSTOM_PROVIDER_NAME=""
         reset_model_api_validation_summary
 
         choose_model_provider_family
@@ -1758,7 +1904,7 @@ prompt_deepseek_api_key() {
             PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
             PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
             if [ "$PROMPTED_MODEL_PROVIDER" = "custom" ]; then
-              field_step="base_url"
+              field_step="provider_name"
             else
               field_step="api_key"
             fi
@@ -1771,6 +1917,16 @@ prompt_deepseek_api_key() {
             ;;
           *) return "$provider_rc" ;;
         esac
+        ;;
+
+      provider_name)
+        prompt_custom_provider_name_field
+        field_rc=$?
+        if [ "$field_rc" = "20" ]; then
+          field_step="provider_name"
+          continue
+        fi
+        field_step="base_url"
         ;;
 
       base_url)
@@ -2336,12 +2492,16 @@ write_env_file() {
   local final_model_provider="${PROMPTED_MODEL_PROVIDER:-}"
   local final_model_base_url="${PROMPTED_MODEL_BASE_URL:-}"
   local final_model_name="${PROMPTED_MODEL_NAME:-}"
+  local final_custom_provider_name="${PROMPTED_CUSTOM_PROVIDER_NAME:-}"
 
   if [ -z "$final_api_key" ]; then
     final_api_key="$(env_file_value DEEPSEEK_API_KEY)"
   fi
   if [ -z "$final_model_provider" ]; then
     final_model_provider="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+  fi
+  if [ -z "$final_custom_provider_name" ]; then
+    final_custom_provider_name="$(env_file_value DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME)"
   fi
   if [ -z "$final_model_provider" ]; then
     final_model_provider="deepseek"
@@ -2365,9 +2525,15 @@ write_env_file() {
     final_model_name="deepseek-v4-pro"
   fi
 
+  if [ "$final_model_provider" = "custom" ] && [ -z "$final_custom_provider_name" ]; then
+    final_custom_provider_name="Custom Provider"
+  fi
+
   RESOLVED_MODEL_PROVIDER="$final_model_provider"
   RESOLVED_MODEL_BASE_URL="$final_model_base_url"
   RESOLVED_MODEL_NAME="$final_model_name"
+  RESOLVED_MODEL_PROVIDER_DISPLAY_NAME="${final_custom_provider_name:-$final_model_provider}"
+  RESOLVED_MODEL_PROVIDER_TYPE="$(PROMPTED_MODEL_PROVIDER="$final_model_provider" model_api_provider_type_label)"
 
   if [ -z "$final_web_search_provider" ]; then
     final_web_search_provider="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
@@ -2414,6 +2580,10 @@ write_env_file() {
 ' "$final_model_base_url"
     printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER=%q
 ' "$final_model_provider"
+    printf 'export DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME=%q
+' "$final_custom_provider_name"
+    printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY=%q
+' "$MODEL_PROVIDER_REGISTRY_FILE"
     printf 'export DEEPSEEK_PROXY_INSTALL_DIR=%q
 ' "$INSTALL_DIR"
     printf 'export DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q
@@ -2508,6 +2678,7 @@ write_env_file() {
   } > "$ENV_FILE"
 
   chmod 600 "$ENV_FILE"
+  write_model_provider_registry "$final_model_provider" "$final_custom_provider_name" "$final_model_base_url" "$final_model_name" "$final_api_key"
   ok "Local env file written"
 }
 
@@ -2856,7 +3027,7 @@ while [ "$#" -gt 0 ]; do
     --repo-url) REPO_URL="$2"; shift ;;
     --install-ref) INSTALL_REF="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
-    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; shift ;;
+    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; MODEL_PROVIDER_REGISTRY_FILE="${DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
     --python-bin) PYTHON_BIN="$2"; shift ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;

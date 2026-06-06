@@ -4577,6 +4577,287 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
     }
 
 
+
+def _model_provider_registry_path(env_file: Path | None = None) -> Path:
+    env_values = _read_env_exports(env_file or default_env_file_path())
+    configured = env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY") or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY")
+    if configured:
+        return Path(configured).expanduser()
+    base = (env_file or default_env_file_path()).expanduser().parent
+    return base / "model-providers.json"
+
+
+def _custom_provider_registry_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip().lower()).strip("-._")
+    return slug or "custom-provider"
+
+
+def _read_custom_provider_registry(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"version": 1, "active_provider": None, "providers": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8") or "{}")
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    data["providers"] = providers
+    data.setdefault("version", 1)
+    data.setdefault("active_provider", None)
+    return data
+
+
+def _write_custom_provider_registry(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _redact_custom_provider_registry(data: dict[str, Any]) -> dict[str, Any]:
+    redacted = {
+        "version": data.get("version", 1),
+        "active_provider": data.get("active_provider"),
+        "providers": {},
+    }
+    for provider_id, entry in (data.get("providers") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        item = dict(entry)
+        api_key = str(item.pop("api_key", "") or "")
+        item["api_key_configured"] = bool(api_key)
+        item["api_key_preview"] = _mask_api_key(api_key)
+        redacted["providers"][provider_id] = item
+    return redacted
+
+
+def _upsert_custom_provider_registry_entry(
+    path: Path,
+    *,
+    display_name: str,
+    base_url: str,
+    model: str,
+    api_key: str = "",
+    make_active: bool = True,
+) -> dict[str, Any]:
+    display_name = (display_name or "Custom Provider").strip() or "Custom Provider"
+    base_url = _normalize_openai_base_url_value(base_url or "")
+    model = _clean_wizard_input_value(model or "")
+    provider_id = _custom_provider_registry_slug(display_name)
+    data = _read_custom_provider_registry(path)
+    providers = data.setdefault("providers", {})
+    entry = providers.get(provider_id)
+    if not isinstance(entry, dict):
+        entry = {}
+    models = entry.get("models")
+    if not isinstance(models, list):
+        models = []
+    if model and model not in models:
+        models.append(model)
+    entry.update({
+        "id": provider_id,
+        "type": "custom_openai_compatible",
+        "display_name": display_name,
+        "base_url": base_url,
+        "active_model": model,
+        "models": models,
+    })
+    if api_key:
+        entry["api_key"] = api_key
+    providers[provider_id] = entry
+    data["version"] = 1
+    if make_active:
+        data["active_provider"] = provider_id
+    _write_custom_provider_registry(path, data)
+    return data
+
+
+def _custom_provider_registry_status(env_file: Path, values: dict[str, str]) -> dict[str, Any]:
+    path = _model_provider_registry_path(env_file)
+    data = _read_custom_provider_registry(path)
+    return {
+        "path": str(path),
+        "exists": path.exists(),
+        "active_provider": data.get("active_provider"),
+        "registry": _redact_custom_provider_registry(data),
+    }
+
+
+def _apply_custom_provider_registry_entry(
+    env_file: Path,
+    *,
+    provider_name: str,
+    model: str | None = None,
+) -> dict[str, Any]:
+    path = _model_provider_registry_path(env_file)
+    data = _read_custom_provider_registry(path)
+    provider_id = _custom_provider_registry_slug(provider_name)
+    entry = (data.get("providers") or {}).get(provider_id)
+    if not isinstance(entry, dict):
+        raise ValueError(f"custom_provider_not_found:{provider_name}")
+    selected_model = _clean_wizard_input_value(model or entry.get("active_model") or "")
+    if not selected_model:
+        raise ValueError(f"custom_provider_model_missing:{provider_name}")
+    models = entry.setdefault("models", [])
+    if selected_model not in models:
+        models.append(selected_model)
+    entry["active_model"] = selected_model
+    data["active_provider"] = provider_id
+    _write_custom_provider_registry(path, data)
+
+    values = _read_env_exports(env_file)
+    values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = "custom"
+    values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] = str(entry.get("display_name") or provider_name)
+    values["DEEPSEEK_BASE_URL"] = str(entry.get("base_url") or "")
+    values["DEEPSEEK_PROXY_MODEL"] = selected_model
+    values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] = str(path)
+    if entry.get("api_key"):
+        values["DEEPSEEK_API_KEY"] = str(entry.get("api_key") or "")
+    values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    _write_env_exports(env_file, values)
+
+    return {
+        "status": "ok",
+        "env_file": str(env_file),
+        "registry_path": str(path),
+        "provider_id": provider_id,
+        "provider_name": entry.get("display_name") or provider_name,
+        "provider_type": "custom_openai_compatible",
+        "base_url": entry.get("base_url"),
+        "active_model": selected_model,
+        "models": models,
+        "api_key_configured": bool(entry.get("api_key")),
+        "api_key_preview": _mask_api_key(str(entry.get("api_key") or "")),
+    }
+
+
+def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) -> int:
+    path = _model_provider_registry_path(env_file)
+    action = getattr(args, "custom_provider_action", "list")
+    if action == "list":
+        data = _read_custom_provider_registry(path)
+        print(json.dumps({
+            "status": "ok",
+            "registry_path": str(path),
+            "custom_provider_registry": _redact_custom_provider_registry(data),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if action == "add":
+        name = (getattr(args, "name", "") or "").strip()
+        base_url = _normalize_openai_base_url_value(getattr(args, "base_url", "") or "")
+        model = _clean_wizard_input_value(getattr(args, "model", "") or "")
+        if not name or not base_url or not model:
+            print(json.dumps({
+                "status": "error",
+                "error": "missing_custom_provider_details",
+                "required": ["--name", "--base-url", "--model"],
+            }, ensure_ascii=False, indent=2))
+            return 1
+        if not _is_valid_model_name_value(model):
+            print(json.dumps({
+                "status": "error",
+                "error": "invalid_model_name",
+                "message": "Model name is sent upstream and must be an exact model id, not a URL/path/API key.",
+                "model": model,
+            }, ensure_ascii=False, indent=2))
+            return 1
+
+        api_key = (getattr(args, "value", "") or "").strip()
+        validation_result: dict[str, Any]
+        if api_key and not getattr(args, "skip_validation", False):
+            validation_result = _validate_model_api_key("custom", api_key, base_url=base_url, timeout=float(getattr(args, "validation_timeout", 10.0)))
+            if not validation_result.get("ok"):
+                validation_result.update({
+                    "status": "error",
+                    "provider_name": name,
+                    "base_url": base_url,
+                    "model": model,
+                })
+                print(json.dumps(validation_result, ensure_ascii=False, indent=2))
+                return 1
+        else:
+            validation_result = _skipped_validation("model_api", "custom")
+
+        data = _upsert_custom_provider_registry_entry(
+            path,
+            display_name=name,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            make_active=bool(getattr(args, "use", False)),
+        )
+        output = {
+            "status": "ok",
+            "registry_path": str(path),
+            "provider_id": _custom_provider_registry_slug(name),
+            "provider_name": name,
+            "provider_type": "custom_openai_compatible",
+            "base_url": base_url,
+            "active_model": model,
+            "validation": validation_result,
+            "api_key_configured": bool(api_key),
+            "api_key_preview": _mask_api_key(api_key),
+            "custom_provider_registry": _redact_custom_provider_registry(data),
+        }
+        if getattr(args, "use", False):
+            output["activated"] = _apply_custom_provider_registry_entry(env_file, provider_name=name, model=model)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0
+
+    if action == "add-model":
+        name = (getattr(args, "name", "") or "").strip()
+        model = _clean_wizard_input_value(getattr(args, "model", "") or "")
+        if not name or not model:
+            print(json.dumps({"status": "error", "error": "missing_name_or_model"}, ensure_ascii=False, indent=2))
+            return 1
+        if not _is_valid_model_name_value(model):
+            print(json.dumps({"status": "error", "error": "invalid_model_name", "model": model}, ensure_ascii=False, indent=2))
+            return 1
+        data = _read_custom_provider_registry(path)
+        provider_id = _custom_provider_registry_slug(name)
+        entry = (data.get("providers") or {}).get(provider_id)
+        if not isinstance(entry, dict):
+            print(json.dumps({"status": "error", "error": "custom_provider_not_found", "provider_name": name}, ensure_ascii=False, indent=2))
+            return 1
+        models = entry.setdefault("models", [])
+        if model not in models:
+            models.append(model)
+        if getattr(args, "use", False):
+            entry["active_model"] = model
+        _write_custom_provider_registry(path, data)
+        print(json.dumps({
+            "status": "ok",
+            "registry_path": str(path),
+            "provider_id": provider_id,
+            "provider_name": entry.get("display_name") or name,
+            "models": models,
+            "active_model": entry.get("active_model"),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if action == "use":
+        try:
+            output = _apply_custom_provider_registry_entry(
+                env_file,
+                provider_name=getattr(args, "name", ""),
+                model=getattr(args, "model", None),
+            )
+        except ValueError as exc:
+            print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False, indent=2))
+            return 1
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        return 0
+
+    print(json.dumps({"status": "error", "error": "unsupported_custom_provider_action", "action": action}, ensure_ascii=False, indent=2))
+    return 1
+
+
 def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
     path = env_file or default_env_file_path()
     values = _read_env_exports(path)
@@ -5498,6 +5779,7 @@ def _config(args: argparse.Namespace) -> int:
             "env_file": str(env_file),
             "values": safe_values,
             "model_api": _model_api_config_status(env_file, values),
+            "custom_provider_registry": _custom_provider_registry_status(env_file, values),
             "tool_routing": _tool_routing_config_status(env_file, values),
         }, ensure_ascii=False, indent=2))
         return 0
@@ -5734,6 +6016,9 @@ def _config(args: argparse.Namespace) -> int:
 
     if args.config_command == "set-model":
         return _configure_model_api_command(args, env_file, legacy_command=False)
+
+    if args.config_command == "custom-provider":
+        return _custom_provider_config_command(args, env_file)
 
     if args.config_command == "set-effort":
         return _set_effort_contract(args, env_file)
@@ -7183,6 +7468,18 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--codex-config")
     config_set_model.add_argument("--profile", default="deepseek-thinking")
     config_set_model.set_defaults(func=_config)
+
+    config_custom_provider = config_sub.add_parser("custom-provider", help="manage named custom OpenAI-compatible providers")
+    config_custom_provider.add_argument("custom_provider_action", choices=["list", "add", "use", "add-model"])
+    config_custom_provider.add_argument("--env-file")
+    config_custom_provider.add_argument("--name", help="display-only custom provider name, e.g. USTC")
+    config_custom_provider.add_argument("--base-url", help="OpenAI-compatible base URL")
+    config_custom_provider.add_argument("--model", help="model id for this provider")
+    config_custom_provider.add_argument("--value", help="API key value; omit or pass --skip-validation to avoid live validation")
+    config_custom_provider.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
+    config_custom_provider.add_argument("--validation-timeout", type=float, default=10.0)
+    config_custom_provider.add_argument("--use", action="store_true", help="make provider/model active after add or add-model")
+    config_custom_provider.set_defaults(func=_config)
 
     config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for DeepSeek compatibility")
     config_set_effort.add_argument("effort")

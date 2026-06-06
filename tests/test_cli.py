@@ -3744,3 +3744,84 @@ def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monke
     assert result["validation_url"] == "https://api.llm.ustc.edu.cn/v1/models"
     assert seen["validate"] == [{"provider": "custom", "api_key": "sk-fake-custom", "base_url": "https://api.llm.ustc.edu.cn/v1", "timeout": 2.0}]
     assert seen["deepseek"] == []
+
+
+def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch, capsys):
+    import json
+    from deepseek_responses_proxy.cli import main, _read_env_exports
+
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    env_file = tmp_path / "env"
+    registry = tmp_path / "model-providers.json"
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+
+    assert main([
+        "config",
+        "custom-provider",
+        "add",
+        "--env-file",
+        str(env_file),
+        "--name",
+        "USTC",
+        "--base-url",
+        "https://api.llm.ustc.edu.cn/v1/chat/completions",
+        "--model",
+        "deepseek-v4-flash-ascend",
+        "--value",
+        "sk-test-custom",
+        "--skip-validation",
+        "--use",
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "sk-test-custom" not in output
+    data = json.loads(registry.read_text(encoding="utf-8"))
+    assert data["active_provider"] == "ustc"
+    assert data["providers"]["ustc"]["display_name"] == "USTC"
+    assert data["providers"]["ustc"]["base_url"] == "https://api.llm.ustc.edu.cn/v1"
+    assert data["providers"]["ustc"]["active_model"] == "deepseek-v4-flash-ascend"
+    assert data["providers"]["ustc"]["models"] == ["deepseek-v4-flash-ascend"]
+
+    values = _read_env_exports(env_file)
+    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
+    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "USTC"
+    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
+    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash-ascend"
+    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] == str(registry)
+
+    assert main([
+        "config",
+        "custom-provider",
+        "add-model",
+        "--env-file",
+        str(env_file),
+        "--name",
+        "USTC",
+        "--model",
+        "deepseek-v4-pro",
+        "--use",
+    ]) == 0
+    capsys.readouterr()
+    data = json.loads(registry.read_text(encoding="utf-8"))
+    assert data["providers"]["ustc"]["active_model"] == "deepseek-v4-pro"
+    assert "deepseek-v4-pro" in data["providers"]["ustc"]["models"]
+
+    assert main([
+        "config",
+        "custom-provider",
+        "use",
+        "--env-file",
+        str(env_file),
+        "--name",
+        "USTC",
+        "--model",
+        "deepseek-v4-pro",
+    ]) == 0
+    capsys.readouterr()
+    values = _read_env_exports(env_file)
+    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-pro"
+
+    assert main(["config", "show", "--env-file", str(env_file)]) == 0
+    show_output = capsys.readouterr().out
+    assert "custom_provider_registry" in show_output
+    assert "USTC" in show_output
+    assert "sk-test-custom" not in show_output

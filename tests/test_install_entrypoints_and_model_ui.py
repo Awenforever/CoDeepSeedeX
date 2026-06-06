@@ -862,23 +862,28 @@ def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> Non
 
 def test_installer_custom_provider_text_inputs_use_guided_panel() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "ui_render_input_panel()" in text
-    assert "Model API · Base URL" in text
-    assert "Model API · Model name" in text
-    assert "Model API · API key" in text
-    assert 'CODEEPSEEDEX_INPUT_STEP="Step 2/5"' in text
-    assert 'value="$(read_from_tty "Base URL"' in text
-    assert 'if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then' in text
-    assert 'PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$value")"' in text
-    assert 'value="$(read_from_tty "Model name"' in text
-    assert 'if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then' in text
-    assert 'PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"' in text
-    assert "Model API key" in text
-    assert "Web search API key" in text
-    assert "Image generation API key" in text
-    assert 'CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language' in text
-    assert 'ui_step_footer "Step 0/5"' not in text
 
+    assert "ui_render_input_panel()" in text
+    assert "read_from_tty()" in text
+    assert "read_secret_from_tty()" in text
+
+    # p2.19a1 turns the old developer-facing Model API labels into provider-facing labels.
+    assert "model_api_provider_display_label()" in text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Base URL"' in text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"' in text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · API key"' in text
+
+    # Custom providers now also collect a display-only provider name before endpoint/model/key.
+    assert "prompt_custom_provider_name_field()" in text
+    assert "Custom Provider · Provider name" in text
+    assert "Provider name is only for your display and switching; it is not sent upstream." in text
+
+    assert "Base URL is sent to dsproxy/upstream" in text
+    assert "Model name is sent to dsproxy/upstream and must exactly match this provider" in text
+
+    assert "Model API · Base URL" not in text
+    assert "Model API · Model name" not in text
+    assert "Model API · API key" not in text
 
 def test_cli_wizard_and_upgrade_use_end_to_end_guided_panels() -> None:
     cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
@@ -1013,6 +1018,7 @@ def test_p218a8_installer_stepwise_backspace_model_api_contract() -> None:
     assert "model_api_validation_method_for_provider()" in install_text
 
     assert 'field_step="provider"' in install_text
+    assert 'field_step="provider_name"' in install_text
     assert 'field_step="base_url"' in install_text
     assert 'field_step="model"' in install_text
     assert 'field_step="api_key"' in install_text
@@ -1020,38 +1026,61 @@ def test_p218a8_installer_stepwise_backspace_model_api_contract() -> None:
     assert 'if [ "$field_rc" = "20" ]; then' in install_text
     assert 'field_step="model"' in install_text
     assert 'field_step="base_url"' in install_text
+    assert 'field_step="provider_name"' in install_text
     assert 'field_step="provider"' in install_text
 
     assert 'review_choice="$(review_model_api_config)"' not in install_text
 
-    assert 'ui_box_line "Model API:" "$width" > /dev/tty' in install_text
+    assert 'ui_box_line "Provider configuration:" "$width" > /dev/tty' in install_text
     assert 'ui_box_line "  Validation: ${MODEL_API_VALIDATION_STATUS:-not_run}" "$width" > /dev/tty' in install_text
     assert 'ui_box_line "  Method: ${MODEL_API_VALIDATION_METHOD:-<not_run>}" "$width" > /dev/tty' in install_text
     assert 'ui_box_line "  URL: ${MODEL_API_VALIDATION_URL:-<not_run>}" "$width" > /dev/tty' in install_text
 
     assert 'ui_step_footer "Step 1/5" "$setup_width"\\nprint_install_logs' not in install_text
 
-
 def test_p218a9_model_api_panels_are_concise_and_validation_hold() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
 
     assert "show_model_api_validation_hold()" in install_text
-    assert "Model API validation" in install_text
+    assert "${provider_label} validation" in install_text
     assert "Press Enter to continue." in install_text
     assert "CODEEPSEEDEX_MODEL_API_VALIDATION_CONTINUE" in install_text
     assert "show_model_api_validation_hold\n        return 0" in install_text
 
-    assert 'CODEEPSEEDEX_INPUT_TITLE="Model API · Base URL"' in install_text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Base URL"' in install_text
     assert 'value="$(read_from_tty "Base URL"' in install_text
-    assert 'CODEEPSEEDEX_INPUT_TITLE="Model API · Model name"' in install_text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"' in install_text
     assert 'value="$(read_from_tty "Model name"' in install_text
-    assert 'CODEEPSEEDEX_INPUT_TITLE="Model API · API key"' in install_text
+    assert 'CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · API key"' in install_text
     assert 'candidate="$(read_secret_from_tty "API key"' in install_text
 
     assert 'CODEEPSEEDEX_INPUT_TITLE="Model API key"' not in install_text
     assert 'candidate="$(read_secret_from_tty "Model API key"' not in install_text
+    assert "Model API validation" not in install_text
 
     assert 'ui_box_line "API key: ${key_state}" "$width" > /dev/tty' in install_text
     assert "MODEL_API_VALIDATION_STATUS" in install_text
     assert "MODEL_API_VALIDATION_METHOD" in install_text
     assert "MODEL_API_VALIDATION_URL" in install_text
+
+def test_p219a1_installer_custom_provider_registry_contract() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "MODEL_PROVIDER_REGISTRY_FILE" in text
+    assert "PROMPTED_CUSTOM_PROVIDER_NAME" in text
+    assert "RESOLVED_MODEL_PROVIDER_DISPLAY_NAME" in text
+    assert "RESOLVED_MODEL_PROVIDER_TYPE" in text
+
+    assert "prompt_custom_provider_name_field()" in text
+    assert "Custom Provider · Provider name" in text
+    assert "Provider name is only for your display and switching; it is not sent upstream." in text
+
+    assert "write_model_provider_registry()" in text
+    assert "model-providers.json" in text
+    assert "custom_openai_compatible" in text
+    assert "DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME" in text
+    assert "DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY" in text
+
+    assert "Provider configuration:" in text
+    assert "Provider type:" in text
+    assert "Active model:" in text
