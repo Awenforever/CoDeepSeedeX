@@ -3165,8 +3165,56 @@ stop_codeepseedex_terminal_title_keeper() {
   fi
 }
 
+codex_requires_legacy_profile_tables() {
+  local version_text=""
+  version_text="\$("\$REAL_CODEX" --version 2>/dev/null || true)"
+  case "\$version_text" in
+    *" 0.130."*|*" 0.131."*|*" 0.132."*|*" 0.133."*|*"v0.130."*|*"v0.131."*|*"v0.132."*|*"v0.133."*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+repair_codeepseedex_legacy_managed_profiles() {
+  local stable_port="\${DEEPSEEK_PROXY_PORT:-8000}"
+  local thinking_port="\${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
+  local model="\${DEEPSEEK_PROXY_MODEL:-deepseek-v4-flash}"
+  local catalog_args=()
+  local catalog=""
+
+  catalog="\${DEEPSEEK_PROXY_MODEL_CATALOG_JSON:-}"
+  if [ -z "\$catalog" ]; then
+    catalog="$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json"
+  fi
+  if [ -n "\$catalog" ] && [ -f "\$catalog" ]; then
+    catalog_args=(--model-catalog-json "\$catalog")
+  fi
+
+  "\$DSPROXY" install-codex-profile \
+    --name deepseek \
+    --provider-name deepseek-proxy \
+    --base-url "http://127.0.0.1:\${stable_port}/v1" \
+    --model "\$model" \
+    --reasoning-effort high \
+    --profile-layout legacy_profile_tables \
+    --no-backup \
+    "\${catalog_args[@]}" >/dev/null
+
+  "\$DSPROXY" install-codex-profile \
+    --name deepseek-thinking \
+    --provider-name deepseek-thinking-proxy \
+    --base-url "http://127.0.0.1:\${thinking_port}/v1" \
+    --model "\$model" \
+    --reasoning-effort xhigh \
+    --profile-layout legacy_profile_tables \
+    --no-backup \
+    "\${catalog_args[@]}" >/dev/null
+}
+
 repair_codeepseedex_managed_profile_contract() {
   local profile_name="\$1"
+  local status_json=""
 
   case "\$profile_name" in
     deepseek|deepseek-thinking)
@@ -3181,29 +3229,52 @@ repair_codeepseedex_managed_profile_contract() {
   fi
 
   if [ ! -x "\$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s
+' "\$DSPROXY" >&2
     return 1
   fi
 
-  if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-    printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
-    printf 'Run for details: %s profile repair --managed-only --json; legacy profile tables must not remain in ~/.codex/config.toml\n' "\$DSPROXY" >&2
-    return 1
+  if codex_requires_legacy_profile_tables; then
+    if status_json="\$("\$DSPROXY" profile status "\$profile_name" --json 2>/dev/null)"; then
+      if printf '%s' "\$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
+        && ! printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
+        return 0
+      fi
+    fi
+
+    if ! repair_codeepseedex_legacy_managed_profiles; then
+      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.
+' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s
+' "\$DSPROXY" "\$profile_name" >&2
+      return 1
+    fi
+  else
+    if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
+      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.
+' >&2
+      printf 'Run for details: %s profile repair --managed-only --json
+' "\$DSPROXY" >&2
+      return 1
+    fi
   fi
 
-  local status_json=""
-  if ! status_json="\$(\$DSPROXY profile status "\$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
+  if ! status_json="\$("\$DSPROXY" profile status "\$profile_name" --json 2>/dev/null)"; then
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.
+' "\$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
     if [ "\${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.
+' "\$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$DSPROXY" "\$profile_name" >&2
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.
+' "\$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json
+' "\$DSPROXY" "\$profile_name" >&2
     return 1
   fi
 }

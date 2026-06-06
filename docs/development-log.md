@@ -1,3 +1,14 @@
+## p2.19a7-codex-wrapper-env-and-status-layout — Codex wrapper environment and status layout
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep public `v0.4.3-alpha` unrefreshed until VM wrapper validation passes.
+- Prevent the Codex wrapper launch-time repair step from converting Codex `<0.134` legacy profile tables into split profile files before invoking real Codex.
+- Ensure status/profile/runtime contracts report `legacy_profile_tables` when values are loaded from `[profiles.*]` legacy tables.
+- For legacy profile tables, report `codex_profile_config` as the main `config.toml`, not the non-existent split profile file.
+
 ## p2.19a6-installer-ux-and-codex-detection-finalize — installer UX and Codex detection finalize
 
 Date: 2026-06-06

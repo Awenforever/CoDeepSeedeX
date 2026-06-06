@@ -3947,3 +3947,59 @@ def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, mo
     assert "[model_providers.deepseek-thinking-proxy]" in text
     assert "[profiles.deepseek-thinking]" in text
     assert not (tmp_path / "deepseek-thinking.config.toml").exists()
+
+
+def test_p219a7_profile_status_reports_legacy_layout_for_legacy_profile_table(tmp_path, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_REASONING_EFFORT=max\n"
+        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        "[model_providers.deepseek-thinking-proxy]\n"
+        "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
+        "[profiles.deepseek-thinking]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n"
+        "model_reasoning_effort = \"xhigh\"\n"
+        "plan_mode_reasoning_effort = \"high\"\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "ok"
+    assert result["profile_source"] == "legacy_profile_table"
+    assert result["codex_profile_layout"] == "legacy_profile_tables"
+    assert result["codex_profile_config"] == str(config_path)
+    assert result["health"]["codex_config_loadable"] is True
+    assert result["health"]["legacy_profile_tables_present"] is True
+
+
+def test_p219a7_runtime_status_reports_legacy_layout(monkeypatch, tmp_path):
+    import importlib
+
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    config_path = tmp_path / "codex.toml"
+    config_path.write_text(
+        "[profiles.deepseek]\n"
+        "model = \"deepseek-v4-flash\"\n"
+        "model_provider = \"deepseek-proxy\"\n"
+        "model_context_window = 1000000\n"
+        "model_auto_compact_token_limit = 900000\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
+
+    payload = app_module._runtime_token_first_context_contract_for_payload({}, active_profile="deepseek")
+
+    assert payload["profile_source"] == "legacy_profile_table"
+    assert payload["codex_profile_layout"] == "legacy_profile_tables"
+    assert payload["codex_profile_config"] == str(config_path)

@@ -1108,6 +1108,7 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
         if section.startswith("profiles.")
     )
     legacy_profile_selectors: list[str] = []
+
     if config_path.exists():
         current_section: str | None = None
         for raw_line in config_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -1131,7 +1132,7 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
                 "field": "model_reasoning_effort",
                 "value": effort,
                 "source": source,
-                "profile_config": str(profile_path),
+                "profile_config": str(config_path if source == "legacy_profile_table" else profile_path),
                 "allowed": sorted(CODEX_MODEL_REASONING_EFFORT_ALLOWED),
                 "suggested_repair_command": f"dsproxy profile set-effort {profile_name} max --json",
             })
@@ -1140,12 +1141,13 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
     if legacy_profile_selectors:
         warnings.append("legacy_profile_selector_present")
 
+    layout = "legacy_profile_tables" if legacy_profile_tables else "split_profile_files"
     return {
         "codex_config": str(config_path),
-        "codex_profile_layout": "split_profile_files",
-        "layout_contract": codex_profile_layout_contract(),
+        "codex_profile_layout": layout,
+        "layout_contract": codex_profile_layout_contract(layout),
         "codex_config_exists": config_path.exists(),
-        "codex_config_loadable": not invalid_fields and not legacy_profile_tables and not legacy_profile_selectors,
+        "codex_config_loadable": not invalid_fields and not legacy_profile_selectors,
         "legacy_profile_tables_present": bool(legacy_profile_tables),
         "legacy_profile_tables": legacy_profile_tables,
         "legacy_profile_selectors_present": bool(legacy_profile_selectors),
@@ -1153,7 +1155,6 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
         "invalid_profile_fields": invalid_fields,
         "warnings": warnings,
     }
-
 
 def _env_value_truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
@@ -1516,8 +1517,56 @@ stop_codeepseedex_terminal_title_keeper() {
   fi
 }
 
+codex_requires_legacy_profile_tables() {
+  local version_text=""
+  version_text="$("$REAL_CODEX" --version 2>/dev/null || true)"
+  case "$version_text" in
+    *" 0.130."*|*" 0.131."*|*" 0.132."*|*" 0.133."*|*"v0.130."*|*"v0.131."*|*"v0.132."*|*"v0.133."*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+repair_codeepseedex_legacy_managed_profiles() {
+  local stable_port="${DEEPSEEK_PROXY_PORT:-8000}"
+  local thinking_port="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
+  local model="${DEEPSEEK_PROXY_MODEL:-deepseek-v4-flash}"
+  local catalog_args=()
+  local catalog=""
+
+  catalog="${DEEPSEEK_PROXY_MODEL_CATALOG_JSON:-}"
+  if [ -z "$catalog" ]; then
+    catalog="__INSTALL_DIR__/experiments/model-catalog/deepseek-proxy-models.json"
+  fi
+  if [ -n "$catalog" ] && [ -f "$catalog" ]; then
+    catalog_args=(--model-catalog-json "$catalog")
+  fi
+
+  "$DSPROXY" install-codex-profile \
+    --name deepseek \
+    --provider-name deepseek-proxy \
+    --base-url "http://127.0.0.1:${stable_port}/v1" \
+    --model "$model" \
+    --reasoning-effort high \
+    --profile-layout legacy_profile_tables \
+    --no-backup \
+    "${catalog_args[@]}" >/dev/null
+
+  "$DSPROXY" install-codex-profile \
+    --name deepseek-thinking \
+    --provider-name deepseek-thinking-proxy \
+    --base-url "http://127.0.0.1:${thinking_port}/v1" \
+    --model "$model" \
+    --reasoning-effort xhigh \
+    --profile-layout legacy_profile_tables \
+    --no-backup \
+    "${catalog_args[@]}" >/dev/null
+}
+
 repair_codeepseedex_managed_profile_contract() {
   local profile_name="$1"
+  local status_json=""
 
   case "$profile_name" in
     deepseek|deepseek-thinking)
@@ -1532,29 +1581,52 @@ repair_codeepseedex_managed_profile_contract() {
   fi
 
   if [ ! -x "$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s
+' "$DSPROXY" >&2
     return 1
   fi
 
-  if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-    printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
-    printf 'Run for details: %s profile repair --managed-only --json\n' "$DSPROXY" >&2
-    return 1
+  if codex_requires_legacy_profile_tables; then
+    if status_json="$("$DSPROXY" profile status "$profile_name" --json 2>/dev/null)"; then
+      if printf '%s' "$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
+        && ! printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
+        return 0
+      fi
+    fi
+
+    if ! repair_codeepseedex_legacy_managed_profiles; then
+      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.
+' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s
+' "$DSPROXY" "$profile_name" >&2
+      return 1
+    fi
+  else
+    if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
+      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.
+' >&2
+      printf 'Run for details: %s profile repair --managed-only --json
+' "$DSPROXY" >&2
+      return 1
+    fi
   fi
 
-  local status_json=""
-  if ! status_json="$($DSPROXY profile status "$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
+  if ! status_json="$("$DSPROXY" profile status "$profile_name" --json 2>/dev/null)"; then
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.
+' "$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
     if [ "${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.
+' "$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$DSPROXY" "$profile_name" >&2
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.
+' "$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json
+' "$DSPROXY" "$profile_name" >&2
     return 1
   fi
 }
@@ -1668,12 +1740,26 @@ def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
     return 0 if result.get("status") == "ok" else 1
 
 
+
+def _codex_reasoning_effort_for_deepseek(deepseek_effort: str | None, *, profile_name: str = "deepseek-thinking") -> str:
+    """Map dsproxy/DeepSeek user-facing reasoning effort to Codex profile effort.
+
+    CoDeepSeedeX exposes `high` and `max` to users. Codex profile files do not
+    accept `max`; the compatible high-reasoning value is `xhigh`.
+    """
+    canonical = _canonical_cli_reasoning_effort(deepseek_effort or "high") or "high"
+    if canonical == "max":
+        return "xhigh"
+    return "high"
+
 def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, codex_config: Path | None = None) -> dict[str, object]:
     env_path = env_file or default_env_file_path()
     codex_path = codex_config or default_codex_config_path()
     env_values = _read_env_exports(env_path)
     sections = _parse_simple_toml_sections(codex_path)
     profile_section, profile_source, profile_path = _read_codex_profile_values(codex_path, profile_name)
+    profile_layout = "legacy_profile_tables" if profile_source == "legacy_profile_table" else "split_profile_files"
+    profile_config_path = codex_path if profile_source == "legacy_profile_table" else profile_path
     provider_name = profile_section.get("model_provider") or f"{profile_name}-proxy"
     provider_section = sections.get(f"model_providers.{provider_name}", {})
 
@@ -1704,11 +1790,11 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         "status": "ok" if not profile_invalid and health["codex_config_loadable"] else "error",
         "profile": profile_name,
         "profile_source": profile_source,
-        "codex_profile_layout": "split_profile_files",
+        "codex_profile_layout": profile_layout,
         "main_config": str(codex_path),
         "codex_config": str(codex_path),
         "codex_main_config": str(codex_path),
-        "codex_profile_config": str(profile_path),
+        "codex_profile_config": str(profile_config_path),
         "env_file": str(env_path),
         "model": model_contract,
         "effort": {
@@ -1716,7 +1802,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "deepseek_reasoning_effort": deepseek_effort,
             "codex_model_reasoning_effort": codex_effort,
             "expected_codex_model_reasoning_effort": expected_codex_effort,
-            "source": "dsproxy_env_and_split_codex_profile",
+            "source": "dsproxy_env_and_codex_profile",
             "codex_profile_valid": codex_effort in CODEX_MODEL_REASONING_EFFORT_ALLOWED if codex_effort else False,
             "normalized": codex_effort == expected_codex_effort,
         },
@@ -1736,7 +1822,6 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     }
     payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
     return payload
-
 
 def _post_config_apply_for_args(args: argparse.Namespace) -> dict[str, object]:
     if not bool(getattr(args, "no_refresh", False)):

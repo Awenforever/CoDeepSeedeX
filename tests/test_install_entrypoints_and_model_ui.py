@@ -1199,3 +1199,15 @@ def test_p219a6_default_install_no_long_legacy_command_dump() -> None:
     assert "current shell immediate PATH" not in text
     assert "current shell may need" not in text
     assert "CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY" in text
+
+
+def test_p219a7_codex_wrapper_preserves_legacy_profiles_for_old_codex() -> None:
+    body = _install_function_body("write_codex_wrapper", "uninstall")
+
+    assert "codex_requires_legacy_profile_tables()" in body
+    assert "repair_codeepseedex_legacy_managed_profiles()" in body
+    assert "--profile-layout legacy_profile_tables" in body
+    assert "profile_source" in body
+    assert "legacy_profile_table" in body
+    assert "profile repair --managed-only --json" in body
+    assert body.index("repair_codeepseedex_managed_profile_contract()") < body.index("start_dsproxy_profile()")

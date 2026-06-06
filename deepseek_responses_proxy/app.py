@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.3-alpha"
-PROXY_INTERNAL_VERSION = "p2.19a6-installer-ux-and-codex-detection-finalize"
+PROXY_INTERNAL_VERSION = "p2.19a7-codex-wrapper-env-and-status-layout"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -6409,8 +6409,8 @@ def _runtime_token_first_context_contract_for_payload(
         "profile": profile,
         "profile_source": "active_route" if active_profile else "runtime_profile_detection",
         "codex_config": str(_runtime_codex_config_path()),
-        "codex_profile_layout": "split_profile_files",
-        "codex_profile_config": str(profile_path),
+        "codex_profile_layout": "legacy_profile_tables" if profile_source == "legacy_profile_table" else "split_profile_files",
+        "codex_profile_config": str(_runtime_codex_config_path() if profile_source == "legacy_profile_table" else profile_path),
         "profile_source": profile_source,
         "profile_found": bool(profile_section),
         "model": str((payload or {}).get("model") or DEFAULT_MODEL),
@@ -18422,21 +18422,21 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
                 "field": "model_reasoning_effort",
                 "value": effort,
                 "source": source,
-                "profile_config": str(profile_path),
+                "profile_config": str(_runtime_codex_config_path() if source == "legacy_profile_table" else profile_path),
                 "allowed": sorted(allowed),
             })
     warnings: list[str] = []
     if legacy_profile_tables:
         warnings.append("legacy_profile_tables_present")
+    layout = "legacy_profile_tables" if legacy_profile_tables else "split_profile_files"
     return {
-        "codex_profile_layout": "split_profile_files",
-        "codex_config_loadable": not invalid and not legacy_profile_tables,
+        "codex_profile_layout": layout,
+        "codex_config_loadable": not invalid,
         "legacy_profile_tables_present": bool(legacy_profile_tables),
         "legacy_profile_tables": legacy_profile_tables,
         "invalid_profile_fields": invalid,
         "warnings": warnings,
     }
-
 
 def _runtime_profile_context_contract(profile_section: dict[str, str], *, effective_model: str | None = None) -> dict[str, Any]:
     model_context_window = _runtime_int_or_zero(profile_section.get("model_context_window")) or 1_000_000
@@ -18515,7 +18515,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
             "auto_compact_ratio": auto_compact_ratio,
             "auto_compact_policy": auto_compact_policy,
             "unit": "tokens",
-            "source": "codex_split_profile_file",
+            "source": "codex_profile",
         },
         "model_catalog": model_catalog,
         "effective_display": {
@@ -18613,10 +18613,10 @@ def _runtime_weclaw_profile_status(profile: str) -> dict[str, Any]:
         "status": "ok" if not invalid else "error",
         "profile": profile,
         "profile_source": profile_source,
-        "codex_profile_layout": "split_profile_files",
+        "codex_profile_layout": "legacy_profile_tables" if profile_source == "legacy_profile_table" else "split_profile_files",
         "codex_config": str(codex_path),
         "codex_main_config": str(codex_path),
-        "codex_profile_config": str(profile_path),
+        "codex_profile_config": str(codex_path if profile_source == "legacy_profile_table" else profile_path),
         "model": model,
         "effort": _runtime_effort_contract(profile_section),
         "thinking": {
