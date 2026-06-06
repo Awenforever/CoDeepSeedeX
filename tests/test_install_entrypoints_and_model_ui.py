@@ -1110,3 +1110,13 @@ def test_p219a2_installer_custom_provider_guided_registry_ui() -> None:
 
     assert "registry_selected" in text
     assert "Saved custom provider was not found" in text
+
+
+def test_p219a3_custom_provider_name_has_no_site_specific_default() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    assert "Custom Provider · Provider name" in text
+    assert "Provider name is only for your display and switching; it is not sent upstream." in text
+    assert 'value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"' in text
+    assert 'value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-USTC}}")"' not in text
+    assert 'PROMPTED_CUSTOM_PROVIDER_NAME="Custom Provider"' in text

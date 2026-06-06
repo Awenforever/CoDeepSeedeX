@@ -1,3 +1,15 @@
+## p2.19a3-generic-custom-provider-default — generic custom provider default
+
+Date: 2026-06-06
+
+Scope:
+
+- Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
+- Remove the site-specific `USTC` default from the installer Provider name page.
+- Keep Provider name display-only and let an empty entry fall back internally to the generic `Custom Provider` label.
+- Preserve p2.19a1 registry support and p2.19a2 guided custom provider UI.
+- Do not refresh Release assets in this patch step.
+
 ## p2.19a2-custom-provider-guided-ui — custom provider guided UI
 
 Date: 2026-06-06

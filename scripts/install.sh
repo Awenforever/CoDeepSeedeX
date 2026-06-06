@@ -1823,7 +1823,7 @@ prompt_custom_provider_name_field() {
   CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Provider name"
   CODEEPSEEDEX_INPUT_STEP="Step 2/5"
   CODEEPSEEDEX_INPUT_DETAIL="Provider name is only for your display and switching; it is not sent upstream."
-  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-USTC}}")"
+  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"
   CODEEPSEEDEX_INPUT_TITLE=""
   CODEEPSEEDEX_INPUT_STEP=""
   CODEEPSEEDEX_INPUT_DETAIL=""

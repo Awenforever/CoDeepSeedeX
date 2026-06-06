@@ -33,9 +33,9 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - GitHub Release state: non-draft non-prerelease
 - GitHub Release flags: `isDraft=false`, `isPrerelease=true`
 - Public Release assets: `bootstrap.sh`, `install.sh`
-- Current internal development checkpoint: `p2.19a2-custom-provider-guided-ui`
-- Latest closed documentation sync checkpoint: `p2.19a2-custom-provider-guided-ui`
-- Current public Release note synchronization checkpoint: `p2.19a2-custom-provider-guided-ui`
+- Current internal development checkpoint: `p2.19a3-generic-custom-provider-default`
+- Latest closed documentation sync checkpoint: `p2.19a3-generic-custom-provider-default`
+- Current public Release note synchronization checkpoint: `p2.19a3-generic-custom-provider-default`
 - Completed P0 baseline checkpoint: `p2.10a48-weclaw-full-telemetry-contract = 2e0edd0`
 - Latest WeClaw-facing runtime checkpoint: `p2.14a8-v040-alpha-release`
 - WeClaw status: the current CoDeepSeedeX and WeClaw integration line remains compatible with the dsproxy-owned status contracts. p2.14 adds managed native tool routing, routing diagnostics, and web/image provider bridge validation.
@@ -1958,6 +1958,6 @@ Release boundary:
 4. The Release note is written from a temporary `/tmp` file only; no tracked per-release note source is maintained under `docs/`.
 5. Validation must include an isolated old-user legacy Codex config migration check: old `[profiles.*]` and `profile = "deepseek*"` settings are migrated into split `~/.codex/<profile>.config.toml` files and removed from the main config.
 
-### p2.19a2-custom-provider-guided-ui release note policy
+### p2.19a3-generic-custom-provider-default release note policy
 
 `v0.4.3-alpha` release notes must stay user-facing: describe custom provider compatibility, reasoning-only response handling, image payload protection, and installer/configuration improvements. Do not include internal patch-node logs, VM transcript details, or GitHub release administration steps in public release notes.
