@@ -112,3 +112,10 @@ def test_readme_current_latest_release_is_not_described_as_current_prerelease_ch
     assert "固定当前Latest Release tag（`v0.4.3-alpha`）" in zh
     assert "If WeClaw integration is used with CoDeepSeedeX `v0.4.3-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`" not in en
     assert "如果WeClaw联动使用CoDeepSeedeX `v0.4.3-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`" not in zh
+
+
+def test_p219a15_qwen_us_remains_current_public_regional_provider() -> None:
+    en = (ROOT / "README.md").read_text(encoding="utf-8")
+    zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    assert "dsproxy config set-model --provider qwen-us" in en
+    assert "dsproxy config set-model --provider qwen-us" in zh

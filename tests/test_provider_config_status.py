@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from deepseek_responses_proxy.app import PROXY_VERSION, create_app
+from deepseek_responses_proxy.app import _proxy_web_search
 
 
 def test_proxy_status_exposes_tool_bridge_provider_config(monkeypatch, tmp_path):
@@ -799,3 +800,17 @@ def test_weclaw_status_route_is_token_only_public_surface(monkeypatch, tmp_path)
         "chars/messages",
     ):
         assert forbidden not in dumped
+
+
+@pytest.mark.asyncio
+async def test_p219a15_brave_runtime_compat_message_marks_deprecated(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "brave")
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY", raising=False)
+
+    result = await _proxy_web_search({"query": "test", "max_results": 1})
+    assert result["provider"] == "brave"
+    assert result["error"] == "missing_api_key"
+    assert "Deprecated Brave compatibility provider" in result["message"]
+    assert "Prefer serpapi, tavily, exa, or firecrawl" in result["message"]

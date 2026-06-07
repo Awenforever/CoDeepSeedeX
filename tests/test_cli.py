@@ -5,6 +5,8 @@ import json
 
 import deepseek_responses_proxy.cli as cli_module
 from deepseek_responses_proxy.cli import default_config_path, main
+import pytest
+from deepseek_responses_proxy.cli import _api_configuration_status
 
 
 
@@ -4108,3 +4110,20 @@ def test_p219a9_profile_status_context_window_source_follows_legacy_profile_tabl
     assert codex_profile["codex_profile_layout"] == "legacy_profile_tables"
     assert codex_profile["codex_profile_config"] == str(config_path)
     assert codex_profile["source"] != "codex_split_profile_file"
+
+
+def test_p219a15_image_provider_public_supported_list_hides_legacy_aliases(tmp_path):
+    env_file = tmp_path / "env"
+    status = _api_configuration_status(env_file)
+    assert "glm" not in status["supported"]["image_generation_api"]
+    assert "dashscope" not in status["supported"]["image_generation_api"]
+    assert "zai" in status["supported"]["image_generation_api"]
+    assert "qwen_image" in status["supported"]["image_generation_api"]
+
+
+def test_p219a15_set_api_key_help_marks_deprecated(capsys):
+    with pytest.raises(SystemExit):
+        main(["config", "set-api-key", "--help"])
+    captured = capsys.readouterr()
+    assert "deprecated compatibility alias" in captured.out
+    assert "prefer set-model" in captured.out

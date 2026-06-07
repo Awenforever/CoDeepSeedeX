@@ -35,11 +35,12 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- 当前内部开发检查点：`p2.19a14-test-contract-pruning`
+- 当前内部开发检查点：`p2.19a15-provider-alias-boundary`
 - 当前公开Release包含的最新运行时检查点：`p2.19a10-guided-installer-contextual-hints`
 - 最新闭合文档同步检查点：`p2.19a11-docs-release-handoff-sync`
-- 最新闭合幽灵审计工具检查点：`p2.19a14-test-contract-pruning`
+- 最新闭合幽灵审计工具检查点：`p2.19a15-provider-alias-boundary`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
+- 最新闭合provider alias边界检查点：`p2.19a15-provider-alias-boundary`
 - 当前公开Release note同步检查点：`p2.19a10-guided-installer-contextual-hints`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
@@ -312,7 +313,7 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.4.3-alpha^{}
-git rev-parse --short p2.19a14-test-contract-pruning^{} || true
+git rev-parse --short p2.19a15-provider-alias-boundary^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
@@ -390,3 +391,10 @@ bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --re
 2. 插入任务闭合后必须回到该清单。
 3. 移交内容必须包含该表或对活跃行的精确摘要。
 4. 任务未取得日志、测试、tag、Release状态或下游接受反馈等证据前，不能声称完成。
+
+
+### Provider alias边界
+
+- `qwen-us`是当前显式地域模型provider，应继续保留在README/CLI模型provider指引中。
+- `glm`、`qwen_us`、`qwen_us_virginia`、`dashscope_us`和Brave WebSearch只作为隐藏/向后兼容alias保留，除非后续验证线明确重新提升为公开入口。
+- `dsproxy config set-api-key`保留为deprecated兼容命令；用户可见指引应优先使用`dsproxy config set-model`。

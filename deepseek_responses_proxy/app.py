@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.3-alpha"
-PROXY_INTERNAL_VERSION = "p2.19a14-test-contract-pruning"
+PROXY_INTERNAL_VERSION = "p2.19a15-provider-alias-boundary"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -12124,7 +12124,7 @@ async def _proxy_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
         "model": _image_model(),
         "prompt": prompt,
         "error": "unsupported_image_provider",
-        "message": "Supported providers: mock, glm, zai, zhipu, zhipuai, bigmodel, qwen_image, qwen_image_beijing, qwen_image_singapore, qwen_image_us, qwen_image_germany, dashscope, stability, fal, disabled.",
+        "message": "Supported providers: mock, zai, zhipu, zhipuai, bigmodel, qwen_image, qwen_image_beijing, qwen_image_singapore, qwen_image_us, qwen_image_germany, stability, fal, disabled. Legacy aliases such as glm remain accepted only for existing configurations.",
         "images": [],
     }
 def _web_search_tool_schema() -> dict[str, Any]:
@@ -12378,7 +12378,7 @@ async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "brave",
             "query": query,
             "error": "missing_api_key",
-            "message": "BRAVE_SEARCH_API_KEY, BRAVE_API_KEY, or DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY is required.",
+            "message": "Deprecated Brave compatibility provider requires BRAVE_SEARCH_API_KEY, BRAVE_API_KEY, or DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY. Prefer serpapi, tavily, exa, or firecrawl for new configurations.",
             "results": [],
         }
 
@@ -12614,7 +12614,7 @@ async def _proxy_web_search(arguments: dict[str, Any]) -> dict[str, Any]:
         "provider": provider,
         "query": query,
         "error": "unsupported_web_search_provider",
-        "message": "Supported providers: mock, serpapi, tavily, brave, exa, firecrawl, disabled.",
+        "message": "Supported providers: mock, serpapi, tavily, exa, firecrawl, disabled. Deprecated Brave compatibility remains available only for existing manual configurations.",
         "results": [],
     }
 

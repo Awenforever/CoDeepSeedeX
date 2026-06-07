@@ -35,11 +35,12 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a14-test-contract-pruning`
+- Current internal development checkpoint: `p2.19a15-provider-alias-boundary`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
-- Latest closed ghost audit tool checkpoint: `p2.19a14-test-contract-pruning`
+- Latest closed ghost audit tool checkpoint: `p2.19a15-provider-alias-boundary`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
+- Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -316,7 +317,7 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.4.3-alpha^{}
-git rev-parse --short p2.19a14-test-contract-pruning^{} || true
+git rev-parse --short p2.19a15-provider-alias-boundary^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
@@ -394,3 +395,10 @@ Checklist maintenance rules:
 2. Inserted tasks must return to this checklist when they close.
 3. Handoff content must include this table or an exact summary of active rows.
 4. A task is not complete until its expected indicator has evidence in logs, tests, tags, Release state, or accepted downstream feedback.
+
+
+### Provider alias boundary
+
+- `qwen-us` is a current explicit regional model provider and should remain visible in README/CLI model-provider guidance.
+- `glm`, `qwen_us`, `qwen_us_virginia`, `dashscope_us`, and Brave web search are hidden/backward-compatible aliases unless a future validation line promotes them explicitly.
+- `dsproxy config set-api-key` remains a deprecated compatibility command; user-facing guidance should prefer `dsproxy config set-model`.

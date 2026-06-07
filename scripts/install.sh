@@ -1611,7 +1611,7 @@ model_api_provider_display_label() {
     kimi) printf '%s\n' "Kimi Provider" ;;
     zhipu|zhipu-coding) printf '%s\n' "ZhipuAI Provider" ;;
     zai|zai-coding) printf '%s\n' "Z.AI Provider" ;;
-    qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Qwen Provider" ;;
+    qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Qwen Provider" ;;  # qwen-us remains a current explicit regional provider
     "") printf '%s\n' "Provider" ;;
     *) printf '%s\n' "$provider" ;;
   esac

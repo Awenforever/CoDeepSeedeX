@@ -30,7 +30,7 @@ from typing import Iterable
 
 CURRENT_PUBLIC_TAG = "v0.4.3-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
-CURRENT_INTERNAL_TAG = "p2.19a14-test-contract-pruning"
+CURRENT_INTERNAL_TAG = "p2.19a15-provider-alias-boundary"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
 
 TSV_FIELDS = [
@@ -116,7 +116,7 @@ PATTERNS: list[PatternSpec] = [
     PatternSpec(
         "deprecated_provider_surface",
         "Provider or command surface that may be deprecated or hidden",
-        r"\bBrave\b|brave_search|set-api-key|config status|qwen-us|\bglm\b",
+        r"\bBrave\b|brave_search|set-api-key|config status|\bglm\b",
     ),
     PatternSpec(
         "future_name_user_surface",
@@ -267,13 +267,15 @@ def classify(bucket: str, raw_category: str, rel: str, line: str) -> tuple[str, 
                 return "must_fix", "high", "positive site-specific provider assertion"
             if "pre-release" in lower and "result.stdout" not in lower and "upgrade" not in lower:
                 return "must_fix", "high", "positive stale release assertion"
-            if "set-api-key" in lower or "glm" in lower or "qwen-us" in lower or "brave" in lower:
+            if "set-api-key" in lower or "glm" in lower or "brave" in lower:
                 return "review", "medium", "deprecated provider/command boundary belongs to p2.19a15"
             if "750000" in lower or "0.75" in lower:
                 return "review", "medium", "legacy threshold compatibility belongs to p2.19a16"
             return "review", "medium", "contract-sensitive test assertion requires manual review"
 
         if raw_category == "deprecated_provider_surface":
+            if "qwen-us" in lower:
+                return "allowed", "low", "qwen-us is current public regional provider, not a legacy shortcut"
             return "review", "medium", "deprecated provider/command boundary belongs to p2.19a15"
 
         if raw_category == "old_effort_or_threshold":

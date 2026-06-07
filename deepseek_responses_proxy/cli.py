@@ -4677,7 +4677,7 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
         "kind": "image_generation",
         "provider": selected,
         "error": "unsupported_image_provider",
-        "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "dashscope", "stability", "fal"],
+        "supported_providers": ["zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "stability", "fal"],
     }
 def _skipped_validation(kind: str, provider: str) -> dict[str, Any]:
     return {
@@ -5115,7 +5115,7 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "supported": {
             "model_api": _supported_model_api_providers(),
             "web_search_api": ["serpapi", "tavily", "exa", "firecrawl"],
-            "image_generation_api": ["zhipu", "bigmodel", "zai", "glm", "qwen_image", "dashscope", "stability", "fal"],
+            "image_generation_api": ["zhipu", "bigmodel", "zai", "qwen_image", "stability", "fal"],
         },
         "unsupported_catalog": {
             "model_api": ["mimo", "baichuan"],
@@ -6159,7 +6159,7 @@ def _config(args: argparse.Namespace) -> int:
             print(json.dumps({
                 "status": "error",
                 "error": "unsupported_image_provider",
-                "supported_providers": ["glm", "zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "dashscope", "stability", "fal"],
+                "supported_providers": ["zai", "zhipu", "zhipuai", "bigmodel", "qwen_image", "qwen_image_beijing", "qwen_image_singapore", "qwen_image_us", "qwen_image_germany", "stability", "fal"],
             }, ensure_ascii=False, indent=2))
             return 1
         canonical_provider, default_model, prompt = provider_aliases[provider]
@@ -7628,7 +7628,11 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_tool_routing.add_argument("--no-refresh", action="store_true", help="save configuration without refreshing running proxy processes")
     config_set_tool_routing.set_defaults(func=_config)
 
-    config_set_api_key = config_sub.add_parser("set-api-key", help="compatibility alias for model API key setup; prefer set-model")
+    config_set_api_key = config_sub.add_parser(
+        "set-api-key",
+        help="deprecated compatibility alias for model API key setup; prefer set-model",
+        description="deprecated compatibility alias for model API key setup; prefer set-model (dsproxy config set-model).",
+    )
     config_set_api_key.add_argument("--env-file")
     config_set_api_key.add_argument("--provider", default="deepseek", choices=_supported_model_api_providers())
     config_set_api_key.add_argument("--base-url", help="OpenAI-compatible base URL; required for --provider custom")
@@ -7658,7 +7662,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_set_image_api_key = config_sub.add_parser("set-image-api-key", help="store image generation API key")
     config_set_image_api_key.add_argument("--env-file")
-    config_set_image_api_key.add_argument("--provider", default="zhipu", choices=["zhipu", "zhipuai", "bigmodel", "zai", "z.ai", "glm", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "qwen_image_beijing", "qwen-image-beijing", "qwen_image_singapore", "qwen-image-singapore", "qwen_image_us", "qwen-image-us", "qwen_image_germany", "qwen-image-germany", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"])
+    config_set_image_api_key.add_argument("--provider", default="zhipu", choices=["zhipu", "zhipuai", "bigmodel", "zai", "z.ai", "glm", "qwen", "qwen_image", "qwen-image", "dashscope", "aliyun", "qwen_image_beijing", "qwen-image-beijing", "qwen_image_singapore", "qwen-image-singapore", "qwen_image_us", "qwen-image-us", "qwen_image_germany", "qwen-image-germany", "stability", "stability_ai", "stable_image", "fal", "fal_ai", "fal.ai"], metavar="PROVIDER", help="image provider; current public providers: zhipu, zai, qwen_image, qwen_image_beijing, qwen_image_singapore, qwen_image_us, qwen_image_germany, stability, fal; legacy aliases remain accepted for compatibility")
     config_set_image_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_image_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
     config_set_image_api_key.add_argument("--validation-timeout", type=float, default=10.0)

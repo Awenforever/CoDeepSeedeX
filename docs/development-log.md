@@ -1,3 +1,29 @@
+## p2.19a15-provider-alias-boundary — Provider alias public/compatibility boundary
+
+Date: 2026-06-07
+
+Scope:
+
+- Classify provider and command alias surfaces instead of deleting compatibility paths blindly.
+- Keep `qwen-us` as a current explicit regional model provider; it is not a legacy shortcut.
+- Keep `glm`, `qwen_us`, `qwen_us_virginia`, `dashscope_us`, and Brave runtime paths as hidden/backward-compatible aliases where existing configurations may still depend on them.
+- Remove or de-emphasize deprecated aliases from user-facing supported-provider summaries:
+  - unsupported image provider messages no longer list `glm` as a current public provider.
+  - unsupported web search provider messages no longer list Brave as a current public provider.
+  - `dsproxy config status` supported image provider catalog no longer promotes `glm` or `dashscope` shortcuts.
+- Keep `dsproxy config set-api-key` as a compatibility command, but mark it as deprecated and point users to `dsproxy config set-model`.
+- Refine ghost audit rules so `qwen-us` is treated as current public regional provider, while `glm`, Brave, and `set-api-key` remain review-only alias-boundary markers.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused provider alias/readme/CLI/status/version tests
+- full test suite
+
 ## p2.19a14-test-contract-pruning — Stale test contract pruning
 
 Date: 2026-06-07
