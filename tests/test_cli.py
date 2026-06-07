@@ -3719,8 +3719,8 @@ def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monke
     env_file.write_text(
         "export DEEPSEEK_API_KEY=sk-fake-custom\n"
         "export DEEPSEEK_PROXY_MODEL_PROVIDER=custom\n"
-        "export DEEPSEEK_BASE_URL=https://api.llm.ustc.edu.cn/v1\n"
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash-ascend\n",
+        "export DEEPSEEK_BASE_URL=https://api.llm.exampleprovider.edu.cn/v1\n"
+        "export DEEPSEEK_PROXY_MODEL=example-chat-model\n",
         encoding="utf-8",
     )
     seen = {"validate": [], "deepseek": []}
@@ -3740,10 +3740,10 @@ def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monke
     result = json.loads(capsys.readouterr().out)
     assert result["provider"] == "custom"
     assert result["model_provider"] == "custom"
-    assert result["base_url"] == "https://api.llm.ustc.edu.cn/v1"
-    assert result["model"] == "deepseek-v4-flash-ascend"
-    assert result["validation_url"] == "https://api.llm.ustc.edu.cn/v1/models"
-    assert seen["validate"] == [{"provider": "custom", "api_key": "sk-fake-custom", "base_url": "https://api.llm.ustc.edu.cn/v1", "timeout": 2.0}]
+    assert result["base_url"] == "https://api.llm.exampleprovider.edu.cn/v1"
+    assert result["model"] == "example-chat-model"
+    assert result["validation_url"] == "https://api.llm.exampleprovider.edu.cn/v1/models"
+    assert seen["validate"] == [{"provider": "custom", "api_key": "sk-fake-custom", "base_url": "https://api.llm.exampleprovider.edu.cn/v1", "timeout": 2.0}]
     assert seen["deepseek"] == []
 
 
@@ -3763,11 +3763,11 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
         "--env-file",
         str(env_file),
         "--name",
-        "USTC",
+        "ExampleProvider",
         "--base-url",
-        "https://api.llm.ustc.edu.cn/v1/chat/completions",
+        "https://api.llm.exampleprovider.edu.cn/v1/chat/completions",
         "--model",
-        "deepseek-v4-flash-ascend",
+        "example-chat-model",
         "--value",
         "sk-test-custom",
         "--skip-validation",
@@ -3776,17 +3776,17 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
     output = capsys.readouterr().out
     assert "sk-test-custom" not in output
     data = json.loads(registry.read_text(encoding="utf-8"))
-    assert data["active_provider"] == "ustc"
-    assert data["providers"]["ustc"]["display_name"] == "USTC"
-    assert data["providers"]["ustc"]["base_url"] == "https://api.llm.ustc.edu.cn/v1"
-    assert data["providers"]["ustc"]["active_model"] == "deepseek-v4-flash-ascend"
-    assert data["providers"]["ustc"]["models"] == ["deepseek-v4-flash-ascend"]
+    assert data["active_provider"] == "exampleprovider"
+    assert data["providers"]["exampleprovider"]["display_name"] == "ExampleProvider"
+    assert data["providers"]["exampleprovider"]["base_url"] == "https://api.llm.exampleprovider.edu.cn/v1"
+    assert data["providers"]["exampleprovider"]["active_model"] == "example-chat-model"
+    assert data["providers"]["exampleprovider"]["models"] == ["example-chat-model"]
 
     values = _read_env_exports(env_file)
     assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
-    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "USTC"
-    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
-    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash-ascend"
+    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "ExampleProvider"
+    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.exampleprovider.edu.cn/v1"
+    assert values["DEEPSEEK_PROXY_MODEL"] == "example-chat-model"
     assert values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] == str(registry)
 
     assert main([
@@ -3796,15 +3796,15 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
         "--env-file",
         str(env_file),
         "--name",
-        "USTC",
+        "ExampleProvider",
         "--model",
         "deepseek-v4-pro",
         "--use",
     ]) == 0
     capsys.readouterr()
     data = json.loads(registry.read_text(encoding="utf-8"))
-    assert data["providers"]["ustc"]["active_model"] == "deepseek-v4-pro"
-    assert "deepseek-v4-pro" in data["providers"]["ustc"]["models"]
+    assert data["providers"]["exampleprovider"]["active_model"] == "deepseek-v4-pro"
+    assert "deepseek-v4-pro" in data["providers"]["exampleprovider"]["models"]
 
     assert main([
         "config",
@@ -3813,7 +3813,7 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
         "--env-file",
         str(env_file),
         "--name",
-        "USTC",
+        "ExampleProvider",
         "--model",
         "deepseek-v4-pro",
     ]) == 0
@@ -3824,7 +3824,7 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
     assert main(["config", "show", "--env-file", str(env_file)]) == 0
     show_output = capsys.readouterr().out
     assert "custom_provider_registry" in show_output
-    assert "USTC" in show_output
+    assert "ExampleProvider" in show_output
     assert "sk-test-custom" not in show_output
 
 
@@ -3845,7 +3845,7 @@ def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monk
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
-        "deepseek-v4-flash-ascend",
+        "example-chat-model",
         "--no-backup",
     ]) == 0
 
@@ -3857,7 +3857,7 @@ def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monk
     text = config_path.read_text(encoding="utf-8")
     assert "[model_providers.deepseek-thinking-proxy]" in text
     assert "[profiles.deepseek-thinking]" in text
-    assert 'model = "deepseek-v4-flash-ascend"' in text
+    assert 'model = "example-chat-model"' in text
     assert 'model_provider = "deepseek-thinking-proxy"' in text
     assert not (tmp_path / "deepseek-thinking.config.toml").exists()
 
@@ -3879,7 +3879,7 @@ def test_p219a5_install_codex_profile_split_layout_for_new_codex(tmp_path, monke
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
-        "deepseek-v4-flash-ascend",
+        "example-chat-model",
         "--no-backup",
     ]) == 0
 
@@ -3888,7 +3888,7 @@ def test_p219a5_install_codex_profile_split_layout_for_new_codex(tmp_path, monke
     assert result["layout_reason"] == "codex_cli_gte_0_134_or_unknown"
     assert "[profiles.deepseek-thinking]" not in config_path.read_text(encoding="utf-8")
     profile_text = (tmp_path / "deepseek-thinking.config.toml").read_text(encoding="utf-8")
-    assert 'model = "deepseek-v4-flash-ascend"' in profile_text
+    assert 'model = "example-chat-model"' in profile_text
     assert 'model_provider = "deepseek-thinking-proxy"' in profile_text
 
 
@@ -3936,7 +3936,7 @@ def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, mo
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
-        "deepseek-v4-flash-ascend",
+        "example-chat-model",
         "--no-backup",
     ]) == 0
 

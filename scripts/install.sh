@@ -2039,7 +2039,7 @@ prompt_model_name_field() {
   while true; do
     CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"
     CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Example: deepseek-v4-flash-ascend"
+    CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Example: your-model-id"
     value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
     CODEEPSEEDEX_INPUT_TITLE=""
     CODEEPSEEDEX_INPUT_STEP=""
@@ -2051,7 +2051,7 @@ prompt_model_name_field() {
     if [ -z "$PROMPTED_MODEL_NAME" ] || is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
       return 0
     fi
-    warn "Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend"
+    warn "Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key. Example: your-model-id"
     PROMPTED_MODEL_NAME=""
   done
 }

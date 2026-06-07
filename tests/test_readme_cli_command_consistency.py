@@ -100,3 +100,15 @@ def test_readme_model_provider_surface_uses_explicit_sites_and_plans() -> None:
     assert "dsproxy config set-model --provider qwen-singapore" in text
     assert "dsproxy config set-model --provider qwen-us" in text
     assert "dsproxy config set-web-search-api-key --provider brave" not in text
+
+
+def test_readme_current_latest_release_is_not_described_as_current_prerelease_channel() -> None:
+    en = (ROOT / "README.md").read_text(encoding="utf-8")
+    zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+    assert "Explicit pre-release channel, currently `v0.4.3-alpha`" not in en
+    assert "显式pre-release通道，当前为`v0.4.3-alpha`" not in zh
+    assert "Pinned current Latest Release tag (`v0.4.3-alpha`)" in en
+    assert "固定当前Latest Release tag（`v0.4.3-alpha`）" in zh
+    assert "If WeClaw integration is used with CoDeepSeedeX `v0.4.3-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`" not in en
+    assert "如果WeClaw联动使用CoDeepSeedeX `v0.4.3-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`" not in zh

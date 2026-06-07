@@ -30,7 +30,7 @@ from typing import Iterable
 
 CURRENT_PUBLIC_TAG = "v0.4.3-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
-CURRENT_INTERNAL_TAG = "p2.19a12-ghost-audit-tool-fixup"
+CURRENT_INTERNAL_TAG = "p2.19a13-user-facing-release-state-cleanup"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
 
 TSV_FIELDS = [
@@ -96,7 +96,7 @@ PATTERNS: list[PatternSpec] = [
     PatternSpec(
         "old_ui_surface",
         "Old numeric prompt or non-guided wizard surface candidate",
-        r"Enter a number|enter number|Choose option|Select option|\[[0-9]\]\s|read -p|PS3=|select\s+[A-Za-z_].*\bin\b",
+        r"Enter a number|enter number|Choose option|Select option|read -p|PS3=|select\s+[A-Za-z_].*\bin\b",
     ),
     PatternSpec(
         "legacy_profile_contract",
@@ -169,6 +169,8 @@ def text_or_none(path: Path) -> str | None:
 
 
 def bucket_for(rel: str) -> str:
+    if rel == "scripts/audit-ghost-contracts.py":
+        return "audit_tool"
     if rel.startswith("tests/"):
         return "tests"
     if rel == "docs/development-log.md":
@@ -200,6 +202,9 @@ def is_negative_or_compat_test(line: str) -> bool:
 
 def classify(bucket: str, raw_category: str, rel: str, line: str) -> tuple[str, str, str]:
     """Return classification, severity, allow_note."""
+    if bucket == "audit_tool":
+        return "allowed", "low", "audit tool pattern definitions intentionally contain stale-sensitive markers"
+
     if bucket == "history_log":
         return "allowed", "low", "history log may contain old states; only current-state headings need review"
 

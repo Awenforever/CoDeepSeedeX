@@ -5618,12 +5618,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                                 non_interactive=non_interactive,
                                 title="Custom OpenAI-compatible model API",
                                 footer="Step 2/5",
-                                detail=f"Endpoint: {base_url or '<empty>'}. Enter only the model id, for example: deepseek-v4-flash-ascend",
+                                detail=f"Endpoint: {base_url or '<empty>'}. Enter only the model id, for example: your-model-id",
                             ))
                             if not model or _is_valid_model_name_value(model):
                                 break
                             if non_interactive:
-                                raise SystemExit("Custom provider model must be a model id, not a URL, path, whitespace-containing value, or API key. Example: deepseek-v4-flash-ascend")
+                                raise SystemExit("Custom provider model must be a model id, not a URL, path, whitespace-containing value, or API key. Example: your-model-id")
                             print("Invalid upstream model name: enter only the model id, not a URL, path, whitespace-containing value, or API key.", file=sys.stderr)
                         if not base_url or not model:
                             skipped.append("model_api:custom_missing_details")
@@ -7680,7 +7680,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_custom_provider = config_sub.add_parser("custom-provider", help="manage named custom OpenAI-compatible providers")
     config_custom_provider.add_argument("custom_provider_action", choices=["list", "add", "use", "add-model"])
     config_custom_provider.add_argument("--env-file")
-    config_custom_provider.add_argument("--name", help="display-only custom provider name, e.g. USTC")
+    config_custom_provider.add_argument("--name", help="display-only custom provider name, e.g. ExampleProvider")
     config_custom_provider.add_argument("--base-url", help="OpenAI-compatible base URL")
     config_custom_provider.add_argument("--model", help="model id for this provider")
     config_custom_provider.add_argument("--value", help="API key value; omit or pass --skip-validation to avoid live validation")

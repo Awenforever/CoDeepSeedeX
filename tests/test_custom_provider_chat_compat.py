@@ -30,17 +30,17 @@ class _RecordingHTTPClient:
 def test_custom_openai_compatible_payload_strips_deepseek_only_params(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
 
     payload = _build_chat_payload(
-        model="deepseek-v4-flash-ascend",
+        model="example-chat-model",
         messages=[{"role": "user", "content": "hi"}],
         tools=None,
         reasoning_effort="max",
         request_payload={"prompt_cache_key": "sess-a", "max_output_tokens": 8},
     )
 
-    assert payload["model"] == "deepseek-v4-flash-ascend"
+    assert payload["model"] == "example-chat-model"
     assert payload["max_tokens"] == 8
     assert "user_id" not in payload
     assert "thinking" not in payload
@@ -68,14 +68,14 @@ def test_deepseek_official_payload_keeps_stable_cache_user_id(monkeypatch, tmp_p
 @pytest.mark.asyncio
 async def test_custom_client_sanitizes_payload_and_reports_provider_host(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
     fake_http = _RecordingHTTPClient(_FakeResponse(status_code=400, text='{"error":"unsupported user_id"}'))
-    client = DeepSeekClient(api_key="sk-test", base_url="https://api.llm.ustc.edu.cn/v1", http_client=fake_http)
+    client = DeepSeekClient(api_key="sk-test", base_url="https://api.llm.exampleprovider.edu.cn/v1", http_client=fake_http)
 
     with pytest.raises(HTTPException) as exc_info:
         await client.chat_completions(
             {
-                "model": "deepseek-v4-flash-ascend",
+                "model": "example-chat-model",
                 "messages": [{"role": "user", "content": "hi"}],
                 "user_id": "codeepseedex_test",
                 "thinking": {"type": "enabled"},
@@ -94,6 +94,6 @@ async def test_custom_client_sanitizes_payload_and_reports_provider_host(monkeyp
     detail = exc_info.value.detail
     assert detail["upstream"] == "custom"
     assert detail["upstream_provider"] == "custom"
-    assert detail["base_url_host"] == "api.llm.ustc.edu.cn"
+    assert detail["base_url_host"] == "api.llm.exampleprovider.edu.cn"
     assert detail["chat_compat_mode"] == "openai_compatible"
     assert detail["status_code"] == 400

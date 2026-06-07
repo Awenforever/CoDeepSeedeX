@@ -1,3 +1,26 @@
+## p2.19a13-user-facing-release-state-cleanup — User-facing ghost surface cleanup
+
+Date: 2026-06-07
+
+Scope:
+
+- Clean user-facing README wording so the current `v0.4.3-alpha` Latest ordinary Release is no longer described as the current pre-release channel.
+- Keep `dsproxy upgrade --alpha` documented only as a future/non-draft GitHub pre-release channel.
+- Simplify the WeClaw integration requirement to the current public Release instead of listing older public Release tags in the user README.
+- Replace site-specific custom provider examples in installer and CLI help with generic placeholders: `ExampleProvider`, `https://api.example.com/v1`, and `your-model-id`.
+- Update custom-provider tests so they validate generic OpenAI-compatible provider behavior without making USTC a public contract.
+- Fix the visible `DEPPSEEK_PROXY...` diagnostic typo to `DEEPSEEK_PROXY...`.
+- Refine the ghost audit tool so its own pattern definitions do not count as user-facing must-fix findings and so current guided UI step labels are not misclassified as old numeric UI prompts.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- focused README/installer/CLI/custom-provider/audit/docs/version tests
+- full test suite
+
 ## p2.19a12-ghost-audit-tool-fixup — Maintained ghost contract audit tool
 
 Date: 2026-06-07

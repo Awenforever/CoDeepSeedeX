@@ -1262,14 +1262,14 @@ def test_p219a10_guided_module_prompts_use_step_local_hints() -> None:
     assert "custom_provider_registry_hint" not in web_context
     assert "PROMPTED_CUSTOM_PROVIDER_NAME" not in web_context
     assert "PROMPTED_MODEL_NAME" not in web_context
-    assert "deepseek-v4-flash-ascend" not in web_context
+    assert "your-model-id" not in web_context
 
     image_idx = text.index('read_yes_no_menu "Configure image generation API now?"')
     image_context = text[max(0, image_idx - 500): image_idx + 260]
     assert "custom_provider_registry_hint" not in image_context
     assert "PROMPTED_CUSTOM_PROVIDER_NAME" not in image_context
     assert "PROMPTED_MODEL_NAME" not in image_context
-    assert "deepseek-v4-flash-ascend" not in image_context
+    assert "your-model-id" not in image_context
 
 
 def test_p219a10_model_summary_stays_in_model_api_and_completion_only() -> None:
@@ -1293,7 +1293,7 @@ def test_p219a10_model_summary_stays_in_model_api_and_completion_only() -> None:
         "PROMPTED_CUSTOM_PROVIDER_NAME",
         "PROMPTED_MODEL_NAME",
         "RESOLVED_MODEL_PROVIDER_DISPLAY_NAME",
-        "deepseek-v4-flash-ascend",
+        "your-model-id",
     ]
 
     for term in forbidden_model_summary_terms:

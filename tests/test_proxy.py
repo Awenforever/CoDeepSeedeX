@@ -673,7 +673,7 @@ async def test_non_stream_response_rejects_completed_empty_output_with_completio
 @pytest.mark.asyncio
 async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, client_factory):
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.example.com/v1")
 
     client, transport = await client_factory(
         [
@@ -697,7 +697,7 @@ async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, clie
     response = await client.post(
         "/v1/responses",
         json={
-            "model": "deepseek-v4-flash-ascend",
+            "model": "example-chat-model",
             "input": "hi",
             "max_output_tokens": 8,
             "stream": False,
@@ -714,7 +714,7 @@ async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, clie
 @pytest.mark.asyncio
 async def test_empty_output_contract_reports_custom_provider_diagnostics(monkeypatch, client_factory):
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.example.com/v1")
 
     client, _transport = await client_factory(
         [
@@ -733,14 +733,14 @@ async def test_empty_output_contract_reports_custom_provider_diagnostics(monkeyp
 
     response = await client.post(
         "/v1/responses",
-        json={"model": "deepseek-v4-flash-ascend", "input": "hi", "max_output_tokens": 8},
+        json={"model": "example-chat-model", "input": "hi", "max_output_tokens": 8},
     )
 
     assert response.status_code == 502
     detail = response.json()["detail"]
     assert detail["upstream"] == "custom"
     assert detail["upstream_provider"] == "custom"
-    assert detail["base_url_host"] == "api.llm.ustc.edu.cn"
+    assert detail["base_url_host"] == "api.example.com"
     assert detail["chat_compat_mode"] == "openai_compatible"
     assert detail["assistant_reasoning_content_available"] is False
     assert detail["finish_reason"] == "length"
@@ -805,7 +805,7 @@ def test_codex_native_compact_status_reports_inline_expected_path():
 
 def test_custom_chat_capability_profile_filters_to_openai_common_params(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
     monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
     monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_COMPAT_MODE", raising=False)
     monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", raising=False)
@@ -813,14 +813,14 @@ def test_custom_chat_capability_profile_filters_to_openai_common_params(monkeypa
     monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", raising=False)
 
     payload = _build_chat_payload(
-        model="deepseek-v4-flash-ascend",
+        model="example-chat-model",
         messages=[{"role": "user", "content": "hi"}],
         tools=None,
         reasoning_effort="max",
         request_payload={"max_output_tokens": 8},
     )
 
-    assert payload["model"] == "deepseek-v4-flash-ascend"
+    assert payload["model"] == "example-chat-model"
     assert payload["max_tokens"] == 8
     assert "user_id" not in payload
     assert "thinking" not in payload
@@ -893,7 +893,7 @@ def test_upstream_error_detail_reports_custom_provider_capability(monkeypatch):
     from deepseek_responses_proxy.app import _upstream_error_detail
 
     monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.ustc.edu.cn/v1")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
 
     detail = _upstream_error_detail(
         status_code=400,
@@ -902,7 +902,7 @@ def test_upstream_error_detail_reports_custom_provider_capability(monkeypatch):
 
     assert detail["upstream"] == "custom"
     assert detail["upstream_provider"] == "custom"
-    assert detail["base_url_host"] == "api.llm.ustc.edu.cn"
+    assert detail["base_url_host"] == "api.llm.exampleprovider.edu.cn"
     assert detail["chat_compat_mode"] == "openai_compatible"
     assert detail["unsupported_parameters"] == ["user_id"]
     assert detail["chat_capability_profile"]["allow_all_params"] is False

@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.3-alpha"
-PROXY_INTERNAL_VERSION = "p2.19a12-ghost-audit-tool-fixup"
+PROXY_INTERNAL_VERSION = "p2.19a13-user-facing-release-state-cleanup"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -6394,7 +6394,7 @@ def _runtime_token_first_context_contract_for_payload(
             "available": True,
             "ignored_value": ignored_value,
             "ignored_value_source": (
-                "env.DEPPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS_or_MODEL_AUTO_COMPACT_TOKEN_LIMIT"
+                "env.DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS_or_MODEL_AUTO_COMPACT_TOKEN_LIMIT"
                 if ignored_env_auto_threshold
                 else "codex_profile.model_auto_compact_token_limit"
             ),
