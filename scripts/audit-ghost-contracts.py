@@ -30,7 +30,7 @@ from typing import Iterable
 
 CURRENT_PUBLIC_TAG = "v0.4.3-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
-CURRENT_INTERNAL_TAG = "p2.19a19-real-home-profile-model-consistency"
+CURRENT_INTERNAL_TAG = "p2.19a21-status-json-and-upstream-model-leakage"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
 
 TSV_FIELDS = [

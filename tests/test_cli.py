@@ -4286,3 +4286,48 @@ def test_p219a19_profile_repair_honors_explicit_thinking_model_override(tmp_path
     thinking = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
     assert stable["codex_model_after"] == "custom-openai-test-model"
     assert thinking["codex_model_after"] == "custom-openai-thinking-test-model"
+
+def test_p219a21_status_accepts_json_alias(monkeypatch, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    captured = {}
+
+    def fake_http_json(url, timeout=3.0):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        return 200, {"status": "ok", "model_default": "custom-openai-test-model"}, None
+
+    monkeypatch.setattr(cli_module, "_http_json", fake_http_json)
+
+    assert main(["status", "thinking", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["model_default"] == "custom-openai-test-model"
+    assert captured["url"].endswith("/v1/proxy/status")
+
+
+def test_p219a21_liveness_judge_follows_forced_custom_model(monkeypatch):
+    import importlib
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "custom-openai-test-model")
+    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+
+    config = app_module._agent_liveness_judge_env_config()
+    assert config["model"] == "v4-flash-no-thinking"
+    assert config["upstream_model"] == "custom-openai-test-model"
+    assert config["upstream_model_source"] == "DEEPSEEK_PROXY_MODEL_forced"
+
+
+def test_p219a21_liveness_judge_keeps_legacy_alias_when_not_forced(monkeypatch):
+    import importlib
+    app_module = importlib.import_module("deepseek_responses_proxy.app")
+
+    monkeypatch.delenv("DEEPSEEK_PROXY_MODEL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_PROXY_FORCE_MODEL", raising=False)
+    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+
+    config = app_module._agent_liveness_judge_env_config()
+    assert config["upstream_model"] == "deepseek-v4-flash"
+    assert config["upstream_model_source"] == "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL"

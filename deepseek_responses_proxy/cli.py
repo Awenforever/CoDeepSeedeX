@@ -7725,6 +7725,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--thinking", action="store_true")
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
+    status.add_argument("--json", action="store_true", help="print machine-readable proxy status JSON; alias for default status output")
     status.add_argument("--weclaw-json", action="store_true", help="print WeClaw integration status JSON")
     status.add_argument("--session-id", help="active Codex/ACP session id for current-session usage scope")
     status.set_defaults(func=_status)

@@ -35,15 +35,16 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a19-real-home-profile-model-consistency`
+- Current internal development checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
-- Latest closed ghost audit tool checkpoint: `p2.19a19-real-home-profile-model-consistency`
+- Latest closed ghost audit tool checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
 - Latest closed legacy threshold boundary checkpoint: `p2.19a16-legacy-threshold-boundary`
 - Latest closed wrapper path hygiene checkpoint: `p2.19a17-wrapper-path-hygiene`
 - Latest closed real-HOME profile model consistency checkpoint: `p2.19a19-real-home-profile-model-consistency`
+- Latest closed status JSON and upstream model leakage checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -430,3 +431,12 @@ Checklist maintenance rules:
 - `config set-model`, `set-api-key`, custom-provider activation, and the guided wizard must not leave `deepseek` and `deepseek-thinking` split profiles on different upstream model names.
 - Managed Codex profile provider names remain local dsproxy providers (`deepseek-proxy` and `deepseek-thinking-proxy`); upstream provider/base URL/model are carried by the dsproxy env contract.
 - A real-HOME repair must preserve Codex 0.134+ split profile layout and must not reintroduce legacy `[profiles.deepseek*]` tables.
+
+
+### Status JSON and auxiliary model leakage
+
+- `dsproxy status --json` is the explicit machine-readable alias for normal proxy status JSON.
+- `dsproxy status thinking --json` and `dsproxy status --json thinking` must be accepted.
+- `--weclaw-json` remains a separate WeClaw-facing contract and must not be conflated with normal proxy status JSON.
+- Under `DEEPSEEK_PROXY_FORCE_MODEL=1`, auxiliary calls such as agent-liveness judge must follow `DEEPSEEK_PROXY_MODEL` instead of silently selecting a different provider model.
+- The status surface should expose the selected auxiliary upstream model so user-path validation can catch leakage before a real model call.

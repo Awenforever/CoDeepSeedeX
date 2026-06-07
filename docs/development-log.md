@@ -1,3 +1,28 @@
+## p2.19a21-status-json-and-upstream-model-leakage — Status JSON and auxiliary model leakage boundary
+
+Date: 2026-06-07
+
+Scope:
+
+- Add `dsproxy status --json` as an explicit machine-readable alias for normal status output.
+- Preserve existing `dsproxy status thinking` JSON behavior.
+- Keep `--weclaw-json` as the WeClaw-specific status contract.
+- Fix auxiliary agent-liveness judge upstream model selection under forced/custom model configuration.
+- When `DEEPSEEK_PROXY_FORCE_MODEL=1` and `DEEPSEEK_PROXY_MODEL` is set, liveness judge upstream calls now follow the forced upstream model instead of silently normalizing the default no-thinking alias to a different provider model.
+- This closes the real-HOME leakage where the runtime status showed an agent-liveness judge upstream model that could request an inaccessible default model even though the main profile used the env-selected custom model.
+- No model-provider call is needed for validation; local status endpoints and CLI status are sufficient.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused CLI status/liveness/docs/version tests
+- full test suite
+- real-HOME local status validation: `dsproxy status thinking --json` returns JSON and agent-liveness `upstream_model` matches the forced env-selected model.
+
 ## p2.19a19-real-home-profile-model-consistency — Real-HOME split-profile model consistency
 
 Date: 2026-06-07

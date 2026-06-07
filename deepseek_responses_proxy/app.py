@@ -25,7 +25,7 @@ import subprocess
 
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.3-alpha"
-PROXY_INTERNAL_VERSION = "p2.19a19-real-home-profile-model-consistency"
+PROXY_INTERNAL_VERSION = "p2.19a21-status-json-and-upstream-model-leakage"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "DEEPSEEK_PROXY_PUBLIC_COMMIT",
     "DEEPSEEK_PROXY_INTERNAL_COMMIT",
@@ -14469,10 +14469,14 @@ def _agent_liveness_judge_env_config() -> dict[str, Any]:
         "v4-flash-no-thinking",
     ).strip() or "v4-flash-no-thinking"
 
+    upstream_model = _normalize_agent_liveness_judge_model(raw_model)
+    forced_model = _forced_proxy_upstream_model_for_auxiliary_calls()
+
     return {
         "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", True),
         "model": raw_model,
-        "upstream_model": _normalize_agent_liveness_judge_model(raw_model),
+        "upstream_model": upstream_model,
+        "upstream_model_source": "DEEPSEEK_PROXY_MODEL_forced" if forced_model and upstream_model == forced_model else "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL",
         "thinking": {"type": "disabled"},
         "max_recent_messages": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_RECENT_MESSAGES", 4),
         "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_PREVIEW_CHARS", 1200),
@@ -14483,7 +14487,18 @@ def _agent_liveness_judge_env_config() -> dict[str, Any]:
     }
 
 
+def _forced_proxy_upstream_model_for_auxiliary_calls() -> str | None:
+    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+    if _force_proxy_model_enabled() and env_model:
+        return env_model
+    return None
+
+
 def _normalize_agent_liveness_judge_model(model: str) -> str:
+    forced_model = _forced_proxy_upstream_model_for_auxiliary_calls()
+    if forced_model:
+        return forced_model
+
     value = (model or "").strip().lower()
     aliases = {
         "v4-flash-no-thinking": "deepseek-v4-flash",
@@ -14497,6 +14512,10 @@ def _normalize_agent_liveness_judge_model(model: str) -> str:
         return aliases[value]
     if value in {"deepseek-v4-flash", "deepseek-v4-pro"}:
         return value
+
+    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+    if env_model:
+        return env_model
     return "deepseek-v4-flash"
 
 

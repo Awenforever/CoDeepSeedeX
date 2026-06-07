@@ -35,15 +35,16 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- 当前内部开发检查点：`p2.19a19-real-home-profile-model-consistency`
+- 当前内部开发检查点：`p2.19a21-status-json-and-upstream-model-leakage`
 - 当前公开Release包含的最新运行时检查点：`p2.19a10-guided-installer-contextual-hints`
 - 最新闭合文档同步检查点：`p2.19a11-docs-release-handoff-sync`
-- 最新闭合幽灵审计工具检查点：`p2.19a19-real-home-profile-model-consistency`
+- 最新闭合幽灵审计工具检查点：`p2.19a21-status-json-and-upstream-model-leakage`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
 - 最新闭合provider alias边界检查点：`p2.19a15-provider-alias-boundary`
 - 最新闭合legacy threshold边界检查点：`p2.19a16-legacy-threshold-boundary`
 - 最新闭合wrapper path hygiene检查点：`p2.19a17-wrapper-path-hygiene`
 - 最新闭合real-HOME profile model consistency检查点：`p2.19a19-real-home-profile-model-consistency`
+- 最新闭合status JSON与upstream model leakage检查点：`p2.19a21-status-json-and-upstream-model-leakage`
 - 当前公开Release note同步检查点：`p2.19a10-guided-installer-contextual-hints`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
@@ -426,3 +427,12 @@ bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --re
 - `config set-model`、`set-api-key`、custom-provider激活和guided wizard不得让`deepseek`与`deepseek-thinking` split profile残留不同upstream model。
 - managed Codex profile的provider name仍保持本地dsproxy provider（`deepseek-proxy`和`deepseek-thinking-proxy`）；上游provider/base URL/model由dsproxy env契约承载。
 - real-HOME repair必须保持Codex 0.134+ split profile布局，不得重新引入legacy `[profiles.deepseek*]`表。
+
+
+### Status JSON与辅助模型泄漏
+
+- `dsproxy status --json`是普通proxy status JSON的显式机器可读别名。
+- `dsproxy status thinking --json`和`dsproxy status --json thinking`都必须可用。
+- `--weclaw-json`仍是独立的WeClaw-facing契约，不得与普通proxy status JSON混淆。
+- 在`DEEPSEEK_PROXY_FORCE_MODEL=1`下，agent-liveness judge等辅助调用必须跟随`DEEPSEEK_PROXY_MODEL`，不得静默选择另一个provider model。
+- status表面应暴露辅助调用实际选择的upstream model，使用户路径验证能在真实模型调用前捕获泄漏。
