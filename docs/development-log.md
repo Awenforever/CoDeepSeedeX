@@ -1,3 +1,14 @@
+## p2.19a10-guided-installer-contextual-hints — Guided installer contextual hints
+
+Date: 2026-06-07
+
+Scope:
+
+- Keep public `v0.4.3-alpha` unrefreshed until final validation and release refresh.
+- Fix guided installer hint leakage where a custom model provider summary could appear on Web search or Image generation prompts.
+- Give Model API, Web search API, and Image generation API yes/no prompts explicit step-local hints.
+- Preserve p2.19a7/p2.19a8/p2.19a9 runtime and wrapper contracts.
+
 ## p2.19a9-context-window-profile-source-consistency — Context-window profile source consistency
 
 Date: 2026-06-06

@@ -1223,3 +1223,82 @@ def test_p219a8_installer_skips_managed_wrappers_when_resolving_real_codex() -> 
     assert "CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy" in text
     assert "real codex command not found; refusing to install Codex wrapper" in text
     assert 'REAL_CODEX="$real_codex"' in text
+
+
+def test_p219a10_guided_module_prompts_use_step_local_hints() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    expectations = [
+        (
+            "Configure model API now?",
+            "Model API is required for Codex/DeepSeek requests.",
+            "dsproxy config wizard",
+        ),
+        (
+            "Configure web search API now?",
+            "Web search is optional.",
+            "dsproxy config set-web-search-api-key",
+        ),
+        (
+            "Configure image generation API now?",
+            "Image generation is optional.",
+            "dsproxy config set-image-api-key",
+        ),
+    ]
+
+    for prompt, hint_prefix, later_command in expectations:
+        prompt_idx = text.index(f'read_yes_no_menu "{prompt}"')
+        function_start = text.rfind("\n", 0, prompt_idx)
+        local_context = text[max(0, prompt_idx - 500): prompt_idx + 260]
+
+        assert f'CODEEPSEEDEX_NEXT_MENU_DETAIL="{hint_prefix}' in local_context
+        assert later_command in local_context
+        assert 'CODEEPSEEDEX_NEXT_MENU_DETAIL=""' in local_context
+
+    web_idx = text.index('read_yes_no_menu "Configure web search API now?"')
+    web_context = text[max(0, web_idx - 500): web_idx + 260]
+    assert "custom_provider_registry_hint" not in web_context
+    assert "PROMPTED_CUSTOM_PROVIDER_NAME" not in web_context
+    assert "PROMPTED_MODEL_NAME" not in web_context
+    assert "deepseek-v4-flash-ascend" not in web_context
+
+    image_idx = text.index('read_yes_no_menu "Configure image generation API now?"')
+    image_context = text[max(0, image_idx - 500): image_idx + 260]
+    assert "custom_provider_registry_hint" not in image_context
+    assert "PROMPTED_CUSTOM_PROVIDER_NAME" not in image_context
+    assert "PROMPTED_MODEL_NAME" not in image_context
+    assert "deepseek-v4-flash-ascend" not in image_context
+
+
+def test_p219a10_model_summary_stays_in_model_api_and_completion_only() -> None:
+    import re
+
+    text = INSTALL_SH.read_text(encoding="utf-8")
+
+    def shell_function(source: str, name: str) -> str:
+        pattern = re.compile(
+            rf"(?ms)^{re.escape(name)}\(\)\s*\{{\n.*?(?=^[A-Za-z_][A-Za-z0-9_]*\(\)\s*\{{|\Z)"
+        )
+        match = pattern.search(source)
+        assert match is not None, f"missing shell function: {name}"
+        return match.group(0)
+
+    web_function = shell_function(text, "prompt_serpapi_api_key")
+    image_function = shell_function(text, "prompt_image_generation_api_key")
+
+    forbidden_model_summary_terms = [
+        "custom_provider_registry_hint",
+        "PROMPTED_CUSTOM_PROVIDER_NAME",
+        "PROMPTED_MODEL_NAME",
+        "RESOLVED_MODEL_PROVIDER_DISPLAY_NAME",
+        "deepseek-v4-flash-ascend",
+    ]
+
+    for term in forbidden_model_summary_terms:
+        assert term not in web_function
+        assert term not in image_function
+
+    assert "review_model_api_config() {" in text
+    assert "Provider:" in text
+    assert "Model:" in text
+    assert "show_install_completion_hold() {" in text

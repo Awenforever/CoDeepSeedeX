@@ -2257,7 +2257,11 @@ prompt_deepseek_api_key() {
   local field_step="provider"
   local field_rc=0
 
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="Model API is required for Codex/DeepSeek requests. Choose Yes to configure a provider now, or No to skip and configure later with dsproxy config wizard."
+
   configure="$(read_yes_no_menu "Configure model API now?" "Y")"
+
+  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   case "$configure" in
     __CODEEPSEEDEX_BACK__) return 20 ;;
     n|N|no|NO|No)
@@ -2432,7 +2436,9 @@ prompt_serpapi_api_key() {
   fi
 
   local configure=""
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="Web search is optional. Choose Yes to configure a search provider for managed tool routing, or No to skip and configure later with dsproxy config set-web-search-api-key."
   configure="$(read_yes_no_menu "Configure web search API now?" "N")"
+  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   case "$configure" in
     __CODEEPSEEDEX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
@@ -2531,7 +2537,9 @@ prompt_image_generation_api_key() {
   fi
 
   local configure=""
+  CODEEPSEEDEX_NEXT_MENU_DETAIL="Image generation is optional. Choose Yes to configure an image provider for managed tool routing, or No to skip and configure later with dsproxy config set-image-api-key."
   configure="$(read_yes_no_menu "Configure image generation API now?" "N")"
+  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
   case "$configure" in
     __CODEEPSEEDEX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
