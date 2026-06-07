@@ -35,9 +35,10 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- 当前内部开发检查点：`p2.19a11-docs-release-handoff-sync`
+- 当前内部开发检查点：`p2.19a12-ghost-audit-tool-fixup`
 - 当前公开Release包含的最新运行时检查点：`p2.19a10-guided-installer-contextual-hints`
 - 最新闭合文档同步检查点：`p2.19a11-docs-release-handoff-sync`
+- 最新闭合幽灵审计工具检查点：`p2.19a12-ghost-audit-tool-fixup`
 - 当前公开Release note同步检查点：`p2.19a10-guided-installer-contextual-hints`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
@@ -66,6 +67,7 @@
 - `scripts/install.sh`：安装器，负责installed checkout同步、venv、wrapper、Codex profile、guided UI、配置初始化和本地文件备份。
 - `bootstrap.sh`：一键安装入口，负责依赖、install.sh获取和fallback。
 - `scripts/codex-wrapper.bash`：适用时维护wrapper模板表面。
+- `scripts/audit-ghost-contracts.py`：只读幽灵契约审计工具。
 - `config/pricing.json`：内置价格快照。
 - `experiments/model-catalog/deepseek-proxy-models.json`：托管模型目录。
 - `tests/`：回归测试、文档契约测试、provider测试、安装器测试、升级测试和运行时契约测试。
@@ -309,7 +311,7 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.4.3-alpha^{}
-git rev-parse --short p2.19a11-docs-release-handoff-sync^{} || true
+git rev-parse --short p2.19a12-ghost-audit-tool-fixup^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true

@@ -35,9 +35,10 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a11-docs-release-handoff-sync`
+- Current internal development checkpoint: `p2.19a12-ghost-audit-tool-fixup`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
+- Latest closed ghost audit tool checkpoint: `p2.19a12-ghost-audit-tool-fixup`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -66,6 +67,7 @@ Current closeout evidence:
 - `scripts/install.sh`: installer, installed checkout sync, venv setup, wrappers, Codex profiles, guided UI, config initialization, local file backup.
 - `bootstrap.sh`: one-line bootstrap entrypoint, dependency handling, install.sh acquisition and fallback.
 - `scripts/codex-wrapper.bash`: maintained wrapper template surface where applicable.
+- `scripts/audit-ghost-contracts.py`: read-only ghost contract audit tool.
 - `config/pricing.json`: bundled pricing snapshot.
 - `experiments/model-catalog/deepseek-proxy-models.json`: managed model catalog.
 - `tests/`: regression tests, document contract tests, provider tests, installer tests, upgrade tests, and runtime contract tests.
@@ -313,7 +315,7 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.4.3-alpha^{}
-git rev-parse --short p2.19a11-docs-release-handoff-sync^{} || true
+git rev-parse --short p2.19a12-ghost-audit-tool-fixup^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true

@@ -1,3 +1,23 @@
+## p2.19a12-ghost-audit-tool-fixup — Maintained ghost contract audit tool
+
+Date: 2026-06-07
+
+Scope:
+
+- Add a maintained read-only ghost contract audit tool at `scripts/audit-ghost-contracts.py`.
+- Fix the ad-hoc p2.19a12 audit failure class where AST assertion findings lacked `raw_category` and caused TSV/report generation to fail with `KeyError('raw_category')`.
+- Classify findings into `must_fix`, `review`, and `allowed` so broad scans do not become blind deletion lists.
+- Keep compatibility markers such as Codex legacy profile layout, wrapper recursion guards, and managed 90% auto-compact threshold as review candidates rather than automatic deletion targets.
+- Add regression tests for the audit script schema, output files, and current-repository read-only execution.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `python -m py_compile scripts/audit-ghost-contracts.py`
+- focused audit-tool tests
+- docs/version metadata tests
+- full test suite
+
 ## p2.19a11-docs-release-handoff-sync — Documentation release handoff sync
 
 Date: 2026-06-07
