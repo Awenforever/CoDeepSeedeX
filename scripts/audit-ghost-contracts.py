@@ -30,7 +30,7 @@ from typing import Iterable
 
 CURRENT_PUBLIC_TAG = "v0.4.3-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
-CURRENT_INTERNAL_TAG = "p2.19a15-provider-alias-boundary"
+CURRENT_INTERNAL_TAG = "p2.19a16-legacy-threshold-boundary"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
 
 TSV_FIELDS = [
@@ -110,8 +110,8 @@ PATTERNS: list[PatternSpec] = [
     ),
     PatternSpec(
         "old_effort_or_threshold",
-        "Old effort or threshold semantics candidate",
-        r"\b750000\b|\b0\.75\b|AUTO_COMPACT_THRESHOLD|AUTO_COMPACT_RATIO|model_auto_compact_token_limit|auto_compact_token_limit",
+        "Old effort or explicit legacy threshold semantics candidate",
+        r"\b750000\b|\b0\.75\b|DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS|DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT|CODEEPSEEDEX_AUTO_COMPACT_THRESHOLD_TOKENS|CODEEPSEEDEX_MODEL_AUTO_COMPACT_TOKEN_LIMIT|DEEPSEEK_PROXY_AUTO_COMPACT_RATIO|CODEEPSEEDEX_AUTO_COMPACT_RATIO",
     ),
     PatternSpec(
         "deprecated_provider_surface",

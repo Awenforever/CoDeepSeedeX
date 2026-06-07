@@ -1,3 +1,28 @@
+## p2.19a16-legacy-threshold-boundary — Legacy threshold audit boundary
+
+Date: 2026-06-07
+
+Scope:
+
+- Clarify the managed auto-compact threshold boundary after the p2.19a16 audit.
+- Keep the runtime and profile contract unchanged: managed profiles derive `model_auto_compact_token_limit` from `model_context_window * 0.90`; for the 1M-token DeepSeek profile this remains `900000`.
+- Keep `model_auto_compact_token_limit`, `auto_compact_token_limit`, and `auto_compact_ratio` as current generated/telemetry fields, not legacy input contracts.
+- Keep stale absolute threshold and ratio inputs as ignored/compatibility evidence only:
+  - historical `750000` and `0.75` remain history or negative-guard material.
+  - `DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS` and `DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT` remain legacy absolute-threshold inputs and are reported as ignored by managed runtime code.
+  - `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` and `CODEEPSEEDEX_AUTO_COMPACT_RATIO` remain ignored legacy ratio overrides for managed profiles.
+- Narrow the maintained ghost-audit threshold pattern so it no longer classifies current 90% fields as old-threshold review debt.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused ghost-audit/docs/version/threshold tests
+- full test suite
+
 ## p2.19a15-provider-alias-boundary — Provider alias public/compatibility boundary
 
 Date: 2026-06-07

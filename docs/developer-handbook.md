@@ -35,12 +35,13 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a15-provider-alias-boundary`
+- Current internal development checkpoint: `p2.19a16-legacy-threshold-boundary`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
-- Latest closed ghost audit tool checkpoint: `p2.19a15-provider-alias-boundary`
+- Latest closed ghost audit tool checkpoint: `p2.19a16-legacy-threshold-boundary`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
+- Latest closed legacy threshold boundary checkpoint: `p2.19a16-legacy-threshold-boundary`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -402,3 +403,12 @@ Checklist maintenance rules:
 - `qwen-us` is a current explicit regional model provider and should remain visible in README/CLI model-provider guidance.
 - `glm`, `qwen_us`, `qwen_us_virginia`, `dashscope_us`, and Brave web search are hidden/backward-compatible aliases unless a future validation line promotes them explicitly.
 - `dsproxy config set-api-key` remains a deprecated compatibility command; user-facing guidance should prefer `dsproxy config set-model`.
+
+
+### Legacy threshold boundary
+
+- Managed auto-compact threshold configuration remains ratio-first: `model_auto_compact_token_limit` is generated from `model_context_window * 0.90`.
+- `model_auto_compact_token_limit`, `auto_compact_token_limit`, and `auto_compact_ratio` are current generated/status fields, not legacy inputs.
+- Historical `750000` and `0.75` values may remain only in history or negative guards.
+- Legacy absolute-threshold env inputs are compatibility evidence and must be reported as ignored for managed profiles.
+- Maintained ghost-audit rules must not classify current 90% fields as old-threshold debt.
