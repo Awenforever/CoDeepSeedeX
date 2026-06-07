@@ -7,6 +7,7 @@ import deepseek_responses_proxy.cli as cli_module
 from deepseek_responses_proxy.cli import default_config_path, main
 import pytest
 from deepseek_responses_proxy.cli import _api_configuration_status
+import os
 
 
 
@@ -4008,7 +4009,7 @@ def test_p219a7_runtime_status_reports_legacy_layout(monkeypatch, tmp_path):
     assert payload["codex_profile_config"] == str(config_path)
 
 
-def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrapper(tmp_path, capsys):
+def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrapper(tmp_path, monkeypatch, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
@@ -4035,13 +4036,15 @@ def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrap
         encoding="utf-8",
     )
 
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.delenv("CODEEPSEEDEX_REAL_CODEX", raising=False)
+
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
-    result = json.loads(capsys.readouterr().out)
-
-    assert result["status"] == "error"
-    assert result["error"] == "real_codex_points_to_codeepseedex_wrapper"
-    assert "Refusing to refresh" in result["hint"]
-
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "error"
+    assert payload["error"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert "safe real Codex binary" in payload["hint"]
+    assert payload["real_codex_resolution"]["attempts"][0]["reason"] == "real_codex_points_to_codeepseedex_wrapper"
 
 def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
@@ -4127,3 +4130,86 @@ def test_p219a15_set_api_key_help_marks_deprecated(capsys):
     captured = capsys.readouterr()
     assert "deprecated compatibility alias" in captured.out
     assert "prefer set-model" in captured.out
+
+def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_to_wrapper(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    wrapper_bin = tmp_path / "wrapper-bin"
+    real_bin = tmp_path / "real-bin"
+    wrapper_bin.mkdir()
+    real_bin.mkdir()
+
+    wrapper = wrapper_bin / "codex"
+    stale_wrapper = tmp_path / "stale-codeepseedex-wrapper"
+    real_codex = real_bin / "codex"
+    dsproxy = wrapper_bin / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    stale_wrapper.write_text(
+        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        encoding="utf-8",
+    )
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.134.0\n'\n", encoding="utf-8")
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, real_codex, dsproxy, wrapper):
+        item.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={stale_wrapper}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={wrapper_bin}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", f"{wrapper_bin}{os.pathsep}{real_bin}")
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["real_codex"] == str(real_codex.resolve())
+    assert result["real_codex_recovered"] is True
+
+    wrapper_text = wrapper.read_text(encoding="utf-8")
+    assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve()))}" in wrapper_text
+    assert str(stale_wrapper) not in wrapper_text
+    assert "REAL_CODEX=/tmp/codeepseedex-" not in wrapper_text
+
+
+def test_p219a17_refresh_wrapper_still_fails_closed_when_no_safe_real_codex(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy.cli import main
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    stale_wrapper = tmp_path / "stale-codeepseedex-wrapper"
+    dsproxy = bin_dir / "dsproxy"
+    manifest = tmp_path / "install-manifest.env"
+
+    stale_wrapper.write_text(
+        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        encoding="utf-8",
+    )
+    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, dsproxy, wrapper):
+        item.chmod(0o755)
+
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={stale_wrapper}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["error"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert "safe real Codex binary" in result["hint"]

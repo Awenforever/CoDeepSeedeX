@@ -35,13 +35,14 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a16-legacy-threshold-boundary`
+- Current internal development checkpoint: `p2.19a17-wrapper-path-hygiene`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
-- Latest closed ghost audit tool checkpoint: `p2.19a16-legacy-threshold-boundary`
+- Latest closed ghost audit tool checkpoint: `p2.19a17-wrapper-path-hygiene`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
 - Latest closed legacy threshold boundary checkpoint: `p2.19a16-legacy-threshold-boundary`
+- Latest closed wrapper path hygiene checkpoint: `p2.19a17-wrapper-path-hygiene`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -412,3 +413,11 @@ Checklist maintenance rules:
 - Historical `750000` and `0.75` values may remain only in history or negative guards.
 - Legacy absolute-threshold env inputs are compatibility evidence and must be reported as ignored for managed profiles.
 - Maintained ghost-audit rules must not classify current 90% fields as old-threshold debt.
+
+
+### Wrapper path hygiene
+
+- A generated CoDeepSeedeX Codex wrapper must never use another CoDeepSeedeX wrapper as `REAL_CODEX`.
+- `dsproxy profile refresh-wrapper` may recover from a stale manifest `REAL_CODEX` only by selecting a non-CoDeepSeedeX real Codex executable from `CODEEPSEEDEX_REAL_CODEX`, `PATH`, or common npm/nvm locations.
+- If no safe real Codex executable is available, wrapper refresh must fail closed.
+- `/tmp/codeepseedex-*` test-HOME wrappers are not valid real Codex binaries for real-user wrapper manifests.

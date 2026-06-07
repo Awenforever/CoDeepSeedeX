@@ -1,3 +1,26 @@
+## p2.19a17-wrapper-path-hygiene — Codex wrapper path hygiene
+
+Date: 2026-06-07
+
+Scope:
+
+- Harden managed Codex wrapper refresh when the install manifest contains a stale or unsafe `REAL_CODEX`.
+- Keep the existing fail-closed guard for wrapper-to-wrapper recursion.
+- Add safe recovery: if manifest `REAL_CODEX` points to a CoDeepSeedeX wrapper, to the wrapper itself, or to a stale `/tmp/codeepseedex-*` wrapper, `dsproxy profile refresh-wrapper` now searches `CODEEPSEEDEX_REAL_CODEX`, current `PATH`, and common npm/nvm Codex locations for a non-CoDeepSeedeX real Codex executable.
+- If no safe real Codex executable exists, refresh still fails closed with `real_codex_points_to_codeepseedex_wrapper`.
+- Preserve the real-user invariant: generated wrappers must not use another CoDeepSeedeX wrapper as `REAL_CODEX`, and must not use a prior test-HOME `/tmp/codeepseedex-*` wrapper as `REAL_CODEX`.
+- Do not clean `/tmp` as a substitute for fixing source behavior.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused wrapper/profile/docs/version tests
+- full test suite
+
 ## p2.19a16-legacy-threshold-boundary — Legacy threshold audit boundary
 
 Date: 2026-06-07

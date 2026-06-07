@@ -1410,6 +1410,118 @@ def _is_codeepseedex_codex_wrapper_path(path: str | Path) -> bool:
         )
     )
 
+
+def _is_tmp_codeepseedex_codex_path(path: Path) -> bool:
+    try:
+        resolved = path.expanduser().resolve(strict=False)
+    except Exception:
+        resolved = path.expanduser()
+    resolved_text = str(resolved)
+    return resolved.name == "codex" and (
+        resolved_text.startswith("/tmp/codeepseedex-")
+        or "/tmp/codeepseedex-" in resolved_text
+    )
+
+
+def _is_safe_real_codex_executable(candidate: Path, wrapper_path: Path) -> tuple[bool, str, Path]:
+    candidate = candidate.expanduser()
+    try:
+        candidate_resolved = candidate.resolve(strict=False)
+    except Exception:
+        candidate_resolved = candidate
+    try:
+        wrapper_resolved = wrapper_path.expanduser().resolve(strict=False)
+    except Exception:
+        wrapper_resolved = wrapper_path.expanduser()
+
+    if not candidate.exists() or not candidate.is_file():
+        return False, "real_codex_missing", candidate_resolved
+    if candidate_resolved == wrapper_resolved:
+        return False, "real_codex_points_to_wrapper_itself", candidate_resolved
+    if _is_tmp_codeepseedex_codex_path(candidate_resolved):
+        return False, "real_codex_points_to_tmp_codeepseedex_wrapper", candidate_resolved
+    if _is_codeepseedex_codex_wrapper_path(candidate_resolved):
+        return False, "real_codex_points_to_codeepseedex_wrapper", candidate_resolved
+    if not os.access(candidate_resolved, os.X_OK):
+        return False, "real_codex_not_executable", candidate_resolved
+
+    try:
+        cp = subprocess.run(
+            [str(candidate_resolved), "--version"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=5,
+        )
+        version_text = (cp.stdout or "").strip()
+    except Exception:
+        version_text = ""
+
+    if version_text and ("codex-cli" in version_text or "OpenAI Codex" in version_text):
+        return True, "ok", candidate_resolved
+    if candidate_resolved.name == "codex":
+        return True, "ok_name_only", candidate_resolved
+    return False, "real_codex_version_unrecognized", candidate_resolved
+
+
+def _iter_real_codex_candidate_paths(preferred: str, wrapper_path: Path) -> list[tuple[str, Path]]:
+    candidates: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+
+    def add(source: str, value: str | Path | None) -> None:
+        if not value:
+            return
+        candidate = Path(value).expanduser()
+        try:
+            key = str(candidate.resolve(strict=False))
+        except Exception:
+            key = str(candidate)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append((source, candidate))
+
+    add("manifest", preferred)
+    add("env_CODEEPSEEDEX_REAL_CODEX", os.environ.get("CODEEPSEEDEX_REAL_CODEX"))
+
+    for item in os.environ.get("PATH", "").split(os.pathsep):
+        if item:
+            add("PATH", Path(item) / "codex")
+
+    home = Path.home()
+    add("home_npm_global", home / ".npm-global" / "bin" / "codex")
+    add("home_local_share_npm", home / ".local" / "share" / "npm" / "bin" / "codex")
+    add("home_node_modules", home / ".node_modules" / "bin" / "codex")
+
+    nvm_root = home / ".nvm" / "versions" / "node"
+    if nvm_root.exists():
+        for candidate in sorted(nvm_root.glob("*/bin/codex"), reverse=True):
+            add("home_nvm", candidate)
+
+    add("usr_local_bin", Path("/usr/local/bin/codex"))
+    add("usr_bin", Path("/usr/bin/codex"))
+    return candidates
+
+
+def _find_safe_real_codex_executable(preferred: str, wrapper_path: Path) -> tuple[Path | None, dict[str, object]]:
+    attempts: list[dict[str, object]] = []
+    for source, candidate in _iter_real_codex_candidate_paths(preferred, wrapper_path):
+        ok, reason, resolved = _is_safe_real_codex_executable(candidate, wrapper_path)
+        attempts.append({
+            "source": source,
+            "candidate": str(candidate),
+            "resolved": str(resolved),
+            "ok": ok,
+            "reason": reason,
+        })
+        if ok:
+            return resolved, {
+                "source": source,
+                "attempts": attempts,
+                "recovered": source != "manifest" or str(resolved) != str(Path(preferred).expanduser()),
+            }
+    return None, {"source": None, "attempts": attempts, "recovered": False}
+
 def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict[str, object]:
     manifest_path = _manifest_path_from_args(args)
     values = _read_manifest_exports(manifest_path)
@@ -1436,23 +1548,25 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
         result.update({"status": "error", "error": "manifest_missing_REAL_CODEX"})
         return result
 
-    real_codex_path = Path(real_codex).expanduser()
-    if not real_codex_path.exists():
-        result.update({"status": "error", "error": "real_codex_missing"})
-        return result
+    real_resolved, resolution = _find_safe_real_codex_executable(real_codex, wrapper_path)
+    result["real_codex_resolution"] = resolution
+    result["real_codex_recovered"] = bool(resolution.get("recovered"))
 
-    try:
-        wrapper_resolved = wrapper_path.resolve(strict=False)
-        real_resolved = real_codex_path.resolve(strict=False)
-    except Exception:
-        wrapper_resolved = wrapper_path
-        real_resolved = real_codex_path
-
-    if real_resolved == wrapper_resolved or _is_codeepseedex_codex_wrapper_path(real_codex_path):
+    if real_resolved is None:
+        manifest_attempt = next(
+            (
+                item for item in resolution.get("attempts", [])
+                if isinstance(item, dict) and item.get("source") == "manifest"
+            ),
+            {},
+        )
+        error = str(manifest_attempt.get("reason") or "real_codex_missing")
+        if error in {"real_codex_points_to_wrapper_itself", "real_codex_points_to_tmp_codeepseedex_wrapper"}:
+            error = "real_codex_points_to_codeepseedex_wrapper"
         result.update({
             "status": "error",
-            "error": "real_codex_points_to_codeepseedex_wrapper",
-            "hint": "Refusing to refresh a wrapper whose REAL_CODEX points to another CoDeepSeedeX wrapper. Reinstall with a clean PATH or set CODEEPSEEDEX_REAL_CODEX to the real Codex binary.",
+            "error": error,
+            "hint": "Refusing to refresh a wrapper without a safe real Codex binary. Install Codex CLI, clean PATH, or set CODEEPSEEDEX_REAL_CODEX to the real Codex binary.",
         })
         return result
 
