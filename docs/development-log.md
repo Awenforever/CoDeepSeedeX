@@ -1,3 +1,27 @@
+## p2.19a19-real-home-profile-model-consistency — Real-HOME split-profile model consistency
+
+Date: 2026-06-07
+
+Scope:
+
+- Fix managed Codex split-profile model synchronization after model API configuration changes.
+- `dsproxy config set-model` and the deprecated compatibility alias `dsproxy config set-api-key` now sync the selected upstream model to all managed Codex profiles by default (`deepseek` and `deepseek-thinking`), unless the user explicitly passes `--profile`.
+- Custom-provider activation and guided wizard configuration sync managed Codex profile models when operating on the default real-user env file.
+- `profile repair` now honors an explicit `DEEPSEEK_PROXY_THINKING_MODEL` / `DEEPSEEK_THINKING_MODEL` override for `deepseek-thinking`; otherwise both managed profiles use `DEEPSEEK_PROXY_MODEL`.
+- Keep provider blocks as local dsproxy providers (`deepseek-proxy` and `deepseek-thinking-proxy`); the upstream provider/base URL/model remain dsproxy env concerns.
+- Repair the observed real-HOME drift where env selected `custom/deepseek-v4-flash-ascend` while `~/.codex/deepseek-thinking.config.toml` still contained `glm-5.1`.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused config/profile/docs/version tests
+- full test suite
+- real-HOME profile repair and consistency check: both split profiles match the env-selected model unless an explicit thinking model is configured
+
 ## p2.19a17-wrapper-path-hygiene — Codex wrapper path hygiene
 
 Date: 2026-06-07

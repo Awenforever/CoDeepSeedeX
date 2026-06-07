@@ -1065,6 +1065,56 @@ def _patch_codex_profile_value(config_path: Path, profile_name: str, key: str, v
     return changed or source != "split_profile_file"
 
 
+
+
+def _sync_managed_codex_profile_models_from_env(
+    *,
+    env_file: Path,
+    codex_path: Path,
+    profile_value: object = "__managed__",
+) -> dict[str, object]:
+    env_values = _read_env_exports(env_file)
+    target_profiles = _managed_profile_targets(profile_value)
+    profile_results: list[dict[str, object]] = []
+    updated_profiles: list[str] = []
+
+    for profile_name in target_profiles:
+        model_value, model_source = _managed_profile_env_model_for_profile(profile_name, env_values)
+        if not model_value:
+            profile_results.append({
+                "profile": profile_name,
+                "status": "skipped",
+                "reason": "env_model_missing",
+                "model_source": model_source,
+                "profile_config": str(codex_profile_config_path(profile_name, codex_path)),
+            })
+            continue
+        patched = _patch_codex_profile_value(codex_path, profile_name, "model", model_value)
+        if patched:
+            updated_profiles.append(profile_name)
+        profile_results.append({
+            "profile": profile_name,
+            "status": "ok",
+            "model": model_value,
+            "model_source": model_source,
+            "profile_config": str(codex_profile_config_path(profile_name, codex_path)),
+            "model_patched": patched,
+        })
+
+    return {
+        "status": "ok" if any(item.get("status") == "ok" for item in profile_results) else "skipped",
+        "env_file": str(env_file),
+        "codex_config": str(codex_path),
+        "codex_profile": str(profile_value or "__managed__"),
+        "target_profiles": target_profiles,
+        "updated_profiles": updated_profiles,
+        "codex_profiles": target_profiles,
+        "codex_profile_results": profile_results,
+        "codex_profile_patched": bool(updated_profiles),
+        "codex_profile_config": str(codex_profile_config_path(target_profiles[0], codex_path)) if target_profiles else None,
+        "codex_profile_configs": [str(codex_profile_config_path(name, codex_path)) for name in target_profiles],
+    }
+
 def _parse_simple_toml_sections_from_text(text: str) -> dict[str, dict[str, str]]:
     sections: dict[str, dict[str, str]] = {}
     current: str | None = None
@@ -1167,22 +1217,33 @@ def _int_or_zero(value: object) -> int:
         return 0
 
 
-def _profile_model_contract(profile_section: dict[str, str], env_values: dict[str, str]) -> dict[str, object]:
-    codex_model = profile_section.get("model")
+def _managed_profile_env_model_for_profile(profile_name: str | None, env_values: dict[str, str]) -> tuple[str | None, str]:
     env_model = env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL")
+    if profile_name == "deepseek-thinking":
+        thinking_model = env_values.get("DEEPSEEK_PROXY_THINKING_MODEL") or env_values.get("DEEPSEEK_THINKING_MODEL")
+        if thinking_model:
+            return thinking_model, "dsproxy_env.DEEPSEEK_PROXY_THINKING_MODEL"
+    if env_model:
+        return env_model, "dsproxy_env.DEEPSEEK_PROXY_MODEL"
+    return None, "unknown"
+
+
+def _profile_model_contract(profile_section: dict[str, str], env_values: dict[str, str], *, profile_name: str | None = None) -> dict[str, object]:
+    codex_model = profile_section.get("model")
+    env_model, env_model_source = _managed_profile_env_model_for_profile(profile_name, env_values)
     force_model_enabled = _env_value_truthy(
         env_values.get("DEEPSEEK_PROXY_FORCE_MODEL", os.environ.get("DEEPSEEK_PROXY_FORCE_MODEL"))
     )
 
     if force_model_enabled and env_model:
         effective_model = env_model
-        source = "dsproxy_env.DEEPSEEK_PROXY_MODEL_forced"
+        source = f"{env_model_source}_forced"
     elif codex_model:
         effective_model = codex_model
         source = "codex_profile.model"
     elif env_model:
         effective_model = env_model
-        source = "dsproxy_env.DEEPSEEK_PROXY_MODEL"
+        source = env_model_source
     else:
         effective_model = "unknown"
         source = "unknown"
@@ -1904,7 +1965,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         if isinstance(item, dict) and item.get("profile") == profile_name
     ]
 
-    model_contract = _profile_model_contract(profile_section, env_values)
+    model_contract = _profile_model_contract(profile_section, env_values, profile_name=profile_name)
     model_contract["model_provider"] = provider_name
     model_contract["base_url"] = provider_section.get("base_url")
     context_contract = _profile_context_contract(
@@ -2072,7 +2133,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         before_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
         if profile_name in profile_writes:
             tmp_profile_section = before_profile_section
-            model_info = _profile_model_contract(tmp_profile_section, env_values)
+            model_info = _profile_model_contract(tmp_profile_section, env_values, profile_name=profile_name)
             model_info["model_provider"] = before_provider_name
         else:
             model_info = before_payload.get("model", {}) if isinstance(before_payload, dict) else {}
@@ -5043,7 +5104,7 @@ def _apply_custom_provider_registry_entry(
     values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
     _write_env_exports(env_file, values)
 
-    return {
+    output = {
         "status": "ok",
         "env_file": str(env_file),
         "registry_path": str(path),
@@ -5056,6 +5117,19 @@ def _apply_custom_provider_registry_entry(
         "api_key_configured": bool(entry.get("api_key")),
         "api_key_preview": _mask_api_key(str(entry.get("api_key") or "")),
     }
+    if env_file.expanduser() == default_env_file_path():
+        output["codex_profile_sync"] = _sync_managed_codex_profile_models_from_env(
+            env_file=env_file,
+            codex_path=default_codex_config_path(),
+            profile_value="__managed__",
+        )
+    else:
+        output["codex_profile_sync"] = {
+            "status": "skipped",
+            "reason": "non_default_env_file",
+            "env_file": str(env_file),
+        }
+    return output
 
 
 def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) -> int:
@@ -5958,18 +6032,20 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         _write_env_exports(env_file, values)
 
         codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
-        patched = _patch_codex_profile_value(codex_path, getattr(args, "profile", "deepseek-thinking"), "model", model_value)
+        profile_sync = _sync_managed_codex_profile_models_from_env(
+            env_file=env_file,
+            codex_path=codex_path,
+            profile_value=getattr(args, "profile", "__managed__"),
+        )
 
-        print(json.dumps({
+        output = {
             "status": "ok",
             "env_file": str(env_file),
             "model": model_value,
-                        "codex_config": str(codex_path),
-            "codex_profile_config": str(codex_profile_config_path(getattr(args, "profile", "deepseek-thinking"), codex_path)),
-            "codex_profile": getattr(args, "profile", "deepseek-thinking"),
-            "codex_profile_patched": patched,
             "post_config_apply": _post_config_apply(),
-        }, ensure_ascii=False, indent=2))
+        }
+        output.update(profile_sync)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
 
     resolved_model = model_value or str(provider_config.get("model") or "").strip()
@@ -6039,7 +6115,11 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
     _write_env_exports(env_file, values)
 
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
-    patched = _patch_codex_profile_value(codex_path, getattr(args, "profile", "deepseek-thinking"), "model", resolved_model)
+    profile_sync = _sync_managed_codex_profile_models_from_env(
+        env_file=env_file,
+        codex_path=codex_path,
+        profile_value=getattr(args, "profile", "__managed__"),
+    )
 
     output = {
         "status": "ok",
@@ -6050,13 +6130,10 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         "base_url": base_url_value,
         "model": resolved_model,
         "validation": validation_result,
-                "codex_config": str(codex_path),
-        "codex_profile_config": str(codex_profile_config_path(getattr(args, "profile", "deepseek-thinking"), codex_path)),
-        "codex_profile": getattr(args, "profile", "deepseek-thinking"),
-        "codex_profile_patched": patched,
         "preferred_command": f"dsproxy config set-model {resolved_model} --provider {provider}",
         "post_config_apply": _post_config_apply(),
     }
+    output.update(profile_sync)
     if legacy_command:
         output["deprecated_command"] = "set-api-key"
         output["compatibility_note"] = "dsproxy config set-api-key remains supported as a compatibility alias; prefer dsproxy config set-model for model provider, model, and API key setup."
@@ -6071,6 +6148,18 @@ def _config_wizard(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     result = _run_guided_config(env_file, non_interactive=bool(getattr(args, "non_interactive", False)), emit_json=False)
     if result.get("configured"):
+        if env_file.expanduser() == default_env_file_path():
+            result["codex_profile_sync"] = _sync_managed_codex_profile_models_from_env(
+                env_file=env_file,
+                codex_path=default_codex_config_path(),
+                profile_value="__managed__",
+            )
+        else:
+            result["codex_profile_sync"] = {
+                "status": "skipped",
+                "reason": "non_default_env_file",
+                "env_file": str(env_file),
+            }
         result["post_config_apply"] = _post_config_apply()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -7792,7 +7881,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
     config_set_model.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_model.add_argument("--codex-config")
-    config_set_model.add_argument("--profile", default="deepseek-thinking")
+    config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek and deepseek-thinking")
     config_set_model.set_defaults(func=_config)
 
     config_custom_provider = config_sub.add_parser("custom-provider", help="manage named custom OpenAI-compatible providers")

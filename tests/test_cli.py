@@ -4213,3 +4213,76 @@ def test_p219a17_refresh_wrapper_still_fails_closed_when_no_safe_real_codex(tmp_
     assert result["status"] == "error"
     assert result["error"] == "real_codex_points_to_codeepseedex_wrapper"
     assert "safe real Codex binary" in result["hint"]
+
+def test_p219a19_config_set_custom_model_syncs_all_managed_split_profiles(tmp_path, monkeypatch, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    _write_split_codex_profile(
+        config_path,
+        "deepseek",
+        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\n",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
+        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\n",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+
+    assert main([
+        "config",
+        "set-model",
+        "custom-openai-test-model",
+        "--provider",
+        "custom",
+        "--base-url",
+        "https://example.invalid/v1",
+        "--value",
+        "sk-test",
+        "--skip-validation",
+        "--env-file",
+        str(env_file),
+        "--codex-config",
+        str(config_path),
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["model_provider"] == "custom"
+    assert result["target_profiles"] == ["deepseek", "deepseek-thinking"]
+    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    assert result["codex_profile_patched"] is True
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+
+
+def test_p219a19_profile_repair_honors_explicit_thinking_model_override(tmp_path, monkeypatch, capsys):
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
+        "export DEEPSEEK_PROXY_THINKING_MODEL=custom-openai-thinking-test-model\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        encoding="utf-8",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek",
+        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
+        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+
+    assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    stable = next(item for item in result["profile_results"] if item["profile"] == "deepseek")
+    thinking = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
+    assert stable["codex_model_after"] == "custom-openai-test-model"
+    assert thinking["codex_model_after"] == "custom-openai-thinking-test-model"
