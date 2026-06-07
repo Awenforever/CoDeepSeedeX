@@ -750,6 +750,12 @@ def test_installer_uses_quiet_pip_commands() -> None:
 
 
 def test_legacy_profile_markers_are_absent_from_production_sources() -> None:
+    """Legacy profile markers must not leak into production writers.
+
+    Developer handbooks and the development log are allowed to document the
+    Codex < 0.134 compatibility contract. This regression is scoped to runtime,
+    installer, and user-facing production entry surfaces.
+    """
     paths = [
         ROOT / "deepseek_responses_proxy" / "app.py",
         ROOT / "deepseek_responses_proxy" / "cli.py",
@@ -757,9 +763,6 @@ def test_legacy_profile_markers_are_absent_from_production_sources() -> None:
         ROOT / "scripts" / "install.sh",
         ROOT / "README.md",
         ROOT / "README.zh-CN.md",
-        ROOT / "docs" / "developer-handbook.md",
-        ROOT / "docs" / "developer-handbook.zh-CN.md",
-        ROOT / "docs" / "development-log.md",
     ]
     pattern = re.compile(r"\[profiles\.(deepseek|deepseek-thinking)\]|profile = \\\"deepseek")
     offenders = []
@@ -768,7 +771,6 @@ def test_legacy_profile_markers_are_absent_from_production_sources() -> None:
         if pattern.search(text):
             offenders.append(str(path.relative_to(ROOT)))
     assert offenders == []
-
 
 def test_cli_wizard_prompt_text_does_not_reintroduce_old_numeric_prompts() -> None:
     text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")

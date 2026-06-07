@@ -29,26 +29,55 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     en_current = en.split("## 3. Key file map", 1)[0]
     zh_current = zh.split("## 3. 关键文件地图", 1)[0]
 
+    # Current public Release contract after the p2.19a10 Release refresh.
     assert "Current public Release: `v0.4.3-alpha`" in en_current
-    assert "Current public Release kind: pre-release" in en_current
-    assert "Current public Release commit: resolved from `v0.4.3-alpha` tag after publication" in en_current
-    assert "GitHub Latest ordinary Release: `v0.4.0-alpha`" in en_current
-    assert "Current internal development checkpoint: `p2.19a10-guided-installer-contextual-hints`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.19a10-guided-installer-contextual-hints`" in en_current
+    assert "Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`" in en_current
+    assert "Current public Release commit: `01d6cee`" in en_current
+    assert "GitHub Latest ordinary Release: `v0.4.3-alpha`" in en_current
+    assert "GitHub Release state: `isDraft=false`, `isPrerelease=false`" in en_current
+    assert "Public Release assets: `bootstrap.sh`, `install.sh`" in en_current
+    assert "`bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in en_current
+    assert "`install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`" in en_current
+    assert "Current internal development checkpoint: `p2.19a11-docs-release-handoff-sync`" in en_current
+    assert "Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`" in en_current
-    assert "  - `v0.4.3-alpha = resolved by release tag`" in en_current
+    assert "  - `v0.4.3-alpha = 01d6cee`" in en_current
     assert "  - `v0.3.9-alpha = 82a4428`" in en_current
 
     assert "当前公开Release：`v0.4.3-alpha`" in zh_current
-    assert "当前公开Release类型：pre-release" in zh_current
-    assert "当前公开Release提交：发布后由`v0.4.3-alpha` tag解析" in zh_current
-    assert "GitHub Latest普通Release：`v0.4.0-alpha`" in zh_current
-    assert "当前内部开发检查点：`p2.19a10-guided-installer-contextual-hints`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.19a10-guided-installer-contextual-hints`" in zh_current
+    assert "当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`" in zh_current
+    assert "当前公开Release提交：`01d6cee`" in zh_current
+    assert "GitHub Latest普通Release：`v0.4.3-alpha`" in zh_current
+    assert "GitHub Release状态：`isDraft=false`，`isPrerelease=false`" in zh_current
+    assert "Release资产：`bootstrap.sh`，`install.sh`" in zh_current
+    assert "`bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in zh_current
+    assert "`install.sh` sha256：`3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`" in zh_current
+    assert "当前内部开发检查点：`p2.19a11-docs-release-handoff-sync`" in zh_current
+    assert "当前公开Release包含的最新运行时检查点：`p2.19a10-guided-installer-contextual-hints`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.19a11-docs-release-handoff-sync`" in zh_current
     assert "当前公开Release note同步检查点：`p2.19a10-guided-installer-contextual-hints`" in zh_current
-    assert "  - `v0.4.3-alpha = resolved by release tag`" in zh_current
+    assert "  - `v0.4.3-alpha = 01d6cee`" in zh_current
     assert "  - `v0.3.9-alpha = 82a4428`" in zh_current
-    assert "ab680ee" not in zh_current
+
+    # Removed stale contract assertions from the old pre-release/old-Latest period.
+    stale_markers = [
+        "Current public Release kind: pre-release",
+        "Current public Release commit: resolved from `v0.4.3-alpha` tag after publication",
+        "GitHub Latest ordinary Release: `v0.4.0-alpha`",
+        "GitHub Release flags: `isDraft=false`, `isPrerelease=true`",
+        "  - `v0.4.3-alpha = resolved by release tag`",
+        "当前公开Release类型：pre-release",
+        "当前公开Release提交：发布后由`v0.4.3-alpha` tag解析",
+        "GitHub Latest普通Release：`v0.4.0-alpha`",
+        "GitHub Release标志：`isDraft=false`，`isPrerelease=true`",
+        "  - `v0.4.3-alpha = resolved by release tag`",
+        "ab680ee",
+    ]
+    for stale in stale_markers:
+        assert stale not in en_current
+        assert stale not in zh_current
+
 def test_tracked_release_note_document_is_not_maintained() -> None:
     assert not (ROOT / "docs" / "release-notes-v0.3.9-alpha.md").exists()
     assert not (ROOT / "docs" / "release-notes-v0.4.0-alpha.md").exists()

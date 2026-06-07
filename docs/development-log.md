@@ -1,3 +1,66 @@
+## p2.19a11-docs-release-handoff-sync — Documentation release handoff sync
+
+Date: 2026-06-07
+
+Scope:
+
+- Documentation-only closeout after the `v0.4.3-alpha` Release refresh to `01d6cee`.
+- Rewrite `docs/developer-handbook.md` and `docs/developer-handbook.zh-CN.md` into current handoff manuals rather than long historical archives.
+- Remove stale current-state claims that still described `v0.4.3-alpha` as a pre-release or described `v0.4.0-alpha` as Latest.
+- Record the current trusted state: `master=origin/master=01d6cee`, `v0.4.3-alpha=01d6cee`, GitHub Release non-draft and non-prerelease, Latest API returns `v0.4.3-alpha`.
+- Record Release asset digests: `bootstrap.sh` sha256 `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`; `install.sh` sha256 `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`.
+- Keep detailed historical chronology in this `docs/development-log.md` file.
+- Do not refresh Release assets in this documentation node.
+
+Validation target:
+
+- `git diff --check`
+- `python -m py_compile deepseek_responses_proxy/app.py`
+- focused documentation/version tests
+- full tests
+
+## v0.4.3-alpha Release refresh to p2.19a10
+
+Date: 2026-06-07
+
+Scope:
+
+- Move the public `v0.4.3-alpha` Release/tag to `01d6cee` after p2.19a10 VM real-home validation.
+- Preserve GitHub Release title `CoDeepSeedeX v0.4.3-alpha`.
+- Keep GitHub Release as non-draft and non-prerelease, making it the current Latest ordinary Release.
+- Re-upload Release assets `bootstrap.sh` and `install.sh`.
+- Write public Release notes from a temporary `/tmp` file only; no tracked per-release note file is added under `docs/`.
+
+Final state:
+
+- `master = origin/master = 01d6cee`.
+- Public tag `v0.4.3-alpha = 01d6cee`.
+- Internal checkpoint included in the Release: `p2.19a10-guided-installer-contextual-hints = 01d6cee`.
+- GitHub Release `CoDeepSeedeX v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
+- GitHub Latest API returns `v0.4.3-alpha`.
+- Release assets are exactly `bootstrap.sh` and `install.sh`.
+- Asset digests:
+  - `bootstrap.sh` sha256 `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
+  - `install.sh` sha256 `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
+
+Release-note coverage:
+
+- Guided installer contextual hints.
+- Custom OpenAI-compatible provider registry, multiple providers, multiple models, and active-model switching.
+- Custom provider validation using configured OpenAI-compatible `/models` endpoint.
+- Model input/API-key pollution guards.
+- Codex version-aware legacy/split profile layout.
+- Codex wrapper real-binary resolution and recursive-wrapper prevention.
+- Legacy profile status/context-window source consistency.
+- API-key redaction and backup behavior.
+- VM real-home validation and local full-suite validation.
+
+Validation evidence before Release:
+
+- Local full test suite passed: `629 passed, 1 skipped`.
+- VM real-home validation passed for custom provider configuration, Codex wrapper execution, legacy Codex profile layout, context-window profile-source consistency, guided-hint contamination checks, and absence of `/tmp/codeepseedex-*` in the installed wrapper.
+
+
 ## p2.19a10-guided-installer-contextual-hints — Guided installer contextual hints
 
 Date: 2026-06-07
