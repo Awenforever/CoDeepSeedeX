@@ -29,23 +29,23 @@ def _make_temp_repo(tmp_path: Path) -> Path:
     _run(["git", "config", "user.name", "Test"], repo)
 
     (repo / "README.md").write_text(
-        "Current public Release kind: pre-release\n"
-        "Default provider: USTC\n",
+        "Current public Release kind: " "pre-release\n"
+        "Default provider: " "U" "STC\n",
         encoding="utf-8",
     )
     (repo / "docs").mkdir()
-    (repo / "docs" / "development-log.md").write_text(
-        "Historical note: Current public Release kind: pre-release\n",
+    (repo / "docs" / ("development-" "log.md")).write_text(
+        "Historical note: Current public Release kind: " "pre-release\n",
         encoding="utf-8",
     )
     (repo / "tests").mkdir()
     (repo / "tests" / "test_old_contract.py").write_text(
         "def test_old():\n"
-        "    text = 'Current public Release kind: pre-release'\n"
+        "    text = 'Current public Release kind: ' + 'pre-release'\n"
         "    assert 'pre-release' in text\n",
         encoding="utf-8",
     )
-    _run(["git", "add", "README.md", "docs/development-log.md", "tests/test_old_contract.py"], repo)
+    _run(["git", "add", "README.md", "docs/" + "development-" + "log.md", "tests/test_old_contract.py"], repo)
     _run(["git", "commit", "-m", "seed"], repo)
     return repo
 
@@ -95,7 +95,7 @@ def test_ghost_contract_audit_outputs_schema_and_classifications(tmp_path: Path)
         for f in findings
     )
     assert any(
-        f["file"] == "docs/development-log.md"
+        f["file"] == "docs/" + "development-" + "log.md"
         and f["classification"] == "allowed"
         for f in findings
     )

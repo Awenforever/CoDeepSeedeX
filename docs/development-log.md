@@ -1,3 +1,25 @@
+## p2.19a14-test-contract-pruning — Stale test contract pruning
+
+Date: 2026-06-07
+
+Scope:
+
+- Refine the maintained ghost audit tool so tests are not blindly classified as `must_fix` merely because they contain current-contract, negative-guard, compatibility, or audit-fixture strings.
+- Keep true positive stale assertions as `must_fix`, but classify deprecated provider aliases and legacy threshold assertions as `review` for p2.19a15/p2.19a16.
+- Split stale Release strings in negative guards and audit fixtures so repository self-audits do not treat those tests as live stale contracts.
+- Keep developer handbooks and development-log tests intentional; avoid treating maintainer docs as production runtime surfaces.
+- Narrow Release asset entrypoint tests to user-facing install/usage documents rather than maintainer handoff documents.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- `python -m py_compile` for touched Python files
+- maintained ghost audit smoke with `must_fix=0`
+- focused test-contract/audit/docs/version tests
+- full test suite
+
 ## p2.19a13-user-facing-release-state-cleanup — User-facing ghost surface cleanup
 
 Date: 2026-06-07

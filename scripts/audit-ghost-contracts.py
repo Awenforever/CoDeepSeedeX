@@ -30,7 +30,7 @@ from typing import Iterable
 
 CURRENT_PUBLIC_TAG = "v0.4.3-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
-CURRENT_INTERNAL_TAG = "p2.19a13-user-facing-release-state-cleanup"
+CURRENT_INTERNAL_TAG = "p2.19a14-test-contract-pruning"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
 
 TSV_FIELDS = [
@@ -190,18 +190,29 @@ def bucket_for(rel: str) -> str:
 
 def is_negative_or_compat_test(line: str) -> bool:
     lower = line.lower()
+    stripped = lower.strip()
     return (
-        "not in" in lower
+        stripped.startswith("assert not ")
+        or "not in" in lower
+        or "forbidden =" in lower
         or "offenders == []" in lower
+        or "not re.search" in lower
         or "deprecated" in lower
         or "legacy" in lower
         or "compat" in lower
         or "allowed" in lower
     )
 
-
 def classify(bucket: str, raw_category: str, rel: str, line: str) -> tuple[str, str, str]:
-    """Return classification, severity, allow_note."""
+    """Return classification, severity, allow_note.
+
+    The audit distinguishes stale live contracts from intentional negative
+    guards, compatibility tests, and audit fixtures. It must not force
+    implementation or documentation to regress just because a test documents or
+    forbids an old state.
+    """
+    lower = line.lower()
+
     if bucket == "audit_tool":
         return "allowed", "low", "audit tool pattern definitions intentionally contain stale-sensitive markers"
 
@@ -214,10 +225,60 @@ def classify(bucket: str, raw_category: str, rel: str, line: str) -> tuple[str, 
         return "allowed", "low", "maintainer docs may document compatibility and history"
 
     if bucket == "tests":
-        if raw_category in {"stale_test_assertion", "overbroad_test_scope", "assertion_contract_review"}:
-            return "must_fix", "high", "review assertion direction and scan scope"
-        if raw_category == "site_specific_default" and not is_negative_or_compat_test(line):
-            return "review", "medium", "site-specific fixture may need generic example replacement"
+        # Audit-tool tests deliberately seed temporary repos with stale markers
+        # to verify detection. The source fixture itself is not a live product
+        # contract.
+        if rel == "tests/test_ghost_contract_audit_script.py":
+            return "allowed", "low", "audit fixture test intentionally contains stale-sensitive sample strings"
+
+        # Documentation-readiness tests are maintainer-doc tests by design. They
+        # can read handbooks and development-log, but should not require old
+        # release states as positive live contracts.
+        if raw_category == "overbroad_test_scope":
+            if rel in {"tests/test_docs_release_readiness.py", "tests/test_doc_command_safety.py"}:
+                return "allowed", "low", "maintainer-doc test intentionally reads docs or history"
+            return "review", "medium", "review scan scope; production-source scans should not include maintainer docs/history"
+
+        if raw_category in {"stale_test_assertion", "stale_release_state"}:
+            if is_negative_or_compat_test(line):
+                return "allowed", "low", "negative guard against stale release state"
+            return "must_fix", "high", "positive stale release assertion still requires old behavior"
+
+        if raw_category == "site_specific_default":
+            if is_negative_or_compat_test(line):
+                return "allowed", "low", "negative guard against site-specific defaults"
+            if "exampleprovider" in lower or "api.example" in lower or "example-chat-model" in lower:
+                return "allowed", "low", "generic custom-provider fixture assertion"
+            return "must_fix", "high", "positive site-specific provider assertion still requires old behavior"
+
+        if raw_category == "retired_doc_surface":
+            if is_negative_or_compat_test(line):
+                return "allowed", "low", "negative guard against retired documentation"
+            return "must_fix", "high", "positive assertion still expects retired documentation"
+
+        if raw_category == "assertion_contract_review":
+            if is_negative_or_compat_test(line):
+                return "allowed", "low", "negative or compatibility assertion"
+            if "isprerelease=false" in lower or "ordinary github latest" in lower or "pinned current latest release tag" in lower:
+                return "allowed", "low", "current release contract assertion"
+            if "current public release kind:" in lower and "pre-release" in lower:
+                return "must_fix", "high", "positive stale release assertion"
+            if "api.llm.ustc.edu.cn" in lower or "default provider: ustc" in lower:
+                return "must_fix", "high", "positive site-specific provider assertion"
+            if "pre-release" in lower and "result.stdout" not in lower and "upgrade" not in lower:
+                return "must_fix", "high", "positive stale release assertion"
+            if "set-api-key" in lower or "glm" in lower or "qwen-us" in lower or "brave" in lower:
+                return "review", "medium", "deprecated provider/command boundary belongs to p2.19a15"
+            if "750000" in lower or "0.75" in lower:
+                return "review", "medium", "legacy threshold compatibility belongs to p2.19a16"
+            return "review", "medium", "contract-sensitive test assertion requires manual review"
+
+        if raw_category == "deprecated_provider_surface":
+            return "review", "medium", "deprecated provider/command boundary belongs to p2.19a15"
+
+        if raw_category == "old_effort_or_threshold":
+            return "review", "medium", "legacy threshold compatibility belongs to p2.19a16"
+
         return "review", "medium", "test candidate; keep only if it asserts current or negative compatibility behavior"
 
     if bucket in {"runtime_source", "installer_scripts", "user_docs"}:
@@ -239,7 +300,6 @@ def classify(bucket: str, raw_category: str, rel: str, line: str) -> tuple[str, 
         return "must_fix", "high", "global hygiene issue"
 
     return "review", "medium", "manual review required"
-
 
 def make_finding(
     *,

@@ -35,10 +35,11 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- 当前内部开发检查点：`p2.19a13-user-facing-release-state-cleanup`
+- 当前内部开发检查点：`p2.19a14-test-contract-pruning`
 - 当前公开Release包含的最新运行时检查点：`p2.19a10-guided-installer-contextual-hints`
 - 最新闭合文档同步检查点：`p2.19a11-docs-release-handoff-sync`
-- 最新闭合幽灵审计工具检查点：`p2.19a13-user-facing-release-state-cleanup`
+- 最新闭合幽灵审计工具检查点：`p2.19a14-test-contract-pruning`
+- 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
 - 当前公开Release note同步检查点：`p2.19a10-guided-installer-contextual-hints`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
@@ -311,7 +312,7 @@ git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
 git rev-parse --short v0.4.3-alpha^{}
-git rev-parse --short p2.19a13-user-facing-release-state-cleanup^{} || true
+git rev-parse --short p2.19a14-test-contract-pruning^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true

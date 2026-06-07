@@ -46,11 +46,11 @@ def test_release_bootstrap_workflow_validates_assets_without_auto_release() -> N
 
 
 def test_docs_prefer_release_latest_bootstrap_with_latest_tag_fallbacks() -> None:
-    for rel in ["README.md", "README.zh-CN.md", "TROUBLESHOOTING.md", "docs/developer-handbook.md", "docs/developer-handbook.zh-CN.md"]:
+    for rel in ["README.md", "README.zh-CN.md", "TROUBLESHOOTING.md"]:
         data = text(rel)
         assert RELEASE_BOOTSTRAP in data
 
-    for rel in ["README.md", "README.zh-CN.md", "TROUBLESHOOTING.md", "docs/developer-handbook.md", "docs/developer-handbook.zh-CN.md"]:
+    for rel in ["README.md", "README.zh-CN.md", "TROUBLESHOOTING.md"]:
         data = text(rel)
         assert "releases/latest" in data
         assert "refs/tags/${tag}/bootstrap.sh" in data or "@${tag}/bootstrap.sh" in data
