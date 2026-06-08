@@ -997,7 +997,9 @@ def _canonical_cli_reasoning_effort(value: object) -> str | None:
 
 
 CODEX_MODEL_REASONING_EFFORT_ALLOWED = {"none", "minimal", "low", "medium", "high", "xhigh"}
-CODEEPSEEDEX_MANAGED_CODEX_PROFILES = ("deepseek", "deepseek-thinking")
+CODEEPSEEDEX_LEGACY_CODEX_PROFILES = ("deepseek",)
+CODEEPSEEDEX_MANAGED_CODEX_PROFILES = ("deepseek-thinking",)
+CODEEPSEEDEX_PRIMARY_CODEX_PROFILE = "deepseek-thinking"
 CODEEPSEEDEX_PROFILE_CONTRACT_VERSION = 2
 
 
@@ -1747,9 +1749,8 @@ codex_requires_legacy_profile_tables() {
 }
 
 repair_codeepseedex_legacy_managed_profiles() {
-  local stable_port="${DEEPSEEK_PROXY_PORT:-8000}"
   local thinking_port="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-  local model="${DEEPSEEK_PROXY_MODEL:-deepseek-v4-flash}"
+  local model="${DEEPSEEK_PROXY_THINKING_MODEL:-${DEEPSEEK_PROXY_MODEL:-deepseek-v4-pro}}"
   local catalog_args=()
   local catalog=""
 
@@ -1760,16 +1761,6 @@ repair_codeepseedex_legacy_managed_profiles() {
   if [ -n "$catalog" ] && [ -f "$catalog" ]; then
     catalog_args=(--model-catalog-json "$catalog")
   fi
-
-  "$DSPROXY" install-codex-profile \
-    --name deepseek \
-    --provider-name deepseek-proxy \
-    --base-url "http://127.0.0.1:${stable_port}/v1" \
-    --model "$model" \
-    --reasoning-effort high \
-    --profile-layout legacy_profile_tables \
-    --no-backup \
-    "${catalog_args[@]}" >/dev/null
 
   "$DSPROXY" install-codex-profile \
     --name deepseek-thinking \
@@ -1787,7 +1778,11 @@ repair_codeepseedex_managed_profile_contract() {
   local status_json=""
 
   case "$profile_name" in
-    deepseek|deepseek-thinking)
+    deepseek-thinking)
+      ;;
+    deepseek)
+      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      return 2
       ;;
     *)
       return 0
@@ -1812,13 +1807,13 @@ repair_codeepseedex_managed_profile_contract() {
     fi
 
     if ! repair_codeepseedex_legacy_managed_profiles; then
-      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.\n' >&2
+      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profile before launch.\n' >&2
       printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "$DSPROXY" "$profile_name" >&2
       return 1
     fi
   else
     if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.\n' >&2
+      printf 'CoDeepSeedeX error: failed to repair managed Codex profile before launch.\n' >&2
       printf 'Run for details: %s profile repair --managed-only --json\n' "$DSPROXY" >&2
       return 1
     fi
@@ -1840,16 +1835,25 @@ repair_codeepseedex_managed_profile_contract() {
   fi
 }
 
+activate_codeepseedex_custom_provider_profile() {
+  local profile_name="$1"
+  if [ -z "$profile_name" ] || [ ! -x "$DSPROXY" ]; then
+    return 1
+  fi
+  "$DSPROXY" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1
+}
+
 start_dsproxy_profile() {
   local profile_name="$1"
   local start_args=()
   local status_args=()
 
+  if [ ! -x "$DSPROXY" ]; then
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+    return 1
+  fi
+
   case "$profile_name" in
-    deepseek)
-      start_args=(start)
-      status_args=(status)
-      ;;
     deepseek-thinking)
       start_args=(start thinking)
       status_args=(status thinking)
@@ -1859,16 +1863,40 @@ start_dsproxy_profile() {
       ;;
   esac
 
-  "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1
-  "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1
+  if ! "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1; then
+    if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
+      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "$profile_name" >&2
+      printf 'Run for details: %s %s\n' "$DSPROXY" "${start_args[*]}" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
+    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "$profile_name" >&2
+    printf 'Run for details: %s %s\n' "$DSPROXY" "${status_args[*]}" >&2
+    return 1
+  fi
 }
 
 run_codeepseedex_codex() {
   case "$profile" in
-    deepseek|deepseek-thinking)
+    deepseek)
+      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      return 2
+      ;;
+    deepseek-thinking)
       repair_codeepseedex_managed_profile_contract "$profile"
       start_dsproxy_profile "$profile"
       schedule_codeepseedex_terminal_title_refresh
+      ;;
+    "")
+      ;;
+    *)
+      if activate_codeepseedex_custom_provider_profile "$profile"; then
+        start_dsproxy_profile "deepseek-thinking"
+        schedule_codeepseedex_terminal_title_refresh
+      fi
       ;;
   esac
 
@@ -5320,13 +5348,10 @@ def _apply_custom_provider_registry_entry(
         "api_key_configured": bool(entry.get("api_key")),
         "api_key_preview": _mask_api_key(str(entry.get("api_key") or "")),
     }
-    should_sync_profile = bool(sync_profile) and (codex_config is not None or env_file.expanduser() == default_env_file_path())
+    should_sync_profile = bool(sync_profile) and (
+        codex_config is not None or env_file.expanduser() == default_env_file_path()
+    )
     if should_sync_profile:
-        output["managed_codex_profile_sync"] = _sync_managed_codex_profile_models_from_env(
-            env_file=env_file,
-            codex_path=Path(codex_config).expanduser() if codex_config else default_codex_config_path(),
-            profile_value="__managed__",
-        )
         output["provider_codex_profile_sync"] = _sync_custom_provider_codex_profile_from_entry(
             env_file,
             entry=entry,
@@ -5335,11 +5360,23 @@ def _apply_custom_provider_registry_entry(
             codex_config=codex_config,
         )
         output["codex_profile_sync"] = output["provider_codex_profile_sync"]
+        output["managed_codex_profile_sync"] = {
+            "status": "skipped",
+            "reason": "custom_provider_profiles_are_provider_backed",
+            "target_profiles": [],
+            "deprecated_legacy_profiles": list(CODEEPSEEDEX_LEGACY_CODEX_PROFILES),
+        }
     else:
         output["codex_profile_sync"] = {
             "status": "skipped",
             "reason": "non_default_env_file_without_codex_config" if codex_config is None else "profile_sync_disabled",
             "env_file": str(env_file),
+        }
+        output["managed_codex_profile_sync"] = {
+            "status": "skipped",
+            "reason": "profile_sync_disabled",
+            "target_profiles": [],
+            "deprecated_legacy_profiles": list(CODEEPSEEDEX_LEGACY_CODEX_PROFILES),
         }
     return output
 
@@ -7459,26 +7496,6 @@ def _upgrade(args: argparse.Namespace) -> int:
     if not args.skip_profile:
         commands.extend([
             (
-                "install_codex_profile_stable",
-                [
-                    sys.executable,
-                    "-m",
-                    "deepseek_responses_proxy.cli",
-                    "install-codex-profile",
-                    "--name",
-                    "deepseek",
-                    "--provider-name",
-                    "deepseek-proxy",
-                    "--base-url",
-                    "http://127.0.0.1:8000/v1",
-                    "--model",
-                    "deepseek-v4-flash",
-                    "--reasoning-effort",
-                    "high",
-                ],
-                False,
-            ),
-            (
                 "install_codex_profile_thinking",
                 [
                     sys.executable,
@@ -7504,7 +7521,6 @@ def _upgrade(args: argparse.Namespace) -> int:
         commands.extend([
             ("stop_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop"], True),
             ("stop_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop", "--thinking"], True),
-            ("start_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start"], False),
             ("start_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start", "--thinking"], False),
         ])
 
@@ -8160,7 +8176,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
     config_set_model.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_model.add_argument("--codex-config")
-    config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek and deepseek-thinking")
+    config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek-thinking")
     config_set_model.set_defaults(func=_config)
 
     config_custom_provider = config_sub.add_parser("custom-provider", help="manage named custom OpenAI-compatible providers")
@@ -8185,7 +8201,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")
-    config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek and deepseek-thinking")
+    config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek-thinking")
     config_set_effort.add_argument("--no-refresh", action="store_true", help="save configuration without refreshing running proxy processes")
     config_set_effort.set_defaults(func=_config)
 

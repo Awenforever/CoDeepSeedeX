@@ -1,12 +1,11 @@
-# Auto-start DeepSeek Responses Proxy when using Codex profiles.
+# Auto-start DeepSeek Responses Proxy when using CoDeepSeedeX Codex profiles.
 #
 # Add this function to ~/.bashrc after ~/bin is on PATH.
 #
 # Behavior:
-# - codex --profile deepseek starts stable proxy on port 8000.
-# - codex --profile deepseek-thinking starts both stable and thinking proxies.
-#   The stable proxy is started too because the account/usage skill queries both
-#   profiles by default.
+# - codex --profile deepseek-thinking starts the thinking proxy on port 8001.
+# - codex --profile <custom-provider-id> activates that configured provider and starts the thinking proxy.
+# - codex --profile deepseek is deprecated and fails closed.
 codex() {
   local selected_profile=""
   local arg
@@ -34,13 +33,11 @@ codex() {
 
   case "$selected_profile" in
     deepseek)
-      source "$HOME/.config/deepseek-responses-proxy/env"
-      dsproxy start
-      DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
+      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      return 2
       ;;
     deepseek-thinking)
       source "$HOME/.config/deepseek-responses-proxy/env"
-      dsproxy start
       dsproxy start thinking
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
       ;;

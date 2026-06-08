@@ -69,18 +69,10 @@ def test_troubleshooting_mentions_model_path_resolution() -> None:
     assert "command -v codex" in text
     assert "deepseek-thinking" in text
 
-def test_installer_passes_model_catalog_to_both_codex_profiles() -> None:
+def test_installer_passes_model_catalog_to_primary_codex_profile() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
 
-    deepseek = re.search(
-        r'install-codex-profile \\\n'
-        r'\s+--name deepseek \\\n'
-        r'(?P<body>.*?)(?=\n\n\s+run_quiet "Codex profile installed: deepseek-thinking")',
-        text,
-        re.DOTALL,
-    )
-    assert deepseek is not None
-    assert '"${MODEL_CATALOG_ARGS[@]}"' in deepseek.group("body")
+    assert 'run_quiet "Codex profile installed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile' not in text
 
     thinking = re.search(
         r'install-codex-profile \\\n'
@@ -333,23 +325,16 @@ def test_codex_wrapper_prefers_public_dsproxy_and_fails_closed_on_unhealthy_prox
     assert "CODEEPSEEDEX_DSPROXY" in body
     assert "DSPROXY=" in body
     assert 'if [ ! -x "\\$DSPROXY" ]' in body
-    assert 'start_args=(start)' in start_fn
+    assert 'start_args=(start)' not in start_fn
+    assert 'status_args=(status)' not in start_fn
     assert 'start_args=(start thinking)' in start_fn
-    assert 'status_args=(status)' in start_fn
     assert 'status_args=(status thinking)' in start_fn
+    assert 'profile "deepseek" is deprecated' in run_fn
+    assert 'activate_codeepseedex_custom_provider_profile' in body
     assert '"\\$DSPROXY" "\\${start_args[@]}" >/dev/null 2>&1' in start_fn
     assert '"\\$DSPROXY" "\\${status_args[@]}" >/dev/null 2>&1' in start_fn
-    assert "|| true" not in start_fn
-
-    assert r'case "\$profile" in' in run_fn
-    assert r'start_dsproxy_profile "\$profile"' in run_fn
-    assert "schedule_codeepseedex_terminal_title_refresh" in run_fn
-    assert r'"\$REAL_CODEX" "\$@"' in run_fn
-    assert r'exec "\$REAL_CODEX" "\$@"' not in body
-    assert "stop_codeepseedex_terminal_title_keeper" in run_fn
-    assert r'return "\$codex_rc"' in run_fn
-    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in body
-
+    assert 'return 1' in start_fn
+    assert 'return "\\$codex_rc"' in run_fn
 
 def test_installer_uninstall_restores_previous_codex_command_from_manifest_backup() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -626,7 +611,8 @@ def test_installer_secret_prompt_keeps_existing_key_without_counting_it_as_new_i
 
 def test_installer_codex_wrapper_prompt_explains_profile_usage() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "After installing, use codex --profile deepseek or codex --profile deepseek-thinking." in text
+    assert "After installing, use codex --profile deepseek-thinking." in text
+    assert "Custom providers can use codex --profile <provider-id>." in text
     assert "The wrapper starts or refreshes the local dsproxy backend automatically." in text
 
 
@@ -652,15 +638,17 @@ def test_installer_wrapper_help_not_printed_as_standalone_line() -> None:
     assert "printf '  \\033[2mAfter installing, use codex --profile" not in text
 
 
-def test_cli_upgrade_reinstalls_deepseek_profile_with_high_effort() -> None:
+def test_cli_upgrade_reinstalls_primary_deepseek_thinking_profile_only() -> None:
     text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
-    start = text.index('"install_codex_profile_stable"')
-    end = text.index('"install_codex_profile_thinking"', start)
+    assert '"install_codex_profile_stable"' not in text
+    start = text.index('"install_codex_profile_thinking"')
+    end = text.index("if not args.no_restart", start)
     block = text[start:end]
+    assert '"--name",' in block
+    assert '"deepseek-thinking",' in block
     assert '"--reasoning-effort",' in block
-    assert '"high",' in block
+    assert '"xhigh",' in block
     assert '"medium",' not in block
-
 
 def test_installer_project_like_shell_calls_are_defined() -> None:
     import re

@@ -2828,7 +2828,7 @@ def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp
     assert result["requested_effort"] == "max"
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
-    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
     assert result["codex_config_loadable"] is True
     assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "xhigh"' in text
@@ -3415,10 +3415,11 @@ def test_cli_profile_repair_managed_models_syncs_effective_models(tmp_path, caps
     result = json.loads(capsys.readouterr().out)
     text = _codex_profile_text(codex_config, "deepseek") + _codex_profile_text(codex_config, "deepseek-thinking")
     assert result["status"] == "ok"
-    assert result["target_profiles"] == ["deepseek", "deepseek-thinking"]
-    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
-    assert text.count('model = "deepseek-v4-flash"') == 2
-    assert 'model = "glm-5.1"' not in text
+    assert result["target_profiles"] == ["deepseek-thinking"]
+    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
+    assert 'model = "deepseek-v4-flash"' in _codex_profile_text(codex_config, "deepseek-thinking")
+    assert 'model = "glm-5.1"' not in _codex_profile_text(codex_config, "deepseek-thinking")
+    assert _codex_profile_text(codex_config, "deepseek") == ""
     assert 'model = "old-stable-model"' not in text
     assert 'plan_mode_reasoning_effort = "high"' in text
 
@@ -3856,7 +3857,11 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
     assert result["provider_id"] == "ustc"
     assert result["activated"]["provider_codex_profile_sync"]["profile"] == "ustc"
     assert result["activated"]["provider_codex_profile_sync"]["codex_command"] == "codex --profile ustc"
+    assert result["activated"]["managed_codex_profile_sync"]["status"] == "skipped"
+    assert result["activated"]["managed_codex_profile_sync"]["target_profiles"] == []
     assert "sk-test-ustc" not in json.dumps(result)
+    assert not (tmp_path / "deepseek.config.toml").exists()
+    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
 
     values = _read_env_exports(env_file)
     assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
@@ -3892,6 +3897,48 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
     assert removed["removed"] is True
     assert not (tmp_path / "ustc.config.toml").exists()
     assert "[model_providers.ustc-proxy]" not in codex_config.read_text(encoding="utf-8")
+
+
+def test_p220a2_custom_provider_use_does_not_sync_deprecated_managed_profiles(tmp_path, monkeypatch, capsys):
+    import json
+    from deepseek_responses_proxy.cli import main
+
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    env_file = tmp_path / "env"
+    codex_config = tmp_path / "codex.toml"
+    registry = tmp_path / "model-providers.json"
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+
+    assert main([
+        "provider", "add",
+        "--env-file", str(env_file),
+        "--codex-config", str(codex_config),
+        "--name", "USTC",
+        "--base-url", "https://api.llm.ustc.edu.cn/v1",
+        "--model", "deepseek-v4-flash-ascend",
+        "--value", "sk-test-ustc",
+        "--skip-validation",
+        "--use",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["activated"]["managed_codex_profile_sync"]["status"] == "skipped"
+    assert result["activated"]["managed_codex_profile_sync"]["target_profiles"] == []
+    assert result["activated"]["provider_codex_profile_sync"]["profile"] == "ustc"
+    assert not (tmp_path / "deepseek.config.toml").exists()
+    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
+    assert "[model_providers.deepseek-proxy]" not in codex_config.read_text(encoding="utf-8")
+    assert "[model_providers.deepseek-thinking-proxy]" not in codex_config.read_text(encoding="utf-8")
+    assert "[model_providers.ustc-proxy]" in codex_config.read_text(encoding="utf-8")
+
+
+def test_p220a2_managed_targets_are_primary_thinking_only():
+    import deepseek_responses_proxy.cli as cli
+
+    assert cli.CODEEPSEEDEX_MANAGED_CODEX_PROFILES == ("deepseek-thinking",)
+    assert cli.CODEEPSEEDEX_LEGACY_CODEX_PROFILES == ("deepseek",)
+    assert cli._managed_profile_targets("__managed__") == ["deepseek-thinking"]
+    assert cli._managed_profile_targets("all") == ["deepseek-thinking"]
+
 
 
 def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monkeypatch, capsys):
@@ -4312,10 +4359,10 @@ def test_p219a19_config_set_custom_model_syncs_all_managed_split_profiles(tmp_pa
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
     assert result["model_provider"] == "custom"
-    assert result["target_profiles"] == ["deepseek", "deepseek-thinking"]
-    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
+    assert result["target_profiles"] == ["deepseek-thinking"]
+    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
     assert result["codex_profile_patched"] is True
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
     assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
     assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
 
@@ -4344,10 +4391,9 @@ def test_p219a19_profile_repair_honors_explicit_thinking_model_override(tmp_path
     assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
-    assert set(result["updated_profiles"]) == {"deepseek", "deepseek-thinking"}
-    stable = next(item for item in result["profile_results"] if item["profile"] == "deepseek")
+    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
     thinking = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
-    assert stable["codex_model_after"] == "custom-openai-test-model"
+    assert all(item["profile"] != "deepseek" for item in result["profile_results"])
     assert thinking["codex_model_after"] == "custom-openai-thinking-test-model"
 
 def test_p219a21_status_accepts_json_alias(monkeypatch, capsys):
@@ -4432,7 +4478,7 @@ def test_p219a23_status_preflight_repairs_drifted_split_profiles(tmp_path, monke
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
     assert captured["url"].endswith("/v1/proxy/status")
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
     assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
     assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
 
@@ -4470,6 +4516,6 @@ def test_p219a23_start_preflight_repairs_drifted_profiles_before_already_running
 
     assert main(["start", "thinking", "--state-dir", str(state_dir)]) == 0
     assert "already_running" in capsys.readouterr().out
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
     assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
     assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")

@@ -73,7 +73,6 @@ internal version: p2.x-topic | <internal-commit>
 Start Codex through the managed profiles:
 
 ```bash
-codex --profile deepseek
 codex --profile deepseek-thinking
 ```
 

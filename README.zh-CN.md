@@ -73,7 +73,6 @@ internal version: p2.x-topic | <internal-commit>
 通过受管profile启动Codex：
 
 ```bash
-codex --profile deepseek
 codex --profile deepseek-thinking
 ```
 

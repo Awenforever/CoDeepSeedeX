@@ -1,3 +1,24 @@
+## p2.20a2-provider-profile-primary-only-and-real-entry
+
+Date: 2026-06-08
+
+Scope:
+
+- Make `deepseek-thinking` the only primary managed Codex profile.
+- Stop custom provider activation from synchronizing deprecated `deepseek` or managed DeepSeek profiles.
+- Keep provider-backed custom profiles independent: `codex --profile <provider-id>` activates that provider and starts the thinking proxy.
+- Make wrapper entry fail closed for deprecated `codex --profile deepseek`.
+- Remove stable-profile installation from installer and upgrade profile refresh paths.
+- Keep Codex TUI `/model` integration unclaimed until real Codex behavior proves profile-level model catalog injection.
+
+Validation target:
+
+- provider/profile isolated CRUD and profile generation
+- wrapper/source markers for deprecated `deepseek`
+- focused provider/profile tests
+- full test suite
+- no public Release/tag movement
+
 ## p2.20a1-provider-profile-abstraction
 
 Date: 2026-06-08

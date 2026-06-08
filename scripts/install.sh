@@ -3278,9 +3278,8 @@ codex_requires_legacy_profile_tables() {
 }
 
 repair_codeepseedex_legacy_managed_profiles() {
-  local stable_port="\${DEEPSEEK_PROXY_PORT:-8000}"
   local thinking_port="\${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-  local model="\${DEEPSEEK_PROXY_MODEL:-deepseek-v4-flash}"
+  local model="\${DEEPSEEK_PROXY_THINKING_MODEL:-\${DEEPSEEK_PROXY_MODEL:-deepseek-v4-pro}}"
   local catalog_args=()
   local catalog=""
 
@@ -3291,16 +3290,6 @@ repair_codeepseedex_legacy_managed_profiles() {
   if [ -n "\$catalog" ] && [ -f "\$catalog" ]; then
     catalog_args=(--model-catalog-json "\$catalog")
   fi
-
-  "\$DSPROXY" install-codex-profile \
-    --name deepseek \
-    --provider-name deepseek-proxy \
-    --base-url "http://127.0.0.1:\${stable_port}/v1" \
-    --model "\$model" \
-    --reasoning-effort high \
-    --profile-layout legacy_profile_tables \
-    --no-backup \
-    "\${catalog_args[@]}" >/dev/null
 
   "\$DSPROXY" install-codex-profile \
     --name deepseek-thinking \
@@ -3318,7 +3307,11 @@ repair_codeepseedex_managed_profile_contract() {
   local status_json=""
 
   case "\$profile_name" in
-    deepseek|deepseek-thinking)
+    deepseek-thinking)
+      ;;
+    deepseek)
+      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      return 2
       ;;
     *)
       return 0
@@ -3330,8 +3323,7 @@ repair_codeepseedex_managed_profile_contract() {
   fi
 
   if [ ! -x "\$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s
-' "\$DSPROXY" >&2
+    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
     return 1
   fi
 
@@ -3344,40 +3336,40 @@ repair_codeepseedex_managed_profile_contract() {
     fi
 
     if ! repair_codeepseedex_legacy_managed_profiles; then
-      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profiles before launch.
-' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s
-' "\$DSPROXY" "\$profile_name" >&2
+      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "\$DSPROXY" "\$profile_name" >&2
       return 1
     fi
   else
     if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to repair managed Codex profiles before launch.
-' >&2
-      printf 'Run for details: %s profile repair --managed-only --json
-' "\$DSPROXY" >&2
+      printf 'CoDeepSeedeX error: failed to repair managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s profile repair --managed-only --json\n' "\$DSPROXY" >&2
       return 1
     fi
   fi
 
   if ! status_json="\$("\$DSPROXY" profile status "\$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.
-' "\$profile_name" >&2
+    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
     if [ "\${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.
-' "\$profile_name" >&2
+      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.
-' "\$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json
-' "\$DSPROXY" "\$profile_name" >&2
+    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$DSPROXY" "\$profile_name" >&2
     return 1
   fi
+}
+
+activate_codeepseedex_custom_provider_profile() {
+  local profile_name="\$1"
+  if [ -z "\$profile_name" ] || [ ! -x "\$DSPROXY" ]; then
+    return 1
+  fi
+  "\$DSPROXY" config custom-provider use --name "\$profile_name" --no-profile-sync >/dev/null 2>&1
 }
 
 start_dsproxy_profile() {
@@ -3391,10 +3383,6 @@ start_dsproxy_profile() {
   fi
 
   case "\$profile_name" in
-    deepseek)
-      start_args=(start)
-      status_args=(status)
-      ;;
     deepseek-thinking)
       start_args=(start thinking)
       status_args=(status thinking)
@@ -3422,10 +3410,22 @@ start_dsproxy_profile() {
 
 run_codeepseedex_codex() {
   case "\$profile" in
-    deepseek|deepseek-thinking)
+    deepseek)
+      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      return 2
+      ;;
+    deepseek-thinking)
       repair_codeepseedex_managed_profile_contract "\$profile"
       start_dsproxy_profile "\$profile"
       schedule_codeepseedex_terminal_title_refresh
+      ;;
+    "")
+      ;;
+    *)
+      if activate_codeepseedex_custom_provider_profile "\$profile"; then
+        start_dsproxy_profile "deepseek-thinking"
+        schedule_codeepseedex_terminal_title_refresh
+      fi
       ;;
   esac
 
@@ -3675,8 +3675,8 @@ while true; do
       guided_step=5
       ;;
     5)
-      CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek or codex --profile deepseek-thinking. The wrapper starts or refreshes the local dsproxy backend automatically."
-      WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek/deepseek-thinking profiles? Recommended." "Y")"
+      CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek-thinking. Custom providers can use codex --profile <provider-id>. The wrapper starts or refreshes the local dsproxy backend automatically."
+      WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek-thinking and provider-backed custom profiles? Recommended." "Y")"
       if [ "$WRAPPER_CHOICE" = "__CODEEPSEEDEX_BACK__" ]; then
         guided_step=4
         continue
@@ -3931,22 +3931,12 @@ if [ -n "$MODEL_CATALOG_JSON" ]; then
   MODEL_CATALOG_ARGS=(--model-catalog-json "$MODEL_CATALOG_JSON")
 fi
 
-PROFILE_STABLE_MODEL="deepseek-v4-flash"
 PROFILE_THINKING_MODEL="deepseek-v4-pro"
 if [ -n "${RESOLVED_MODEL_NAME:-}" ] && [ "${RESOLVED_MODEL_PROVIDER:-deepseek}" != "deepseek" ]; then
-  PROFILE_STABLE_MODEL="$RESOLVED_MODEL_NAME"
   PROFILE_THINKING_MODEL="$RESOLVED_MODEL_NAME"
 fi
 
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
-  run_quiet "Codex profile installed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
-    --name deepseek \
-    --provider-name deepseek-proxy \
-    --base-url "http://127.0.0.1:${STABLE_PORT}/v1" \
-    --model "$PROFILE_STABLE_MODEL" \
-    --reasoning-effort high \
-    "${MODEL_CATALOG_ARGS[@]}"
-
   run_quiet "Codex profile installed: deepseek-thinking" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
     --name deepseek-thinking \
     --provider-name deepseek-thinking-proxy \
