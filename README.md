@@ -346,3 +346,13 @@ WeClaw clients should consume the structured JSON fields and should not recalcul
 ### v0.4.3-alpha
 
 The current public release improves custom OpenAI-compatible provider support, fixes custom reasoning-only responses, and keeps image payloads from being compacted or trimmed.
+
+
+### Provider-backed Codex profiles
+
+```bash
+dsproxy provider add --name ustc --base-url https://api.llm.ustc.edu.cn/v1 --model deepseek-v4-flash-ascend --value sk-your-key --skip-validation --use
+codex --profile ustc
+```
+
+Codex TUI `/model` integration is not claimed here; use `dsproxy provider add-model/use` or provider-backed profiles until Codex behavior proves profile-level model catalogs are honored.

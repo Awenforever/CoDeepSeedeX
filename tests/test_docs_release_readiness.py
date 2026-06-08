@@ -52,9 +52,10 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     assert "Public Release assets: `bootstrap.sh`, `install.sh`" in en_current
     assert "`bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in en_current
     assert "`install.sh` sha256: `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`" in en_current
-    assert "Current internal development checkpoint: `p2.19a25-docs-release-state-sync`" in en_current
+    assert "Current internal development checkpoint: `p2.20a1-provider-profile-abstraction`" in en_current
     assert "Latest runtime checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard`" in en_current
     assert "Latest closed documentation sync checkpoint: `p2.19a25-docs-release-state-sync`" in en_current
+    assert "Latest provider/profile abstraction checkpoint: `p2.20a1-provider-profile-abstraction`" in en_current
     assert "Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.19a23-profile-drift-failclosed-guard`" in en_current
     assert "  - `v0.4.3-alpha = 6a96593`" in en_current
@@ -68,9 +69,10 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     assert "Release资产：`bootstrap.sh`，`install.sh`" in zh_current
     assert "`bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in zh_current
     assert "`install.sh` sha256：`81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`" in zh_current
-    assert "当前内部开发检查点：`p2.19a25-docs-release-state-sync`" in zh_current
+    assert "当前内部开发检查点：`p2.20a1-provider-profile-abstraction`" in zh_current
     assert "当前公开Release包含的最新运行时检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
     assert "最新闭合文档同步检查点：`p2.19a25-docs-release-state-sync`" in zh_current
+    assert "最新provider/profile抽象检查点：`p2.20a1-provider-profile-abstraction`" in zh_current
     assert "最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
     assert "当前公开Release note同步检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
     assert "  - `v0.4.3-alpha = 6a96593`" in zh_current

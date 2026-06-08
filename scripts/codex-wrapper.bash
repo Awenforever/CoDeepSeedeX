@@ -44,8 +44,17 @@ codex() {
       dsproxy start thinking
       DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
       ;;
-    *)
+    "")
       command codex "$@"
+      ;;
+    *)
+      source "$HOME/.config/deepseek-responses-proxy/env"
+      if dsproxy config custom-provider use --name "$selected_profile" --no-profile-sync >/dev/null 2>&1; then
+        dsproxy start thinking
+        DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
+      else
+        command codex "$@"
+      fi
       ;;
   esac
 }

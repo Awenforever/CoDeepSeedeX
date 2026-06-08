@@ -35,9 +35,10 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
-- 当前内部开发检查点：`p2.19a25-docs-release-state-sync`
+- 当前内部开发检查点：`p2.20a1-provider-profile-abstraction`
 - 当前公开Release包含的最新运行时检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合文档同步检查点：`p2.19a25-docs-release-state-sync`
+- 最新provider/profile抽象检查点：`p2.20a1-provider-profile-abstraction`
 - 最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
 - 最新闭合provider alias边界检查点：`p2.19a15-provider-alias-boundary`

@@ -35,9 +35,10 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
-- Current internal development checkpoint: `p2.19a25-docs-release-state-sync`
+- Current internal development checkpoint: `p2.20a1-provider-profile-abstraction`
 - Latest runtime checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed documentation sync checkpoint: `p2.19a25-docs-release-state-sync`
+- Latest provider/profile abstraction checkpoint: `p2.20a1-provider-profile-abstraction`
 - Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`

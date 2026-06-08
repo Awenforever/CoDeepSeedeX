@@ -3831,6 +3831,69 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
     assert "sk-test-custom" not in show_output
 
 
+def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(tmp_path, monkeypatch, capsys):
+    import json
+    from deepseek_responses_proxy.cli import main, _read_env_exports
+
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    env_file = tmp_path / "env"
+    codex_config = tmp_path / "codex.toml"
+    registry = tmp_path / "model-providers.json"
+    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+
+    assert main([
+        "provider", "add",
+        "--env-file", str(env_file),
+        "--codex-config", str(codex_config),
+        "--name", "USTC",
+        "--base-url", "https://api.llm.ustc.edu.cn/v1",
+        "--model", "deepseek-v4-flash-ascend",
+        "--value", "sk-test-ustc",
+        "--skip-validation",
+        "--use",
+    ]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["provider_id"] == "ustc"
+    assert result["activated"]["provider_codex_profile_sync"]["profile"] == "ustc"
+    assert result["activated"]["provider_codex_profile_sync"]["codex_command"] == "codex --profile ustc"
+    assert "sk-test-ustc" not in json.dumps(result)
+
+    values = _read_env_exports(env_file)
+    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
+    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "USTC"
+    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
+    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash-ascend"
+
+    main_config_text = codex_config.read_text(encoding="utf-8")
+    profile_text = (tmp_path / "ustc.config.toml").read_text(encoding="utf-8")
+    assert "[model_providers.ustc-proxy]" in main_config_text
+    assert 'base_url = "http://127.0.0.1:8001/v1"' in main_config_text
+    assert 'model = "deepseek-v4-flash-ascend"' in profile_text
+    assert 'model_provider = "ustc-proxy"' in profile_text
+
+    assert main(["provider", "add-model", "--env-file", str(env_file), "--name", "USTC", "--model", "deepseek-r1", "--use", "--codex-config", str(codex_config)]) == 0
+    capsys.readouterr()
+    data = json.loads(registry.read_text(encoding="utf-8"))
+    assert data["providers"]["ustc"]["active_model"] == "deepseek-r1"
+    assert "deepseek-r1" in data["providers"]["ustc"]["models"]
+
+    assert main(["provider", "models", "--env-file", str(env_file), "--name", "USTC"]) == 0
+    models = json.loads(capsys.readouterr().out)
+    assert models["active_model"] == "deepseek-r1"
+    assert "deepseek-v4-flash-ascend" in models["models"]
+
+    assert main(["provider", "remove-model", "--env-file", str(env_file), "--name", "USTC", "--model", "deepseek-v4-flash-ascend"]) == 0
+    capsys.readouterr()
+    data = json.loads(registry.read_text(encoding="utf-8"))
+    assert data["providers"]["ustc"]["models"] == ["deepseek-r1"]
+
+    assert main(["provider", "remove", "--env-file", str(env_file), "--name", "USTC", "--codex-config", str(codex_config)]) == 0
+    removed = json.loads(capsys.readouterr().out)
+    assert removed["removed"] is True
+    assert not (tmp_path / "ustc.config.toml").exists()
+    assert "[model_providers.ustc-proxy]" not in codex_config.read_text(encoding="utf-8")
+
+
 def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monkeypatch, capsys):
     from deepseek_responses_proxy.cli import main
 

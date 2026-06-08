@@ -1,3 +1,23 @@
+## p2.20a1-provider-profile-abstraction
+
+Date: 2026-06-08
+
+Scope:
+
+- Start the provider/profile abstraction line.
+- Add top-level `dsproxy provider` alias for named custom OpenAI-compatible providers.
+- Add provider CRUD and model management actions for custom providers.
+- Generate provider-backed Codex split profiles so users can run `codex --profile <provider-id>`.
+- Keep custom provider validation on the OpenAI-compatible `/models` path, not the DeepSeek account balance endpoint.
+- Keep Codex TUI `/model` integration explicitly unclaimed until real Codex behavior proves it reads profile-level model catalogs.
+- Keep ordinary `deepseek` profile as legacy compatibility in this foundation node; `deepseek-thinking` remains the preferred primary DeepSeek entry.
+
+Validation target:
+
+- focused provider/profile tests
+- full test suite
+- no public Release/tag movement
+
 ## p2.19a25-docs-release-state-sync — Documentation sync after v0.4.3-alpha refresh
 
 Date: 2026-06-08
