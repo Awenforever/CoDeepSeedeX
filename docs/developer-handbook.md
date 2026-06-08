@@ -35,16 +35,17 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
+- Current internal development checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
 - Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
-- Latest closed ghost audit tool checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
+- Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
 - Latest closed legacy threshold boundary checkpoint: `p2.19a16-legacy-threshold-boundary`
 - Latest closed wrapper path hygiene checkpoint: `p2.19a17-wrapper-path-hygiene`
 - Latest closed real-HOME profile model consistency checkpoint: `p2.19a19-real-home-profile-model-consistency`
 - Latest closed status JSON and upstream model leakage checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
+- Latest closed profile drift fail-closed guard checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
@@ -440,3 +441,12 @@ Checklist maintenance rules:
 - `--weclaw-json` remains a separate WeClaw-facing contract and must not be conflated with normal proxy status JSON.
 - Under `DEEPSEEK_PROXY_FORCE_MODEL=1`, auxiliary calls such as agent-liveness judge must follow `DEEPSEEK_PROXY_MODEL` instead of silently selecting a different provider model.
 - The status surface should expose the selected auxiliary upstream model so user-path validation can catch leakage before a real model call.
+
+
+### Profile drift fail-closed guard
+
+- `DEEPSEEK_PROXY_MODEL` remains the authoritative model source for CoDeepSeedeX-managed Codex profiles when `DEEPSEEK_PROXY_FORCE_MODEL=1`.
+- `dsproxy start` and `dsproxy status` run a quiet managed-profile preflight repair from the default env before continuing.
+- The preflight disables post-config apply internally to avoid recursive restart/repair loops.
+- If repair fails, the CLI route fails closed instead of allowing a stale split profile such as `glm-5.1` to remain active.
+- The Codex wrapper launch repair remains required and complementary; status/start preflight protects user and validation paths before Codex is invoked.

@@ -4331,3 +4331,82 @@ def test_p219a21_liveness_judge_keeps_legacy_alias_when_not_forced(monkeypatch):
     config = app_module._agent_liveness_judge_env_config()
     assert config["upstream_model"] == "deepseek-v4-flash"
     assert config["upstream_model_source"] == "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL"
+
+def test_p219a23_status_preflight_repairs_drifted_split_profiles(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek",
+        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
+        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+    monkeypatch.setenv("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC", "1")
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
+    monkeypatch.setattr(cli_module, "default_codex_config_path", lambda: config_path)
+
+    captured = {}
+    def fake_http_json(url, timeout=3.0):
+        captured["url"] = url
+        return 200, {"status": "ok", "model_default": "custom-openai-test-model"}, None
+
+    monkeypatch.setattr(cli_module, "_http_json", fake_http_json)
+
+    assert main(["status", "thinking", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert captured["url"].endswith("/v1/proxy/status")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+
+
+def test_p219a23_start_preflight_repairs_drifted_profiles_before_already_running_return(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    config_path = tmp_path / "codex.toml"
+    env_file = tmp_path / "env"
+    state_dir = tmp_path / "state"
+    env_file.write_text(
+        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
+        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
+        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        encoding="utf-8",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek",
+        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+    _write_split_codex_profile(
+        config_path,
+        "deepseek-thinking",
+        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+    )
+
+    monkeypatch.setenv("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC", "1")
+    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
+    monkeypatch.setattr(cli_module, "default_codex_config_path", lambda: config_path)
+    monkeypatch.setattr(cli_module, "_maybe_print_startup_release_update_notice", lambda: None)
+    monkeypatch.setattr(cli_module, "_read_pid", lambda path: None)
+    monkeypatch.setattr(cli_module, "_healthz_for_port", lambda port, timeout=1.0: (200, {"version": cli_module.PROXY_VERSION}, None))
+
+    assert main(["start", "thinking", "--state-dir", str(state_dir)]) == 0
+    assert "already_running" in capsys.readouterr().out
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")

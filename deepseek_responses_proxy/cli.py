@@ -2312,6 +2312,96 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     return 0 if output["status"] == "ok" else 1
 
 
+
+
+def _repair_default_managed_codex_profiles_for_cli_route(*, reason: str) -> dict[str, object]:
+    """Repair managed split profile models before runtime/status entry paths.
+
+    This is intentionally quiet because `start` and `status` have their own
+    output contracts. It prevents stale Codex-visible split profiles from
+    surviving after the env has moved to a forced custom upstream model.
+    """
+    if str(os.environ.get("CODEEPSEEDEX_PROFILE_SYNC_ON_CLI_ROUTE", "1")).strip().lower() in {"0", "false", "no", "off", "disabled", "never"}:
+        return {
+            "status": "skipped",
+            "reason": "profile_sync_on_cli_route_disabled",
+            "operation": "managed_profile_route_preflight",
+        }
+    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC") != "1":
+        return {
+            "status": "skipped",
+            "reason": "pytest_guard_without_explicit_allow",
+            "operation": "managed_profile_route_preflight",
+        }
+
+    env_file = default_env_file_path()
+    codex_path = default_codex_config_path()
+    if not env_file.exists():
+        return {
+            "status": "skipped",
+            "reason": "default_env_file_missing",
+            "env_file": str(env_file),
+            "codex_config": str(codex_path),
+            "operation": "managed_profile_route_preflight",
+        }
+
+    args = argparse.Namespace(
+        codex_config=str(codex_path),
+        managed_only=True,
+        profile="__managed__",
+        dry_run=False,
+        auto_compact_ratio=None,
+    )
+    previous_post_apply = {
+        "DEEPSEEK_PROXY_POST_CONFIG_APPLY": os.environ.get("DEEPSEEK_PROXY_POST_CONFIG_APPLY"),
+        "CODEEPSEEDEX_POST_CONFIG_APPLY": os.environ.get("CODEEPSEEDEX_POST_CONFIG_APPLY"),
+    }
+    old_stdout = sys.stdout
+    buffer = io.StringIO()
+    try:
+        os.environ["CODEEPSEEDEX_POST_CONFIG_APPLY"] = "disabled"
+        os.environ["DEEPSEEK_PROXY_POST_CONFIG_APPLY"] = "disabled"
+        sys.stdout = buffer
+        rc = _repair_profile_models(args, env_file)
+    finally:
+        sys.stdout = old_stdout
+        for key, value in previous_post_apply.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    raw = buffer.getvalue()
+    try:
+        payload = json.loads(raw[raw.find("{"):]) if "{" in raw else {}
+    except Exception as exc:
+        payload = {"parse_error": f"{type(exc).__name__}: {exc}", "raw": raw[:2000]}
+
+    status = "ok" if rc == 0 and payload.get("status") == "ok" else "error"
+    return {
+        "status": status,
+        "operation": "managed_profile_route_preflight",
+        "reason": reason,
+        "returncode": rc,
+        "env_file": str(env_file),
+        "codex_config": str(codex_path),
+        "repair": payload,
+    }
+
+
+def _managed_profile_route_preflight_or_error(*, reason: str) -> dict[str, object] | None:
+    result = _repair_default_managed_codex_profiles_for_cli_route(reason=reason)
+    if result.get("status") == "error":
+        return {
+            "status": "error",
+            "error": "managed_profile_route_preflight_failed",
+            "message": "CoDeepSeedeX refused to continue with stale or unrepaired managed Codex profiles.",
+            "profile_preflight": result,
+            "action": "Run: dsproxy profile repair --managed-only --json",
+        }
+    return None
+
+
 def _profile(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     if args.profile_command == "status":
@@ -2698,6 +2788,11 @@ def _start_proxy(args: argparse.Namespace) -> int:
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)
     _maybe_print_startup_release_update_notice()
+
+    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="dsproxy_start_preflight")
+    if profile_preflight_error is not None:
+        print(json.dumps(profile_preflight_error, ensure_ascii=False, indent=2))
+        return 1
 
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
     log_path = Path(args.log_file).expanduser() if args.log_file else state_dir / ("proxy-thinking.log" if thinking else "proxy.log")
@@ -3089,6 +3184,11 @@ def _stop_proxy(args: argparse.Namespace) -> int:
     return 0
 
 def _status(args: argparse.Namespace) -> int:
+    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="dsproxy_status_preflight")
+    if profile_preflight_error is not None:
+        print(json.dumps(profile_preflight_error, ensure_ascii=False, indent=2))
+        return 1
+
     if getattr(args, "weclaw_json", False):
         print(json.dumps(_weclaw_status_payload(args), ensure_ascii=False, indent=2))
         return 0

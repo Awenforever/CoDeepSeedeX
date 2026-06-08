@@ -1,3 +1,27 @@
+## p2.19a23-profile-drift-failclosed-guard — Runtime-entry managed profile drift guard
+
+Date: 2026-06-08
+
+Scope:
+
+- Close the real-HOME profile drift gap observed after p2.19a22.
+- Add a CLI-route preflight guard that repairs CoDeepSeedeX-managed split Codex profile models from the default dsproxy env before `dsproxy start` and `dsproxy status` continue.
+- The guard uses `profile repair --managed-only` semantics internally, disables post-config apply during the guard to avoid recursion, and fails closed if the repair itself fails.
+- This makes the runtime/status entry path self-healing for stale split profiles such as `glm-5.1` while the env forces `deepseek-v4-flash-ascend`.
+- Existing Codex wrapper launch repair remains in place; this node extends the protection to dsproxy CLI startup/status paths.
+- No model-provider call is required for validation.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- Python compile for touched files
+- maintained ghost audit smoke with `must_fix=0`
+- focused p2.19a23 tests
+- full test suite
+- real-HOME validation: deliberately drift both split profiles to `glm-5.1`, then prove `status thinking --json` and `start thinking` repair them back to the env-selected model.
+
 ## p2.19a21-status-json-and-upstream-model-leakage — Status JSON and auxiliary model leakage boundary
 
 Date: 2026-06-07
