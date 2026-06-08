@@ -1,3 +1,25 @@
+## p2.21a2-installer-python-selection
+
+Date: 2026-06-09
+
+Scope:
+
+- Fixed the real-HOME upgrade blocker where the installer could select a stale generic `python3` interpreter and abort before refreshing an existing installation.
+- The installer now resolves a compatible Python interpreter before the requirements check, trying versioned Python commands (`python3.13`, `python3.12`, `python3.11`), the existing managed virtual environment, then generic `python3`/`python`.
+- Explicit `--python-bin` / `DEEPSEEK_PROXY_PYTHON_BIN` remains authoritative; if that explicit interpreter is incompatible, the installer fails with a clear diagnostic instead of silently changing the user's explicit choice.
+- When the existing managed virtual environment is the only compatible interpreter, the installer reuses it instead of trying to recreate the same venv with itself.
+- CoDeepSeedeX still does not install, patch, or replace Python.
+- This node is source-only; public `v0.4.3-alpha` must be refreshed after validation.
+
+Validation target:
+
+- Installer Python-selection static contract tests
+- install/wrapper/guided UI focused tests
+- provider/config focused tests
+- shell syntax and Python bytecode checks
+- full test suite
+- real-HOME VM upgrade validation after Release refresh
+
 ## p2.21a1-install-entry-guided-ui-hardening
 
 Date: 2026-06-08

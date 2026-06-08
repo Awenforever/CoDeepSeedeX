@@ -51,10 +51,31 @@ def test_install_script_accepts_python_bin_option() -> None:
 
 def test_install_script_uses_selected_python_bin() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert 'PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"' in text
-    assert '"$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"' in text
-    assert 'PY_VERSION="$("$PYTHON_BIN" - <<' in text
-
+    assert 'if [ -n "${DEEPSEEK_PROXY_PYTHON_BIN:-}" ]; then' in text
+    assert 'PYTHON_BIN="$DEEPSEEK_PROXY_PYTHON_BIN"' in text
+    assert "PYTHON_BIN_EXPLICIT=1" in text
+    assert "PYTHON_BIN_EXPLICIT=0" in text
+    assert "select_codeepseedex_python_bin()" in text
+    assert "ensure_codeepseedex_python_bin" in text
+    assert "python3.13" in text
+    assert "python3.12" in text
+    assert "python3.11" in text
+    assert '"$INSTALL_DIR/.venv/bin/python"' in text
+    assert '--python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;' in text
+    assert "CoDeepSeedeX does not install or patch Python automatically" in text
+    forbidden_auto_python_install_markers = [
+        "apt-get install python",
+        "apt install python",
+        "dnf install python",
+        "yum install python",
+        "brew install python",
+        "pacman -s python",
+        "pyenv install",
+        "conda install python",
+    ]
+    lowered = text.lower()
+    for marker in forbidden_auto_python_install_markers:
+        assert marker not in lowered
 
 def test_install_script_defaults_to_latest_release_ref() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")

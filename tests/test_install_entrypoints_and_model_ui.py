@@ -1342,3 +1342,47 @@ def test_p221a1_config_wizard_collects_custom_provider_name_and_profile() -> Non
     assert "_sync_custom_provider_codex_profile_from_entry(" in cli_text
     assert "DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME" in cli_text
     assert "DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY" in cli_text
+
+
+def _p221a2_install_script_text() -> str:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    return (root / "scripts" / "install.sh").read_text(encoding="utf-8")
+
+
+def test_p221a2_installer_selects_compatible_python_before_requirements() -> None:
+    text = _p221a2_install_script_text()
+    assert "PYTHON_BIN_EXPLICIT=0" in text
+    assert "select_codeepseedex_python_bin()" in text
+    assert "ensure_codeepseedex_python_bin" in text
+    assert "python3.13" in text
+    assert "python3.12" in text
+    assert "python3.11" in text
+    assert '"$INSTALL_DIR/.venv/bin/python"' in text
+    assert "ensure_codeepseedex_python_bin\nPY_VERSION=" in text
+    assert "CoDeepSeedeX does not install or patch Python automatically" in text
+
+
+def test_p221a2_installer_respects_explicit_python_bin_and_reuses_existing_venv() -> None:
+    text = _p221a2_install_script_text()
+    assert '--python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;' in text
+    assert "is_existing_install_venv_python()" in text
+    assert "Virtual environment ready (existing compatible venv reused)" in text
+    assert "run_quiet \"Virtual environment ready\" \"$PYTHON_BIN\" -m venv" in text
+
+
+def test_p221a2_installer_does_not_auto_install_python() -> None:
+    text = _p221a2_install_script_text().lower()
+    forbidden = [
+        "apt-get install python",
+        "apt install python",
+        "dnf install python",
+        "yum install python",
+        "brew install python",
+        "pacman -s python",
+        "pyenv install",
+        "conda install python",
+    ]
+    for marker in forbidden:
+        assert marker not in text

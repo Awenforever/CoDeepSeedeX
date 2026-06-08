@@ -13,7 +13,13 @@ MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}
 INSTALL_LOG="${DEEPSEEK_PROXY_INSTALL_LOG:-/tmp/codeepseedex-install-$(date +%Y%m%d_%H%M%S).log}"
 BOOTSTRAP_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-}"
 LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"
-PYTHON_BIN="${DEEPSEEK_PROXY_PYTHON_BIN:-python3}"
+if [ -n "${DEEPSEEK_PROXY_PYTHON_BIN:-}" ]; then
+  PYTHON_BIN="$DEEPSEEK_PROXY_PYTHON_BIN"
+  PYTHON_BIN_EXPLICIT=1
+else
+  PYTHON_BIN=""
+  PYTHON_BIN_EXPLICIT=0
+fi
 
 DRY_RUN=0
 NON_INTERACTIVE=0
@@ -819,6 +825,126 @@ find_real_codex() {
 
   rm -f "$seen_file"
   return 1
+}
+
+canonical_path() {
+  if [ -n "${1:-}" ]; then
+    readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"
+  fi
+}
+
+resolve_python_candidate_path() {
+  local candidate="$1"
+  if [ -z "$candidate" ]; then
+    return 1
+  fi
+
+  case "$candidate" in
+    */*)
+      if [ -x "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      ;;
+    *)
+      command -v "$candidate" 2>/dev/null || true
+      ;;
+  esac
+}
+
+python_candidate_supports_codeepseedex() {
+  local candidate="$1"
+  local require_venv="${2:-1}"
+
+  if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
+    return 1
+  fi
+
+  "$candidate" - "$require_venv" <<'PYCODEEPSEEDEX_P221A2_PYTHON_CANDIDATE_CHECK'
+import sys
+
+require_venv = len(sys.argv) > 1 and sys.argv[1] == "1"
+if sys.version_info < (3, 11):
+    raise SystemExit(10)
+if require_venv:
+    try:
+        import venv  # noqa: F401
+    except Exception:
+        raise SystemExit(11)
+print(sys.version.split()[0])
+PYCODEEPSEEDEX_P221A2_PYTHON_CANDIDATE_CHECK
+}
+
+is_existing_install_venv_python() {
+  local candidate="$1"
+  local venv_python="$INSTALL_DIR/.venv/bin/python"
+
+  if [ -z "$candidate" ] || [ ! -x "$venv_python" ]; then
+    return 1
+  fi
+
+  [ "$(canonical_path "$candidate")" = "$(canonical_path "$venv_python")" ]
+}
+
+select_codeepseedex_python_bin() {
+  local explicit="${PYTHON_BIN_EXPLICIT:-0}"
+  local candidate
+  local candidate_path
+  local require_venv
+  local version
+
+  if [ -n "${PYTHON_BIN:-}" ]; then
+    candidate_path="$(resolve_python_candidate_path "$PYTHON_BIN")"
+    require_venv=1
+    if is_existing_install_venv_python "$candidate_path"; then
+      require_venv=0
+    fi
+    if version="$(python_candidate_supports_codeepseedex "$candidate_path" "$require_venv" 2>/dev/null)"; then
+      PYTHON_BIN="$candidate_path"
+      CODEEPSEEDEX_SELECTED_PYTHON_VERSION="$version"
+      return 0
+    fi
+    if [ "$explicit" = "1" ]; then
+      echo "ERROR: Python >= 3.11 is required by the selected interpreter: ${PYTHON_BIN:-<empty>}" >&2
+      echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CoDeepSeedeX does not install or patch Python automatically." >&2
+      return 1
+    fi
+  fi
+
+  for candidate in \
+    python3.13 \
+    python3.12 \
+    python3.11 \
+    "$INSTALL_DIR/.venv/bin/python" \
+    python3 \
+    python
+  do
+    candidate_path="$(resolve_python_candidate_path "$candidate")"
+    if [ -z "$candidate_path" ]; then
+      continue
+    fi
+
+    require_venv=1
+    if is_existing_install_venv_python "$candidate_path"; then
+      require_venv=0
+    fi
+
+    if version="$(python_candidate_supports_codeepseedex "$candidate_path" "$require_venv" 2>/dev/null)"; then
+      PYTHON_BIN="$candidate_path"
+      CODEEPSEEDEX_SELECTED_PYTHON_VERSION="$version"
+      return 0
+    fi
+  done
+
+  echo "ERROR: Python >= 3.11 is required, but no compatible interpreter was found." >&2
+  echo "Checked: python3.13, python3.12, python3.11, existing install venv, python3, python." >&2
+  echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CoDeepSeedeX does not install or patch Python automatically." >&2
+  return 1
+}
+
+ensure_codeepseedex_python_bin() {
+  select_codeepseedex_python_bin
+  printf '+ Python selected: %s (%s)\n' "$PYTHON_BIN" "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-unknown}" >> "$INSTALL_LOG"
 }
 
 json_string() {
@@ -3635,7 +3761,7 @@ while [ "$#" -gt 0 ]; do
     --install-ref) INSTALL_REF="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
     --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; MODEL_PROVIDER_REGISTRY_FILE="${DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
-    --python-bin) PYTHON_BIN="$2"; shift ;;
+    --python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
     --no-codex-wrapper) INSTALL_CODEX_WRAPPER=0 ;;
@@ -3700,6 +3826,7 @@ ui_step_footer "Step 1/5" "$setup_width"
 
 step "Checking requirements"
 
+ensure_codeepseedex_python_bin
 PY_VERSION="$("$PYTHON_BIN" - <<'PY'
 import sys
 if sys.version_info < (3, 11):
@@ -4019,7 +4146,13 @@ else
   warn "Install internal version could not be resolved. Env metadata will omit DEEPSEEK_PROXY_INTERNAL_VERSION."
 fi
 
-run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+if is_existing_install_venv_python "$PYTHON_BIN"; then
+  ok "Virtual environment ready (existing compatible venv reused)"
+  printf '+ Virtual environment reused: %q
+' "$INSTALL_DIR/.venv" >> "$INSTALL_LOG"
+else
+  run_quiet "Virtual environment ready" "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+fi
 run_quiet "pip upgraded" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade --quiet pip
 run_quiet "Python package installed" env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_PROGRESS_BAR=off "$INSTALL_DIR/.venv/bin/python" -m pip install --quiet --no-input -e "$INSTALL_DIR"
 if ! sync_deepseek_tokenizer_resource; then
