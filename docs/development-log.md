@@ -1,3 +1,26 @@
+## p2.20a3-dev-handbook-subprocess-shell-builtins
+
+Date: 2026-06-08
+
+Scope:
+
+- Documented the Python subprocess shell-builtin rule in the English and Chinese developer handbooks.
+- Captured the release-script lesson that `command -v gh` must be invoked through `bash -lc` when called from Python subprocess, or replaced by a direct executable probe such as `shutil.which("gh")`.
+- Added a documentation regression test to prevent the rule from being dropped.
+- Synchronized developer-handbook current Release state to refreshed `v0.4.3-alpha` at `b11a1c4`.
+- Corrected current-state checkpoint taxonomy so ghost-audit/profile-drift closure remains `p2.19a23`, while Release runtime/provider coverage remains `p2.20a2`.
+
+Validation:
+
+- docs focused tests
+- version metadata tests
+- shell syntax and Python bytecode checks
+- full test suite
+
+Public release:
+
+- No public tag or GitHub Release movement in this docs-only node.
+
 ## p2.20a2-provider-profile-primary-only-and-real-entry
 
 Date: 2026-06-08

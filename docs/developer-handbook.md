@@ -27,17 +27,17 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Primary branch: `master`
 - Current public Release: `v0.4.3-alpha`
 - Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`
-- Current public Release commit: `6a96593`
+- Current public Release commit: `b11a1c4`
 - GitHub Latest ordinary Release: `v0.4.3-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.4.3-alpha`
 - GitHub Release state: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
-  - `install.sh` sha256: `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
-- Current internal development checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`
-- Latest runtime checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard`
-- Latest closed documentation sync checkpoint: `p2.19a25-docs-release-state-sync`
+  - `install.sh` sha256: `0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`
+- Current internal development checkpoint: `p2.20a3-dev-handbook-subprocess-shell-builtins`
+- Latest runtime checkpoint included in the public Release: `p2.20a2-provider-profile-primary-only-and-real-entry`
+- Latest closed documentation sync checkpoint: `p2.20a3-dev-handbook-subprocess-shell-builtins`
 - Latest provider/profile abstraction checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`
 - Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
@@ -47,10 +47,10 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Latest closed real-HOME profile model consistency checkpoint: `p2.19a19-real-home-profile-model-consistency`
 - Latest closed status JSON and upstream model leakage checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
 - Latest closed profile drift fail-closed guard checkpoint: `p2.19a23-profile-drift-failclosed-guard`
-- Current public Release note synchronization checkpoint: `p2.19a23-profile-drift-failclosed-guard`
+- Current public Release note synchronization checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.4.3-alpha = 6a96593`
+  - `v0.4.3-alpha = b11a1c4`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,14 +60,14 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 
 Current closeout evidence:
 
-- Public tag `v0.4.3-alpha = 6a96593`.
-- Internal checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard = 6a96593`.
+- Public tag `v0.4.3-alpha = b11a1c4`.
+- Internal checkpoint included in the public Release: `p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`.
 - GitHub Release is non-draft and non-prerelease.
 - GitHub Latest API returns `v0.4.3-alpha`.
 - Release assets are exactly `bootstrap.sh` and `install.sh`.
-- `dsproxy --version` from the refreshed release line reports `public version: v0.4.3-alpha | 6a96593`.
+- `dsproxy --version` from the refreshed release line reports `public version: v0.4.3-alpha | b11a1c4`.
 - The `p2.19a24` real Codex entry re-test passed after deliberately drifting both managed split profiles to `glm-5.1`; the entry path repaired them and used `deepseek-v4-flash-ascend` without 403/access-denied, default-model leakage, or a `/tmp` wrapper chain.
-- This documentation sync may advance `master` beyond the public Release commit. The public `v0.4.3-alpha` tag must remain at `6a96593` until a future explicit Release-update task.
+- This documentation sync may advance `master` beyond the public Release commit. The public `v0.4.3-alpha` tag must remain at `b11a1c4` until a future explicit Release-update task.
 
 ## 3. Key file map
 
@@ -85,6 +85,23 @@ Current closeout evidence:
 - `docs/development-log.md`: complete chronological record.
 
 ## 4. Current user-visible release surface
+
+### Python subprocess and shell built-ins
+
+subprocess shell-builtin probe rule: when a Python patch, validation, or release script needs shell-only syntax or a shell built-in, invoke it through an explicit shell. For example, use:
+
+```python
+subprocess.run(["bash", "-lc", "command -v gh"], ...)
+```
+
+Do not write:
+
+```python
+subprocess.run(["command", "-v", "gh"], ...)
+```
+
+`command` is a shell built-in, not a guaranteed executable on `PATH`; calling it directly from Python can raise `FileNotFoundError` before any useful release or validation action runs. The same rule applies to shell functions and shell-only features such as `source`, `alias`, `set`, `shopt`, `ulimit`, and compound shell syntax. When shell semantics are unnecessary, prefer a direct executable probe such as `shutil.which("gh")` or `subprocess.run(["gh", "--version"], ...)`.
+
 
 `v0.4.3-alpha` currently covers these user-visible areas:
 

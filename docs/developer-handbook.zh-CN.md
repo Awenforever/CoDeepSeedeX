@@ -27,17 +27,17 @@
 - 主分支：`master`
 - 当前公开Release：`v0.4.3-alpha`
 - 当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`
-- 当前公开Release提交：`6a96593`
+- 当前公开Release提交：`b11a1c4`
 - GitHub Latest普通Release：`v0.4.3-alpha`
 - GitHub Release标题：`CoDeepSeedeX v0.4.3-alpha`
 - GitHub Release状态：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
-  - `install.sh` sha256：`81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
-- 当前内部开发检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
-- 当前公开Release包含的最新运行时检查点：`p2.19a23-profile-drift-failclosed-guard`
-- 最新闭合文档同步检查点：`p2.19a25-docs-release-state-sync`
+  - `install.sh` sha256：`0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`
+- 当前内部开发检查点：`p2.20a3-dev-handbook-subprocess-shell-builtins`
+- 当前公开Release包含的最新运行时检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
+- 最新闭合文档同步检查点：`p2.20a3-dev-handbook-subprocess-shell-builtins`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
 - 最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
@@ -47,10 +47,10 @@
 - 最新闭合real-HOME profile model consistency检查点：`p2.19a19-real-home-profile-model-consistency`
 - 最新闭合status JSON与upstream model leakage检查点：`p2.19a21-status-json-and-upstream-model-leakage`
 - 最新闭合profile drift fail-closed guard检查点：`p2.19a23-profile-drift-failclosed-guard`
-- 当前公开Release note同步检查点：`p2.19a23-profile-drift-failclosed-guard`
+- 当前公开Release note同步检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.4.3-alpha = 6a96593`
+  - `v0.4.3-alpha = b11a1c4`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,14 +60,14 @@
 
 当前收口证据：
 
-- 公开tag `v0.4.3-alpha = 6a96593`。
-- 当前公开Release包含的内部检查点：`p2.19a23-profile-drift-failclosed-guard = 6a96593`。
+- 公开tag `v0.4.3-alpha = b11a1c4`。
+- 当前公开Release包含的内部检查点：`p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`。
 - GitHub Release非draft、非prerelease。
 - GitHub Latest API返回`v0.4.3-alpha`。
 - Release资产只有`bootstrap.sh`和`install.sh`。
-- 刷新后的Release线运行`dsproxy --version`应报告`public version: v0.4.3-alpha | 6a96593`。
+- 刷新后的Release线运行`dsproxy --version`应报告`public version: v0.4.3-alpha | b11a1c4`。
 - `p2.19a24`真实Codex入口复测已通过：故意把两个managed splitprofile漂移到`glm-5.1`后，入口路径会自动修复并使用`deepseek-v4-flash-ascend`，无403/access-denied、无默认模型泄漏、无`/tmp`wrapper链。
-- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.3-alpha`tag必须保持在`6a96593`，直到后续明确Release更新任务。
+- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.3-alpha`tag必须保持在`b11a1c4`，直到后续明确Release更新任务。
 
 ## 3. 关键文件地图
 
@@ -448,3 +448,19 @@ bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --re
 - 预修复内部禁用post-config apply，避免递归重启/修复循环。
 - 若修复失败，CLI入口必须fail closed，而不是继续允许`glm-5.1`等过时split profile残留。
 - Codex wrapper launch repair仍然保留；status/start preflight用于保护Codex调用前的用户路径和验证路径。
+
+### Python subprocess与shell内建命令
+
+subprocess shell-builtin probe rule：Python补丁、验证或发布脚本中，如果需要调用shell专属语法或shell内建命令，必须通过显式shell执行。例如应使用：
+
+```python
+subprocess.run(["bash", "-lc", "command -v gh"], ...)
+```
+
+不要写成：
+
+```python
+subprocess.run(["command", "-v", "gh"], ...)
+```
+
+`command`是shell内建命令，不是必然存在于`PATH`中的可执行文件；从Python直接调用会在真正的验证或发布动作前抛出`FileNotFoundError`。同类规则适用于shell函数和shell专属能力，例如`source`、`alias`、`set`、`shopt`、`ulimit`以及复合shell语法。如果不需要shell语义，优先使用直接可执行探测，例如`shutil.which("gh")`或`subprocess.run(["gh", "--version"], ...)`。

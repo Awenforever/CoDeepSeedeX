@@ -46,36 +46,36 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     # Current public Release contract after the p2.19a23 Release refresh.
     assert "Current public Release: `v0.4.3-alpha`" in en_current
     assert "Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`" in en_current
-    assert "Current public Release commit: `6a96593`" in en_current
+    assert "Current public Release commit: `b11a1c4`" in en_current
     assert "GitHub Latest ordinary Release: `v0.4.3-alpha`" in en_current
     assert "GitHub Release state: `isDraft=false`, `isPrerelease=false`" in en_current
     assert "Public Release assets: `bootstrap.sh`, `install.sh`" in en_current
     assert "`bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in en_current
-    assert "`install.sh` sha256: `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`" in en_current
-    assert "Current internal development checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`" in en_current
-    assert "Latest runtime checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard`" in en_current
-    assert "Latest closed documentation sync checkpoint: `p2.19a25-docs-release-state-sync`" in en_current
+    assert "`install.sh` sha256: `0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`" in en_current
+    assert "Current internal development checkpoint: `p2.20a3-dev-handbook-subprocess-shell-builtins`" in en_current
+    assert "Latest runtime checkpoint included in the public Release: `p2.20a2-provider-profile-primary-only-and-real-entry`" in en_current
+    assert "Latest closed documentation sync checkpoint: `p2.20a3-dev-handbook-subprocess-shell-builtins`" in en_current
     assert "Latest provider/profile abstraction checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`" in en_current
     assert "Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`" in en_current
-    assert "Current public Release note synchronization checkpoint: `p2.19a23-profile-drift-failclosed-guard`" in en_current
-    assert "  - `v0.4.3-alpha = 6a96593`" in en_current
+    assert "Current public Release note synchronization checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`" in en_current
+    assert "  - `v0.4.3-alpha = b11a1c4`" in en_current
     assert "  - `v0.3.9-alpha = 82a4428`" in en_current
 
     assert "当前公开Release：`v0.4.3-alpha`" in zh_current
     assert "当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`" in zh_current
-    assert "当前公开Release提交：`6a96593`" in zh_current
+    assert "当前公开Release提交：`b11a1c4`" in zh_current
     assert "GitHub Latest普通Release：`v0.4.3-alpha`" in zh_current
     assert "GitHub Release状态：`isDraft=false`，`isPrerelease=false`" in zh_current
     assert "Release资产：`bootstrap.sh`，`install.sh`" in zh_current
     assert "`bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`" in zh_current
-    assert "`install.sh` sha256：`81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`" in zh_current
-    assert "当前内部开发检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`" in zh_current
-    assert "当前公开Release包含的最新运行时检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
-    assert "最新闭合文档同步检查点：`p2.19a25-docs-release-state-sync`" in zh_current
+    assert "`install.sh` sha256：`0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`" in zh_current
+    assert "当前内部开发检查点：`p2.20a3-dev-handbook-subprocess-shell-builtins`" in zh_current
+    assert "当前公开Release包含的最新运行时检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`" in zh_current
+    assert "最新闭合文档同步检查点：`p2.20a3-dev-handbook-subprocess-shell-builtins`" in zh_current
     assert "最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`" in zh_current
     assert "最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
-    assert "当前公开Release note同步检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
-    assert "  - `v0.4.3-alpha = 6a96593`" in zh_current
+    assert "当前公开Release note同步检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`" in zh_current
+    assert "  - `v0.4.3-alpha = b11a1c4`" in zh_current
     assert "  - `v0.3.9-alpha = 82a4428`" in zh_current
 
     # Removed stale contract assertions from the old pre-release/old-Latest period.
@@ -115,3 +115,16 @@ def test_tracked_release_note_document_is_not_maintained() -> None:
         bad_placeholder = "the tracked " + "v0.3.9-alpha Release-note document"
         assert bad_placeholder not in text
         assert "docs/" + "release-notes-v0.3.9-alpha.md" not in text
+
+
+def test_p220a3_developer_handbook_records_subprocess_shell_builtin_rule() -> None:
+    en = (ROOT / "docs" / "developer-handbook.md").read_text(encoding="utf-8")
+    zh = (ROOT / "docs" / "developer-handbook.zh-CN.md").read_text(encoding="utf-8")
+    assert "subprocess shell-builtin probe rule" in en
+    assert "subprocess shell-builtin probe rule" in zh
+    assert 'subprocess.run(["bash", "-lc", "command -v gh"], ...)' in en
+    assert 'subprocess.run(["bash", "-lc", "command -v gh"], ...)' in zh
+    assert 'subprocess.run(["command", "-v", "gh"], ...)' in en
+    assert 'subprocess.run(["command", "-v", "gh"], ...)' in zh
+    assert "FileNotFoundError" in en
+    assert "FileNotFoundError" in zh
