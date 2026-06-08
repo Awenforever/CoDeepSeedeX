@@ -1737,6 +1737,22 @@ stop_codeepseedex_terminal_title_keeper() {
   fi
 }
 
+codex_runtime_preflight() {
+  if [ ! -x "$REAL_CODEX" ]; then
+    printf 'CoDeepSeedeX error: real Codex command is not executable: %s\n' "$REAL_CODEX" >&2
+    return 127
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    if head -n 1 "$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "$REAL_CODEX" 2>/dev/null; then
+      printf 'CoDeepSeedeX error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "$REAL_CODEX" >&2
+      printf 'Install Node.js/Codex CLI first, then rerun the CoDeepSeedeX installer or: %s profile refresh-wrapper\n' "$DSPROXY" >&2
+      printf 'Boundary: CoDeepSeedeX detects this dependency but does not install or patch Node automatically.\n' >&2
+      return 127
+    fi
+  fi
+}
+
 codex_requires_legacy_profile_tables() {
   local version_text=""
   version_text="$("$REAL_CODEX" --version 2>/dev/null || true)"
@@ -1899,6 +1915,12 @@ run_codeepseedex_codex() {
       fi
       ;;
   esac
+
+  if ! codex_runtime_preflight; then
+    local preflight_rc=$?
+    stop_codeepseedex_terminal_title_keeper
+    return "$preflight_rc"
+  fi
 
   set +e
   "$REAL_CODEX" "$@"
@@ -5919,7 +5941,8 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
-        tty.setraw(fd)
+        # Use cbreak instead of raw mode so terminal output keeps normal CR/LF rendering.
+        tty.setcbreak(fd)
         while True:
             print("\033[?25l\033[H\033[J\033[3J", end="", file=sys.stderr)
             _wizard_render_menu(prompt, options, selected, help_text=help_text)
@@ -6105,7 +6128,16 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     provider_config = _model_api_provider_config(provider)
                     base_url = str(provider_config.get("base_url") or "").strip()
                     model = str(provider_config.get("model") or "").strip()
+                    custom_provider_name = ""
                     if provider == "custom":
+                        custom_provider_name = _clean_wizard_input_value(_wizard_read_line(
+                            "Custom provider name / Codex profile id",
+                            values.get("DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME", "") or "custom-provider",
+                            non_interactive=non_interactive,
+                            title="Custom OpenAI-compatible model API",
+                            footer="Step 2/5",
+                            detail="Used locally for dsproxy provider switching and codex --profile <provider-id>; it is not sent upstream.",
+                        )) or "custom-provider"
                         base_url = _normalize_openai_base_url_value(_wizard_read_line(
                             "OpenAI-compatible base URL",
                             values.get("DEEPSEEK_BASE_URL", ""),
@@ -6121,7 +6153,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                                 non_interactive=non_interactive,
                                 title="Custom OpenAI-compatible model API",
                                 footer="Step 2/5",
-                                detail=f"Endpoint: {base_url or '<empty>'}. Enter only the model id, for example: your-model-id",
+                                detail=f"Provider: {custom_provider_name}. Endpoint: {base_url or '<empty>'}. Enter only the exact upstream model id.",
                             ))
                             if not model or _is_valid_model_name_value(model):
                                 break
@@ -6150,6 +6182,32 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                                 validation = _validate_model_api_key(provider, key, base_url=base_url, timeout=10.0)
                             validation_results.append(validation)
                             if validation.get("ok"):
+                                if provider == "custom":
+                                    registry_path = _model_provider_registry_path(env_file)
+                                    registry_data = _upsert_custom_provider_registry_entry(
+                                        registry_path,
+                                        display_name=custom_provider_name,
+                                        base_url=base_url,
+                                        model=model,
+                                        api_key=key,
+                                        make_active=True,
+                                    )
+                                    provider_id = _custom_provider_registry_slug(custom_provider_name)
+                                    entry = (registry_data.get("providers") or {}).get(provider_id, {})
+                                    profile_sync = _sync_custom_provider_codex_profile_from_entry(
+                                        env_file,
+                                        entry=entry,
+                                        selected_model=model,
+                                    ) if isinstance(entry, dict) else {"status": "error", "error": "custom_provider_registry_entry_missing"}
+                                    validation["custom_provider"] = {
+                                        "provider_name": custom_provider_name,
+                                        "provider_id": provider_id,
+                                        "registry_path": str(registry_path),
+                                        "codex_profile_sync": profile_sync,
+                                        "codex_command": profile_sync.get("codex_command") if isinstance(profile_sync, dict) else None,
+                                    }
+                                    values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] = custom_provider_name
+                                    values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] = str(registry_path)
                                 values["DEEPSEEK_API_KEY"] = key
                                 values["DEEPSEEK_BASE_URL"] = base_url
                                 values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider

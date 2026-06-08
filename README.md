@@ -12,9 +12,10 @@ CoDeepSeedeX is a local OpenAI Responses-compatible proxy for running Codex with
 
 ## Requirements
 
-Install OpenAI Codex CLI first and make sure `codex` is on your `PATH`.
+Install Node.js and OpenAI Codex CLI first, then make sure `node` and `codex` are on your `PATH`.
 
 ```bash
+node --version
 codex --version
 ```
 
@@ -53,7 +54,7 @@ bs="$tmp/bootstrap.sh"
 ) && bash "$bs" --install-ref "$tag"
 ```
 
-The installer places CoDeepSeedeX under `~/.local/share/deepseek-responses-proxy`, creates the `dsproxy` command, creates Codex profiles named `deepseek` and `deepseek-thinking`, and can install a narrow `codex` wrapper that only intercepts those two profiles.
+The installer places CoDeepSeedeX under `~/.local/share/deepseek-responses-proxy`, creates the `dsproxy` command, creates the primary Codex profile `deepseek-thinking`, and can install a narrow `codex` wrapper for CoDeepSeedeX-managed profiles and provider-backed custom profiles. It also writes shell startup snippets so new terminals prefer `~/.local/bin/dsproxy` and `~/.local/bin/codex`.
 
 ## Verify
 
@@ -353,5 +354,7 @@ The current public release improves custom OpenAI-compatible provider support, f
 dsproxy provider add --name ustc --base-url https://api.llm.ustc.edu.cn/v1 --model deepseek-v4-flash-ascend --value sk-your-key --skip-validation --use
 codex --profile ustc
 ```
+
+When adding a custom provider in the guided wizard, the provider name becomes the local provider id/profile id after slug normalization. CoDeepSeedeX does not modify Codex's native `/model` list; use `dsproxy provider add-model/use` or a provider-backed profile for model switching.
 
 Codex TUI `/model` integration is not claimed here; use `dsproxy provider add-model/use` or provider-backed profiles until Codex behavior proves profile-level model catalogs are honored.

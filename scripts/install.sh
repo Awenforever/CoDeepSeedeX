@@ -699,11 +699,23 @@ is_codeepseedex_codex_wrapper_candidate() {
   grep -qE 'CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy' "$path" 2>/dev/null
 }
 
+codex_candidate_looks_node_backed() {
+  local candidate="$1"
+
+  if [ -z "$candidate" ] || [ ! -f "$candidate" ]; then
+    return 1
+  fi
+
+  head -n 1 "$candidate" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' && return 0
+  grep -qE 'node|@openai/codex|codex-cli' "$candidate" 2>/dev/null
+}
+
 is_valid_real_codex_candidate() {
   local candidate="$1"
   local wrapper_path="$2"
   local candidate_real=""
   local wrapper_real=""
+  local version_text=""
 
   if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
     return 1
@@ -729,7 +741,20 @@ is_valid_real_codex_candidate() {
       ;;
   esac
 
-  "$candidate" --version 2>/dev/null | grep -qE 'codex-cli|OpenAI Codex'
+  version_text="$("$candidate" --version 2>&1 || true)"
+  if printf '%s\n' "$version_text" | grep -qE 'codex-cli|OpenAI Codex'; then
+    return 0
+  fi
+
+  # If Node.js is missing, the real Codex launcher may be present but unable to
+  # print a version. Accept a non-CoDeepSeedeX executable named codex so the
+  # managed wrapper can surface a clear CoDeepSeedeX diagnostic instead of
+  # letting the shell fall through to /usr/local/bin/codex.
+  if [ "$(basename "$candidate_real")" = "codex" ]; then
+    return 0
+  fi
+
+  return 1
 }
 
 find_real_codex() {
@@ -2809,21 +2834,19 @@ choose_shell_profile_file() {
   esac
 }
 
-ensure_shell_profile_integration() {
-  if [ "$INSTALL_SHELL_PROFILE" != "1" ]; then
-    ok "Shell profile update skipped"
+ensure_one_shell_profile_integration() {
+  local profile_file="$1"
+  local label="$2"
+
+  if [ -z "$profile_file" ]; then
     return 0
   fi
-
-  local profile_file
-  profile_file="$(choose_shell_profile_file)"
-  SHELL_PROFILE_FILE="$profile_file"
 
   mkdir -p "$(dirname "$profile_file")"
   touch "$profile_file"
 
-  if grep -q "CoDeepSeedeX environment" "$profile_file" 2>/dev/null; then
-    ok "Shell profile already contains CoDeepSeedeX environment"
+  if grep -q "CoDeepSeedeX environment" "$profile_file" 2>/dev/null && grep -Fq "$BIN_DIR" "$profile_file" 2>/dev/null; then
+    ok "Shell profile already contains CoDeepSeedeX environment: $label"
     return 0
   fi
 
@@ -2842,6 +2865,63 @@ fi
 EOF
 
   ok "Shell profile updated: $profile_file"
+}
+
+ensure_shell_profile_integration() {
+  if [ "$INSTALL_SHELL_PROFILE" != "1" ]; then
+    ok "Shell profile update skipped"
+    return 0
+  fi
+
+  local profile_file
+  profile_file="$(choose_shell_profile_file)"
+  SHELL_PROFILE_FILE="$profile_file"
+
+  ensure_one_shell_profile_integration "$profile_file" "selected shell"
+  if [ "$profile_file" != "$HOME/.profile" ]; then
+    ensure_one_shell_profile_integration "$HOME/.profile" "login shell"
+  fi
+  if [ "$profile_file" != "$HOME/.bashrc" ] && [ -f "$HOME/.bashrc" ]; then
+    ensure_one_shell_profile_integration "$HOME/.bashrc" "interactive bash"
+  fi
+
+  case ":$PATH:" in
+    *:"$BIN_DIR":*) ;;
+    *) export PATH="$BIN_DIR:$PATH" ;;
+  esac
+  if [ -f "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+  fi
+}
+
+post_install_entrypoint_diagnostics() {
+  if [ "$DRY_RUN" = "1" ]; then
+    return 0
+  fi
+
+  local expected_dsproxy="$BIN_DIR/dsproxy"
+  local expected_codex="$BIN_DIR/codex"
+  local actual_dsproxy=""
+  local actual_codex=""
+
+  actual_dsproxy="$(command -v dsproxy 2>/dev/null || true)"
+  actual_codex="$(command -v codex 2>/dev/null || true)"
+
+  if [ "$actual_dsproxy" != "$expected_dsproxy" ]; then
+    warn "Current shell does not resolve dsproxy to the CoDeepSeedeX wrapper: ${actual_dsproxy:-<not found>}"
+    warn "Open a new terminal, or run: export PATH=\"$BIN_DIR:\$PATH\""
+  fi
+
+  if [ "$INSTALL_CODEX_WRAPPER" = "1" ] && [ -x "$expected_codex" ] && [ "$actual_codex" != "$expected_codex" ]; then
+    warn "Current shell does not resolve codex to the CoDeepSeedeX wrapper: ${actual_codex:-<not found>}"
+    warn "Open a new terminal, or run: export PATH=\"$BIN_DIR:\$PATH\""
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX does not install or patch Node automatically."
+    warn "Install Node.js/Codex CLI, then rerun the installer or run: dsproxy profile refresh-wrapper"
+  fi
 }
 
 model_catalog_json_value() {
@@ -3174,7 +3254,12 @@ write_codex_wrapper() {
   fi
 
   if [ -z "$real_codex" ]; then
-    warn "real codex command not found; refusing to install Codex wrapper. Install Codex CLI or rerun with --no-codex-wrapper."
+    if ! command -v node >/dev/null 2>&1; then
+      warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX will not install a recursive or blind codex wrapper."
+      warn "Install Node.js/Codex CLI first, then rerun the installer. CoDeepSeedeX does not install or patch Node automatically."
+    else
+      warn "real codex command not found; refusing to install Codex wrapper. Install Codex CLI or rerun with --no-codex-wrapper."
+    fi
     return 1
   fi
 
@@ -3263,6 +3348,22 @@ stop_codeepseedex_terminal_title_keeper() {
     kill "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
     wait "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
     CODEEPSEEDEX_TITLE_KEEPER_PID=""
+  fi
+}
+
+codex_runtime_preflight() {
+  if [ ! -x "\$REAL_CODEX" ]; then
+    printf 'CoDeepSeedeX error: real Codex command is not executable: %s\n' "\$REAL_CODEX" >&2
+    return 127
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    if head -n 1 "\$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "\$REAL_CODEX" 2>/dev/null; then
+      printf 'CoDeepSeedeX error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "\$REAL_CODEX" >&2
+      printf 'Install Node.js/Codex CLI first, then rerun the CoDeepSeedeX installer or: %s profile refresh-wrapper\n' "\$DSPROXY" >&2
+      printf 'Boundary: CoDeepSeedeX detects this dependency but does not install or patch Node automatically.\n' >&2
+      return 127
+    fi
   fi
 }
 
@@ -3428,6 +3529,12 @@ run_codeepseedex_codex() {
       fi
       ;;
   esac
+
+  if ! codex_runtime_preflight; then
+    local preflight_rc=\$?
+    stop_codeepseedex_terminal_title_keeper
+    return "\$preflight_rc"
+  fi
 
   set +e
   "\$REAL_CODEX" "\$@"
@@ -3947,6 +4054,7 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
 fi
 
 write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"
+post_install_entrypoint_diagnostics
 
 step "Done"
 

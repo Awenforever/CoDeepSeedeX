@@ -119,3 +119,17 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/boot
 ## Maintainer documentation
 
 Maintainer notes are kept in `docs/developer-handbook.md`. The Chinese mirror is `docs/developer-handbook.zh-CN.md`. Detailed long-term records are in `docs/development-log.md`.
+
+## Codex entrypoint, PATH, and Node.js
+
+If `codex --profile deepseek-thinking` reports a configuration load error or runs the system Codex directly, first check the entrypoints:
+
+```bash
+command -v node
+command -v codex
+command -v dsproxy
+codex --version
+dsproxy --version
+```
+
+A healthy CoDeepSeedeX install should resolve `dsproxy` to `~/.local/bin/dsproxy` and, when the wrapper is enabled, `codex` to `~/.local/bin/codex`. If the current shell still resolves `/usr/local/bin/codex`, open a new terminal or put `~/.local/bin` before system paths. CoDeepSeedeX detects missing Node.js and prints a targeted diagnostic, but it does not install or patch Node/Codex itself.

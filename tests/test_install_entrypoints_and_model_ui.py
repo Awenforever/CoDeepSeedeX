@@ -1292,3 +1292,53 @@ def test_p219a10_model_summary_stays_in_model_api_and_completion_only() -> None:
     assert "Provider:" in text
     assert "Model:" in text
     assert "show_install_completion_hold() {" in text
+
+
+def test_p221a1_installer_persists_wrapper_path_and_diagnoses_entrypoints() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "ensure_one_shell_profile_integration()" in text
+    assert 'ensure_one_shell_profile_integration "$HOME/.profile" "login shell"' in text
+    assert 'export PATH="$BIN_DIR:$PATH"' in text
+    assert "post_install_entrypoint_diagnostics()" in text
+    assert "Current shell does not resolve dsproxy to the CoDeepSeedeX wrapper" in text
+    assert "Current shell does not resolve codex to the CoDeepSeedeX wrapper" in text
+
+
+def test_p221a1_codex_wrapper_reports_missing_node_without_installing_node() -> None:
+    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    for text in (install_text, cli_text):
+        assert "codex_runtime_preflight()" in text
+        assert "Node.js is not on PATH" in text
+        assert "does not install or patch Node automatically" in text
+        assert "profile refresh-wrapper" in text
+    forbidden_auto_install_markers = [
+        "apt-get install",
+        "apt install",
+        "dnf install",
+        "yum install",
+        "brew install",
+        "pacman -S",
+        "npm install -g @openai/codex",
+        "npx @openai/codex",
+        "nodesource.com",
+    ]
+    for marker in forbidden_auto_install_markers:
+        assert marker.lower() not in install_text.lower()
+
+
+def test_p221a1_config_wizard_uses_cbreak_menu_rendering() -> None:
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "tty.setcbreak(fd)" in cli_text
+    assert "tty.setraw(fd)" not in cli_text
+    assert "normal CR/LF rendering" in cli_text
+
+
+def test_p221a1_config_wizard_collects_custom_provider_name_and_profile() -> None:
+    cli_text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert "Custom provider name / Codex profile id" in cli_text
+    assert "codex --profile <provider-id>" in cli_text
+    assert "_upsert_custom_provider_registry_entry(" in cli_text
+    assert "_sync_custom_provider_codex_profile_from_entry(" in cli_text
+    assert "DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME" in cli_text
+    assert "DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY" in cli_text

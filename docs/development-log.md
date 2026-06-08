@@ -1,3 +1,27 @@
+## p2.21a1-install-entry-guided-ui-hardening
+
+Date: 2026-06-08
+
+Scope:
+
+- Hardened installed-user Codex entry behavior on the CoDeepSeedeX side.
+- The installer now persists `~/.local/bin` discovery more broadly and performs post-install entrypoint diagnostics for `dsproxy` and `codex` wrapper precedence.
+- Generated Codex wrappers now preflight Node-backed Codex launchers and report a clear CoDeepSeedeX diagnostic when Node.js is missing; CoDeepSeedeX still does not install or patch Node automatically.
+- `dsproxy config wizard` now uses cbreak menu input so terminal output keeps normal line rendering, matching the installer guided UI more closely.
+- The config wizard custom-provider path now collects a provider name/profile id, writes the custom provider registry, and syncs a provider-backed Codex profile for `codex --profile <provider-id>`.
+
+Validation target:
+
+- install/wrapper/guided UI focused tests
+- provider/config focused tests
+- shell syntax and Python bytecode checks
+- full test suite
+- no public Release/tag movement
+
+Public release:
+
+- No public tag or GitHub Release movement in this source node.
+
 ## p2.20a3-dev-handbook-subprocess-shell-builtins
 
 Date: 2026-06-08
