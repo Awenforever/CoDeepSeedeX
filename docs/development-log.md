@@ -1,3 +1,67 @@
+## p2.19a25-docs-release-state-sync — Documentation sync after v0.4.3-alpha refresh
+
+Date: 2026-06-08
+
+Scope:
+
+- Synchronize the English and Chinese developer handbooks after refreshing the public `v0.4.3-alpha` Latest Release to `p2.19a23-profile-drift-failclosed-guard`.
+- Record the current public Release baseline: `v0.4.3-alpha = 6a96593`, GitHub Release non-draft and non-prerelease, Latest API returning `v0.4.3-alpha`, and Release assets exactly `bootstrap.sh` and `install.sh`.
+- Record refreshed asset digests: `bootstrap.sh` sha256 `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4` and `install.sh` sha256 `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`.
+- Record that `p2.19a24` was a real Codex entry validation node, not a source commit node.
+- Keep public GitHub Release notes on the GitHub Release page only; do not add tracked per-release note files under `docs/`.
+- Advance runtime internal version metadata to `p2.19a25-docs-release-state-sync` while keeping public version `v0.4.3-alpha`.
+
+Validation target:
+
+- `git diff --check`
+- `bash -n bootstrap.sh scripts/install.sh`
+- Python compile for touched files and focused tests
+- full test suite
+- post-merge verification that `v0.4.3-alpha` remains at `6a96593` until a future explicit Release-update task.
+
+Release boundary:
+
+- This documentation node does not move `v0.4.3-alpha`, does not rebuild Release assets, and does not edit the GitHub Release body.
+
+## v0.4.3-alpha Latest refresh to p2.19a23
+
+Date: 2026-06-08
+
+Scope:
+
+- Move the public `v0.4.3-alpha` Release/tag from `01d6cee` to `6a96593` after p2.19a23 closure and p2.19a24 real Codex entry validation.
+- Preserve GitHub Release title `CoDeepSeedeX v0.4.3-alpha`.
+- Keep GitHub Release as non-draft and non-prerelease, making it the current Latest ordinary Release.
+- Re-upload Release assets `bootstrap.sh` and `install.sh`.
+- Write public Release notes from a temporary `/tmp` file only; no tracked per-release note file is added under `docs/`.
+
+Final state:
+
+- `master = origin/master = 6a96593` at the time of Release refresh.
+- Public tag `v0.4.3-alpha = 6a96593`.
+- Internal checkpoint included in the Release: `p2.19a23-profile-drift-failclosed-guard = 6a96593`.
+- GitHub Release `CoDeepSeedeX v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
+- GitHub Latest API returns `v0.4.3-alpha`.
+- Release assets are exactly `bootstrap.sh` and `install.sh`.
+- Asset digests:
+  - `bootstrap.sh` sha256 `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
+  - `install.sh` sha256 `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
+
+Release-note coverage:
+
+- Custom provider profile/model consistency for managed Codex profiles.
+- `dsproxy status --json` normal status output and separate `--weclaw-json` contract.
+- Auxiliary agent-liveness model selection under forced/custom model configuration.
+- Runtime-entry managed profile drift guard with fail-closed behavior.
+- Wrapper path hygiene and `/tmp` wrapper-chain prevention.
+- Provider alias and legacy threshold boundaries.
+- Managed tool routing diagnostics.
+
+Validation evidence before Release:
+
+- p2.19a23 full test suite passed.
+- p2.19a24 real Codex entry validation passed after deliberately drifting both split profiles to `glm-5.1`; the entry path repaired profiles and used `deepseek-v4-flash-ascend` without 403/access-denied, default-model leakage, or `/tmp` wrapper-chain residue.
+
 ## p2.19a23-profile-drift-failclosed-guard — Runtime-entry managed profile drift guard
 
 Date: 2026-06-08

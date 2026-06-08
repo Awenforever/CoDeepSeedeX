@@ -27,17 +27,17 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Primary branch: `master`
 - Current public Release: `v0.4.3-alpha`
 - Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`
-- Current public Release commit: `01d6cee`
+- Current public Release commit: `6a96593`
 - GitHub Latest ordinary Release: `v0.4.3-alpha`
 - GitHub Release title: `CoDeepSeedeX v0.4.3-alpha`
 - GitHub Release state: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
-  - `install.sh` sha256: `3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9`
-- Current internal development checkpoint: `p2.19a23-profile-drift-failclosed-guard`
-- Latest runtime checkpoint included in the public Release: `p2.19a10-guided-installer-contextual-hints`
-- Latest closed documentation sync checkpoint: `p2.19a11-docs-release-handoff-sync`
+  - `install.sh` sha256: `81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294`
+- Current internal development checkpoint: `p2.19a25-docs-release-state-sync`
+- Latest runtime checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard`
+- Latest closed documentation sync checkpoint: `p2.19a25-docs-release-state-sync`
 - Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
 - Latest closed provider alias boundary checkpoint: `p2.19a15-provider-alias-boundary`
@@ -46,10 +46,10 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Latest closed real-HOME profile model consistency checkpoint: `p2.19a19-real-home-profile-model-consistency`
 - Latest closed status JSON and upstream model leakage checkpoint: `p2.19a21-status-json-and-upstream-model-leakage`
 - Latest closed profile drift fail-closed guard checkpoint: `p2.19a23-profile-drift-failclosed-guard`
-- Current public Release note synchronization checkpoint: `p2.19a10-guided-installer-contextual-hints`
+- Current public Release note synchronization checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.4.3-alpha = 01d6cee`
+  - `v0.4.3-alpha = 6a96593`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -59,13 +59,14 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 
 Current closeout evidence:
 
-- `master = origin/master = 01d6cee`
-- `v0.4.3-alpha = 01d6cee`
-- `p2.19a10-guided-installer-contextual-hints = 01d6cee`
+- Public tag `v0.4.3-alpha = 6a96593`.
+- Internal checkpoint included in the public Release: `p2.19a23-profile-drift-failclosed-guard = 6a96593`.
 - GitHub Release is non-draft and non-prerelease.
 - GitHub Latest API returns `v0.4.3-alpha`.
 - Release assets are exactly `bootstrap.sh` and `install.sh`.
-- VM real-home validation passed for custom provider setup, Codex wrapper execution, legacy Codex profile layout, context-window profile-source consistency, and guided-hint contamination checks.
+- `dsproxy --version` from the refreshed release line reports `public version: v0.4.3-alpha | 6a96593`.
+- The `p2.19a24` real Codex entry re-test passed after deliberately drifting both managed split profiles to `glm-5.1`; the entry path repaired them and used `deepseek-v4-flash-ascend` without 403/access-denied, default-model leakage, or a `/tmp` wrapper chain.
+- This documentation sync may advance `master` beyond the public Release commit. The public `v0.4.3-alpha` tag must remain at `6a96593` until a future explicit Release-update task.
 
 ## 3. Key file map
 
@@ -336,17 +337,17 @@ Expected current public Release baseline:
 
 ```text
 worktree clean
-master=origin/master=01d6cee
-v0.4.3-alpha=01d6cee
-p2.19a10-guided-installer-contextual-hints=01d6cee
+master=origin/master=<current p2.19a25 documentation sync commit>
+v0.4.3-alpha=6a96593
+p2.19a23-profile-drift-failclosed-guard=6a96593
 GitHub Latest Release=v0.4.3-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 bootstrap.sh sha256=257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4
-install.sh sha256=3403a77bf8935c5f8514cf44656308e52696e2026931133e83858b9f975502f9
-public version: v0.4.3-alpha | 01d6cee
-internal version: p2.19a10-guided-installer-contextual-hints | 01d6cee
+install.sh sha256=81b509239c10c6a911350cda51b744daedb8f0077274d09a1c94519bc4450294
+public version: v0.4.3-alpha | 6a96593
+internal version: p2.19a25-docs-release-state-sync | <current internal tag commit>
 ```
 
 Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when historical trace-back is needed.
@@ -385,7 +386,7 @@ Uninstall must not delete unrelated user files or non-CoDeepSeedeX configuration
 
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Release | `v0.4.3-alpha` current Latest | GitHub Latest Release exists with `isPrerelease=false`, assets exactly `bootstrap.sh` and `install.sh`, and no duplicate Release title in body. | `v0.4.3-alpha = 01d6cee` | Closed | 2026-06-07 | Includes p2.19 custom provider registry, guided UI, Codex legacy/split profile compatibility, wrapper real-binary fix, and contextual hints. |
+| Release | `v0.4.3-alpha` current Latest | GitHub Latest Release exists with `isPrerelease=false`, assets exactly `bootstrap.sh` and `install.sh`, and no duplicate Release title in body. | `v0.4.3-alpha = 6a96593` | Closed | 2026-06-08 | Includes the p2.19 custom provider registry, guided UI, Codex compatibility/wrapper hardening, status JSON, auxiliary-model leakage fix, profile-drift fail-closed guard, and real Codex entry validation. |
 | Installer UX | Guided installer and wizard consistency | Step-local hints, arrow-key menus, Backspace navigation, concise validation summary, and no cross-step model summary leakage. | `p2.19a10-guided-installer-contextual-hints` | Closed | 2026-06-07 | VM real-home validation passed. |
 | Custom providers | Multiple custom OpenAI-compatible providers and models | Users can add providers, add models, switch active provider/model, and validate against configured `/models`. | `p2.19a1` to `p2.19a6` | Closed | 2026-06-06 | Active provider/model mirrors to legacy env for runtime compatibility. |
 | Codex compatibility | Version-aware profile layout and safe wrapper | Codex `<0.134` uses legacy tables; Codex `>=0.134` uses split files; `REAL_CODEX` never points to a wrapper. | `p2.19a7` to `p2.19a9` | Closed | 2026-06-07 | Real-home wrapper execution passed. |
