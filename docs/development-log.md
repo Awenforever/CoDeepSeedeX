@@ -1,3 +1,21 @@
+## p2.21a6-docs-public-tag-state-sync
+
+Date: 2026-06-09
+
+Scope:
+
+- Corrected the developer-handbook public tag state line after `v0.4.3-alpha` was refreshed to commit `f8a6635`.
+- Advanced the source metadata checkpoint from `p2.21a5-docs-release-state-sync` to `p2.21a6-docs-public-tag-state-sync`.
+- Preserved the public Release boundary: no Release refresh, no asset upload, no runtime logic change, and no model/provider call.
+- Kept `p2.21a4-codex-wrapper-nonfatal-split-profile` as the latest runtime checkpoint included in the current public Release.
+
+Validation target:
+
+- Documentation release-readiness tests
+- Version metadata tests
+- Release metadata environment sanitization tests
+- Full test suite
+
 ## p2.21a5-docs-release-state-sync
 
 Date: 2026-06-09

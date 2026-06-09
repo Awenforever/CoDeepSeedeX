@@ -35,9 +35,9 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
-- 当前内部开发检查点：`p2.21a5-docs-release-state-sync`
+- 当前内部开发检查点：`p2.21a6-docs-public-tag-state-sync`
 - 当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
-- 最新闭合文档同步检查点：`p2.21a5-docs-release-state-sync`
+- 最新闭合文档同步检查点：`p2.21a6-docs-public-tag-state-sync`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
 - 最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
@@ -50,7 +50,7 @@
 - 当前公开Release note同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.4.3-alpha = b11a1c4`
+  - `v0.4.3-alpha = f8a6635`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,7 +60,7 @@
 
 当前收口证据：
 
-- 公开tag `v0.4.3-alpha = b11a1c4`。
+- 公开tag `v0.4.3-alpha = f8a6635`。
 - 当前公开Release包含的内部检查点：`p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`。
 - GitHub Release非draft、非prerelease。
 - GitHub Latest API返回`v0.4.3-alpha`。

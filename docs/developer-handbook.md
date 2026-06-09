@@ -35,9 +35,9 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
-- Current internal development checkpoint: `p2.21a5-docs-release-state-sync`
+- Current internal development checkpoint: `p2.21a6-docs-public-tag-state-sync`
 - Latest runtime checkpoint included in the public Release: `p2.21a4-codex-wrapper-nonfatal-split-profile`
-- Latest closed documentation sync checkpoint: `p2.21a5-docs-release-state-sync`
+- Latest closed documentation sync checkpoint: `p2.21a6-docs-public-tag-state-sync`
 - Latest provider/profile abstraction checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`
 - Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`
 - Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`
@@ -50,7 +50,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Current public Release note synchronization checkpoint: `p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.4.3-alpha = b11a1c4`
+  - `v0.4.3-alpha = f8a6635`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,7 +60,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 
 Current closeout evidence:
 
-- Public tag `v0.4.3-alpha = b11a1c4`.
+- Public tag `v0.4.3-alpha = f8a6635`.
 - Internal checkpoint included in the public Release: `p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`.
 - GitHub Release is non-draft and non-prerelease.
 - GitHub Latest API returns `v0.4.3-alpha`.
