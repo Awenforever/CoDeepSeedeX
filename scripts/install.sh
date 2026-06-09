@@ -943,6 +943,9 @@ select_codeepseedex_python_bin() {
 }
 
 ensure_codeepseedex_python_bin() {
+  if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then
+    return 0
+  fi
   select_codeepseedex_python_bin
   printf '+ Python selected: %s (%s)\n' "$PYTHON_BIN" "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-unknown}" >> "$INSTALL_LOG"
 }
@@ -3808,6 +3811,8 @@ if [ "$NON_INTERACTIVE" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
 fi
 
 CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, dsproxy, profile repair, and ports are handled automatically."
+# Select Python before any env-backed guided setup helper uses env_file_value.
+ensure_codeepseedex_python_bin
 choose_installer_language
 
 setup_width="$(ui_terminal_width)"

@@ -1,3 +1,23 @@
+## p2.21a3-installer-python-selection-order
+
+Date: 2026-06-09
+
+Scope:
+
+- Fixed the p2.21a2 installer ordering regression where `PYTHON_BIN` intentionally starts empty until compatible interpreter selection, but the guided setup flow could read existing env values before that selection occurred.
+- The VM symptom was `install.sh: line 2913: : command not found` before the requirements check; the failing path was `env_file_value`, which executed an empty `PYTHON_BIN`.
+- The installer now selects a compatible Python before env-backed guided setup helpers run, and `ensure_codeepseedex_python_bin` is idempotent so the later requirements check can safely call it again.
+- This preserves the p2.21a2 boundary: CoDeepSeedeX selects from existing compatible interpreters, but does not install, patch, or replace Python.
+
+Validation target:
+
+- Static regression tests for Python-selection order before `choose_installer_language` and `env_file_value`
+- Installer/wrapper/guided UI focused tests
+- Shell syntax and Python bytecode checks
+- Full test suite
+- Release refresh to `v0.4.3-alpha`
+- Real-HOME VM upgrade validation on a non-fresh machine with stale default `/usr/bin/python3` and available `python3.11`
+
 ## p2.21a2-installer-python-selection
 
 Date: 2026-06-09

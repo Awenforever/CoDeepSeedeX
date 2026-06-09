@@ -1386,3 +1386,36 @@ def test_p221a2_installer_does_not_auto_install_python() -> None:
     ]
     for marker in forbidden:
         assert marker not in text
+
+
+def test_p221a3_installer_selects_python_before_env_backed_guided_setup() -> None:
+    text = _p221a2_install_script_text()
+    assert "line 2913" not in text
+    assert 'if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then' in text
+    assert "return 0\n  fi\n  select_codeepseedex_python_bin" in text
+    assert "# Select Python before any env-backed guided setup helper uses env_file_value." in text
+    assert "ensure_codeepseedex_python_bin\nchoose_installer_language" in text
+    assert text.count("ensure_codeepseedex_python_bin\nchoose_installer_language") == 1
+
+    # Main-flow order: the installer log is initialized, Python is selected, then
+    # the guided setup starts. The env_file_value references below live inside
+    # function bodies defined earlier in the shell script; comparing their raw
+    # text positions to the main-flow call site is incorrect.
+    main_flow_markers = [
+        ': > "$INSTALL_LOG"',
+        'CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan:',
+        "# Select Python before any env-backed guided setup helper uses env_file_value.",
+        "ensure_codeepseedex_python_bin\nchoose_installer_language",
+        'step "Checking requirements"',
+        "ensure_codeepseedex_python_bin\nPY_VERSION=",
+    ]
+    positions = [text.index(marker) for marker in main_flow_markers]
+    assert positions == sorted(positions)
+
+    # Keep the real regression target explicit: choose_installer_language still
+    # reads env values through env_file_value, so the main-flow early selection
+    # above must remain before invoking that function.
+    assert 'choose_installer_language() {' in text
+    assert 'existing="$(env_file_value DEEPSEEK_PROXY_LOCALE)"' in text
+    assert 'DEFAULT_STABLE_PORT="$(env_file_value DEEPSEEK_PROXY_PORT)"' in text
+    assert 'DEFAULT_THINKING_PORT="$(env_file_value DEEPSEEK_PROXY_THINKING_PORT)"' in text

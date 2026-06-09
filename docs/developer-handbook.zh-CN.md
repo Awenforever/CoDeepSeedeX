@@ -35,9 +35,9 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`
-- 当前内部开发检查点：`p2.21a2-installer-python-selection`
+- 当前内部开发检查点：`p2.21a3-installer-python-selection-order`
 - 当前公开Release包含的最新运行时检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
-- 最新闭合文档同步检查点：`p2.21a2-installer-python-selection`
+- 最新闭合文档同步检查点：`p2.21a3-installer-python-selection-order`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
 - 最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`

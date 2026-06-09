@@ -63,6 +63,8 @@ def test_install_script_uses_selected_python_bin() -> None:
     assert '"$INSTALL_DIR/.venv/bin/python"' in text
     assert '--python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;' in text
     assert "CoDeepSeedeX does not install or patch Python automatically" in text
+    assert 'if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then' in text
+    assert "ensure_codeepseedex_python_bin\nchoose_installer_language" in text
     forbidden_auto_python_install_markers = [
         "apt-get install python",
         "apt install python",
