@@ -1928,7 +1928,7 @@ def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
 
     assert cli.main(["start", "thinking"]) == 0
     assert cli.main(["stop", "thinking"]) == 0
-    assert cli.main(["status", "thinking", "--timeout", "1"]) == 0
+    assert cli.main(["status", "thinking", "--port", "8001", "--timeout", "1"]) == 0
 
     assert calls == [
         ("start", True, "thinking"),
@@ -1970,7 +1970,7 @@ def test_lifecycle_commands_keep_thinking_flag_compatibility(monkeypatch):
 
     assert cli.main(["start", "--thinking"]) == 0
     assert cli.main(["stop", "--thinking"]) == 0
-    assert cli.main(["status", "--thinking", "--timeout", "1"]) == 0
+    assert cli.main(["status", "--thinking", "--port", "8001", "--timeout", "1"]) == 0
 
     assert calls == [
         ("start", True, None),

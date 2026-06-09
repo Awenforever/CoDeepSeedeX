@@ -34,10 +34,10 @@
 - Release资产：`bootstrap.sh`，`install.sh`
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
-  - `install.sh` sha256：`0ff1f810df4e317480677362b826b4c00cb8924c751c53b844e3a4a46bdca9e7`
-- 当前内部开发检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
-- 当前公开Release包含的最新运行时检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
-- 最新闭合文档同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
+  - `install.sh` sha256：`99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
+- 当前内部开发检查点：`p2.21a5-docs-release-state-sync`
+- 当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
+- 最新闭合文档同步检查点：`p2.21a5-docs-release-state-sync`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
 - 最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`
 - 最新闭合测试契约清理检查点：`p2.19a14-test-contract-pruning`
@@ -47,7 +47,7 @@
 - 最新闭合real-HOME profile model consistency检查点：`p2.19a19-real-home-profile-model-consistency`
 - 最新闭合status JSON与upstream model leakage检查点：`p2.19a21-status-json-and-upstream-model-leakage`
 - 最新闭合profile drift fail-closed guard检查点：`p2.19a23-profile-drift-failclosed-guard`
-- 当前公开Release note同步检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
+- 当前公开Release note同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
   - `v0.4.3-alpha = b11a1c4`

@@ -1,3 +1,22 @@
+## p2.21a5-docs-release-state-sync
+
+Date: 2026-06-09
+
+Scope:
+
+- Synchronized developer-handbook current Release state after `v0.4.3-alpha` was refreshed to the `p2.21a4` public build.
+- Updated the recorded `install.sh` Release asset digest to `99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`.
+- Marked `p2.21a4-codex-wrapper-nonfatal-split-profile` as the latest runtime checkpoint included in the public Release.
+- Kept the public Release tag pinned to `v0.4.3-alpha` and did not refresh Release assets in this documentation-only checkpoint.
+- Preserved the boundary that this checkpoint changes documentation, metadata, and tests only; no runtime logic and no model/provider calls.
+
+Validation target:
+
+- Release-state documentation tests
+- Version metadata tests
+- Release metadata environment sanitization tests
+- Full test suite
+
 ## p2.21a4-codex-wrapper-nonfatal-split-profile
 
 Date: 2026-06-09
