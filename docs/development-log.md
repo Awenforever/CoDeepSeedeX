@@ -1,3 +1,25 @@
+## p2.21a4-codex-wrapper-nonfatal-split-profile
+
+Date: 2026-06-09
+
+Scope:
+
+- Fixed the p2.21a3 real-HOME VM follow-up where installation reached the refreshed `v0.4.3-alpha` build and selected `/usr/bin/python3.11`, but the optional Codex wrapper step returned rc=1 when no real Codex launcher existed behind the existing managed wrapper.
+- The Codex wrapper step now skips nonfatally when no real Codex launcher is available, while preserving a clear diagnostic and the boundary that CoDeepSeedeX does not install or patch Node.js or Codex.
+- The installer now forces the primary managed `deepseek-thinking` profile installation to the Codex 0.134+ split profile-file layout instead of relying on auto layout when Codex cannot be probed.
+- The installer removes the deprecated managed `deepseek` profile after installing the primary `deepseek-thinking` profile so stale legacy `[profiles.deepseek]` tables do not survive normal upgrade.
+- The CLI upgrade path also forces managed profile refreshes to `split_profile_files`.
+
+Validation target:
+
+- Static regression tests for optional Codex wrapper nonfatal behavior when real Codex is absent
+- Static regression tests for installer split-profile layout and deprecated `deepseek` cleanup
+- Shell syntax and Python bytecode checks
+- Focused installer/wrapper/profile/provider/version/docs tests
+- Full test suite
+- Release refresh to `v0.4.3-alpha`
+- Real-HOME VM upgrade validation
+
 ## p2.21a3-installer-python-selection-order
 
 Date: 2026-06-09

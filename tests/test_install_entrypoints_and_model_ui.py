@@ -231,11 +231,15 @@ def test_installer_codex_unknown_backup_happens_only_after_ownership_gate() -> N
     move = body.index('mv "$wrapper_path" "$backup_path"')
     write = body.index('cat > "$wrapper_path" <<EOF')
     empty_real_check = body.index('if [ -z "$real_codex" ]; then')
-    assert gate < move < empty_real_check < write
-    assert 'existing_wrapper_is_unknown="1"' in body
-    assert 'grep -q "CoDeepSeedeX codex wrapper"' not in body
-    assert 'backup existing %q to %q\\n' not in body[:gate]
+    skip = body.index('ok "Codex wrapper skipped"', empty_real_check)
 
+    # p2.21a4: when no real Codex launcher exists, the optional wrapper must
+    # be skipped before any ownership gate, backup, or overwrite can touch
+    # ~/.local/bin/codex. Unknown existing binaries are still gated before
+    # backup/overwrite on the path that has a real Codex launcher.
+    assert empty_real_check < skip < gate < move < write
+    assert "real codex command not found; Codex wrapper skipped" in body
+    assert "refusing to install Codex wrapper" not in body
 
 def test_installer_dsproxy_overwrite_gate_blocks_wrapper_write() -> None:
     body = _install_function_body("write_dsproxy_wrapper", "write_codex_wrapper")
@@ -648,6 +652,8 @@ def test_cli_upgrade_reinstalls_primary_deepseek_thinking_profile_only() -> None
     assert '"deepseek-thinking",' in block
     assert '"--reasoning-effort",' in block
     assert '"xhigh",' in block
+    assert '"--profile-layout",' in block
+    assert '"split_profile_files",' in block
     assert '"medium",' not in block
 
 def test_installer_project_like_shell_calls_are_defined() -> None:
@@ -1211,9 +1217,14 @@ def test_p219a8_installer_skips_managed_wrappers_when_resolving_real_codex() -> 
     assert "CODEEPSEEDEX_REAL_CODEX is not a valid real Codex binary" in text
     assert "/tmp/codeepseedex-*/.local/bin/codex" in text
     assert "CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy" in text
-    assert "real codex command not found; refusing to install Codex wrapper" in text
-    assert 'REAL_CODEX="$real_codex"' in text
 
+    # p2.21a4: missing real Codex remains a clear diagnostic, but it is no
+    # longer fatal for the rest of installation. CoDeepSeedeX must not install
+    # or patch Node/Codex and must not install a recursive wrapper.
+    assert "real codex command not found; Codex wrapper skipped" in text
+    assert "CoDeepSeedeX install can continue without the optional Codex wrapper" in text
+    assert "real codex command not found; refusing to install Codex wrapper" not in text
+    assert "CoDeepSeedeX does not install or patch Node automatically" in text
 
 def test_p219a10_guided_module_prompts_use_step_local_hints() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -1419,3 +1430,23 @@ def test_p221a3_installer_selects_python_before_env_backed_guided_setup() -> Non
     assert 'existing="$(env_file_value DEEPSEEK_PROXY_LOCALE)"' in text
     assert 'DEFAULT_STABLE_PORT="$(env_file_value DEEPSEEK_PROXY_PORT)"' in text
     assert 'DEFAULT_THINKING_PORT="$(env_file_value DEEPSEEK_PROXY_THINKING_PORT)"' in text
+
+
+def test_p221a4_installer_skips_optional_codex_wrapper_without_real_codex_and_keeps_split_profiles() -> None:
+    text = _p221a2_install_script_text()
+    assert "real codex command not found; refusing to install Codex wrapper" not in text
+    assert "real codex command not found; Codex wrapper skipped" in text
+    assert "CoDeepSeedeX install can continue without the optional Codex wrapper" in text
+    assert 'ok "Codex wrapper skipped"\n    return 0' in text
+
+    write_wrapper = text[text.index("write_codex_wrapper() {"):text.index('cat > "$wrapper_path"', text.index("write_codex_wrapper() {"))]
+    assert 'real_codex="$(find_real_codex "$wrapper_path" || true)' in write_wrapper
+    assert write_wrapper.index('if [ -z "$real_codex" ]; then') < write_wrapper.index('require_safe_local_bin_overwrite "$wrapper_path"')
+    assert "refusing to install Codex wrapper" not in write_wrapper
+
+    install_profile_marker = '"$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \\'
+    main_install = text[text.index(install_profile_marker):text.index('write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"')]
+    assert "--name deepseek-thinking" in main_install
+    assert "--profile-layout split_profile_files" in main_install
+    assert "uninstall-codex-profile --name deepseek --no-backup" in main_install
+    assert "Deprecated Codex profile removed: deepseek" in main_install

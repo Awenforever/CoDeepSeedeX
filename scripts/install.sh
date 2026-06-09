@@ -3358,6 +3358,18 @@ write_codex_wrapper() {
   fi
 
   real_codex="$(find_real_codex "$wrapper_path" || true)"
+  if [ -z "$real_codex" ]; then
+    if ! command -v node >/dev/null 2>&1; then
+      warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX will not install a recursive or blind codex wrapper."
+      warn "Install Node.js/Codex CLI first, then rerun the installer. CoDeepSeedeX does not install or patch Node automatically."
+    else
+      warn "real codex command not found; Codex wrapper skipped. Install Codex CLI, set CODEEPSEEDEX_REAL_CODEX, or rerun without --no-codex-wrapper after Codex is available."
+    fi
+    warn "CoDeepSeedeX install can continue without the optional Codex wrapper; dsproxy and managed Codex profile installation remain complete."
+    ok "Codex wrapper skipped"
+    return 0
+  fi
+
   local existing_wrapper_is_unknown="0"
 
   if [ -e "$wrapper_path" ] && ! is_codeepseedex_managed_local_bin "$wrapper_path" "codex"; then
@@ -3380,16 +3392,6 @@ write_codex_wrapper() {
     if [ -z "$real_codex" ]; then
       real_codex="$backup_path"
     fi
-  fi
-
-  if [ -z "$real_codex" ]; then
-    if ! command -v node >/dev/null 2>&1; then
-      warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX will not install a recursive or blind codex wrapper."
-      warn "Install Node.js/Codex CLI first, then rerun the installer. CoDeepSeedeX does not install or patch Node automatically."
-    else
-      warn "real codex command not found; refusing to install Codex wrapper. Install Codex CLI or rerun with --no-codex-wrapper."
-    fi
-    return 1
   fi
 
   cat > "$wrapper_path" <<EOF
@@ -4188,7 +4190,12 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
     --base-url "http://127.0.0.1:${THINKING_PORT}/v1" \
     --model "$PROFILE_THINKING_MODEL" \
     --reasoning-effort xhigh \
+    --profile-layout split_profile_files \
     "${MODEL_CATALOG_ARGS[@]}"
+fi
+
+if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
+    run_quiet "Deprecated Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek --no-backup || true
 fi
 
 write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"

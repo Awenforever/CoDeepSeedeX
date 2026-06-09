@@ -7570,6 +7570,8 @@ def _upgrade(args: argparse.Namespace) -> int:
                     "deepseek-v4-pro",
                     "--reasoning-effort",
                     "xhigh",
+                    "--profile-layout",
+                    "split_profile_files",
                 ],
                 False,
             ),

@@ -65,6 +65,10 @@ def test_install_script_uses_selected_python_bin() -> None:
     assert "CoDeepSeedeX does not install or patch Python automatically" in text
     assert 'if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then' in text
     assert "ensure_codeepseedex_python_bin\nchoose_installer_language" in text
+    assert "real codex command not found; Codex wrapper skipped" in text
+    assert "CoDeepSeedeX install can continue without the optional Codex wrapper" in text
+    assert "--profile-layout split_profile_files" in text
+    assert "uninstall-codex-profile --name deepseek --no-backup" in text
     forbidden_auto_python_install_markers = [
         "apt-get install python",
         "apt install python",
