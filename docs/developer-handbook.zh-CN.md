@@ -35,7 +35,7 @@
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256：`99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
-- 当前内部开发检查点：`p2.22a9-profile-agnostic-codex-runtime-autostart`
+- 当前内部开发检查点：`p2.22a10-codex-executable-wrapper-dispatcher`
 - 当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - 最新闭合文档同步检查点：`p2.21a6-docs-public-tag-state-sync`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`

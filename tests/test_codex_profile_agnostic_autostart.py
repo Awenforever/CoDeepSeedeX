@@ -38,3 +38,19 @@ def test_codex_wrapper_fail_closed_before_native_codex_on_unhealthy_local_port()
         or '__codeepseedex_profile_runtime_autostart "$@" || exit $?' in WRAPPER
     )
     assert not WRAPPER.rstrip().endswith('__codeepseedex_profile_runtime_autostart "$@" || exit $?')
+
+
+def test_codex_wrapper_is_also_valid_executable_dispatcher():
+    assert "EXECUTABLE WRAPPER DISPATCHER" in WRAPPER
+    assert "__codeepseedex_resolve_real_codex" in WRAPPER
+    assert "__codeepseedex_executable_wrapper_main" in WRAPPER
+    assert 'if [ "${BASH_SOURCE[0]}" = "$0" ]; then' in WRAPPER
+    assert 'exec "$__codeepseedex_real_codex" "$@"' in WRAPPER
+    assert 'type -P -a codex' in WRAPPER
+    assert "CODEEPSEEDEX_REAL_CODEX" in WRAPPER
+
+
+def test_codex_executable_dispatcher_runs_autostart_before_native_exec():
+    autostart = WRAPPER.index('__codeepseedex_profile_runtime_autostart "$@" || exit $?')
+    native_exec = WRAPPER.index('exec "$__codeepseedex_real_codex" "$@"')
+    assert autostart < native_exec

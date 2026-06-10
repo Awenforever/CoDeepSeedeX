@@ -275,3 +275,56 @@ codex() {
       ;;
   esac
 }
+
+# BEGIN CODEEPSEEDEX EXECUTABLE WRAPPER DISPATCHER
+# Dual-use mode:
+# - sourced from a shell rc file: define codex() only;
+# - executed as ~/.local/bin/codex: run profile proxy readiness, resolve native Codex, then exec it.
+__codeepseedex_resolve_real_codex() {
+  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ] && [ -x "${CODEEPSEEDEX_REAL_CODEX}" ]; then
+    printf '%s\n' "${CODEEPSEEDEX_REAL_CODEX}"
+    return 0
+  fi
+
+  local self candidate resolved
+  self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]:-$0}")"
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    resolved="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+    [ "$resolved" = "$self" ] && continue
+    [ -x "$resolved" ] || continue
+    printf '%s\n' "$resolved"
+    return 0
+  done < <(type -P -a codex 2>/dev/null | awk '!seen[$0]++')
+
+  for candidate in \
+    "$HOME/.npm-global/bin/codex" \
+    "$HOME/.local/share/npm/bin/codex" \
+    "$HOME/.nvm/current/bin/codex" \
+    "/usr/local/bin/codex" \
+    "/opt/homebrew/bin/codex" \
+    "/usr/bin/codex"; do
+    [ -n "$candidate" ] || continue
+    [ -x "$candidate" ] || continue
+    resolved="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+    [ "$resolved" = "$self" ] && continue
+    printf '%s\n' "$resolved"
+    return 0
+  done
+
+  echo "CoDeepSeedeX: cannot find native Codex binary; set CODEEPSEEDEX_REAL_CODEX=/path/to/codex" >&2
+  return 127
+}
+
+__codeepseedex_executable_wrapper_main() {
+  __codeepseedex_profile_runtime_autostart "$@" || exit $?
+  local __codeepseedex_real_codex
+  __codeepseedex_real_codex="$(__codeepseedex_resolve_real_codex)" || exit $?
+  exec "$__codeepseedex_real_codex" "$@"
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  __codeepseedex_executable_wrapper_main "$@"
+fi
+# END CODEEPSEEDEX EXECUTABLE WRAPPER DISPATCHER

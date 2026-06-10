@@ -2975,3 +2975,10 @@ Scope:
 - The behavior is not USTC-specific; it applies to managed DeepSeek, thinking, and custom-provider profiles whose Codex provider base URL points at `127.0.0.1` or `localhost`.
 - Fail-closed behavior now happens before Codex TUI entry when the local proxy port is occupied but unhealthy or when proxy startup/readiness fails.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+### p2.22a10-codex-executable-wrapper-dispatcher
+
+- Fixed the installed `~/.local/bin/codex` command form by making `scripts/codex-wrapper.bash` dual-use: sourceable shell-function wrapper and executable command dispatcher.
+- The executable dispatcher runs profile-agnostic proxy autostart/readiness first, resolves the native Codex binary while skipping itself, then `exec`s the native binary with original arguments.
+- This closes the regression where `codex --profile <name>` returned immediately after a function-style wrapper was copied into `~/.local/bin/codex`.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
