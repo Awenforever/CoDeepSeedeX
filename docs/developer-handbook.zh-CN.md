@@ -27,15 +27,15 @@
 - 主分支：`master`
 - 当前公开Release：`v0.4.3-alpha`
 - 当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`
-- 当前公开Release提交：`b11a1c4`
+- 当前公开Release提交：`tag-managed p2.22 closeout release update`
 - GitHub Latest普通Release：`v0.4.3-alpha`
 - GitHub Release标题：`CoDeepSeedeX v0.4.3-alpha`
 - GitHub Release状态：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
 - Release资产digest：
   - `bootstrap.sh` sha256：`257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
-  - `install.sh` sha256：`99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
-- 当前内部开发检查点：`p2.22a13-install-wrapper-propagation`
+  - `install.sh` sha256：`3456aac1f06a45e78c60feb32c12765fb3f8bd38bdb36dd4dead10f3e91de596`
+- 当前内部开发检查点：`p2.22a16-release-v043-alpha-update-to-p222-closeout`
 - 当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - 最新闭合文档同步检查点：`p2.21a6-docs-public-tag-state-sync`
 - 最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`
@@ -50,7 +50,7 @@
 - 当前公开Release note同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.4.3-alpha = f8a6635`
+  - `v0.4.3-alpha = <pending>`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,14 +60,14 @@
 
 当前收口证据：
 
-- 公开tag `v0.4.3-alpha = f8a6635`。
+- 公开tag `v0.4.3-alpha = <pending>`。
 - 当前公开Release包含的内部检查点：`p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`。
 - GitHub Release非draft、非prerelease。
 - GitHub Latest API返回`v0.4.3-alpha`。
 - Release资产只有`bootstrap.sh`和`install.sh`。
 - 刷新后的Release线运行`dsproxy --version`应报告`public version: v0.4.3-alpha | b11a1c4`。
 - `p2.19a24`真实Codex入口复测已通过：故意把两个managed splitprofile漂移到`glm-5.1`后，入口路径会自动修复并使用`deepseek-v4-flash-ascend`，无403/access-denied、无默认模型泄漏、无`/tmp`wrapper链。
-- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.3-alpha`tag必须保持在`b11a1c4`，直到后续明确Release更新任务。
+- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.3-alpha`标签由本次明确的Release更新任务刷新到p2.22闭合发布提交。
 
 ## 3. 关键文件地图
 
@@ -383,7 +383,7 @@ bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --re
 
 | ID | 主线任务 | 预期指标 | 当前版本 / 锚点 | 当前状态 | 最近更新 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Release | `v0.4.3-alpha`当前Latest | GitHub Latest Release存在，`isPrerelease=false`，资产只有`bootstrap.sh`和`install.sh`，Release正文不重复标题。 | `v0.4.3-alpha = 6a96593` | 已闭合 | 2026-06-08 | 包含p2.19 custom provider registry、guided UI、Codex兼容/wrapper加固、status JSON、辅助模型泄漏修复、profile漂移fail-closed guard和真实Codex入口验证。 |
+| Release | `v0.4.3-alpha`当前Latest | GitHub Latest Release存在，`isPrerelease=false`，资产只有`bootstrap.sh`和`install.sh`，Release正文不重复标题。 | `v0.4.3-alpha = <pending>` | 已闭合 | 2026-06-08 | 包含p2.19 custom provider registry、guided UI、Codex兼容/wrapper加固、status JSON、辅助模型泄漏修复、profile漂移fail-closed guard和真实Codex入口验证。 |
 | Installer UX | 安装器和wizard一致性 | step-local hints、箭头键菜单、Backspace导航、简洁验证摘要、无跨步骤model摘要泄漏。 | `p2.19a10-guided-installer-contextual-hints` | 已闭合 | 2026-06-07 | VM真实HOME验证通过。 |
 | Custom providers | 多custom OpenAI-compatible providers和models | 用户可新增provider、新增model、切换active provider/model，并按配置的`/models`验证。 | `p2.19a1`到`p2.19a6` | 已闭合 | 2026-06-06 | active provider/model镜像到legacy env以保持运行时兼容。 |
 | Codex compatibility | 版本感知profile布局和安全wrapper | Codex `<0.134`使用legacy tables；Codex `>=0.134`使用split files；`REAL_CODEX`不指向wrapper。 | `p2.19a7`到`p2.19a9` | 已闭合 | 2026-06-07 | 真实HOME wrapper执行通过。 |

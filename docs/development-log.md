@@ -3004,3 +3004,14 @@ Scope:
 - `deepseek_responses_proxy/cli.py` records the canonical wrapper template and target paths for refresh-wrapper/install propagation audits.
 - The verified wrapper contract remains dual-use: sourceable function mode and executable dispatcher mode with profile-agnostic local proxy readiness.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+### p2.22a16-release-v043-alpha-update-to-p222-closeout
+
+- Updated public release `v0.4.3-alpha` from `f8a6635` to the p2.22 closeout release line.
+- Included the p2.22a8-p2.22a13 chain: Codex 0.138 model catalog compatibility, profile-agnostic runtime autostart, executable wrapper dispatcher, native Codex resolver hardening, Bash shebang, and installer propagation of the canonical wrapper.
+- Local lifecycle closeout audit passed with no issues; VM validation for `24d542f` passed with `run_ok=1`, `issues=[]`, and isolated wrapper/profile dispatch checks passing.
+- The tracked handbooks record the release commit as tag-managed because a commit cannot stably embed its own final hash before tagging.
+- Release assets remain exactly `bootstrap.sh` and `install.sh`.
+  - `bootstrap.sh` sha256 `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
+  - `install.sh` sha256 `3456aac1f06a45e78c60feb32c12765fb3f8bd38bdb36dd4dead10f3e91de596`
+- `v0.4.3-alpha` remains the public release line; no new public version number was introduced.
