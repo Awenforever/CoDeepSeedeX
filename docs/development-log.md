@@ -2967,3 +2967,11 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility by adding final required tail fields.
 - Added `experimental_supported_tools`, `available_in_plans`, `supports_search_tool`, `additional_speed_tiers`, and `supports_reasoning_summaries` to generated custom-provider catalogs.
 - Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+
+### p2.22a9-profile-agnostic-codex-runtime-autostart
+
+- Established a profile-agnostic Codex runtime autostart contract: `codex --profile <name>` now checks any managed local Responses proxy route before entering native Codex.
+- The wrapper parses split profile files, resolves the configured `model_provider` base URL, starts the matching local proxy port when absent, and verifies `/v1/models` before launching Codex.
+- The behavior is not USTC-specific; it applies to managed DeepSeek, thinking, and custom-provider profiles whose Codex provider base URL points at `127.0.0.1` or `localhost`.
+- Fail-closed behavior now happens before Codex TUI entry when the local proxy port is occupied but unhealthy or when proxy startup/readiness fails.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
