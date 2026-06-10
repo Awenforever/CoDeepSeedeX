@@ -25,16 +25,6 @@
       "display_name": "DeepSeek V4 Pro",
       "description": "DeepSeek V4 Pro through the local Responses proxy.",
       "default_reasoning_level": "high",
-      "supported_reasoning_levels": [
-        {
-          "effort": "high",
-          "description": "DeepSeek high reasoning effort"
-        },
-        {
-          "effort": "xhigh",
-          "description": "DeepSeek max reasoning effort"
-        }
-      ],
       "shell_type": "shell_command",
       "visibility": "list",
       "minimal_client_version": "0.124.0",
@@ -111,16 +101,6 @@
       "display_name": "DeepSeek V4 Flash",
       "description": "DeepSeek V4 Flash through the local Responses proxy.",
       "default_reasoning_level": "high",
-      "supported_reasoning_levels": [
-        {
-          "effort": "high",
-          "description": "DeepSeek high reasoning effort"
-        },
-        {
-          "effort": "xhigh",
-          "description": "DeepSeek max reasoning effort"
-        }
-      ],
       "shell_type": "shell_command",
       "visibility": "list",
       "minimal_client_version": "0.124.0",
@@ -186,13 +166,7 @@
       "context_window": 1000000,
       "max_context_window": 1000000,
       "hidden": false,
-      "effective_context_window_percent": 90,
-      "supported_reasoning_levels": [
-        "minimal",
-        "low",
-        "medium",
-        "high"
-      ]
+      "effective_context_window_percent": 90
     }
   ]
 }

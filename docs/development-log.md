@@ -2943,3 +2943,9 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility for generated custom-provider catalogs requiring `slug`.
 - Custom-provider catalog entries now include `slug` plus common aliases (`id`, `model`, `name`) and display fields.
 - Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling the upstream model API.
+
+### p2.22a5-model-catalog-reasoning-presets-schema
+
+- Fixed Codex 0.138 model catalog schema compatibility for reasoning preset fields.
+- Removed guessed string-array `supported_reasoning_levels` entries from generated and managed custom-provider model catalogs.
+- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.

@@ -5400,7 +5400,6 @@ def _write_custom_provider_model_catalog(
         "max_context_window": int(context_window),
         "hidden": False,
         "effective_context_window_percent": 90,
-        "supported_reasoning_levels": ["minimal", "low", "medium", "high"],
         "provider_id": provider_id,
         "provider_type": "custom_openai_compatible",
         "context_window_tokens": int(context_window),
