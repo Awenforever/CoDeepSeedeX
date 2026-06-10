@@ -68,3 +68,36 @@ def test_custom_provider_catalog_generator_emits_codex_required_schema():
     ]:
         assert literal in generator
     assert '"visibility": "visible"' not in generator
+
+def test_repo_model_catalog_entries_have_codex_tail_required_schema():
+    data = json.loads(Path("experiments/model-catalog/deepseek-proxy-models.json").read_text(encoding="utf-8"))
+    required = {
+        "experimental_supported_tools",
+        "available_in_plans",
+        "supports_search_tool",
+        "additional_speed_tiers",
+        "supports_reasoning_summaries",
+    }
+    for model in data.get("models", []):
+        missing = required - set(model)
+        assert not missing, (model.get("slug"), sorted(missing))
+        assert isinstance(model["experimental_supported_tools"], list)
+        assert isinstance(model["available_in_plans"], list)
+        assert isinstance(model["supports_search_tool"], bool)
+        assert isinstance(model["additional_speed_tiers"], list)
+        assert isinstance(model["supports_reasoning_summaries"], bool)
+
+
+def test_custom_provider_catalog_generator_emits_codex_tail_required_schema():
+    source = Path("deepseek_responses_proxy/cli.py").read_text(encoding="utf-8")
+    start = source.index("def _write_custom_provider_model_catalog(")
+    end = source.index("\n\ndef ", start + 1)
+    generator = source[start:end]
+    for literal in [
+        '"experimental_supported_tools": []',
+        '"available_in_plans": [',
+        '"supports_search_tool": True',
+        '"additional_speed_tiers": []',
+        '"supports_reasoning_summaries": True',
+    ]:
+        assert literal in generator

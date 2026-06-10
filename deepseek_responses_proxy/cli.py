@@ -5434,6 +5434,26 @@ def _write_custom_provider_model_catalog(
         "model_messages": {
             "instructions_template": "You are Codex, a coding agent. Help the user complete software engineering tasks accurately."
         },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+            "business",
+            "edu",
+            "education",
+            "enterprise",
+            "enterprise_cbp_usage_based",
+            "finserv",
+            "go",
+            "hc",
+            "plus",
+            "pro",
+            "prolite",
+            "quorum",
+            "self_serve_business_usage_based",
+            "team",
+        ],
+        "supports_search_tool": True,
+        "additional_speed_tiers": [],
+        "supports_reasoning_summaries": True,
     })
     data.update({
         "version": 1,

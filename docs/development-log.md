@@ -2961,3 +2961,9 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility by emitting the complete required model entry shape.
 - Added `shell_type`, `minimal_client_version`, `supported_in_api`, `base_instructions`, and `model_messages` to generated custom-provider catalogs.
 - Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+
+### p2.22a8-model-catalog-final-required-fields
+
+- Fixed Codex 0.138 model catalog schema compatibility by adding final required tail fields.
+- Added `experimental_supported_tools`, `available_in_plans`, `supports_search_tool`, `additional_speed_tiers`, and `supports_reasoning_summaries` to generated custom-provider catalogs.
+- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.

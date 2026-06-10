@@ -60,7 +60,27 @@
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
       "effective_context_window_percent": 90,
-      "hidden": false
+      "hidden": false,
+      "experimental_supported_tools": [],
+      "available_in_plans": [
+        "business",
+        "edu",
+        "education",
+        "enterprise",
+        "enterprise_cbp_usage_based",
+        "finserv",
+        "go",
+        "hc",
+        "plus",
+        "pro",
+        "prolite",
+        "quorum",
+        "self_serve_business_usage_based",
+        "team"
+      ],
+      "supports_search_tool": true,
+      "additional_speed_tiers": [],
+      "supports_reasoning_summaries": true
     },
     {
       "prefer_websockets": true,
@@ -122,7 +142,27 @@
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
       "effective_context_window_percent": 90,
-      "hidden": false
+      "hidden": false,
+      "experimental_supported_tools": [],
+      "available_in_plans": [
+        "business",
+        "edu",
+        "education",
+        "enterprise",
+        "enterprise_cbp_usage_based",
+        "finserv",
+        "go",
+        "hc",
+        "plus",
+        "pro",
+        "prolite",
+        "quorum",
+        "self_serve_business_usage_based",
+        "team"
+      ],
+      "supports_search_tool": true,
+      "additional_speed_tiers": [],
+      "supports_reasoning_summaries": true
     },
     {
       "prefer_websockets": true,
@@ -184,7 +224,27 @@
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
       "effective_context_window_percent": 90,
-      "hidden": false
+      "hidden": false,
+      "experimental_supported_tools": [],
+      "available_in_plans": [
+        "business",
+        "edu",
+        "education",
+        "enterprise",
+        "enterprise_cbp_usage_based",
+        "finserv",
+        "go",
+        "hc",
+        "plus",
+        "pro",
+        "prolite",
+        "quorum",
+        "self_serve_business_usage_based",
+        "team"
+      ],
+      "supports_search_tool": true,
+      "additional_speed_tiers": [],
+      "supports_reasoning_summaries": true
     }
   ]
 }
