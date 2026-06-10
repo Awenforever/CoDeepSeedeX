@@ -75,7 +75,16 @@
       "additional_speed_tiers": [
         "fast"
       ],
-      "supports_reasoning_summaries": false
+      "supports_reasoning_summaries": false,
+      "id": "deepseek-v4-pro",
+      "model": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "displayName": "DeepSeek V4 Pro",
+      "provider": "deepseek-proxy",
+      "context_window_tokens": 1000000,
+      "max_context_window_tokens": 1000000,
+      "hidden": false,
+      "effective_context_window_percent": 90
     },
     {
       "prefer_websockets": true,
@@ -152,7 +161,16 @@
       "additional_speed_tiers": [
         "fast"
       ],
-      "supports_reasoning_summaries": false
+      "supports_reasoning_summaries": false,
+      "id": "deepseek-v4-flash",
+      "model": "deepseek-v4-flash",
+      "name": "deepseek-v4-flash",
+      "displayName": "DeepSeek V4 Flash",
+      "provider": "deepseek-proxy",
+      "context_window_tokens": 1000000,
+      "max_context_window_tokens": 1000000,
+      "hidden": false,
+      "effective_context_window_percent": 90
     },
     {
       "id": "deepseek-v4-flash-ascend",
@@ -160,7 +178,21 @@
       "name": "deepseek-v4-flash-ascend",
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
-      "visibility": "list"
+      "visibility": "list",
+      "slug": "deepseek-v4-flash-ascend",
+      "display_name": "Deepseek V4 Flash Ascend",
+      "displayName": "Deepseek V4 Flash Ascend",
+      "provider": "deepseek-proxy",
+      "context_window": 1000000,
+      "max_context_window": 1000000,
+      "hidden": false,
+      "effective_context_window_percent": 90,
+      "supported_reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ]
     }
   ]
 }

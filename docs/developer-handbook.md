@@ -35,7 +35,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Public Release asset digests:
   - `bootstrap.sh` sha256: `257456d2724519bf94ad09f4dce038ac23e8fd5ab9da4b117f1ae637164590a4`
   - `install.sh` sha256: `99a6abfd555646789e0a10ee28760f22d6fa150bdf946e020d9a1eb43594f070`
-- Current internal development checkpoint: `p2.22a3-model-catalog-visibility-schema`
+- Current internal development checkpoint: `p2.22a4-model-catalog-slug-schema`
 - Latest runtime checkpoint included in the public Release: `p2.21a4-codex-wrapper-nonfatal-split-profile`
 - Latest closed documentation sync checkpoint: `p2.21a6-docs-public-tag-state-sync`
 - Latest provider/profile abstraction checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`

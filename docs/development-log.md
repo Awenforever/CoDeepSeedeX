@@ -2937,3 +2937,9 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility for generated custom-provider catalogs.
 - Replaced invalid `visibility = visible` / `"visibility": "visible"` output with Codex-compatible `visibility = list` / `"visibility": "list"`.
 - Added regression coverage so managed model catalog fixtures and generator source do not reintroduce the invalid visibility enum.
+
+### p2.22a4-model-catalog-slug-schema
+
+- Fixed Codex 0.138 model catalog schema compatibility for generated custom-provider catalogs requiring `slug`.
+- Custom-provider catalog entries now include `slug` plus common aliases (`id`, `model`, `name`) and display fields.
+- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling the upstream model API.

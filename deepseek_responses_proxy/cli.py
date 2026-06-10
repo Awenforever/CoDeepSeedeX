@@ -5389,9 +5389,18 @@ def _write_custom_provider_model_catalog(
     ]
     capabilities = _custom_provider_capabilities(entry)
     models.append({
+        "slug": model_key,
         "id": model_key,
         "model": model_key,
         "name": model_key,
+        "display_name": model_key,
+        "displayName": model_key,
+        "provider": f"{provider_id}-proxy",
+        "context_window": int(context_window),
+        "max_context_window": int(context_window),
+        "hidden": False,
+        "effective_context_window_percent": 90,
+        "supported_reasoning_levels": ["minimal", "low", "medium", "high"],
         "provider_id": provider_id,
         "provider_type": "custom_openai_compatible",
         "context_window_tokens": int(context_window),
