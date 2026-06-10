@@ -47,10 +47,18 @@ codex() {
     *)
       source "$HOME/.config/deepseek-responses-proxy/env"
       if dsproxy config custom-provider use --name "$selected_profile" --no-profile-sync >/dev/null 2>&1; then
+        if ! dsproxy provider install-profile --name "$selected_profile" --profile-name "$selected_profile" >/dev/null 2>&1; then
+          printf 'CoDeepSeedeX error: failed to sync custom provider profile "%s".\n' "$selected_profile" >&2
+          return 2
+        fi
         dsproxy start thinking
         DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" command codex "$@"
-      else
+      elif [ -f "$HOME/.codex/${selected_profile}.config.toml" ]; then
         command codex "$@"
+      else
+        printf 'CoDeepSeedeX error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$selected_profile" >&2
+        printf 'Add/sync it first: dsproxy provider install-profile --name %s --profile-name %s\n' "$selected_profile" "$selected_profile" >&2
+        return 2
       fi
       ;;
   esac

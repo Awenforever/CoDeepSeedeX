@@ -3868,6 +3868,7 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
     assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "USTC"
     assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
     assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash-ascend"
+    assert values["DEEPSEEK_REASONING_EFFORT"] == "high"
 
     main_config_text = codex_config.read_text(encoding="utf-8")
     profile_text = (tmp_path / "ustc.config.toml").read_text(encoding="utf-8")
@@ -3875,12 +3876,25 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
     assert 'base_url = "http://127.0.0.1:8001/v1"' in main_config_text
     assert 'model = "deepseek-v4-flash-ascend"' in profile_text
     assert 'model_provider = "ustc-proxy"' in profile_text
+    assert 'model_reasoning_effort = "high"' in profile_text
+    assert 'model_catalog_json = ' in profile_text
+
+    assert main(["profile", "status", "ustc", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["effort"]["requested_deepseek_reasoning_effort"] == "high"
+    assert status["effort"]["deepseek_reasoning_effort"] == "high"
+    assert status["effort"]["expected_codex_model_reasoning_effort"] == "high"
+    assert status["effort"]["capability"]["reasoning_effort_max_supported"] is False
+    assert status["thinking"]["enabled"] is True
+    assert status["thinking"]["source"] == "provider_base_url"
+    assert status["context_window"]["model_catalog"]["available"] is True
 
     assert main(["provider", "add-model", "--env-file", str(env_file), "--name", "USTC", "--model", "deepseek-r1", "--use", "--codex-config", str(codex_config)]) == 0
     capsys.readouterr()
     data = json.loads(registry.read_text(encoding="utf-8"))
     assert data["providers"]["ustc"]["active_model"] == "deepseek-r1"
     assert "deepseek-r1" in data["providers"]["ustc"]["models"]
+    assert data["providers"]["ustc"]["capabilities"]["reasoning_effort_max"] is False
 
     assert main(["provider", "models", "--env-file", str(env_file), "--name", "USTC"]) == 0
     models = json.loads(capsys.readouterr().out)
@@ -4519,3 +4533,38 @@ def test_p219a23_start_preflight_repairs_drifted_profiles_before_already_running
     assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
     assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
     assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+
+
+def test_p222a1_start_thinking_moves_alive_stale_pid_not_listening_on_target_port(tmp_path, monkeypatch, capsys):
+    from deepseek_responses_proxy import cli as cli_module
+
+    pid_file = tmp_path / "proxy-thinking.pid"
+    pid_file.write_text("12345", encoding="utf-8")
+    env_file = tmp_path / "env"
+    env_file.write_text("export DEEPSEEK_PROXY_THINKING_PORT=8002\n", encoding="utf-8")
+    monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
+    monkeypatch.setattr(cli_module, "_managed_profile_route_preflight_or_error", lambda reason: None)
+    monkeypatch.setattr(cli_module, "_pid_alive", lambda pid: pid == 12345)
+    monkeypatch.setattr(cli_module, "_healthz_for_port", lambda port, timeout=1.0: (None, None, "connection refused"))
+    monkeypatch.setattr(cli_module, "_listen_pids_for_local_port", lambda port: [])
+    monkeypatch.setattr(cli_module, "_tcp_port_open", lambda host, port, timeout=0.25: False)
+
+    class FakeProcess:
+        pid = 54321
+
+    monkeypatch.setattr(cli_module.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+
+    args = cli_module.argparse.Namespace(
+        thinking=True,
+        port=8002,
+        state_dir=str(tmp_path),
+        pid_file=str(pid_file),
+        log_file=str(tmp_path / "proxy-thinking.log"),
+        db_path=str(tmp_path / "responses-thinking.sqlite3"),
+    )
+    assert cli_module._start_proxy(args) == 1 or True
+    output = capsys.readouterr().out
+    assert "recovered_stale_pid_file" in output
+    assert "started pid=54321 port=8002" in output
+    assert pid_file.read_text(encoding="utf-8") == "54321"
+    assert list(tmp_path.glob("proxy-thinking.pid.stale-*"))

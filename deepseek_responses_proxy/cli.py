@@ -1025,6 +1025,65 @@ def _codex_model_reasoning_effort_for_deepseek(deepseek_effort: str) -> str:
     return "high"
 
 
+def _custom_provider_capabilities(entry: dict[str, Any] | None) -> dict[str, Any]:
+    capabilities = entry.get("capabilities") if isinstance(entry, dict) else None
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+    reasoning = capabilities.get("reasoning_effort")
+    if isinstance(reasoning, str):
+        reasoning_values = [reasoning]
+    elif isinstance(reasoning, list):
+        reasoning_values = [str(item).strip().lower() for item in reasoning if str(item).strip()]
+    else:
+        reasoning_values = []
+    return {
+        **capabilities,
+        "reasoning_effort": reasoning_values or ["high"],
+        "reasoning_effort_max": bool(capabilities.get("reasoning_effort_max")) or "max" in reasoning_values or "xhigh" in reasoning_values,
+    }
+
+
+def _custom_provider_supports_reasoning_effort_max(entry: dict[str, Any] | None) -> bool:
+    return bool(_custom_provider_capabilities(entry).get("reasoning_effort_max"))
+
+
+def _custom_provider_effective_reasoning_effort(
+    entry: dict[str, Any] | None,
+    env_values: dict[str, str] | None,
+    *,
+    requested: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    env_values = env_values or {}
+    requested_raw = requested or env_values.get("DEEPSEEK_REASONING_EFFORT") or "high"
+    requested_effort = _canonical_cli_reasoning_effort(requested_raw) or "high"
+    supports_max = _custom_provider_supports_reasoning_effort_max(entry)
+    if requested_effort == "max" and not supports_max:
+        return "high", {
+            "requested_deepseek_reasoning_effort": "max",
+            "effective_deepseek_reasoning_effort": "high",
+            "codex_model_reasoning_effort": "high",
+            "reasoning_effort_max_supported": False,
+            "capability_downgraded": True,
+            "reason": "custom_provider_reasoning_effort_max_not_declared",
+            "action": "Declare provider capabilities.reasoning_effort_max=true only after validating that the upstream endpoint supports max reasoning effort.",
+        }
+    return requested_effort, {
+        "requested_deepseek_reasoning_effort": requested_effort,
+        "effective_deepseek_reasoning_effort": requested_effort,
+        "codex_model_reasoning_effort": "xhigh" if requested_effort == "max" else "high",
+        "reasoning_effort_max_supported": supports_max,
+        "capability_downgraded": False,
+        "reason": None,
+        "action": None,
+    }
+
+
+def _codex_model_reasoning_effort_for_custom_provider(deepseek_effort: str, entry: dict[str, Any] | None) -> str:
+    if deepseek_effort == "max" and _custom_provider_supports_reasoning_effort_max(entry):
+        return "xhigh"
+    return "high"
+
+
 def _reasoning_effort_contract(value: object) -> dict[str, object] | None:
     requested = str(value or "").strip().lower()
     deepseek_effort = _canonical_cli_reasoning_effort(requested)
@@ -1856,7 +1915,10 @@ activate_codeepseedex_custom_provider_profile() {
   if [ -z "$profile_name" ] || [ ! -x "$DSPROXY" ]; then
     return 1
   fi
-  "$DSPROXY" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1
+  if ! "$DSPROXY" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1; then
+    return 1
+  fi
+  "$DSPROXY" provider install-profile --name "$profile_name" --profile-name "$profile_name" >/dev/null 2>&1
 }
 
 start_dsproxy_profile() {
@@ -1912,6 +1974,12 @@ run_codeepseedex_codex() {
       if activate_codeepseedex_custom_provider_profile "$profile"; then
         start_dsproxy_profile "deepseek-thinking"
         schedule_codeepseedex_terminal_title_refresh
+      elif [ -f "$HOME/.codex/${profile}.config.toml" ]; then
+        :
+      else
+        printf 'CoDeepSeedeX error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$profile" >&2
+        printf 'Add/sync it first: %s provider install-profile --name %s --profile-name %s\n' "$DSPROXY" "$profile" "$profile" >&2
+        return 2
       fi
       ;;
   esac
@@ -2005,10 +2073,34 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     provider_name = profile_section.get("model_provider") or f"{profile_name}-proxy"
     provider_section = sections.get(f"model_providers.{provider_name}", {})
 
+    custom_provider_entry = _custom_provider_entry_for_profile(
+        profile_name,
+        env_file=env_path,
+        env_values=env_values,
+        provider_name=provider_name,
+    )
     env_effort_raw = env_values.get("DEEPSEEK_REASONING_EFFORT")
-    deepseek_effort = _canonical_cli_reasoning_effort(env_effort_raw or profile_section.get("model_reasoning_effort") or "high") or "high"
+    requested_deepseek_effort = _canonical_cli_reasoning_effort(env_effort_raw or profile_section.get("model_reasoning_effort") or "high") or "high"
+    if custom_provider_entry is not None:
+        deepseek_effort, effort_capability = _custom_provider_effective_reasoning_effort(
+            custom_provider_entry,
+            env_values,
+            requested=requested_deepseek_effort,
+        )
+        expected_codex_effort = _codex_model_reasoning_effort_for_custom_provider(deepseek_effort, custom_provider_entry)
+    else:
+        deepseek_effort = requested_deepseek_effort
+        effort_capability = {
+            "requested_deepseek_reasoning_effort": requested_deepseek_effort,
+            "effective_deepseek_reasoning_effort": deepseek_effort,
+            "codex_model_reasoning_effort": _codex_model_reasoning_effort_for_deepseek(deepseek_effort),
+            "reasoning_effort_max_supported": deepseek_effort == "max",
+            "capability_downgraded": False,
+            "reason": None,
+            "action": None,
+        }
+        expected_codex_effort = _codex_model_reasoning_effort_for_deepseek(deepseek_effort)
     codex_effort = profile_section.get("model_reasoning_effort")
-    expected_codex_effort = _codex_model_reasoning_effort_for_deepseek(deepseek_effort)
     health = _codex_config_health(codex_path)
     profile_invalid = [
         item for item in health["invalid_profile_fields"]
@@ -2048,17 +2140,16 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         "model": model_contract,
         "effort": {
             "user_facing": "max" if deepseek_effort == "max" else "high",
+            "requested_deepseek_reasoning_effort": requested_deepseek_effort,
             "deepseek_reasoning_effort": deepseek_effort,
             "codex_model_reasoning_effort": codex_effort,
             "expected_codex_model_reasoning_effort": expected_codex_effort,
-            "source": "dsproxy_env_and_codex_profile",
+            "source": "dsproxy_env_profile_and_provider_capability",
             "codex_profile_valid": codex_effort in CODEX_MODEL_REASONING_EFFORT_ALLOWED if codex_effort else False,
             "normalized": codex_effort == expected_codex_effort,
+            "capability": effort_capability,
         },
-        "thinking": {
-            "enabled": profile_name.endswith("thinking"),
-            "source": "profile_name",
-        },
+        "thinking": _profile_thinking_status(profile_name, provider_section, env_values),
         "context_window": context_contract,
         "health": {
             "codex_config_loadable": bool(health["codex_config_loadable"]),
@@ -2832,6 +2923,27 @@ def _pid_alive(pid: int | None) -> bool:
         return False
 
 
+def _move_stale_pid_file(pid_path: Path, *, pid: int | None, port: int, reason: str) -> dict[str, object]:
+    stale_path = pid_path.with_name(f"{pid_path.name}.stale-{int(time.time())}")
+    try:
+        pid_path.replace(stale_path)
+        moved = True
+        error = None
+    except Exception as exc:
+        moved = False
+        stale_path = pid_path
+        error = f"{type(exc).__name__}: {exc}"
+    return {
+        "pid": pid,
+        "port": port,
+        "pid_file": str(pid_path),
+        "stale_pid_file": str(stale_path),
+        "stale_pid_moved": moved,
+        "reason": reason,
+        "error": error,
+    }
+
+
 def _start_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
     port = _port_for(thinking, args.port)
@@ -2855,23 +2967,34 @@ def _start_proxy(args: argparse.Namespace) -> int:
         if status == 200 and running_version == PROXY_VERSION:
             print(f"already_running pid={existing_pid} port={port} version={running_version} pid_file={pid_path}")
             return 0
-        print(
-            json.dumps(
-                {
-                    "error": "pid_file_points_to_different_or_unhealthy_service",
-                    "pid": existing_pid,
-                    "port": port,
-                    "expected_version": PROXY_VERSION,
-                    "running_version": running_version,
-                    "http_status": status,
-                    "healthz_error": error,
-                    "pid_file": str(pid_path),
-                },
-                ensure_ascii=False,
-                indent=2,
+        listen_pids = _listen_pids_for_local_port(port)
+        if existing_pid not in listen_pids:
+            moved = _move_stale_pid_file(
+                pid_path,
+                pid=existing_pid,
+                port=port,
+                reason="pid_file_alive_but_not_listening_on_target_port",
             )
-        )
-        return 1
+            print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+        else:
+            print(
+                json.dumps(
+                    {
+                        "error": "pid_file_points_to_different_or_unhealthy_service",
+                        "pid": existing_pid,
+                        "port": port,
+                        "expected_version": PROXY_VERSION,
+                        "running_version": running_version,
+                        "http_status": status,
+                        "healthz_error": error,
+                        "pid_file": str(pid_path),
+                        "listen_pids": listen_pids,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
 
     status, data, error = _healthz_for_port(port, timeout=1.0)
     running_version = _version_from_healthz(data)
@@ -5192,6 +5315,11 @@ def _upsert_custom_provider_registry_entry(
         models = []
     if model and model not in models:
         models.append(model)
+    capabilities = entry.get("capabilities")
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+    capabilities.setdefault("reasoning_effort", ["high"])
+    capabilities.setdefault("reasoning_effort_max", False)
     entry.update({
         "id": provider_id,
         "type": "custom_openai_compatible",
@@ -5199,6 +5327,7 @@ def _upsert_custom_provider_registry_entry(
         "base_url": base_url,
         "active_model": model,
         "models": models,
+        "capabilities": capabilities,
     })
     if api_key:
         entry["api_key"] = api_key
@@ -5226,6 +5355,100 @@ def _custom_provider_codex_profile_name(provider_id: str, explicit: str | None =
     return _custom_provider_registry_slug(explicit or provider_id)
 
 
+def _custom_provider_model_catalog_path(codex_config: Path | str | None = None) -> Path:
+    codex_path = Path(codex_config).expanduser() if codex_config else default_codex_config_path()
+    return codex_path.parent / "model-catalogs" / "codeepseedex-custom-providers.json"
+
+
+def _write_custom_provider_model_catalog(
+    codex_config: Path | str | None,
+    *,
+    provider_id: str,
+    entry: dict[str, Any],
+    model: str,
+    context_window: int,
+) -> Path:
+    catalog_path = _custom_provider_model_catalog_path(codex_config)
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    if catalog_path.exists():
+        try:
+            data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    else:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    models = data.get("models")
+    if not isinstance(models, list):
+        models = []
+    model_key = str(model or "").strip()
+    models = [
+        item for item in models
+        if not (isinstance(item, dict) and str(item.get("id") or item.get("model") or item.get("name") or "").strip() == model_key)
+    ]
+    capabilities = _custom_provider_capabilities(entry)
+    models.append({
+        "id": model_key,
+        "model": model_key,
+        "name": model_key,
+        "provider_id": provider_id,
+        "provider_type": "custom_openai_compatible",
+        "context_window_tokens": int(context_window),
+        "max_context_window_tokens": int(context_window),
+        "supports_reasoning_effort_max": bool(capabilities.get("reasoning_effort_max")),
+        "visibility": "visible",
+    })
+    data.update({
+        "version": 1,
+        "source": "codeepseedex_custom_provider_registry",
+        "models": models,
+    })
+    catalog_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return catalog_path
+
+
+def _custom_provider_entry_for_profile(
+    profile_name: str,
+    *,
+    env_file: Path | None = None,
+    env_values: dict[str, str] | None = None,
+    provider_name: str | None = None,
+) -> dict[str, Any] | None:
+    env_path = env_file or default_env_file_path()
+    try:
+        registry = _read_custom_provider_registry(_model_provider_registry_path(env_path))
+    except Exception:
+        return None
+    providers = registry.get("providers")
+    if not isinstance(providers, dict):
+        return None
+    candidates = [
+        _custom_provider_registry_slug(profile_name),
+        _custom_provider_registry_slug((provider_name or "").removesuffix("-proxy")),
+        _custom_provider_registry_slug(str((env_values or {}).get("DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME") or "")),
+        str(registry.get("active_provider") or "").strip(),
+    ]
+    for candidate in candidates:
+        if candidate and isinstance(providers.get(candidate), dict):
+            return providers[candidate]
+    return None
+
+
+def _profile_thinking_status(
+    profile_name: str,
+    provider_section: dict[str, str],
+    env_values: dict[str, str],
+) -> dict[str, object]:
+    base_url = str(provider_section.get("base_url") or "")
+    thinking_port = str(env_values.get("DEEPSEEK_PROXY_THINKING_PORT") or DEFAULT_THINKING_PORT).strip()
+    if thinking_port and re.search(rf":{re.escape(thinking_port)}(?:/|$)", base_url):
+        return {"enabled": True, "source": "provider_base_url"}
+    if profile_name.endswith("thinking"):
+        return {"enabled": True, "source": "profile_name"}
+    return {"enabled": False, "source": "profile_name_and_provider_base_url"}
+
+
 def _sync_custom_provider_codex_profile_from_entry(
     env_file: Path,
     *,
@@ -5247,8 +5470,15 @@ def _sync_custom_provider_codex_profile_from_entry(
     context_window = DEFAULT_CONTEXT_WINDOW_TOKENS
     auto_compact_ratio = _auto_compact_ratio_from_env_values(env_values)
     auto_compact_token_limit = _derive_auto_compact_token_limit(context_window, auto_compact_ratio)
-    deepseek_effort = _canonical_cli_reasoning_effort(env_values.get("DEEPSEEK_REASONING_EFFORT") or "max") or "max"
-    codex_effort = _codex_model_reasoning_effort_for_deepseek(deepseek_effort)
+    deepseek_effort, effort_capability = _custom_provider_effective_reasoning_effort(entry, env_values)
+    codex_effort = _codex_model_reasoning_effort_for_custom_provider(deepseek_effort, entry)
+    catalog_path = _write_custom_provider_model_catalog(
+        codex_path,
+        provider_id=provider_id,
+        entry=entry,
+        model=model,
+        context_window=context_window,
+    )
     profile_path = codex_profile_config_path(codex_profile, codex_path)
     provider_header, provider_block, _profile_header, profile_block = _codex_profile_blocks(
         profile_name=codex_profile,
@@ -5259,7 +5489,7 @@ def _sync_custom_provider_codex_profile_from_entry(
         context_window=context_window,
         auto_compact_token_limit=auto_compact_token_limit,
         tool_output_token_limit=12_000,
-        model_catalog_json=None,
+        model_catalog_json=str(catalog_path),
     )
     original = codex_path.read_text(encoding="utf-8") if codex_path.exists() else ""
     updated, provider_existed = _upsert_toml_table(original, provider_header, provider_block)
@@ -5286,6 +5516,10 @@ def _sync_custom_provider_codex_profile_from_entry(
         "legacy_profile_table_removed": cleanup["legacy_profile_table_removed"],
         "legacy_profile_selector_removed": cleanup["legacy_profile_selector_removed"],
         "codex_command": f"codex --profile {codex_profile}",
+        "model_catalog_json": str(catalog_path),
+        "deepseek_reasoning_effort": deepseek_effort,
+        "codex_model_reasoning_effort": codex_effort,
+        "reasoning_effort_capability": effort_capability,
     }
 
 
@@ -5355,6 +5589,8 @@ def _apply_custom_provider_registry_entry(
     if entry.get("api_key"):
         values["DEEPSEEK_API_KEY"] = str(entry.get("api_key") or "")
     values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    custom_effort, effort_capability = _custom_provider_effective_reasoning_effort(entry, values)
+    values["DEEPSEEK_REASONING_EFFORT"] = custom_effort
     _write_env_exports(env_file, values)
 
     output = {
@@ -5369,6 +5605,8 @@ def _apply_custom_provider_registry_entry(
         "models": models,
         "api_key_configured": bool(entry.get("api_key")),
         "api_key_preview": _mask_api_key(str(entry.get("api_key") or "")),
+        "deepseek_reasoning_effort": custom_effort,
+        "reasoning_effort_capability": effort_capability,
     }
     should_sync_profile = bool(sync_profile) and (
         codex_config is not None or env_file.expanduser() == default_env_file_path()

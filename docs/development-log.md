@@ -1,3 +1,23 @@
+## p2.22a1-custom-provider-capability-metadata
+
+Date: 2026-06-10
+
+Scope:
+
+- Added custom-provider capability-aware reasoning-effort handling so custom OpenAI-compatible providers no longer default to Codex-visible `xhigh` unless max reasoning support is explicitly declared.
+- Added custom-provider Codex model catalog generation for provider-backed profiles so `model_catalog_json` is present and custom models such as `deepseek-v4-flash-ascend` can be reported with token context metadata.
+- Made provider-backed profile status infer thinking route state from the configured local provider base URL instead of only from profile names.
+- Hardened local proxy startup against stale pid files that point to live processes not listening on the requested route port.
+- Hardened wrapper behavior so unknown `codex --profile <name>` no longer silently falls through to the OpenAI default profile unless a real split profile file exists.
+
+Validation:
+
+- Pending in this run.
+
+Release boundary:
+
+- Internal development node only. Public Release `v0.4.3-alpha` remains pinned at `f8a6635`; no public Release or asset update.
+
 ## p2.21a6-docs-public-tag-state-sync
 
 Date: 2026-06-09

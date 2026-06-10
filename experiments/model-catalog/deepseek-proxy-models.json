@@ -153,6 +153,14 @@
         "fast"
       ],
       "supports_reasoning_summaries": false
+    },
+    {
+      "id": "deepseek-v4-flash-ascend",
+      "model": "deepseek-v4-flash-ascend",
+      "name": "deepseek-v4-flash-ascend",
+      "context_window_tokens": 1000000,
+      "max_context_window_tokens": 1000000,
+      "visibility": "visible"
     }
   ]
-}
+}\n
