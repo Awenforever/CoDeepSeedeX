@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Auto-start DeepSeek Responses Proxy when using CoDeepSeedeX Codex profiles.
 #
 # Add this function to ~/.bashrc after ~/bin is on PATH.

@@ -64,3 +64,8 @@ def test_codex_native_resolver_scans_npm_and_has_nonrecursive_fallback():
     assert "npm exec --offline --package @openai/codex" in WRAPPER
     assert "npx --yes @openai/codex" in WRAPPER
     assert '"$HOME/.local/bin/codex") return 1 ;;' in WRAPPER
+
+def test_codex_wrapper_has_bash_shebang_for_executable_mode():
+    assert WRAPPER.startswith("#!/usr/bin/env bash\n")
+    assert "< <(" in WRAPPER
+    assert "${BASH_SOURCE[0]}" in WRAPPER

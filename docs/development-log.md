@@ -2989,3 +2989,10 @@ Scope:
 - The dispatcher now scans PATH entries while skipping itself, common native binary aliases, npm global package bins, and then falls back to offline `npm exec --package @openai/codex` or `npx @openai/codex`.
 - This fixes the case where `~/.local/bin/codex` shadows the native Codex binary and the previous resolver could not find a second `codex` executable.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+### p2.22a12-codex-wrapper-bash-shebang
+
+- Added an explicit Bash shebang to the installed Codex wrapper source.
+- This fixes the executable-wrapper path where `~/.local/bin/codex` could be interpreted by `sh` and fail on Bash-only syntax such as process substitution.
+- The wrapper remains dual-use: sourceable for shell function mode and directly executable for `codex --profile <name>` command mode.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
