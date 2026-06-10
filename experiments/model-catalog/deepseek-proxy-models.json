@@ -74,7 +74,21 @@
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
       "hidden": false,
-      "effective_context_window_percent": 90
+      "effective_context_window_percent": 90,
+      "supported_reasoning_levels": [
+        {
+          "effort": "low",
+          "description": "Fast responses with lighter reasoning"
+        },
+        {
+          "effort": "medium",
+          "description": "Balances speed and reasoning depth for everyday tasks"
+        },
+        {
+          "effort": "high",
+          "description": "Greater reasoning depth for complex tasks"
+        }
+      ]
     },
     {
       "prefer_websockets": true,
@@ -150,7 +164,21 @@
       "context_window_tokens": 1000000,
       "max_context_window_tokens": 1000000,
       "hidden": false,
-      "effective_context_window_percent": 90
+      "effective_context_window_percent": 90,
+      "supported_reasoning_levels": [
+        {
+          "effort": "low",
+          "description": "Fast responses with lighter reasoning"
+        },
+        {
+          "effort": "medium",
+          "description": "Balances speed and reasoning depth for everyday tasks"
+        },
+        {
+          "effort": "high",
+          "description": "Greater reasoning depth for complex tasks"
+        }
+      ]
     },
     {
       "id": "deepseek-v4-flash-ascend",
@@ -166,7 +194,23 @@
       "context_window": 1000000,
       "max_context_window": 1000000,
       "hidden": false,
-      "effective_context_window_percent": 90
+      "effective_context_window_percent": 90,
+      "description": "Custom model deepseek-v4-flash-ascend",
+      "default_reasoning_level": "high",
+      "supported_reasoning_levels": [
+        {
+          "effort": "low",
+          "description": "Fast responses with lighter reasoning"
+        },
+        {
+          "effort": "medium",
+          "description": "Balances speed and reasoning depth for everyday tasks"
+        },
+        {
+          "effort": "high",
+          "description": "Greater reasoning depth for complex tasks"
+        }
+      ]
     }
   ]
 }

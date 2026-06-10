@@ -2949,3 +2949,9 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility for reasoning preset fields.
 - Removed guessed string-array `supported_reasoning_levels` entries from generated and managed custom-provider model catalogs.
 - Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+
+### p2.22a6-model-catalog-reasoning-preset-objects
+
+- Fixed Codex 0.138 model catalog schema compatibility for `supported_reasoning_levels`.
+- Generated and managed custom-provider catalogs now emit ReasoningEffortPreset objects with `effort` and `description`.
+- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.

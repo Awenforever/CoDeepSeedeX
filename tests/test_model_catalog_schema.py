@@ -25,15 +25,21 @@ def test_repo_model_catalog_entries_have_codex_slug_schema():
         assert model.get("context_window") or model.get("context_window_tokens")
 
 
-def test_model_catalog_does_not_emit_string_reasoning_level_presets():
+def test_model_catalog_uses_reasoning_effort_preset_objects():
     source = Path("deepseek_responses_proxy/cli.py").read_text(encoding="utf-8")
-    catalog = Path("experiments/model-catalog/deepseek-proxy-models.json").read_text(encoding="utf-8")
+    data = json.loads(Path("experiments/model-catalog/deepseek-proxy-models.json").read_text(encoding="utf-8"))
     assert '"supported_reasoning_levels": ["minimal"' not in source
-    assert "'supported_reasoning_levels': ['minimal'" not in source
-    assert '"supported_reasoning_levels": [' not in catalog
+    for model in data.get("models", []):
+        levels = model.get("supported_reasoning_levels")
+        assert isinstance(levels, list)
+        assert levels
+        for level in levels:
+            assert isinstance(level, dict)
+            assert isinstance(level.get("effort"), str)
+            assert isinstance(level.get("description"), str)
 
 
-def test_custom_provider_catalog_generator_emits_minimal_codex_schema_fields():
+def test_custom_provider_catalog_generator_emits_codex_schema_fields():
     source = Path("deepseek_responses_proxy/cli.py").read_text(encoding="utf-8")
     start = source.index("def _write_custom_provider_model_catalog(")
     end = source.index("\n\ndef ", start + 1)
@@ -44,4 +50,6 @@ def test_custom_provider_catalog_generator_emits_minimal_codex_schema_fields():
     assert '"provider": f"{provider_id}-proxy"' in generator
     assert '"context_window": int(context_window)' in generator
     assert '"max_context_window": int(context_window)' in generator
+    assert '"default_reasoning_level": "high"' in generator
+    assert '{"effort": "high", "description":' in generator
     assert '"visibility": "visible"' not in generator
