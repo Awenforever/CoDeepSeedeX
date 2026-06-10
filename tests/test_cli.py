@@ -4551,6 +4551,10 @@ def test_p222a1_start_thinking_moves_alive_stale_pid_not_listening_on_target_por
 
     class FakeProcess:
         pid = 54321
+        returncode = 1
+
+        def poll(self):
+            return self.returncode
 
     monkeypatch.setattr(cli_module.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 

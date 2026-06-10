@@ -2924,3 +2924,10 @@ Scope:
 - Keep the public GitHub Release body as the Release-note source.
 - Keep long-lived documentation limited to developer handbooks and development logs.
 - Move public `v0.3.9-alpha` after tests pass so the latest public source no longer contains the extra tracked Release-note file.
+
+## p2.22a2-test-isolation-and-validation
+
+- Fixed the p2.22a1 validation gap: the earlier node correctly implemented custom-provider capability downgrading and model catalog generation, but its test run inherited the developer shell's active provider/model environment.
+- Added test-suite environment isolation for CoDeepSeedeX/DeepSeek/Codex provider variables at import time and per test so local configured shells cannot mutate default model, upstream provider, semantic compaction mode, trace directory, or pricing assertions.
+- Fixed the stale-pid self-heal unit test double to expose the minimal `subprocess.Popen.poll()` surface required by `dsproxy start` readiness handling.
+- Validation target: rerun static checks, focused tests, and the full pytest suite from a configured local environment before accepting the repair node.
