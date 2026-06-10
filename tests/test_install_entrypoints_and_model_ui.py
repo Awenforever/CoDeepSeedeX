@@ -1450,3 +1450,20 @@ def test_p221a4_installer_skips_optional_codex_wrapper_without_real_codex_and_ke
     assert "--profile-layout split_profile_files" in main_install
     assert "uninstall-codex-profile --name deepseek --no-backup" in main_install
     assert "Deprecated Codex profile removed: deepseek" in main_install
+
+def test_installer_refreshes_codex_wrapper_from_canonical_template() -> None:
+    text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "refresh_canonical_codex_wrapper_template()" in text
+    assert "scripts/codex-wrapper.bash" in text
+    assert 'target="$BIN_DIR/codex"' in text
+    assert 'cp "$template" "$target"' in text
+    helper_idx = text.index("refresh_canonical_codex_wrapper_template()")
+    call_idx = text.rindex("refresh_canonical_codex_wrapper_template")
+    assert call_idx > helper_idx
+
+
+def test_cli_records_canonical_codex_wrapper_paths_for_propagation_audits() -> None:
+    text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert 'CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"' in text
+    assert 'CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"' in text
+    assert "_canonical_codex_wrapper_template_candidates" in text

@@ -25,6 +25,8 @@ from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, P
 
 
 APP_NAME = "deepseek-responses-proxy"
+CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"
+CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"
 
 DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000
 DEFAULT_AUTO_COMPACT_RATIO = 0.90
@@ -32,6 +34,17 @@ MANAGED_AUTO_COMPACT_RATIO = DEFAULT_AUTO_COMPACT_RATIO
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
 AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
 
+
+
+
+def _canonical_codex_wrapper_template_candidates(install_dir=None):
+    # Return candidate paths for the canonical Codex wrapper template.
+    candidates = []
+    if install_dir:
+        candidates.append(Path(install_dir) / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
+    candidates.append(Path.home() / ".local" / "share" / "deepseek-responses-proxy" / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
+    candidates.append(Path(__file__).resolve().parent.parent / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
+    return candidates
 
 
 def _normalize_auto_compact_ratio(value: object, default: float = DEFAULT_AUTO_COMPACT_RATIO) -> float:

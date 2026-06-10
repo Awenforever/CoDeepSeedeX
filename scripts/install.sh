@@ -3320,6 +3320,32 @@ write_env_file() {
   ok "Local env file written"
 }
 
+refresh_canonical_codex_wrapper_template() {
+  local target template script_dir
+  target="$BIN_DIR/codex"
+  [ -f "$target" ] || return 0
+
+  if ! grep -qE 'CoDeepSeedeX|deepseek-responses-proxy|CODEEPSEEDEX|PROFILE-AGNOSTIC RUNTIME AUTOSTART|EXECUTABLE WRAPPER DISPATCHER' "$target" 2>/dev/null; then
+    warn "Existing codex command is not a CoDeepSeedeX-managed wrapper; canonical wrapper refresh skipped"
+    return 0
+  fi
+
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for template in \
+    "$INSTALL_DIR/scripts/codex-wrapper.bash" \
+    "$script_dir/codex-wrapper.bash" \
+    "$PWD/scripts/codex-wrapper.bash"; do
+    [ -f "$template" ] || continue
+    cp "$template" "$target"
+    chmod +x "$target"
+    ok "codex wrapper refreshed from canonical scripts/codex-wrapper.bash"
+    return 0
+  done
+
+  warn "Canonical scripts/codex-wrapper.bash not found; leaving existing codex wrapper in place"
+  return 0
+}
+
 write_dsproxy_wrapper() {
   if [ "$DRY_RUN" = "1" ]; then
     printf '+ mkdir -p %q\n' "$BIN_DIR" >> "$INSTALL_LOG"
@@ -4262,6 +4288,7 @@ fi
 if [ "${CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY:-0}" = "1" ]; then
   sub_title "Detailed install paths"
   printf '%s\n' "  env file: $ENV_FILE"
+  refresh_canonical_codex_wrapper_template
   printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
   if [ -n "$SHELL_PROFILE_FILE" ]; then
     printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"

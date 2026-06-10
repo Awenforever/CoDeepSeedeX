@@ -2996,3 +2996,11 @@ Scope:
 - This fixes the executable-wrapper path where `~/.local/bin/codex` could be interpreted by `sh` and fail on Bash-only syntax such as process substitution.
 - The wrapper remains dual-use: sourceable for shell function mode and directly executable for `codex --profile <name>` command mode.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+### p2.22a13-install-wrapper-propagation
+
+- Closed install/upgrade propagation for the verified Codex wrapper.
+- `scripts/install.sh` now refreshes a managed `~/.local/bin/codex` from the canonical `scripts/codex-wrapper.bash` template after installer wrapper writes have completed.
+- `deepseek_responses_proxy/cli.py` records the canonical wrapper template and target paths for refresh-wrapper/install propagation audits.
+- The verified wrapper contract remains dual-use: sourceable function mode and executable dispatcher mode with profile-agnostic local proxy readiness.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.
