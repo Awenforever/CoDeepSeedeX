@@ -23,7 +23,7 @@ def test_cli_version_ignores_stale_release_metadata_env() -> None:
 
     output = result.stdout.strip()
     assert "72e0f77" not in output
-    assert "p2.22a10-codex-executable-wrapper-dispatcher" in output
+    assert "p2.22a11-native-codex-resolver" in output
 
 
 def test_install_script_writes_current_release_metadata_env() -> None:

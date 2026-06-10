@@ -277,51 +277,111 @@ codex() {
 }
 
 # BEGIN CODEEPSEEDEX EXECUTABLE WRAPPER DISPATCHER
-# Dual-use mode:
-# - sourced from a shell rc file: define codex() only;
-# - executed as ~/.local/bin/codex: run profile proxy readiness, resolve native Codex, then exec it.
+# When this file is sourced, it only defines the codex() shell function.
+# When this file is installed as ~/.local/bin/codex and executed directly,
+# it must dispatch to the real native Codex binary after running the same
+# profile-agnostic local proxy readiness checks.
+__codeepseedex_emit_executable_if_not_self() {
+  local candidate self resolved
+  candidate="$1"
+  [ -n "$candidate" ] || return 1
+  [ -x "$candidate" ] || return 1
+  self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]:-$0}")"
+  resolved="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+  [ "$resolved" = "$self" ] && return 1
+  case "$resolved" in
+    "$HOME/.local/bin/codex") return 1 ;;
+  esac
+  printf '%s\n' "$resolved"
+  return 0
+}
+
+__codeepseedex_emit_npm_codex_bin() {
+  local root pkg bin candidate
+  for root in \
+    "$(npm root -g 2>/dev/null || true)" \
+    "$HOME/.npm-global/lib/node_modules" \
+    "$HOME/.local/share/npm/lib/node_modules" \
+    "$HOME/.nvm/current/lib/node_modules" \
+    "/usr/local/lib/node_modules" \
+    "/opt/homebrew/lib/node_modules" \
+    "/usr/lib/node_modules"; do
+    [ -n "$root" ] || continue
+    for pkg in "$root/@openai/codex" "$root/codex"; do
+      [ -f "$pkg/package.json" ] || continue
+      bin="$(node - "$pkg/package.json" <<'PY_CODEEPSEEDEX_NPM_BIN' 2>/dev/null || true
+import json, sys
+p = sys.argv[1]
+try:
+    data = json.load(open(p, encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+b = data.get("bin")
+if isinstance(b, dict):
+    b = b.get("codex") or next(iter(b.values()), "")
+elif not isinstance(b, str):
+    b = ""
+if b:
+    print(b)
+PY_CODEEPSEEDEX_NPM_BIN
+)"
+      [ -n "$bin" ] || continue
+      candidate="$pkg/$bin"
+      __codeepseedex_emit_executable_if_not_self "$candidate" && return 0
+    done
+  done
+  return 1
+}
+
 __codeepseedex_resolve_real_codex() {
-  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ] && [ -x "${CODEEPSEEDEX_REAL_CODEX}" ]; then
-    printf '%s\n' "${CODEEPSEEDEX_REAL_CODEX}"
-    return 0
+  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ]; then
+    __codeepseedex_emit_executable_if_not_self "${CODEEPSEEDEX_REAL_CODEX}" && return 0
+    echo "CoDeepSeedeX: CODEEPSEEDEX_REAL_CODEX is set but not executable or points to wrapper: ${CODEEPSEEDEX_REAL_CODEX}" >&2
   fi
 
-  local self candidate resolved
-  self="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]:-$0}")"
-
+  local candidate
   while IFS= read -r candidate; do
-    [ -n "$candidate" ] || continue
-    resolved="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
-    [ "$resolved" = "$self" ] && continue
-    [ -x "$resolved" ] || continue
-    printf '%s\n' "$resolved"
-    return 0
+    __codeepseedex_emit_executable_if_not_self "$candidate" && return 0
   done < <(type -P -a codex 2>/dev/null | awk '!seen[$0]++')
 
   for candidate in \
+    "$HOME/.local/bin/codex.real" \
+    "$HOME/.local/bin/codex-native" \
     "$HOME/.npm-global/bin/codex" \
     "$HOME/.local/share/npm/bin/codex" \
     "$HOME/.nvm/current/bin/codex" \
     "/usr/local/bin/codex" \
     "/opt/homebrew/bin/codex" \
     "/usr/bin/codex"; do
-    [ -n "$candidate" ] || continue
-    [ -x "$candidate" ] || continue
-    resolved="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
-    [ "$resolved" = "$self" ] && continue
-    printf '%s\n' "$resolved"
-    return 0
+    __codeepseedex_emit_executable_if_not_self "$candidate" && return 0
   done
 
-  echo "CoDeepSeedeX: cannot find native Codex binary; set CODEEPSEEDEX_REAL_CODEX=/path/to/codex" >&2
+  __codeepseedex_emit_npm_codex_bin && return 0
+  return 1
+}
+
+__codeepseedex_exec_npm_codex_fallback() {
+  if command -v npm >/dev/null 2>&1; then
+    npm exec --offline --package @openai/codex -- codex --version >/dev/null 2>&1 \
+      && exec npm exec --offline --package @openai/codex -- codex "$@"
+  fi
+  if command -v npx >/dev/null 2>&1; then
+    echo "CoDeepSeedeX: native Codex binary not found; falling back to npx @openai/codex" >&2
+    exec npx --yes @openai/codex "$@"
+  fi
+  echo "CoDeepSeedeX: cannot find native Codex binary." >&2
+  echo "CoDeepSeedeX: set CODEEPSEEDEX_REAL_CODEX=/path/to/native/codex, or install @openai/codex globally." >&2
   return 127
 }
 
 __codeepseedex_executable_wrapper_main() {
   __codeepseedex_profile_runtime_autostart "$@" || exit $?
   local __codeepseedex_real_codex
-  __codeepseedex_real_codex="$(__codeepseedex_resolve_real_codex)" || exit $?
-  exec "$__codeepseedex_real_codex" "$@"
+  __codeepseedex_real_codex="$(__codeepseedex_resolve_real_codex || true)"
+  if [ -n "$__codeepseedex_real_codex" ]; then
+    exec "$__codeepseedex_real_codex" "$@"
+  fi
+  __codeepseedex_exec_npm_codex_fallback "$@"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

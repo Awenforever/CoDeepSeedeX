@@ -2982,3 +2982,10 @@ Scope:
 - The executable dispatcher runs profile-agnostic proxy autostart/readiness first, resolves the native Codex binary while skipping itself, then `exec`s the native binary with original arguments.
 - This closes the regression where `codex --profile <name>` returned immediately after a function-style wrapper was copied into `~/.local/bin/codex`.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
+
+### p2.22a11-native-codex-resolver
+
+- Hardened the executable Codex wrapper native-binary resolver.
+- The dispatcher now scans PATH entries while skipping itself, common native binary aliases, npm global package bins, and then falls back to offline `npm exec --package @openai/codex` or `npx @openai/codex`.
+- This fixes the case where `~/.local/bin/codex` shadows the native Codex binary and the previous resolver could not find a second `codex` executable.
+- Do not move `v0.4.3-alpha` and do not rebuild Release assets.

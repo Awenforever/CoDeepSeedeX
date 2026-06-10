@@ -54,3 +54,13 @@ def test_codex_executable_dispatcher_runs_autostart_before_native_exec():
     autostart = WRAPPER.index('__codeepseedex_profile_runtime_autostart "$@" || exit $?')
     native_exec = WRAPPER.index('exec "$__codeepseedex_real_codex" "$@"')
     assert autostart < native_exec
+
+
+def test_codex_native_resolver_scans_npm_and_has_nonrecursive_fallback():
+    assert "__codeepseedex_emit_executable_if_not_self" in WRAPPER
+    assert "__codeepseedex_emit_npm_codex_bin" in WRAPPER
+    assert "npm root -g" in WRAPPER
+    assert "@openai/codex" in WRAPPER
+    assert "npm exec --offline --package @openai/codex" in WRAPPER
+    assert "npx --yes @openai/codex" in WRAPPER
+    assert '"$HOME/.local/bin/codex") return 1 ;;' in WRAPPER
