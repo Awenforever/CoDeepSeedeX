@@ -2955,3 +2955,9 @@ Scope:
 - Fixed Codex 0.138 model catalog schema compatibility for `supported_reasoning_levels`.
 - Generated and managed custom-provider catalogs now emit ReasoningEffortPreset objects with `effort` and `description`.
 - Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+
+### p2.22a7-model-catalog-full-codex-schema
+
+- Fixed Codex 0.138 model catalog schema compatibility by emitting the complete required model entry shape.
+- Added `shell_type`, `minimal_client_version`, `supported_in_api`, `base_instructions`, and `model_messages` to generated custom-provider catalogs.
+- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
