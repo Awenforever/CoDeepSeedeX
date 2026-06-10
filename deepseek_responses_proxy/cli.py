@@ -5397,7 +5397,7 @@ def _write_custom_provider_model_catalog(
         "context_window_tokens": int(context_window),
         "max_context_window_tokens": int(context_window),
         "supports_reasoning_effort_max": bool(capabilities.get("reasoning_effort_max")),
-        "visibility": "visible",
+        "visibility": "list",
     })
     data.update({
         "version": 1,

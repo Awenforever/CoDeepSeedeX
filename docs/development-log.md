@@ -2931,3 +2931,9 @@ Scope:
 - Added test-suite environment isolation for CoDeepSeedeX/DeepSeek/Codex provider variables at import time and per test so local configured shells cannot mutate default model, upstream provider, semantic compaction mode, trace directory, or pricing assertions.
 - Fixed the stale-pid self-heal unit test double to expose the minimal `subprocess.Popen.poll()` surface required by `dsproxy start` readiness handling.
 - Validation target: rerun static checks, focused tests, and the full pytest suite from a configured local environment before accepting the repair node.
+
+### p2.22a3-model-catalog-visibility-schema
+
+- Fixed Codex 0.138 model catalog schema compatibility for generated custom-provider catalogs.
+- Replaced invalid `visibility = visible` / `"visibility": "visible"` output with Codex-compatible `visibility = list` / `"visibility": "list"`.
+- Added regression coverage so managed model catalog fixtures and generator source do not reintroduce the invalid visibility enum.
