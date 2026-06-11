@@ -8,7 +8,7 @@
 </p>
 <!-- COX_LOGO_END -->
 
-CodeXchange是一个本地OpenAI Responses兼容的provider exchange，用来让Codex通过受管和自定义model API provider运行。它保留原始`codex`命令，提供`cox`用于安装、配置、状态检查、升级、provider诊断、模型路由、工具路由、价格缓存和WeClaw联动，并把DeepSeek视为其中一个provider，而不是产品边界。
+CodeXchange是一个本地OpenAI Responses兼容的provider exchange，用来让Codex通过OpenAI兼容的model API provider、受管provider和自定义model API provider运行，覆盖DeepSeek、Kimi/Moonshot、Zhipu/BigModel、Z.AI、Qwen/DashScope等provider。它保留原始`codex`命令，提供`cox`用于安装、配置、状态检查、升级、provider诊断、模型路由、工具路由、价格缓存和WeClaw联动，并把DeepSeek视为其中一个provider，而不是产品边界。
 
 ## 安装前准备
 

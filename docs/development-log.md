@@ -1,3 +1,9 @@
+## p3.0a1-full-test-fix1-codexchange-cox-reasoning-route
+
+- Fixed the p3.0a1 full-test regression by mapping the canonical `cox` profile to the reasoning usage-ledger route.
+- Updated remaining CLI version and Chinese README provider-surface assertions after the CodeXchange hard cut.
+- Existing pushed p3.0a1 tag is not moved; this fix uses a separate internal full-test fix tag.
+
 ## p3.0a1-codexchange-hardcut-generalized-router
 
 - Started the CodeXchange / CoX hard-cut line.

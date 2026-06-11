@@ -18883,6 +18883,23 @@ def _weclaw_context_window_with_usage_estimate(context_window: dict[str, Any], t
 
 
 
+def _cox_profile_uses_reasoning_route(profile: str | None) -> bool:
+    normalized = str(profile or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized == "cox":
+        return True
+    if normalized.endswith("-reasoning") or normalized.endswith("_reasoning"):
+        return True
+    if normalized.endswith("reasoning"):
+        return True
+    if normalized.endswith("-thinking") or normalized.endswith("_thinking"):
+        return True
+    if normalized.endswith("thinking"):
+        return True
+    return False
+
+
 def _weclaw_usage_events_for_profile(
     store: Any | None,
     *,
@@ -18894,7 +18911,7 @@ def _weclaw_usage_events_for_profile(
         return [], "runtime_store_unavailable"
     if not hasattr(store, "usage_events"):
         return [], "usage_ledger_unsupported"
-    thinking = profile.endswith("thinking")
+    thinking = _cox_profile_uses_reasoning_route(profile)
     try:
         events = store.usage_events(limit=limit, thinking=thinking, session_id=session_id)
     except TypeError:
@@ -19927,7 +19944,7 @@ def _weclaw_tokens_contract(
             "current_session_available": current_session_available,
             "default_display_scope": "current_session" if current_session_available else "profile_route_history",
             "legacy_session_total_scope": session_scope,
-            "route": "thinking" if profile.endswith("thinking") else "non_thinking",
+            "route": "reasoning" if _cox_profile_uses_reasoning_route(profile) else "standard",
         },
         "unavailable_reason": unavailable_reason,
     }
