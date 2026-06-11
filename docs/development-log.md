@@ -1,3 +1,10 @@
+## p3.0a2-provider-adapter-contract
+
+- Added the first CodeXchange provider adapter contract under `codexchange_proxy/providers`.
+- Added initial `DeepSeekProviderAdapter` and `OpenAICompatibleProviderAdapter` skeletons.
+- Added registry aliases for custom, Kimi/Moonshot, Zhipu/BigModel, Z.AI, Qwen/DashScope, xAI/Grok, and generic OpenAI-compatible routes.
+- Added focused contract tests without moving runtime routing yet.
+
 ## p3.0a1-full-test-fix1-codexchange-cox-reasoning-route
 
 - Fixed the p3.0a1 full-test regression by mapping the canonical `cox` profile to the reasoning usage-ledger route.
