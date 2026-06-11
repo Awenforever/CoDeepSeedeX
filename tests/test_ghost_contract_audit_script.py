@@ -140,7 +140,7 @@ def test_ghost_contract_audit_runs_on_current_repository(tmp_path: Path) -> None
     )
 
     payload = json.loads(json_out.read_text(encoding="utf-8"))
-    assert payload["stage"] == "audit-codeepseedex-ghost-contracts"
+    assert payload["stage"] == "audit-codexchange-ghost-contracts"
     assert payload["current_state"]["tracked_files"] > 0
     assert all("raw_category" in finding for finding in payload["findings"])
     assert all(finding["classification"] in {"must_fix", "review", "allowed"} for finding in payload["findings"])

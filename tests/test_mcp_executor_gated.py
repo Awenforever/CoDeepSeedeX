@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _mcp_executor_denied_result,
     _mcp_executor_policy_decision,
     _parse_mcp_proxy_tool_name,
@@ -24,9 +24,9 @@ def test_parse_mcp_proxy_tool_name_rejects_non_mcp_names():
 
 
 def test_mcp_executor_is_disabled_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "off")
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
+    monkeypatch.setenv("COX_MCP_POLICY", "off")
+    monkeypatch.delenv("COX_MCP_EXECUTOR", raising=False)
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
 
     decision = _mcp_executor_policy_decision("mcp__memory_router__memory_query")
 
@@ -37,9 +37,9 @@ def test_mcp_executor_is_disabled_by_default(monkeypatch):
 
 
 def test_mcp_executor_allows_any_server_tool_when_explicitly_allowlisted(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
 
     decision = _mcp_executor_policy_decision("mcp__custom_server__safe_tool")
 
@@ -54,9 +54,9 @@ def test_mcp_executor_allows_any_server_tool_when_explicitly_allowlisted(monkeyp
 
 
 def test_mcp_executor_does_not_special_case_memory_router(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "cheap_llm.cheap_router_status")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "cheap_llm.cheap_router_status")
 
     memory_decision = _mcp_executor_policy_decision("mcp__memory_router__memory_query")
     cheap_decision = _mcp_executor_policy_decision("mcp__cheap_llm__cheap_router_status")
@@ -73,9 +73,9 @@ def test_mcp_executor_does_not_special_case_memory_router(monkeypatch):
 
 
 def test_mcp_executor_write_allowlist_is_still_denied_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
 
     decision = _mcp_executor_policy_decision("mcp__memory_router__memory_remember")
 
@@ -87,10 +87,10 @@ def test_mcp_executor_write_allowlist_is_still_denied_by_default(monkeypatch):
 
 
 def test_mcp_executor_denied_result_is_structured(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", raising=False)
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.delenv("COX_MCP_READONLY_ALLOWLIST", raising=False)
+    monkeypatch.delenv("COX_MCP_WRITE_ALLOWLIST", raising=False)
 
     result = _mcp_executor_denied_result("mcp__unknown__tool")
 
@@ -103,7 +103,7 @@ def test_mcp_executor_denied_result_is_structured(monkeypatch):
 import json
 import pytest
 
-from deepseek_responses_proxy.app import _run_chat_with_tool_bridge
+from codexchange_proxy.app import _run_chat_with_tool_bridge
 
 
 class FakeDeepSeekClient:
@@ -136,12 +136,12 @@ def _payloads_with_tool_messages(payloads):
 @pytest.mark.asyncio
 async def test_mcp_tool_call_is_handled_by_proxy_bridge_as_structured_denial(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "none")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "memory_router.memory_query")
 
     fake = FakeDeepSeekClient(
         [
@@ -214,12 +214,12 @@ async def test_mcp_tool_call_is_handled_by_proxy_bridge_as_structured_denial(tmp
 @pytest.mark.asyncio
 async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "none")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
 
     fake = FakeDeepSeekClient(
         [
@@ -288,13 +288,13 @@ async def test_mcp_write_tool_call_is_denied_even_when_write_allowlisted(tmp_pat
 @pytest.mark.asyncio
 async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
 
-    from deepseek_responses_proxy.app import _set_mcp_executor_backend_for_tests
+    from codexchange_proxy.app import _set_mcp_executor_backend_for_tests
 
     calls = []
 
@@ -405,12 +405,12 @@ async def test_mcp_readonly_allowed_tool_executes_via_injected_backend(tmp_path,
 @pytest.mark.asyncio
 async def test_mcp_backend_exception_returns_structured_tool_error(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "custom_server.safe_tool")
 
-    from deepseek_responses_proxy.app import _set_mcp_executor_backend_for_tests
+    from codexchange_proxy.app import _set_mcp_executor_backend_for_tests
 
     async def failing_backend(*, server, tool, arguments, decision):
         raise RuntimeError("boom")

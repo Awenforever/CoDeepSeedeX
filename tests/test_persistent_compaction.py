@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     InMemoryResponseStore,
     _compact_chat_history_for_codex_like_persistence,
     _compaction_prompt_messages,
@@ -18,7 +18,7 @@ def _write_compaction_test_codex_config(tmp_path: Path, monkeypatch, *, context_
         f"""
 [profiles.deepseek]
 model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
+model_provider = "cox-proxy"
 model_context_window = {context_window}
 model_auto_compact_token_limit = {int(context_window * 0.90)}
 """.strip()
@@ -51,13 +51,13 @@ class FakeDeepSeekClient:
                             "role": "assistant",
                             "content": (
                                 "OBJECTIVE\n"
-                                "Continue maintaining deepseek-responses-proxy.\n\n"
+                                "Continue maintaining codexchange.\n\n"
                                 "REPOSITORY_STATE\n"
-                                "Repo path: /home/kelvin/projects/deepseek-responses-proxy.\n\n"
+                                "Repo path: /home/kelvin/projects/codexchange.\n\n"
                                 "COMPLETED_CHANGES\n"
                                 "Older long context was compacted by v2.3a4 test.\n\n"
                                 "FILES_AND_CODE_AREAS\n"
-                                "deepseek_responses_proxy/app.py and tests.\n\n"
+                                "codexchange_proxy/app.py and tests.\n\n"
                                 "TESTS_AND_VALIDATION\n"
                                 "Use pytest and py_compile.\n\n"
                                 "OPEN_ISSUES\n"
@@ -91,11 +91,11 @@ class FakeDeepSeekClient:
 async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "1000000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "100000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "24")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "0")
+    monkeypatch.setenv("COX_MAX_CONTEXT_CHARS", "1000000")
+    monkeypatch.setenv("COX_MAX_TOOL_OUTPUT_CHARS", "100000")
+    monkeypatch.setenv("COX_KEEP_RECENT_MESSAGES", "24")
 
     fake = FakeDeepSeekClient()
     store = InMemoryResponseStore()
@@ -109,13 +109,13 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
         assert first.status_code == 200
         first_body = first.json()
 
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "3000")
+        monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+        monkeypatch.setenv("COX_COMPACT_TRIGGER_CHARS", "3000")
         _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "5000")
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "1")
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
-        monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", "3000")
+        monkeypatch.setenv("COX_COMPACT_TARGET_CHARS", "5000")
+        monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "1")
+        monkeypatch.setenv("COX_COMPACT_MATERIAL_CHARS", "12000")
+        monkeypatch.setenv("COX_COMPACT_MAX_SUMMARY_CHARS", "3000")
 
         second = await client.post(
             "/v1/responses",
@@ -135,7 +135,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
         second_normal_payload = fake.payloads[-1]
         second_serialized = json.dumps(second_normal_payload, ensure_ascii=False)
-        assert "[deepseek-proxy persistent compaction summary]" in second_serialized
+        assert "[cox-proxy persistent compaction summary]" in second_serialized
         assert "OBJECTIVE" in second_serialized
         assert "X" * 5000 not in second_serialized
 
@@ -150,7 +150,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
         third_normal_payload = fake.payloads[-1]
         third_serialized = json.dumps(third_normal_payload, ensure_ascii=False)
-        assert "[deepseek-proxy persistent compaction summary]" in third_serialized
+        assert "[cox-proxy persistent compaction summary]" in third_serialized
         assert "X" * 5000 not in third_serialized
 
         report_path = Path(".debug/context_compaction_report.json")
@@ -161,14 +161,14 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_compaction_helper_preserves_recent_tool_pair(tmp_path, monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "2000")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_COMPACT_TRIGGER_CHARS", "2000")
     _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "6000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "10000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", "2000")
+    monkeypatch.setenv("COX_COMPACT_TARGET_CHARS", "6000")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("COX_COMPACT_MATERIAL_CHARS", "10000")
+    monkeypatch.setenv("COX_COMPACT_MAX_SUMMARY_CHARS", "2000")
 
     fake = FakeDeepSeekClient()
     old_messages = [
@@ -214,7 +214,7 @@ async def test_compaction_helper_preserves_recent_tool_pair(tmp_path, monkeypatc
     )
     assert compacted[assistant_index + 1]["role"] == "tool"
     assert compacted[assistant_index + 1]["tool_call_id"] == "call_recent"
-    assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+    assert "[cox-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
     assert report["material"]["compaction_prompt_fingerprint"]["sha256"]
     assert len(report["material"]["compaction_prompt_fingerprint"]["sha256"]) == 64
     assert report["compaction_prompt_fingerprint"]["sha256"] == report["material"]["compaction_prompt_fingerprint"]["sha256"]
@@ -284,12 +284,12 @@ def test_compaction_prompt_metadata_is_fingerprinted_redacted_and_classified():
 
 @pytest.mark.asyncio
 async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(tmp_path, monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("COX_COMPACT_TRIGGER_CHARS", "1000000")
     _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1000000)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("COX_COMPACT_MATERIAL_CHARS", "12000")
 
     messages = [
         {"role": "system", "content": "system rules must remain protected"},
@@ -349,25 +349,25 @@ async def test_compaction_not_triggered_report_includes_redacted_dry_run_audit(t
 
 @pytest.mark.asyncio
 async def test_adaptive_compaction_reports_policy_decision(tmp_path, monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "10000")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "adaptive")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_MAX_CONTEXT_CHARS", "10000")
     _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", "8000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "1000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MIN_CHARS", "1000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MAX_CHARS", "3000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RECENT_GROWTH_MESSAGES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_EXPECTED_GROWTH_TURNS", "3")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "1000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", "3000")
-    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", raising=False)
+    monkeypatch.setenv("COX_COMPACT_MIN_TARGET_CHARS", "2000")
+    monkeypatch.setenv("COX_COMPACT_MAX_TARGET_CHARS", "8000")
+    monkeypatch.setenv("COX_COMPACT_RESERVE_BEFORE_MIN_CHARS", "1000")
+    monkeypatch.setenv("COX_COMPACT_RESERVE_BEFORE_MAX_CHARS", "2000")
+    monkeypatch.setenv("COX_COMPACT_RESERVE_AFTER_MIN_CHARS", "1000")
+    monkeypatch.setenv("COX_COMPACT_RESERVE_AFTER_MAX_CHARS", "3000")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("COX_COMPACT_RECENT_GROWTH_MESSAGES", "2")
+    monkeypatch.setenv("COX_COMPACT_EXPECTED_GROWTH_TURNS", "3")
+    monkeypatch.setenv("COX_COMPACT_MIN_NEW_CHARS", "1000")
+    monkeypatch.setenv("COX_COMPACT_MIN_TURNS", "2")
+    monkeypatch.setenv("COX_COMPACT_MATERIAL_CHARS", "12000")
+    monkeypatch.setenv("COX_COMPACT_MAX_SUMMARY_CHARS", "3000")
+    monkeypatch.delenv("COX_COMPACT_TRIGGER_CHARS", raising=False)
+    monkeypatch.delenv("COX_COMPACT_TARGET_CHARS", raising=False)
 
     fake = FakeDeepSeekClient()
     messages = [
@@ -392,28 +392,28 @@ async def test_adaptive_compaction_reports_policy_decision(tmp_path, monkeypatch
     assert report["effective_trigger_chars"] > 0
     assert 2000 <= report["effective_target_chars"] <= 8000
     assert report["policy_decision"]["growth"]["recent_growth_chars_per_turn"] > 0
-    assert "[deepseek-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
+    assert "[cox-proxy persistent compaction summary]" in json.dumps(compacted, ensure_ascii=False)
 
 
 
 @pytest.mark.asyncio
 async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(tmp_path, monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "20000")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "adaptive")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_MAX_CONTEXT_CHARS", "20000")
     _write_compaction_test_codex_config(tmp_path, monkeypatch, context_window=1200)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", "15000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", "15000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", "20000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", "4")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
-    monkeypatch.delenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", raising=False)
+    monkeypatch.setenv("COX_COMPACT_RESERVE_BEFORE_MIN_CHARS", "15000")
+    monkeypatch.setenv("COX_COMPACT_RESERVE_BEFORE_MAX_CHARS", "15000")
+    monkeypatch.setenv("COX_COMPACT_MIN_NEW_CHARS", "20000")
+    monkeypatch.setenv("COX_COMPACT_MIN_TURNS", "4")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.delenv("COX_COMPACT_TRIGGER_CHARS", raising=False)
 
     fake = FakeDeepSeekClient()
     messages = [
         {
             "role": "user",
-            "content": "[deepseek-proxy persistent compaction summary]\nprevious summary " + ("S" * 9000),
+            "content": "[cox-proxy persistent compaction summary]\nprevious summary " + ("S" * 9000),
         },
         {"role": "user", "content": "small follow-up 1 " + ("B" * 500)},
         {"role": "assistant", "content": "small follow-up 2 " + ("C" * 500)},
@@ -439,7 +439,7 @@ async def test_adaptive_compaction_cooldown_skips_recently_compacted_history(tmp
 def test_codex_native_compact_source_alignment_contract():
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
     evidence = proxy_app._codex_native_compact_source_evidence_contract()
     alignment = proxy_app._compact_prompt_alignment_contract()
 
@@ -448,7 +448,7 @@ def test_codex_native_compact_source_alignment_contract():
     assert evidence["compact_rs_includes_prompt_md"] is True
     assert evidence["compact_rs_includes_summary_prefix_md"] is True
     assert evidence["remote_compact_endpoint"] == "responses/compact"
-    assert evidence["remote_compaction_claimed_for_dsproxy_provider"] is False
+    assert evidence["remote_compaction_claimed_for_cox_provider"] is False
     assert alignment["alignment"] == "github_source_backed_codex_native_local_prompt"
     assert alignment["exact_native_codex_local_prompt_text"] is True
     assert alignment["remote_native_compaction_claimed"] is False
@@ -475,7 +475,7 @@ def test_codex_native_compact_source_alignment_contract():
 def test_codex_native_compact_source_alignment_report_is_redacted():
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
     compact_messages, meta = proxy_app._compaction_prompt_messages(
         [
             {"role": "user", "content": "Secret raw task detail should not appear in metadata."},

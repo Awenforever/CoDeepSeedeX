@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _codex_mcp_config_snapshot,
     _mcp_executor_status,
     _tool_bridge_status,
@@ -31,7 +31,7 @@ approval_mode = "manual"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
     snapshot = _codex_mcp_config_snapshot()
 
     assert snapshot["exists"] is True
@@ -50,7 +50,7 @@ approval_mode = "manual"
 
 def test_codex_mcp_config_snapshot_handles_missing_config(tmp_path, monkeypatch):
     missing = tmp_path / "missing.toml"
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(missing))
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(missing))
 
     snapshot = _codex_mcp_config_snapshot()
 
@@ -74,13 +74,13 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
     monkeypatch.setenv(
-        "DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST",
+        "COX_MCP_READONLY_ALLOWLIST",
         "memory_router.memory_query,cheap_llm.cheap_router_status",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "memory_router.memory_remember")
 
     status = _mcp_executor_status()
 
@@ -99,9 +99,9 @@ approval_mode = "approve"
 
 def test_tool_bridge_status_includes_mcp_executor(tmp_path, monkeypatch):
     missing = tmp_path / "missing.toml"
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(missing))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "off")
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(missing))
+    monkeypatch.setenv("COX_MCP_POLICY", "off")
+    monkeypatch.delenv("COX_MCP_EXECUTOR", raising=False)
 
     status = _tool_bridge_status()
 

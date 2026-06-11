@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}"
+export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
+
+PROJECT="${COX_PROJECT:-$HOME/projects/codexchange}"
+ENV_FILE="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
+LOG_FILE="$PROJECT/proxy-thinking.log"
+PID_FILE="$PROJECT/proxy-thinking.pid"
+DB_FILE="${COX_THINKING_DB:-$HOME/.local/state/codexchange/responses-thinking.sqlite3}"
+PORT="8001"
+
+if curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/v1/models" >/dev/null 2>&1; then
+  exit 0
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: missing env file: $ENV_FILE" >&2
+  exit 1
+fi
+
+source "$ENV_FILE"
+
+cd "$PROJECT"
+mkdir -p .tmp .debug
+mkdir -p "$(dirname "$DB_FILE")"
+
+nohup env \
+  COX_REASONING=enabled \
+  COX_DB_PATH="$DB_FILE" \
+  COX_REASONING_EFFORT="${COX_REASONING_EFFORT:-high}" \
+  TMPDIR="$PROJECT/.tmp" \
+  PYTHONPATH=. \
+  SEARCH_PROVIDER="${SEARCH_PROVIDER:-}" \
+  SERPAPI_API_KEY="${SERPAPI_API_KEY:-}" \
+  COX_WEB_SEARCH_PROVIDER="${COX_WEB_SEARCH_PROVIDER:-${SEARCH_PROVIDER:-mock}}" \
+  COX_SERPAPI_API_KEY="${COX_SERPAPI_API_KEY:-}" \
+  COX_WEB_SEARCH_MAX_RESULTS="${COX_WEB_SEARCH_MAX_RESULTS:-5}" \
+  COX_WEB_SEARCH_TIMEOUT_SECONDS="${COX_WEB_SEARCH_TIMEOUT_SECONDS:-20}" \
+  IMAGE_PROVIDER="${IMAGE_PROVIDER:-}" \
+  ZAI_API_KEY="${ZAI_API_KEY:-}" \
+  ZHIPUAI_API_KEY="${ZHIPUAI_API_KEY:-}" \
+  ZHIPU_API_KEY="${ZHIPU_API_KEY:-}" \
+  GLM_API_KEY="${GLM_API_KEY:-}" \
+  COX_IMAGE_PROVIDER="${COX_IMAGE_PROVIDER:-${IMAGE_PROVIDER:-mock}}" \
+  COX_IMAGE_API_KEY="${COX_IMAGE_API_KEY:-}" \
+  COX_IMAGE_MODEL="${COX_IMAGE_MODEL:-cogView-4-250304}" \
+  COX_IMAGE_SIZE="${COX_IMAGE_SIZE:-1024x1024}" \
+  COX_IMAGE_DOWNLOAD="${COX_IMAGE_DOWNLOAD:-0}" \
+  COX_IMAGE_OUTPUT_DIR="${COX_IMAGE_OUTPUT_DIR:-$PROJECT/.generated/images}" \
+  COX_IMAGE_MAX_ARTIFACTS="${COX_IMAGE_MAX_ARTIFACTS:-100}" \
+  COX_FORWARD_CUSTOM_APPLY_PATCH="${COX_FORWARD_CUSTOM_APPLY_PATCH:-1}" \
+  COX_FORWARD_MCP_READONLY_TOOLS="${COX_FORWARD_MCP_READONLY_TOOLS:-1}" \
+  COX_FORWARD_MCP_WRITE_TOOLS="${COX_FORWARD_MCP_WRITE_TOOLS:-1}" \
+  COX_FORWARD_MCP_TUTORIAL_TOOLS="${COX_FORWARD_MCP_TUTORIAL_TOOLS:-1}" \
+  COX_MODEL_API_KEY="$COX_MODEL_API_KEY" \
+  COX_MODEL="${COX_MODEL:-deepseek-v4-pro}" \
+  .venv/bin/python -m uvicorn codexchange_proxy.app:app \
+    --host 127.0.0.1 \
+    --port "$PORT" \
+  > "$LOG_FILE" 2>&1 &
+
+echo $! > "$PID_FILE"
+
+for i in {1..10}; do
+  if curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/v1/models" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/v1/models" >/dev/null 2>&1; then
+  echo "ERROR: DeepSeek thinking proxy failed to start after 10 seconds. Last logs:" >&2
+  tail -80 "$LOG_FILE" >&2
+  exit 1
+fi
+
+echo "DeepSeek thinking proxy started on port ${PORT}, pid=$(cat "$PID_FILE")"
+echo "Log: $LOG_FILE"
+echo "DB: $DB_FILE"

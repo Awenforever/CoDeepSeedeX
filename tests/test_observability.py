@@ -1,12 +1,12 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import InMemoryResponseStore, create_app
+from codexchange_proxy.app import InMemoryResponseStore, create_app
 
 
 @pytest.mark.asyncio
 async def test_healthz_returns_basic_status(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_THINKING", raising=False)
+    monkeypatch.delenv("COX_REASONING", raising=False)
 
     app = create_app(store=InMemoryResponseStore())
 
@@ -23,7 +23,7 @@ async def test_healthz_returns_basic_status(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_proxy_status_returns_runtime_metadata(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     app = create_app(store=InMemoryResponseStore())
 

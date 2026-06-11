@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def _record_primary_usage(store: object, *, prompt_tokens: int, total_tokens: int, session_id: str = "s1") -> None:
@@ -44,7 +44,7 @@ def test_prompt_reconciliation_exposes_unexplained_provider_delta_without_assign
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {
                 "user": {"tokens": 3},
                 "assistant_history": {"tokens": 0},
@@ -72,7 +72,7 @@ def test_prompt_reconciliation_exposes_unexplained_provider_delta_without_assign
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -122,7 +122,7 @@ def test_prompt_reconciliation_distinguishes_unclassified_observed_segments_from
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {"user": {"tokens": 5}},
             "total_tokens": 8,
             "latest_prompt_segmentation": {
@@ -139,7 +139,7 @@ def test_prompt_reconciliation_distinguishes_unclassified_observed_segments_from
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -176,7 +176,7 @@ def test_prompt_reconciliation_marks_complete_when_provider_prompt_matches_local
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {"user": {"tokens": 3}, "system": {"tokens": 8}},
             "total_tokens": 11,
             "latest_prompt_segmentation": {
@@ -193,7 +193,7 @@ def test_prompt_reconciliation_marks_complete_when_provider_prompt_matches_local
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -227,7 +227,7 @@ def test_prompt_reconciliation_explains_delta_with_observable_tool_schema_payloa
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {"system": {"tokens": 8200}, "environment": {"tokens": 5295}, "user": {"tokens": 5}, "other_prompt": {"tokens": 0}},
             "total_tokens": 13500,
             "observable_payload": {
@@ -271,7 +271,7 @@ def test_prompt_reconciliation_explains_delta_with_observable_tool_schema_payloa
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -308,7 +308,7 @@ def test_details_origin_breakdown_exposes_sources_without_classified_subtotal(tm
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {
                 "user": {"tokens": 15},
                 "assistant_history": {"tokens": 6},
@@ -364,7 +364,7 @@ def test_details_origin_breakdown_exposes_sources_without_classified_subtotal(tm
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -415,7 +415,7 @@ def test_details_origin_breakdown_unavailable_when_only_provider_residual_exists
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",

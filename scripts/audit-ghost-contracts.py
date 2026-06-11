@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only ghost contract audit for CoDeepSeedeX.
+"""Read-only ghost contract audit for CodeXchange.
 
 The audit scans tracked text files for stale release contracts, retired user
 surfaces, overbroad tests, site-specific defaults, and compatibility markers.
@@ -101,17 +101,17 @@ PATTERNS: list[PatternSpec] = [
     PatternSpec(
         "legacy_profile_contract",
         "Codex legacy/split profile marker; review scope before deleting",
-        r"\[profiles\.(deepseek|deepseek-thinking)\]|legacy_profile_tables|legacy_profile_table|split_profile_files|profile\s*=\s*\"deepseek",
+        r"\[profiles\.(deepseek|cox)\]|legacy_profile_tables|legacy_profile_table|split_profile_files|profile\s*=\s*\"deepseek",
     ),
     PatternSpec(
         "recursive_wrapper_risk",
         "Codex wrapper real-binary recursion or temp-wrapper risk marker",
-        r"REAL_CODEX|/tmp/codeepseedex-|CoDeepSeedeX codex wrapper|codex wrapper",
+        r"REAL_CODEX|/tmp/codexchange-|CodeXchange codex wrapper|codex wrapper",
     ),
     PatternSpec(
         "old_effort_or_threshold",
         "Old effort or explicit legacy threshold semantics candidate",
-        r"\b750000\b|\b0\.75\b|DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS|DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT|CODEEPSEEDEX_AUTO_COMPACT_THRESHOLD_TOKENS|CODEEPSEEDEX_MODEL_AUTO_COMPACT_TOKEN_LIMIT|DEEPSEEK_PROXY_AUTO_COMPACT_RATIO|CODEEPSEEDEX_AUTO_COMPACT_RATIO",
+        r"\b750000\b|\b0\.75\b|COX_AUTO_COMPACT_THRESHOLD_TOKENS|COX_MODEL_AUTO_COMPACT_TOKEN_LIMIT|COX_AUTO_COMPACT_THRESHOLD_TOKENS|COX_MODEL_AUTO_COMPACT_TOKEN_LIMIT|COX_AUTO_COMPACT_RATIO|COX_AUTO_COMPACT_RATIO",
     ),
     PatternSpec(
         "deprecated_provider_surface",
@@ -179,7 +179,7 @@ def bucket_for(rel: str) -> str:
         return "maintainer_docs"
     if rel in {"README.md", "README.zh-CN.md", "TROUBLESHOOTING.md"}:
         return "user_docs"
-    if rel.startswith("deepseek_responses_proxy/"):
+    if rel.startswith("codexchange_proxy/"):
         return "runtime_source"
     if rel.startswith("scripts/") or rel == "bootstrap.sh":
         return "installer_scripts"
@@ -483,14 +483,14 @@ def write_text_report(path: Path, payload: dict[str, object], max_sample: int) -
 def default_output_paths(out_dir: Path) -> tuple[Path, Path, Path]:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return (
-        out_dir / f"audit-codeepseedex-ghost-contracts-{stamp}.txt",
-        out_dir / f"audit-codeepseedex-ghost-contracts-findings-{stamp}.json",
-        out_dir / f"audit-codeepseedex-ghost-contracts-findings-{stamp}.tsv",
+        out_dir / f"audit-codexchange-ghost-contracts-{stamp}.txt",
+        out_dir / f"audit-codexchange-ghost-contracts-findings-{stamp}.json",
+        out_dir / f"audit-codexchange-ghost-contracts-findings-{stamp}.tsv",
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Read-only ghost contract audit for CoDeepSeedeX.")
+    parser = argparse.ArgumentParser(description="Read-only ghost contract audit for CodeXchange.")
     parser.add_argument("--repo", default=".", help="Repository root.")
     parser.add_argument("--out-dir", default="/tmp", help="Directory for generated reports.")
     parser.add_argument("--out", default=None, help="Text report path.")
@@ -531,7 +531,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     payload = {
-        "stage": "audit-codeepseedex-ghost-contracts",
+        "stage": "audit-codexchange-ghost-contracts",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "repo": str(repo),
         "current_state": current_state,

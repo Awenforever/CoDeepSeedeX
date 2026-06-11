@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import SQLiteResponseStore
+from codexchange_proxy.app import SQLiteResponseStore
 
 
 def test_sqlite_store_persists_response_state_across_instances(tmp_path):
@@ -50,7 +50,7 @@ def test_sqlite_store_persists_profile_tokenizer_report_across_instances(tmp_pat
     db_path = tmp_path / "responses.sqlite3"
     report = {
         "available": True,
-        "profile": "deepseek-thinking",
+        "profile": "cox",
         "session_id": "sess-1",
         "request_id": "resp-1",
         "response_id": "resp-1",
@@ -64,7 +64,7 @@ def test_sqlite_store_persists_profile_tokenizer_report_across_instances(tmp_pat
     first.save_profile_tokenizer_report(report)
 
     second = SQLiteResponseStore(db_path)
-    restored = second.profile_tokenizer_report("deepseek-thinking", session_id="sess-1")
+    restored = second.profile_tokenizer_report("cox", session_id="sess-1")
 
     assert restored is not None
     assert restored["session_id"] == "sess-1"

@@ -1,6 +1,6 @@
 import json
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _deepseek_message_to_output_items,
     _input_items_to_messages,
 )

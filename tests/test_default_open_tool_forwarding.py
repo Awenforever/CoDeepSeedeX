@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _mcp_tutorial_tool_names,
     _mcp_write_tool_names,
     _normalize_response_tool,
@@ -37,19 +37,19 @@ def _function_names(normalized):
 
 
 def _disable_all_mcp(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_READONLY_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_WRITE_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", "0")
 
 
 def _enable_default_mcp(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", raising=False)
+    monkeypatch.delenv("COX_FORWARD_MCP_READONLY_TOOLS", raising=False)
+    monkeypatch.delenv("COX_FORWARD_MCP_WRITE_TOOLS", raising=False)
+    monkeypatch.delenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", raising=False)
 
 
 def test_apply_patch_maps_by_default(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", raising=False)
+    monkeypatch.delenv("COX_FORWARD_CUSTOM_APPLY_PATCH", raising=False)
 
     normalized, warnings, mapping = _normalize({
         "type": "custom",
@@ -66,7 +66,7 @@ def test_apply_patch_maps_by_default(monkeypatch):
 
 
 def test_apply_patch_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", "0")
+    monkeypatch.setenv("COX_FORWARD_CUSTOM_APPLY_PATCH", "0")
 
     normalized, warnings, mapping = _normalize({
         "type": "custom",

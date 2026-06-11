@@ -14,7 +14,7 @@ CURRENT_FILES = [
     "README.zh-CN.md",
     "TROUBLESHOOTING.md", "scripts/codex-wrapper.bash",
     "scripts/install-runtime-scripts.sh",
-    "deepseek_responses_proxy/cli.py",
+    "codexchange_proxy/cli.py",
 ]
 
 
@@ -30,12 +30,12 @@ def _scan(pattern: str) -> list[str]:
 
 
 def test_current_docs_do_not_use_legacy_dash_runtime_commands() -> None:
-    hits = _scan(r"\bdsproxy-(?:start|stop|status)(?:-thinking)?\b")
+    hits = _scan(r"\bcox-(?:start|stop|status)(?:-thinking)?\b")
     assert hits == []
 
 
 def test_current_docs_do_not_use_legacy_thinking_flag_for_start_stop_status() -> None:
-    hits = _scan(r"\bdsproxy\s+(?:start|stop|status)\s+--thinking\b")
+    hits = _scan(r"\bcox\s+(?:start|stop|status)\s+--thinking\b")
     assert hits == []
 
 

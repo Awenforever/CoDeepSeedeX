@@ -4,23 +4,23 @@ import argparse
 import json
 from pathlib import Path
 
-from deepseek_responses_proxy import cli
+from codexchange_proxy import cli
 
-def _codex_profile_text(config_path: Path, profile: str = "deepseek-thinking") -> str:
+def _codex_profile_text(config_path: Path, profile: str = "cox") -> str:
     path = config_path.parent / f"{profile}.config.toml"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 
 def test_post_config_apply_skips_when_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", "off")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "off")
     result = cli._post_config_apply()
     assert result["status"] == "skipped"
     assert result["message"] == "post-config apply disabled"
 
 
 def test_post_config_apply_refreshes_only_running_proxy(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("COX_POST_CONFIG_APPLY", raising=False)
     calls: list[list[str]] = []
 
     monkeypatch.setattr(cli, "_port_for", lambda thinking, explicit_port=None: 8001 if thinking else 8000)
@@ -28,7 +28,7 @@ def test_post_config_apply_refreshes_only_running_proxy(monkeypatch):
 
     def fake_run(argv, *, timeout=20.0):
         calls.append(list(argv))
-        return {"ok": True, "returncode": 0, "argv": ["dsproxy", *argv], "stdout_tail": "", "stderr_tail": ""}
+        return {"ok": True, "returncode": 0, "argv": ["cox", *argv], "stdout_tail": "", "stderr_tail": ""}
 
     monkeypatch.setattr(cli, "_post_config_run_self", fake_run)
 
@@ -45,7 +45,7 @@ def test_cli_effort_compatibility_normalizes_medium_to_high(tmp_path, monkeypatc
     env_file = tmp_path / "env"
     codex_config = tmp_path / "config.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-pro\"\n"
         "model_reasoning_effort = \"medium\"\n",
         encoding="utf-8",
@@ -57,7 +57,7 @@ def test_cli_effort_compatibility_normalizes_medium_to_high(tmp_path, monkeypatc
         effort="medium",
         env_file=str(env_file),
         codex_config=str(codex_config),
-        profile="deepseek-thinking",
+        profile="cox",
         path=None,
     )
 
@@ -67,9 +67,9 @@ def test_cli_effort_compatibility_normalizes_medium_to_high(tmp_path, monkeypatc
     assert output["requested_effort"] == "medium"
     assert output["effort"] == "high"
     assert output["post_config_apply"]["message"] == "all updates applied"
-    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in _codex_profile_text(codex_config)
-    assert "[profiles.deepseek-thinking]" not in codex_config.read_text(encoding="utf-8")
+    assert "[profiles.cox]" not in codex_config.read_text(encoding="utf-8")
 
 
 def test_cli_effort_canonicalizer_accepts_codex_compatibility_values():

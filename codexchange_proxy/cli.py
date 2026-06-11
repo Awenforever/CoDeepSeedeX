@@ -24,7 +24,7 @@ from typing import Any
 from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
 
 
-APP_NAME = "deepseek-responses-proxy"
+APP_NAME = "codexchange"
 CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"
 CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"
 
@@ -32,7 +32,7 @@ DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000
 DEFAULT_AUTO_COMPACT_RATIO = 0.90
 MANAGED_AUTO_COMPACT_RATIO = DEFAULT_AUTO_COMPACT_RATIO
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
-AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
+AUTO_COMPACT_RATIO_ENV_NAMES = ("COX_AUTO_COMPACT_RATIO", "COX_AUTO_COMPACT_RATIO")
 
 
 
@@ -42,7 +42,7 @@ def _canonical_codex_wrapper_template_candidates(install_dir=None):
     candidates = []
     if install_dir:
         candidates.append(Path(install_dir) / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
-    candidates.append(Path.home() / ".local" / "share" / "deepseek-responses-proxy" / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
+    candidates.append(Path.home() / ".local" / "share" / "codexchange" / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
     candidates.append(Path(__file__).resolve().parent.parent / CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH)
     return candidates
 
@@ -65,7 +65,7 @@ def _auto_compact_ratio_from_env_values(
 ) -> float:
     """Return the managed ratio for profile generation/repair.
 
-    Managed CoDeepSeedeX profiles use 0.90 unless the caller passes an
+    Managed CodeXchange profiles use 0.90 unless the caller passes an
     explicit --auto-compact-ratio argument for a deliberate one-shot repair.
     Environment variables are ignored here so stale low-trigger experiments do
     not silently redefine the managed profile contract.
@@ -128,7 +128,7 @@ def _auto_compact_policy_contract(
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
-        action = f"run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
+        action = f"run cox profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
         needs_migration = True
         display_label = (
             f"legacy {observed_percent}%→{expected_percent}%"
@@ -238,7 +238,7 @@ def _runtime_git_head() -> str:
 def _version_metadata() -> dict[str, str]:
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
 
     public_version = str(
         getattr(proxy_app, "PROXY_PUBLIC_VERSION", getattr(proxy_app, "PROXY_VERSION", "unknown"))
@@ -422,11 +422,11 @@ def _default_state_dir() -> Path:
 
 
 def default_config_path() -> Path:
-    return Path(os.environ.get("DEEPSEEK_PROXY_CONFIG", _default_config_dir() / "config.toml")).expanduser()
+    return Path(os.environ.get("COX_CONFIG", _default_config_dir() / "config.toml")).expanduser()
 
 
 def default_env_file_path() -> Path:
-    return Path(os.environ.get("DEEPSEEK_PROXY_ENV_FILE", _default_config_dir() / "env")).expanduser()
+    return Path(os.environ.get("COX_ENV_FILE", _default_config_dir() / "env")).expanduser()
 
 
 def _shell_quote(value: str) -> str:
@@ -458,26 +458,26 @@ def _read_env_exports(path: Path) -> dict[str, str]:
 def _write_env_exports(path: Path, values: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered_keys = [
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        "DEEPSEEK_PROXY_MODEL_PROVIDER",
-        "DEEPSEEK_PROXY_PORT",
-        "DEEPSEEK_PROXY_THINKING_PORT",
-        "DEEPSEEK_PROXY_MODEL",
-        "DEEPSEEK_REASONING_EFFORT",
-        "DEEPSEEK_PROXY_FORCE_MODEL",
-        "DEEPSEEK_PROXY_TOOL_MAX_ROUNDS",
-        "DEEPSEEK_PROXY_COMPACT_POLICY",
-        "DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD",
-        "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED",
-        "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL",
-        "DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION",
-        "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER",
-        "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING",
-        "DEEPSEEK_PROXY_IMAGE_PROVIDER",
-        "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING",
+        "COX_MODEL_API_KEY",
+        "COX_MODEL_BASE_URL",
+        "COX_MODEL_PROVIDER",
+        "COX_PORT",
+        "COX_THINKING_PORT",
+        "COX_MODEL",
+        "COX_REASONING_EFFORT",
+        "COX_FORCE_MODEL",
+        "COX_TOOL_MAX_ROUNDS",
+        "COX_COMPACT_POLICY",
+        "COX_AGENT_LIVENESS_GUARD",
+        "COX_AGENT_LIVENESS_JUDGE_ENABLED",
+        "COX_AGENT_LIVENESS_JUDGE_MODEL",
+        "COX_CODEX_TOOL_PROTOCOL_INSTRUCTION",
+        "COX_WEB_SEARCH_PROVIDER",
+        "COX_WEB_SEARCH_ROUTING",
+        "COX_IMAGE_PROVIDER",
+        "COX_IMAGE_GENERATION_ROUTING",
     ]
-    lines = ["# deepseek-responses-proxy local environment", "# Generated by dsproxy"]
+    lines = ["# codexchange local environment", "# Generated by cox"]
     for key in ordered_keys:
         if key in values:
             lines.append(f"export {key}={_shell_quote(values[key])}")
@@ -497,7 +497,7 @@ def _default_log_path(*, thinking: bool) -> Path:
 def _port_for(thinking: bool, explicit_port: int | None = None) -> int:
     if explicit_port is not None:
         return int(explicit_port)
-    env_name = "DEEPSEEK_PROXY_THINKING_PORT" if thinking else "DEEPSEEK_PROXY_PORT"
+    env_name = "COX_THINKING_PORT" if thinking else "COX_PORT"
     env_value = os.environ.get(env_name)
     if not env_value:
         env_value = _read_env_exports(default_env_file_path()).get(env_name)
@@ -564,7 +564,7 @@ def _write_default_config(path: Path, *, force: bool = False) -> bool:
         'model = "deepseek-v4-pro"\n'
         "force_model = true\n"
         'base_url = "https://api.deepseek.com"\n'
-        'api_key_env = "DEEPSEEK_API_KEY"\n\n'
+        'api_key_env = "COX_MODEL_API_KEY"\n\n'
         "[model_api]\n"
         'provider = "deepseek"\n'
         'base_url = "https://api.deepseek.com"\n'
@@ -599,7 +599,7 @@ def codex_profile_config_path(profile_name: str, codex_config: Path | None = Non
     """Return the Codex 0.134+ split profile file path.
 
     Codex 0.134+ loads the main ~/.codex/config.toml first, then overlays
-    ~/.codex/<profile>.config.toml for --profile <profile>. CoDeepSeedeX keeps
+    ~/.codex/<profile>.config.toml for --profile <profile>. CodeXchange keeps
     provider blocks in the main config and writes managed profile bodies to
     these split profile files.
     """
@@ -639,7 +639,7 @@ def _parse_codex_cli_version_text(text: str) -> tuple[int, int, int] | None:
 
 
 def _detect_codex_cli_version_text() -> str:
-    override = os.environ.get("CODEEPSEEDEX_CODEX_CLI_VERSION", "").strip()
+    override = os.environ.get("COX_CODEX_CLI_VERSION", "").strip()
     if override:
         return override
     try:
@@ -656,7 +656,7 @@ def _detect_codex_cli_version_text() -> str:
 
 
 def _resolve_codex_profile_layout(requested: str | None = None) -> dict[str, object]:
-    requested = (requested or os.environ.get("CODEEPSEEDEX_CODEX_PROFILE_LAYOUT") or "auto").strip()
+    requested = (requested or os.environ.get("COX_CODEX_PROFILE_LAYOUT") or "auto").strip()
     codex_cli_version_text = _detect_codex_cli_version_text()
     parsed = _parse_codex_cli_version_text(codex_cli_version_text)
     if requested in {"split", "split_profile_files"}:
@@ -817,7 +817,7 @@ def _remove_top_level_codex_profile_selector(text: str) -> tuple[str, bool]:
             current_section = stripped
             out.append(raw_line)
             continue
-        if current_section is None and re.match(r'^profile\s*=\s*"(deepseek|deepseek-thinking)"\s*(#.*)?$', stripped):
+        if current_section is None and re.match(r'^profile\s*=\s*"(deepseek|cox)"\s*(#.*)?$', stripped):
             changed = True
             continue
         out.append(raw_line)
@@ -876,13 +876,13 @@ def _codex_profile_blocks(
 
     provider_defaults = _managed_profile_provider_defaults(profile_name) or {}
     provider_label = provider_defaults.get("provider_label") or (
-        "DeepSeek Thinking Responses Proxy" if "thinking" in profile_name else "DeepSeek Responses Proxy"
+        "DeepSeek Thinking Responses Proxy" if "thinking" in profile_name else "CodeXchange"
     )
     provider_lines = [
         provider_header,
         f"name = {_toml_quote(provider_label)}",
         f"base_url = {_toml_quote(base_url)}",
-        'env_key = "DEEPSEEK_API_KEY"',
+        'env_key = "COX_MODEL_API_KEY"',
         'wire_api = "responses"',
     ]
 
@@ -1010,22 +1010,22 @@ def _canonical_cli_reasoning_effort(value: object) -> str | None:
 
 
 CODEX_MODEL_REASONING_EFFORT_ALLOWED = {"none", "minimal", "low", "medium", "high", "xhigh"}
-CODEEPSEEDEX_LEGACY_CODEX_PROFILES = ("deepseek",)
-CODEEPSEEDEX_MANAGED_CODEX_PROFILES = ("deepseek-thinking",)
-CODEEPSEEDEX_PRIMARY_CODEX_PROFILE = "deepseek-thinking"
-CODEEPSEEDEX_PROFILE_CONTRACT_VERSION = 2
+COX_LEGACY_CODEX_PROFILES = ("deepseek",)
+COX_MANAGED_CODEX_PROFILES = ("cox",)
+COX_PRIMARY_CODEX_PROFILE = "cox"
+COX_PROFILE_CONTRACT_VERSION = 2
 
 
 def _managed_profile_provider_defaults(profile_name: str) -> dict[str, str] | None:
     if profile_name == "deepseek":
         return {
-            "provider_name": "deepseek-proxy",
-            "provider_label": "DeepSeek Responses Proxy",
+            "provider_name": "cox-proxy",
+            "provider_label": "CodeXchange",
             "base_url": "http://127.0.0.1:8000/v1",
         }
-    if profile_name == "deepseek-thinking":
+    if profile_name == "cox":
         return {
-            "provider_name": "deepseek-thinking-proxy",
+            "provider_name": "cox-proxy",
             "provider_label": "DeepSeek Thinking Responses Proxy",
             "base_url": "http://127.0.0.1:8001/v1",
         }
@@ -1067,7 +1067,7 @@ def _custom_provider_effective_reasoning_effort(
     requested: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     env_values = env_values or {}
-    requested_raw = requested or env_values.get("DEEPSEEK_REASONING_EFFORT") or "high"
+    requested_raw = requested or env_values.get("COX_REASONING_EFFORT") or "high"
     requested_effort = _canonical_cli_reasoning_effort(requested_raw) or "high"
     supports_max = _custom_provider_supports_reasoning_effort_max(entry)
     if requested_effort == "max" and not supports_max:
@@ -1119,7 +1119,7 @@ def _reasoning_effort_contract(value: object) -> dict[str, object] | None:
 def _managed_profile_targets(profile_value: object) -> list[str]:
     raw = str(profile_value or "").strip()
     if raw in {"", "__managed__", "managed", "all", "all-managed"}:
-        return list(CODEEPSEEDEX_MANAGED_CODEX_PROFILES)
+        return list(COX_MANAGED_CODEX_PROFILES)
     return [raw]
 
 
@@ -1242,12 +1242,12 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
                 continue
             if current_section is None:
                 match = re.match(r'^profile\s*=\s*"([^"]+)"', stripped)
-                if match and match.group(1) in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+                if match and match.group(1) in COX_MANAGED_CODEX_PROFILES:
                     legacy_profile_selectors.append(match.group(1))
     else:
         warnings.append("codex_config_missing")
 
-    for profile_name in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+    for profile_name in COX_MANAGED_CODEX_PROFILES:
         values, source, profile_path = _read_codex_profile_values(config_path, profile_name)
         effort = values.get("model_reasoning_effort")
         if effort is not None and effort not in CODEX_MODEL_REASONING_EFFORT_ALLOWED:
@@ -1258,7 +1258,7 @@ def _codex_config_health(config_path: Path) -> dict[str, object]:
                 "source": source,
                 "profile_config": str(config_path if source == "legacy_profile_table" else profile_path),
                 "allowed": sorted(CODEX_MODEL_REASONING_EFFORT_ALLOWED),
-                "suggested_repair_command": f"dsproxy profile set-effort {profile_name} max --json",
+                "suggested_repair_command": f"cox profile set-effort {profile_name} max --json",
             })
     if legacy_profile_tables:
         warnings.append("legacy_profile_tables_present")
@@ -1292,13 +1292,13 @@ def _int_or_zero(value: object) -> int:
 
 
 def _managed_profile_env_model_for_profile(profile_name: str | None, env_values: dict[str, str]) -> tuple[str | None, str]:
-    env_model = env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL")
-    if profile_name == "deepseek-thinking":
-        thinking_model = env_values.get("DEEPSEEK_PROXY_THINKING_MODEL") or env_values.get("DEEPSEEK_THINKING_MODEL")
+    env_model = env_values.get("COX_MODEL") or env_values.get("COX_MODEL")
+    if profile_name == "cox":
+        thinking_model = env_values.get("COX_THINKING_MODEL") or env_values.get("COX_REASONING_MODEL")
         if thinking_model:
-            return thinking_model, "dsproxy_env.DEEPSEEK_PROXY_THINKING_MODEL"
+            return thinking_model, "cox_env.COX_THINKING_MODEL"
     if env_model:
-        return env_model, "dsproxy_env.DEEPSEEK_PROXY_MODEL"
+        return env_model, "cox_env.COX_MODEL"
     return None, "unknown"
 
 
@@ -1306,7 +1306,7 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
     codex_model = profile_section.get("model")
     env_model, env_model_source = _managed_profile_env_model_for_profile(profile_name, env_values)
     force_model_enabled = _env_value_truthy(
-        env_values.get("DEEPSEEK_PROXY_FORCE_MODEL", os.environ.get("DEEPSEEK_PROXY_FORCE_MODEL"))
+        env_values.get("COX_FORCE_MODEL", os.environ.get("COX_FORCE_MODEL"))
     )
 
     if force_model_enabled and env_model:
@@ -1325,13 +1325,13 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
     upstream_model = effective_model if effective_model != "unknown" else env_model
     model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
     diagnostic_hint = (
-        "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+        "Codex profile model differs from forced upstream model; cox effective_model is authoritative."
         if model_conflict
         else None
     )
 
     return {
-        "provider": env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek",
+        "provider": env_values.get("COX_MODEL_PROVIDER") or "deepseek",
         "model": effective_model,
         "display_model": effective_model,
         "weclaw_display_model": effective_model,
@@ -1347,17 +1347,17 @@ def _profile_model_contract(profile_section: dict[str, str], env_values: dict[st
         "source": source,
         "notes": (
             [
-                "Codex profile model differs from the effective upstream model. Managed CoDeepSeedeX profile repair must rewrite the Codex-visible model before launch."
+                "Codex profile model differs from the effective upstream model. Managed CodeXchange profile repair must rewrite the Codex-visible model before launch."
             ]
             if model_conflict
             else []
         ),
-        "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+        "profile_contract_version": COX_PROFILE_CONTRACT_VERSION,
         "managed_profile_contract": {
             "available": True,
             "status": "conflict" if model_conflict else "ok",
             "fail_closed_recommended": bool(model_conflict),
-            "repair_command": "dsproxy profile repair --managed-only --json" if model_conflict else None,
+            "repair_command": "cox profile repair --managed-only --json" if model_conflict else None,
             "reason": "codex_profile_model_differs_from_effective_upstream_model" if model_conflict else None,
             "future_compatibility_policy": "repair managed profile before launching Codex; fail closed if conflict remains after repair",
         },
@@ -1403,7 +1403,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "derived_managed_value": auto_compact_token_limit,
                 "expected_auto_compact_ratio": managed_auto_compact_ratio,
                 "resolution": "managed_runtime_uses_ratio_derived_threshold_and_profile_repair_rewrites_generated_value",
-                "action": "run dsproxy profile repair --managed-only --json",
+                "action": "run cox profile repair --managed-only --json",
                 "user_visible": True,
             }
         )
@@ -1422,7 +1422,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
                 "ignored_value": legacy_auto_compact_token_limit,
                 "derived_value": auto_compact_token_limit,
                 "reason": "managed_profiles_derive_auto_compact_threshold_from_ratio_only",
-                "action": "run dsproxy profile repair --managed-only --json",
+                "action": "run cox profile repair --managed-only --json",
             }
             if legacy_auto_compact_token_limit and legacy_auto_compact_token_limit != auto_compact_token_limit
             else None
@@ -1456,7 +1456,7 @@ def _profile_context_contract(profile_section: dict[str, str], *, effective_mode
         "notes": [
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
-            "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
+            "Managed CodeXchange profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
             "Runtime Compact and Trim status must remain token-only in external status contracts.",
         ],
     }
@@ -1479,7 +1479,7 @@ def _merge_runtime_context_contract(context_window: dict[str, object], runtime_s
     merged["runtime"] = {
         "available": bool(runtime_context),
         "unit": "tokens",
-        "source": "dsproxy_runtime./v1/proxy/status.context",
+        "source": "cox_runtime./v1/proxy/status.context",
         "context": runtime_context,
         "semantic_compaction": semantic_compaction if isinstance(semantic_compaction, dict) else None,
     }
@@ -1520,14 +1520,14 @@ def _shell_quote(value: object) -> str:
 
 
 
-def _is_codeepseedex_codex_wrapper_path(path: str | Path) -> bool:
+def _is_codexchange_codex_wrapper_path(path: str | Path) -> bool:
     candidate = Path(path).expanduser()
     try:
         resolved = candidate.resolve(strict=False)
     except Exception:
         resolved = candidate
     resolved_text = str(resolved)
-    if resolved_text.startswith("/tmp/codeepseedex-") and resolved.name == "codex":
+    if resolved_text.startswith("/tmp/codexchange-") and resolved.name == "codex":
         return True
     if not candidate.exists() or not candidate.is_file():
         return False
@@ -1538,23 +1538,23 @@ def _is_codeepseedex_codex_wrapper_path(path: str | Path) -> bool:
     return any(
         marker in text
         for marker in (
-            "CoDeepSeedeX codex wrapper",
-            "CODEEPSEEDEX_DSPROXY",
-            "start_dsproxy_profile",
-            "deepseek-responses-proxy",
+            "CodeXchange codex wrapper",
+            "COX_COMMAND",
+            "start_cox_profile",
+            "codexchange",
         )
     )
 
 
-def _is_tmp_codeepseedex_codex_path(path: Path) -> bool:
+def _is_tmp_codexchange_codex_path(path: Path) -> bool:
     try:
         resolved = path.expanduser().resolve(strict=False)
     except Exception:
         resolved = path.expanduser()
     resolved_text = str(resolved)
     return resolved.name == "codex" and (
-        resolved_text.startswith("/tmp/codeepseedex-")
-        or "/tmp/codeepseedex-" in resolved_text
+        resolved_text.startswith("/tmp/codexchange-")
+        or "/tmp/codexchange-" in resolved_text
     )
 
 
@@ -1573,10 +1573,10 @@ def _is_safe_real_codex_executable(candidate: Path, wrapper_path: Path) -> tuple
         return False, "real_codex_missing", candidate_resolved
     if candidate_resolved == wrapper_resolved:
         return False, "real_codex_points_to_wrapper_itself", candidate_resolved
-    if _is_tmp_codeepseedex_codex_path(candidate_resolved):
-        return False, "real_codex_points_to_tmp_codeepseedex_wrapper", candidate_resolved
-    if _is_codeepseedex_codex_wrapper_path(candidate_resolved):
-        return False, "real_codex_points_to_codeepseedex_wrapper", candidate_resolved
+    if _is_tmp_codexchange_codex_path(candidate_resolved):
+        return False, "real_codex_points_to_tmp_codexchange_wrapper", candidate_resolved
+    if _is_codexchange_codex_wrapper_path(candidate_resolved):
+        return False, "real_codex_points_to_codexchange_wrapper", candidate_resolved
     if not os.access(candidate_resolved, os.X_OK):
         return False, "real_codex_not_executable", candidate_resolved
 
@@ -1617,7 +1617,7 @@ def _iter_real_codex_candidate_paths(preferred: str, wrapper_path: Path) -> list
         candidates.append((source, candidate))
 
     add("manifest", preferred)
-    add("env_CODEEPSEEDEX_REAL_CODEX", os.environ.get("CODEEPSEEDEX_REAL_CODEX"))
+    add("env_COX_REAL_CODEX", os.environ.get("COX_REAL_CODEX"))
 
     for item in os.environ.get("PATH", "").split(os.pathsep):
         if item:
@@ -1664,7 +1664,7 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
     backup_path = values.get("CODEX_WRAPPER_BACKUP", "")
     real_codex = values.get("REAL_CODEX", "")
     env_file = values.get("ENV_FILE") or str(default_env_file_path())
-    install_dir = values.get("INSTALL_DIR") or str(Path.home() / ".local" / "share" / "deepseek-responses-proxy")
+    install_dir = values.get("INSTALL_DIR") or str(Path.home() / ".local" / "share" / "codexchange")
     bin_dir = values.get("BIN_DIR") or str(wrapper_path.parent)
 
     result: dict[str, object] = {
@@ -1696,42 +1696,42 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
             {},
         )
         error = str(manifest_attempt.get("reason") or "real_codex_missing")
-        if error in {"real_codex_points_to_wrapper_itself", "real_codex_points_to_tmp_codeepseedex_wrapper"}:
-            error = "real_codex_points_to_codeepseedex_wrapper"
+        if error in {"real_codex_points_to_wrapper_itself", "real_codex_points_to_tmp_codexchange_wrapper"}:
+            error = "real_codex_points_to_codexchange_wrapper"
         result.update({
             "status": "error",
             "error": error,
-            "hint": "Refusing to refresh a wrapper without a safe real Codex binary. Install Codex CLI, clean PATH, or set CODEEPSEEDEX_REAL_CODEX to the real Codex binary.",
+            "hint": "Refusing to refresh a wrapper without a safe real Codex binary. Install Codex CLI, clean PATH, or set COX_REAL_CODEX to the real Codex binary.",
         })
         return result
 
     existing = wrapper_path.read_text(encoding="utf-8", errors="replace") if wrapper_path.exists() else ""
-    is_managed = "CoDeepSeedeX codex wrapper" in existing
+    is_managed = "CodeXchange codex wrapper" in existing
     if wrapper_path.exists() and not is_managed and not bool(getattr(args, "force", False)):
         result.update({
             "status": "error",
             "error": "unknown_existing_codex_wrapper",
-            "hint": "Refusing to overwrite a non-CoDeepSeedeX codex command without --force.",
+            "hint": "Refusing to overwrite a non-CodeXchange codex command without --force.",
         })
         return result
 
     if wrapper_path.exists() and not is_managed:
-        backup = wrapper_path.with_name(wrapper_path.name + f".codeepseedex.bak.{int(time.time())}")
+        backup = wrapper_path.with_name(wrapper_path.name + f".codexchange.bak.{int(time.time())}")
         shutil.move(str(wrapper_path), str(backup))
         backup_path = str(backup)
         result["backup"] = backup_path
 
     title_emojis = '"✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻"'
     wrapper_template = r"""#!/usr/bin/env bash
-# CoDeepSeedeX codex wrapper
+# CodeXchange codex wrapper
 set -euo pipefail
 
 REAL_CODEX=__REAL_CODEX__
-DSPROXY="${CODEEPSEEDEX_DSPROXY:-__BIN_DIR__/dsproxy}"
-if [ ! -x "$DSPROXY" ] && [ -x "__INSTALL_DIR__/.venv/bin/dsproxy" ]; then
-  DSPROXY="__INSTALL_DIR__/.venv/bin/dsproxy"
+COX="${COX_COMMAND:-__BIN_DIR__/cox}"
+if [ ! -x "$COX" ] && [ -x "__INSTALL_DIR__/.venv/bin/cox" ]; then
+  COX="__INSTALL_DIR__/.venv/bin/cox"
 fi
-ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-__ENV_FILE__}"
+ENV_FILE="${COX_ENV_FILE:-__ENV_FILE__}"
 
 if [ -f "$ENV_FILE" ]; then
   source "$ENV_FILE"
@@ -1751,7 +1751,7 @@ for arg in "$@"; do
   prev="$arg"
 done
 
-set_codeepseedex_terminal_title() {
+set_codexchange_terminal_title() {
   if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
@@ -1761,12 +1761,12 @@ set_codeepseedex_terminal_title() {
       ;;
   esac
 
-  local title="${CODEEPSEEDEX_TERMINAL_TITLE:-}"
+  local title="${COX_TERMINAL_TITLE:-}"
   if [ -z "$title" ]; then
     local emojis=(__TITLE_EMOJIS__)
     local idx=$((RANDOM % ${#emojis[@]}))
-    title="${emojis[$idx]}CoDeepSeedeX"
-    CODEEPSEEDEX_TERMINAL_TITLE="$title"
+    title="${emojis[$idx]}CodeXchange"
+    COX_TERMINAL_TITLE="$title"
   fi
 
   if [ -w /dev/tty ]; then
@@ -1776,9 +1776,9 @@ set_codeepseedex_terminal_title() {
   fi
 }
 
-CODEEPSEEDEX_TITLE_KEEPER_PID=""
+COX_TITLE_KEEPER_PID=""
 
-schedule_codeepseedex_terminal_title_refresh() {
+schedule_codexchange_terminal_title_refresh() {
   if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
@@ -1790,36 +1790,36 @@ schedule_codeepseedex_terminal_title_refresh() {
 
   (
     i=1
-    max_seconds="${CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60}"
-    interval_seconds="${CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
+    max_seconds="${COX_TITLE_KEEPER_SECONDS:-60}"
+    interval_seconds="${COX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
     while [ "$i" -le "$max_seconds" ]; do
       sleep "$interval_seconds"
-      set_codeepseedex_terminal_title
+      set_codexchange_terminal_title
       i=$((i + interval_seconds))
     done
   ) >/dev/null 2>&1 &
-  CODEEPSEEDEX_TITLE_KEEPER_PID="$!"
+  COX_TITLE_KEEPER_PID="$!"
 }
 
-stop_codeepseedex_terminal_title_keeper() {
-  if [ -n "${CODEEPSEEDEX_TITLE_KEEPER_PID:-}" ]; then
-    kill "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    wait "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    CODEEPSEEDEX_TITLE_KEEPER_PID=""
+stop_codexchange_terminal_title_keeper() {
+  if [ -n "${COX_TITLE_KEEPER_PID:-}" ]; then
+    kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    COX_TITLE_KEEPER_PID=""
   fi
 }
 
 codex_runtime_preflight() {
   if [ ! -x "$REAL_CODEX" ]; then
-    printf 'CoDeepSeedeX error: real Codex command is not executable: %s\n' "$REAL_CODEX" >&2
+    printf 'CodeXchange error: real Codex command is not executable: %s\n' "$REAL_CODEX" >&2
     return 127
   fi
 
   if ! command -v node >/dev/null 2>&1; then
     if head -n 1 "$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "$REAL_CODEX" 2>/dev/null; then
-      printf 'CoDeepSeedeX error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "$REAL_CODEX" >&2
-      printf 'Install Node.js/Codex CLI first, then rerun the CoDeepSeedeX installer or: %s profile refresh-wrapper\n' "$DSPROXY" >&2
-      printf 'Boundary: CoDeepSeedeX detects this dependency but does not install or patch Node automatically.\n' >&2
+      printf 'CodeXchange error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "$REAL_CODEX" >&2
+      printf 'Install Node.js/Codex CLI first, then rerun the CodeXchange installer or: %s profile refresh-wrapper\n' "$COX" >&2
+      printf 'Boundary: CodeXchange detects this dependency but does not install or patch Node automatically.\n' >&2
       return 127
     fi
   fi
@@ -1836,23 +1836,23 @@ codex_requires_legacy_profile_tables() {
   return 1
 }
 
-repair_codeepseedex_legacy_managed_profiles() {
-  local thinking_port="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-  local model="${DEEPSEEK_PROXY_THINKING_MODEL:-${DEEPSEEK_PROXY_MODEL:-deepseek-v4-pro}}"
+repair_codexchange_legacy_managed_profiles() {
+  local thinking_port="${COX_THINKING_PORT:-8001}"
+  local model="${COX_THINKING_MODEL:-${COX_MODEL:-deepseek-v4-pro}}"
   local catalog_args=()
   local catalog=""
 
-  catalog="${DEEPSEEK_PROXY_MODEL_CATALOG_JSON:-}"
+  catalog="${COX_MODEL_CATALOG_JSON:-}"
   if [ -z "$catalog" ]; then
-    catalog="__INSTALL_DIR__/experiments/model-catalog/deepseek-proxy-models.json"
+    catalog="__INSTALL_DIR__/experiments/model-catalog/cox-proxy-models.json"
   fi
   if [ -n "$catalog" ] && [ -f "$catalog" ]; then
     catalog_args=(--model-catalog-json "$catalog")
   fi
 
-  "$DSPROXY" install-codex-profile \
-    --name deepseek-thinking \
-    --provider-name deepseek-thinking-proxy \
+  "$COX" install-codex-profile \
+    --name cox \
+    --provider-name cox-proxy \
     --base-url "http://127.0.0.1:${thinking_port}/v1" \
     --model "$model" \
     --reasoning-effort xhigh \
@@ -1861,15 +1861,15 @@ repair_codeepseedex_legacy_managed_profiles() {
     "${catalog_args[@]}" >/dev/null
 }
 
-repair_codeepseedex_managed_profile_contract() {
+repair_codexchange_managed_profile_contract() {
   local profile_name="$1"
   local status_json=""
 
   case "$profile_name" in
-    deepseek-thinking)
+    cox)
       ;;
     deepseek)
-      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
       return 2
       ;;
     *)
@@ -1877,75 +1877,75 @@ repair_codeepseedex_managed_profile_contract() {
       ;;
   esac
 
-  if [ "${CODEEPSEEDEX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
+  if [ "${COX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
     return 0
   fi
 
-  if [ ! -x "$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+  if [ ! -x "$COX" ]; then
+    printf 'CodeXchange error: cox command is not executable: %s\n' "$COX" >&2
     return 1
   fi
 
   if codex_requires_legacy_profile_tables; then
-    if status_json="$("$DSPROXY" profile status "$profile_name" --json 2>/dev/null)"; then
+    if status_json="$("$COX" profile status "$profile_name" --json 2>/dev/null)"; then
       if printf '%s' "$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
         && ! printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
         return 0
       fi
     fi
 
-    if ! repair_codeepseedex_legacy_managed_profiles; then
-      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "$DSPROXY" "$profile_name" >&2
+    if ! repair_codexchange_legacy_managed_profiles; then
+      printf 'CodeXchange error: failed to repair legacy managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "$COX" "$profile_name" >&2
       return 1
     fi
   else
-    if ! "$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to repair managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s profile repair --managed-only --json\n' "$DSPROXY" >&2
+    if ! "$COX" profile repair --managed-only --json >/dev/null 2>&1; then
+      printf 'CodeXchange error: failed to repair managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s profile repair --managed-only --json\n' "$COX" >&2
       return 1
     fi
   fi
 
-  if ! status_json="$("$DSPROXY" profile status "$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
+  if ! status_json="$("$COX" profile status "$profile_name" --json 2>/dev/null)"; then
+    printf 'CodeXchange error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-    if [ "${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
+    if [ "${COX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
+      printf 'CodeXchange warning: managed Codex profile %s still has a model conflict; continuing because COX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$DSPROXY" "$profile_name" >&2
+    printf 'CodeXchange error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$COX" "$profile_name" >&2
     return 1
   fi
 }
 
-activate_codeepseedex_custom_provider_profile() {
+activate_codexchange_custom_provider_profile() {
   local profile_name="$1"
-  if [ -z "$profile_name" ] || [ ! -x "$DSPROXY" ]; then
+  if [ -z "$profile_name" ] || [ ! -x "$COX" ]; then
     return 1
   fi
-  if ! "$DSPROXY" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1; then
+  if ! "$COX" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1; then
     return 1
   fi
-  "$DSPROXY" provider install-profile --name "$profile_name" --profile-name "$profile_name" >/dev/null 2>&1
+  "$COX" provider install-profile --name "$profile_name" --profile-name "$profile_name" >/dev/null 2>&1
 }
 
-start_dsproxy_profile() {
+start_cox_profile() {
   local profile_name="$1"
   local start_args=()
   local status_args=()
 
-  if [ ! -x "$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "$DSPROXY" >&2
+  if [ ! -x "$COX" ]; then
+    printf 'CodeXchange error: cox command is not executable: %s\n' "$COX" >&2
     return 1
   fi
 
   case "$profile_name" in
-    deepseek-thinking)
+    cox)
       start_args=(start thinking)
       status_args=(status thinking)
       ;;
@@ -1954,44 +1954,44 @@ start_dsproxy_profile() {
       ;;
   esac
 
-  if ! "$DSPROXY" "${start_args[@]}" >/dev/null 2>&1; then
-    if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "$profile_name" >&2
-      printf 'Run for details: %s %s\n' "$DSPROXY" "${start_args[*]}" >&2
+  if ! "$COX" "${start_args[@]}" >/dev/null 2>&1; then
+    if ! "$COX" "${status_args[@]}" >/dev/null 2>&1; then
+      printf 'CodeXchange error: failed to start cox for profile %s.\n' "$profile_name" >&2
+      printf 'Run for details: %s %s\n' "$COX" "${start_args[*]}" >&2
       return 1
     fi
     return 0
   fi
 
-  if ! "$DSPROXY" "${status_args[@]}" >/dev/null 2>&1; then
-    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "$profile_name" >&2
-    printf 'Run for details: %s %s\n' "$DSPROXY" "${status_args[*]}" >&2
+  if ! "$COX" "${status_args[@]}" >/dev/null 2>&1; then
+    printf 'CodeXchange error: cox started but status check failed for profile %s.\n' "$profile_name" >&2
+    printf 'Run for details: %s %s\n' "$COX" "${status_args[*]}" >&2
     return 1
   fi
 }
 
-run_codeepseedex_codex() {
+run_codexchange_codex() {
   case "$profile" in
     deepseek)
-      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
       return 2
       ;;
-    deepseek-thinking)
-      repair_codeepseedex_managed_profile_contract "$profile"
-      start_dsproxy_profile "$profile"
-      schedule_codeepseedex_terminal_title_refresh
+    cox)
+      repair_codexchange_managed_profile_contract "$profile"
+      start_cox_profile "$profile"
+      schedule_codexchange_terminal_title_refresh
       ;;
     "")
       ;;
     *)
-      if activate_codeepseedex_custom_provider_profile "$profile"; then
-        start_dsproxy_profile "deepseek-thinking"
-        schedule_codeepseedex_terminal_title_refresh
+      if activate_codexchange_custom_provider_profile "$profile"; then
+        start_cox_profile "cox"
+        schedule_codexchange_terminal_title_refresh
       elif [ -f "$HOME/.codex/${profile}.config.toml" ]; then
         :
       else
-        printf 'CoDeepSeedeX error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$profile" >&2
-        printf 'Add/sync it first: %s provider install-profile --name %s --profile-name %s\n' "$DSPROXY" "$profile" "$profile" >&2
+        printf 'CodeXchange error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$profile" >&2
+        printf 'Add/sync it first: %s provider install-profile --name %s --profile-name %s\n' "$COX" "$profile" "$profile" >&2
         return 2
       fi
       ;;
@@ -1999,7 +1999,7 @@ run_codeepseedex_codex() {
 
   if ! codex_runtime_preflight; then
     local preflight_rc=$?
-    stop_codeepseedex_terminal_title_keeper
+    stop_codexchange_terminal_title_keeper
     return "$preflight_rc"
   fi
 
@@ -2007,12 +2007,12 @@ run_codeepseedex_codex() {
   "$REAL_CODEX" "$@"
   local codex_rc=$?
   set -e
-  stop_codeepseedex_terminal_title_keeper
+  stop_codexchange_terminal_title_keeper
   return "$codex_rc"
 }
 
-trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP
-run_codeepseedex_codex "$@"
+trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP
+run_codexchange_codex "$@"
 """
     wrapper = (
         wrapper_template
@@ -2027,7 +2027,7 @@ run_codeepseedex_codex "$@"
     if bool(getattr(args, "dry_run", False)):
         result["refreshed"] = True
         result["dry_run"] = True
-        result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
+        result["contains_terminal_title"] = "set_codexchange_terminal_title" in wrapper
         result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
         return result
 
@@ -2053,7 +2053,7 @@ run_codeepseedex_codex "$@"
     result["refreshed"] = True
     result["dry_run"] = False
     result["real_codex"] = str(real_resolved)
-    result["contains_terminal_title"] = "set_codeepseedex_terminal_title" in wrapper
+    result["contains_terminal_title"] = "set_codexchange_terminal_title" in wrapper
     result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
     return result
 
@@ -2064,10 +2064,10 @@ def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
 
 
 
-def _codex_reasoning_effort_for_deepseek(deepseek_effort: str | None, *, profile_name: str = "deepseek-thinking") -> str:
-    """Map dsproxy/DeepSeek user-facing reasoning effort to Codex profile effort.
+def _codex_reasoning_effort_for_deepseek(deepseek_effort: str | None, *, profile_name: str = "cox") -> str:
+    """Map cox/DeepSeek user-facing reasoning effort to Codex profile effort.
 
-    CoDeepSeedeX exposes `high` and `max` to users. Codex profile files do not
+    CodeXchange exposes `high` and `max` to users. Codex profile files do not
     accept `max`; the compatible high-reasoning value is `xhigh`.
     """
     canonical = _canonical_cli_reasoning_effort(deepseek_effort or "high") or "high"
@@ -2092,7 +2092,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
         env_values=env_values,
         provider_name=provider_name,
     )
-    env_effort_raw = env_values.get("DEEPSEEK_REASONING_EFFORT")
+    env_effort_raw = env_values.get("COX_REASONING_EFFORT")
     requested_deepseek_effort = _canonical_cli_reasoning_effort(env_effort_raw or profile_section.get("model_reasoning_effort") or "high") or "high"
     if custom_provider_entry is not None:
         deepseek_effort, effort_capability = _custom_provider_effective_reasoning_effort(
@@ -2157,7 +2157,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "deepseek_reasoning_effort": deepseek_effort,
             "codex_model_reasoning_effort": codex_effort,
             "expected_codex_model_reasoning_effort": expected_codex_effort,
-            "source": "dsproxy_env_profile_and_provider_capability",
+            "source": "cox_env_profile_and_provider_capability",
             "codex_profile_valid": codex_effort in CODEX_MODEL_REASONING_EFFORT_ALLOWED if codex_effort else False,
             "normalized": codex_effort == expected_codex_effort,
             "capability": effort_capability,
@@ -2180,7 +2180,7 @@ def _post_config_apply_for_args(args: argparse.Namespace) -> dict[str, object]:
     if not bool(getattr(args, "no_refresh", False)):
         return _post_config_apply()
 
-    env_names = ("DEEPSEEK_PROXY_POST_CONFIG_APPLY", "CODEEPSEEDEX_POST_CONFIG_APPLY")
+    env_names = ("COX_POST_CONFIG_APPLY", "COX_POST_CONFIG_APPLY")
     previous = {name: os.environ.get(name) for name in env_names}
     try:
         for name in env_names:
@@ -2205,7 +2205,7 @@ def _set_effort_contract(args: argparse.Namespace, env_file: Path, *, explicit_p
     codex_effort = str(contract["codex_model_reasoning_effort"])
 
     values = _read_env_exports(env_file)
-    values["DEEPSEEK_REASONING_EFFORT"] = deepseek_effort
+    values["COX_REASONING_EFFORT"] = deepseek_effort
     _write_env_exports(env_file, values)
 
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
@@ -2298,7 +2298,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         expected_effort = str(effort_info.get("expected_codex_model_reasoning_effort") or "").strip() or "high"
 
         if not effective_model or effective_model == "unknown":
-            env_model = env_values.get("DEEPSEEK_PROXY_MODEL") or env_values.get("DEEPSEEK_MODEL")
+            env_model = env_values.get("COX_MODEL") or env_values.get("COX_MODEL")
             if env_model:
                 effective_model = env_model
             else:
@@ -2309,7 +2309,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
                     "reason": "effective_model_unknown",
                     "codex_model_before": codex_model or None,
                     "effective_model": effective_model or None,
-                    "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+                    "profile_contract_version": COX_PROFILE_CONTRACT_VERSION,
                     "codex_profile_layout": "split_profile_files",
                     "profile_config": str(profile_path),
                 })
@@ -2354,7 +2354,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
             before_provider_name != provider_name
             or before_provider_section.get("base_url") != base_url
             or before_provider_section.get("wire_api") != "responses"
-            or before_provider_section.get("env_key") != "DEEPSEEK_API_KEY"
+            or before_provider_section.get("env_key") != "COX_MODEL_API_KEY"
         )
         model_needs_patch = codex_model != effective_model
         effort_needs_patch = before_profile_section.get("model_reasoning_effort") != expected_effort
@@ -2368,7 +2368,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         profile_results.append({
             "profile": profile_name,
             "status": "ok",
-            "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+            "profile_contract_version": COX_PROFILE_CONTRACT_VERSION,
             "codex_profile_layout": "split_profile_files",
             "profile_source_before": before_profile_source,
             "profile_config": str(profile_path),
@@ -2404,7 +2404,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
             "expected_model_auto_compact_token_limit": expected_auto_compact_token_limit,
             "model_auto_compact_token_limit_needs_patch": auto_compact_needs_patch,
             "model_auto_compact_token_limit_patched": bool(changed_profile and auto_compact_needs_patch and not dry_run),
-            "future_compatibility_policy": "regenerate split managed profile/provider from dsproxy contract and fail closed if the Codex-visible model still differs",
+            "future_compatibility_policy": "regenerate split managed profile/provider from cox contract and fail closed if the Codex-visible model still differs",
         })
 
     if not dry_run:
@@ -2418,7 +2418,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
 
     if not dry_run:
         for profile_name in target_profiles:
-            if profile_name not in CODEEPSEEDEX_MANAGED_CODEX_PROFILES:
+            if profile_name not in COX_MANAGED_CODEX_PROFILES:
                 continue
             post_payload = _profile_status_payload(profile_name, env_file=env_file, codex_config=codex_path)
             model_info = post_payload.get("model", {}) if isinstance(post_payload, dict) else {}
@@ -2435,7 +2435,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
     output = {
         "status": "error" if post_validation_errors or not health["codex_config_loadable"] else "ok",
         "operation": "profile_repair",
-        "profile_contract_version": CODEEPSEEDEX_PROFILE_CONTRACT_VERSION,
+        "profile_contract_version": COX_PROFILE_CONTRACT_VERSION,
         "codex_profile_layout": "split_profile_files",
         "layout_contract": codex_profile_layout_contract(),
         "managed_auto_compact_ratio": managed_auto_compact_ratio,
@@ -2460,7 +2460,7 @@ def _repair_profile_models(args: argparse.Namespace, env_file: Path) -> int:
         "config_preview": working_text if dry_run else None,
         "profile_config_previews": profile_writes if dry_run else None,
         "post_config_apply": None if dry_run else _post_config_apply(),
-        "future_compatibility_policy": "Managed CoDeepSeedeX profiles are regenerated as Codex 0.134+ split profile files before Codex launch; launch must fail closed if profile model conflict remains.",
+        "future_compatibility_policy": "Managed CodeXchange profiles are regenerated as Codex 0.134+ split profile files before Codex launch; launch must fail closed if profile model conflict remains.",
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if output["status"] == "ok" else 1
@@ -2475,13 +2475,13 @@ def _repair_default_managed_codex_profiles_for_cli_route(*, reason: str) -> dict
     output contracts. It prevents stale Codex-visible split profiles from
     surviving after the env has moved to a forced custom upstream model.
     """
-    if str(os.environ.get("CODEEPSEEDEX_PROFILE_SYNC_ON_CLI_ROUTE", "1")).strip().lower() in {"0", "false", "no", "off", "disabled", "never"}:
+    if str(os.environ.get("COX_PROFILE_SYNC_ON_CLI_ROUTE", "1")).strip().lower() in {"0", "false", "no", "off", "disabled", "never"}:
         return {
             "status": "skipped",
             "reason": "profile_sync_on_cli_route_disabled",
             "operation": "managed_profile_route_preflight",
         }
-    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC") != "1":
+    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("COX_TEST_ALLOW_PROFILE_SYNC") != "1":
         return {
             "status": "skipped",
             "reason": "pytest_guard_without_explicit_allow",
@@ -2507,14 +2507,14 @@ def _repair_default_managed_codex_profiles_for_cli_route(*, reason: str) -> dict
         auto_compact_ratio=None,
     )
     previous_post_apply = {
-        "DEEPSEEK_PROXY_POST_CONFIG_APPLY": os.environ.get("DEEPSEEK_PROXY_POST_CONFIG_APPLY"),
-        "CODEEPSEEDEX_POST_CONFIG_APPLY": os.environ.get("CODEEPSEEDEX_POST_CONFIG_APPLY"),
+        "COX_POST_CONFIG_APPLY": os.environ.get("COX_POST_CONFIG_APPLY"),
+        "COX_POST_CONFIG_APPLY": os.environ.get("COX_POST_CONFIG_APPLY"),
     }
     old_stdout = sys.stdout
     buffer = io.StringIO()
     try:
-        os.environ["CODEEPSEEDEX_POST_CONFIG_APPLY"] = "disabled"
-        os.environ["DEEPSEEK_PROXY_POST_CONFIG_APPLY"] = "disabled"
+        os.environ["COX_POST_CONFIG_APPLY"] = "disabled"
+        os.environ["COX_POST_CONFIG_APPLY"] = "disabled"
         sys.stdout = buffer
         rc = _repair_profile_models(args, env_file)
     finally:
@@ -2549,9 +2549,9 @@ def _managed_profile_route_preflight_or_error(*, reason: str) -> dict[str, objec
         return {
             "status": "error",
             "error": "managed_profile_route_preflight_failed",
-            "message": "CoDeepSeedeX refused to continue with stale or unrepaired managed Codex profiles.",
+            "message": "CodeXchange refused to continue with stale or unrepaired managed Codex profiles.",
             "profile_preflight": result,
-            "action": "Run: dsproxy profile repair --managed-only --json",
+            "action": "Run: cox profile repair --managed-only --json",
         }
     return None
 
@@ -2644,7 +2644,7 @@ def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str,
     }
 
 def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
-    profile_name = "deepseek-thinking" if bool(getattr(args, "thinking", False)) else "deepseek"
+    profile_name = "cox" if bool(getattr(args, "thinking", False)) else "deepseek"
     env_file = Path(getattr(args, "env_file", "")).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     profile_status = _profile_status_payload(profile_name, env_file=env_file, codex_config=default_codex_config_path())
 
@@ -2717,11 +2717,11 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         "ttl_seconds": None,
         "prices": None,
         "all_models": [],
-        "missing": ["running_dsproxy_weclaw_status_endpoint"],
+        "missing": ["running_cox_weclaw_status_endpoint"],
         "refresh": {
             "available": False,
-            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "reason": "running_cox_weclaw_status_endpoint_unavailable",
+            "action": "start the selected cox route and re-run cox status --weclaw-json",
             "source_kind": "runtime_required",
             "requires_live_network": None,
             "writes_cache": False,
@@ -2738,7 +2738,7 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
         "session": {
             "id": None,
             "started_at": None,
-            "source": "not_available_from_dsproxy_cli_status_yet",
+            "source": "not_available_from_cox_cli_status_yet",
             "available": False,
         },
         "model": {
@@ -2756,7 +2756,7 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "taxonomy": {
                 "version": 2,
                 "unit": "tokens",
-                "source": "dsproxy_runtime_required",
+                "source": "cox_runtime_required",
                 "categories": [
                     "input",
                     "cached_input",
@@ -2781,26 +2781,26 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
                 "available": False,
                 "unit": "tokens",
                 "is_estimated": False,
-                "missing": ["running_dsproxy_weclaw_status_endpoint"],
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+                "missing": ["running_cox_weclaw_status_endpoint"],
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
+                "action": "start the selected cox route and re-run cox status --weclaw-json",
                 "source": "not_available_without_runtime_usage_snapshot",
             },
             "session_total": {
                 "available": False,
                 "unit": "tokens",
                 "is_estimated": False,
-                "missing": ["running_dsproxy_weclaw_status_endpoint"],
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+                "missing": ["running_cox_weclaw_status_endpoint"],
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
+                "action": "start the selected cox route and re-run cox status --weclaw-json",
             },
             "auxiliary_model_calls": {
                 "available": False,
                 "unit": "tokens",
                 "included_in_session_total": None,
-                "missing": ["running_dsproxy_weclaw_status_endpoint"],
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+                "missing": ["running_cox_weclaw_status_endpoint"],
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
+                "action": "start the selected cox route and re-run cox status --weclaw-json",
             },
         },
         "pricing": fallback_pricing,
@@ -2810,20 +2810,20 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "usage_available": False,
             "pricing_available": False,
             "pricing_stale": False,
-            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-            "missing": ["running_dsproxy_weclaw_status_endpoint"],
+            "reason": "running_cox_weclaw_status_endpoint_unavailable",
+            "missing": ["running_cox_weclaw_status_endpoint"],
             "balance": {
                 "available": False,
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-                "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
+                "action": "start the selected cox route and re-run cox status --weclaw-json",
             },
         },
         "balance": {
             "available": False,
             "status": "not_configured",
             "provider": "deepseek",
-            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "reason": "running_cox_weclaw_status_endpoint_unavailable",
+            "action": "start the selected cox route and re-run cox status --weclaw-json",
             "updated_at": None,
             "currency": None,
             "amount": None,
@@ -2837,24 +2837,24 @@ def _weclaw_status_payload(args: argparse.Namespace) -> dict[str, object]:
             "current_tokens_source": "runtime_weclaw_status_endpoint_unavailable",
             "current_tokens_precision": "unavailable",
             "current_tokens_observed_at": None,
-            "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
-            "action": "start the selected dsproxy route and re-run dsproxy status --weclaw-json",
+            "reason": "running_cox_weclaw_status_endpoint_unavailable",
+            "action": "start the selected cox route and re-run cox status --weclaw-json",
             "compaction": {
                 "available": False,
                 "status": "unavailable",
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
                 "compact_audit": compact_audit,
             },
             "trimming": {
                 "available": False,
                 "status": "unavailable",
-                "reason": "running_dsproxy_weclaw_status_endpoint_unavailable",
+                "reason": "running_cox_weclaw_status_endpoint_unavailable",
             },
         },
         "compaction": {
             "available": compaction_available,
             "is_estimated": False,
-            "source": "dsproxy_runtime./v1/proxy/status.context",
+            "source": "cox_runtime./v1/proxy/status.context",
             "unit": "tokens",
             "runtime_context": runtime_context if isinstance(runtime_context, dict) else None,
             "compact_audit": compact_audit,
@@ -2964,7 +2964,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
     state_dir.mkdir(parents=True, exist_ok=True)
     _maybe_print_startup_release_update_notice()
 
-    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="dsproxy_start_preflight")
+    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="cox_start_preflight")
     if profile_preflight_error is not None:
         print(json.dumps(profile_preflight_error, ensure_ascii=False, indent=2))
         return 1
@@ -3052,23 +3052,23 @@ def _start_proxy(args: argparse.Namespace) -> int:
         env.setdefault(key, value)
     env.setdefault("NO_PROXY", "127.0.0.1,localhost,::1")
     env.setdefault("no_proxy", env["NO_PROXY"])
-    env["DEEPSEEK_PROXY_DB_PATH"] = str(db_path)
-    env["DEEPSEEK_PROXY_MODEL"] = env.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
-    env["DEEPSEEK_PROXY_FORCE_MODEL"] = env.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-    env["DEEPSEEK_PROXY_TOOL_MAX_ROUNDS"] = env.get("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", "6")
-    env["DEEPSEEK_PROXY_COMPACT_POLICY"] = env.get("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive")
-    env["DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD"] = env.get("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    env["DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED"] = env.get("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", "1")
-    env["DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL"] = env.get("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
-    env["DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION"] = env.get("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+    env["COX_DB_PATH"] = str(db_path)
+    env["COX_MODEL"] = env.get("COX_MODEL", "deepseek-v4-pro")
+    env["COX_FORCE_MODEL"] = env.get("COX_FORCE_MODEL", "1")
+    env["COX_TOOL_MAX_ROUNDS"] = env.get("COX_TOOL_MAX_ROUNDS", "6")
+    env["COX_COMPACT_POLICY"] = env.get("COX_COMPACT_POLICY", "adaptive")
+    env["COX_AGENT_LIVENESS_GUARD"] = env.get("COX_AGENT_LIVENESS_GUARD", "1")
+    env["COX_AGENT_LIVENESS_JUDGE_ENABLED"] = env.get("COX_AGENT_LIVENESS_JUDGE_ENABLED", "1")
+    env["COX_AGENT_LIVENESS_JUDGE_MODEL"] = env.get("COX_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+    env["COX_CODEX_TOOL_PROTOCOL_INSTRUCTION"] = env.get("COX_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
     if thinking:
-        env["DEEPSEEK_THINKING"] = "enabled"
-        env["DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE"] = env.get(
-            "DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE",
+        env["COX_REASONING"] = "enabled"
+        env["COX_TOOL_OUTPUT_TRIM_MODE"] = env.get(
+            "COX_TOOL_OUTPUT_TRIM_MODE",
             "enabled",
         )
-        env["DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] = env.get(
-            "DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS",
+        env["COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] = env.get(
+            "COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS",
             "12000",
         )
 
@@ -3076,7 +3076,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
         sys.executable,
         "-m",
         "uvicorn",
-        "deepseek_responses_proxy.app:app",
+        "codexchange_proxy.app:app",
         "--host",
         DEFAULT_HOST,
         "--port",
@@ -3188,9 +3188,9 @@ def _cmdline_for_pid(pid: int) -> str:
 def _pid_looks_like_proxy(pid: int) -> bool:
     cmdline = _cmdline_for_pid(pid)
     markers = [
-        "deepseek_responses_proxy.app:app",
-        "deepseek_responses_proxy",
-        "deepseek-responses-proxy",
+        "codexchange_proxy.app:app",
+        "codexchange_proxy",
+        "codexchange",
     ]
     return any(marker in cmdline for marker in markers)
 
@@ -3282,7 +3282,7 @@ def _default_stop_port(args: argparse.Namespace) -> int:
         return int(args.port)
 
     thinking = bool(getattr(args, "thinking", False))
-    env_name = "DEEPSEEK_PROXY_THINKING_PORT" if thinking else "DEEPSEEK_PROXY_PORT"
+    env_name = "COX_THINKING_PORT" if thinking else "COX_PORT"
     env_value = os.environ.get(env_name)
 
     if not env_value:
@@ -3360,7 +3360,7 @@ def _stop_proxy(args: argparse.Namespace) -> int:
             pass
 
     # Fallback: if no valid pid file existed, or if the port still responds as
-    # CoDeepSeedeX, discover the listener by port and stop it safely.
+    # CodeXchange, discover the listener by port and stop it safely.
     if _port_status_looks_like_proxy(port):
         stopped_any = _stop_by_port_discovery(port) or stopped_any
 
@@ -3370,7 +3370,7 @@ def _stop_proxy(args: argparse.Namespace) -> int:
     return 0
 
 def _status(args: argparse.Namespace) -> int:
-    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="dsproxy_status_preflight")
+    profile_preflight_error = _managed_profile_route_preflight_or_error(reason="cox_status_preflight")
     if profile_preflight_error is not None:
         print(json.dumps(profile_preflight_error, ensure_ascii=False, indent=2))
         return 1
@@ -3410,10 +3410,10 @@ DEEPSEEK_TOKENIZER_ZIP_ENTRIES = {
 def _tokenizer_resource_root(value: str | None = None) -> Path:
     if value:
         return Path(value).expanduser()
-    env_value = os.environ.get("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", "").strip()
+    env_value = os.environ.get("COX_TOKENIZER_RESOURCE_DIR", "").strip()
     if env_value:
         return Path(env_value).expanduser()
-    install_dir = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
+    install_dir = os.environ.get("COX_INSTALL_DIR", "").strip()
     if install_dir:
         return Path(install_dir).expanduser() / "resources" / "tokenizers"
     return Path.home() / ".local" / "share" / APP_NAME / "resources" / "tokenizers"
@@ -3657,7 +3657,7 @@ def _pricing(args: argparse.Namespace) -> int:
 
 
 def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str, object]:
-    command = [sys.executable, "-m", "deepseek_responses_proxy.cli", *argv]
+    command = [sys.executable, "-m", "codexchange_proxy.cli", *argv]
     try:
         proc = subprocess.run(
             command,
@@ -3669,7 +3669,7 @@ def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str
         return {
             "ok": proc.returncode == 0,
             "returncode": proc.returncode,
-            "argv": ["dsproxy", *argv],
+            "argv": ["cox", *argv],
             "stdout_tail": proc.stdout[-1200:],
             "stderr_tail": proc.stderr[-1200:],
         }
@@ -3677,7 +3677,7 @@ def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str
         return {
             "ok": False,
             "returncode": "timeout",
-            "argv": ["dsproxy", *argv],
+            "argv": ["cox", *argv],
             "stdout_tail": str(exc.stdout or "")[-1200:],
             "stderr_tail": str(exc.stderr or "")[-1200:],
         }
@@ -3685,15 +3685,15 @@ def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str
         return {
             "ok": False,
             "returncode": "error",
-            "argv": ["dsproxy", *argv],
+            "argv": ["cox", *argv],
             "error": f"{type(exc).__name__}: {exc}",
         }
 
 
 def _post_config_apply() -> dict[str, object]:
     mode = (
-        os.environ.get("DEEPSEEK_PROXY_POST_CONFIG_APPLY")
-        or os.environ.get("CODEEPSEEDEX_POST_CONFIG_APPLY")
+        os.environ.get("COX_POST_CONFIG_APPLY")
+        or os.environ.get("COX_POST_CONFIG_APPLY")
         or "auto"
     ).strip().lower()
     result: dict[str, object] = {
@@ -3724,7 +3724,7 @@ def _post_config_apply() -> dict[str, object]:
             stop_step = _post_config_run_self(stop_argv)
             start_step = _post_config_run_self(start_argv) if bool(stop_step.get("ok")) else {
                 "ok": False,
-                "argv": ["dsproxy", *start_argv],
+                "argv": ["cox", *start_argv],
                 "skipped": "stop_failed",
             }
             target.update(
@@ -3774,10 +3774,10 @@ def _usage(args: argparse.Namespace) -> int:
 _PROVIDER_PROBE_PROMPT = "A small red cube on a white background, minimal style."
 
 _WEB_SEARCH_PROVIDER_ENV_KEYS = {
-    "serpapi": ["SERPAPI_API_KEY", "DEEPSEEK_PROXY_SERPAPI_API_KEY"],
-    "tavily": ["TAVILY_API_KEY", "DEEPSEEK_PROXY_TAVILY_API_KEY"],
-    "exa": ["EXA_API_KEY", "DEEPSEEK_PROXY_EXA_API_KEY"],
-    "firecrawl": ["FIRECRAWL_API_KEY", "DEEPSEEK_PROXY_FIRECRAWL_API_KEY"],
+    "serpapi": ["SERPAPI_API_KEY", "COX_SERPAPI_API_KEY"],
+    "tavily": ["TAVILY_API_KEY", "COX_TAVILY_API_KEY"],
+    "exa": ["EXA_API_KEY", "COX_EXA_API_KEY"],
+    "firecrawl": ["FIRECRAWL_API_KEY", "COX_FIRECRAWL_API_KEY"],
 }
 
 _IMAGE_PROVIDER_ALIASES = {
@@ -3821,13 +3821,13 @@ _IMAGE_PROVIDER_ALIASES = {
 _IMAGE_PROVIDER_ENV_KEYS: dict[str, list[str]] = {
     "zhipu": ["ZHIPUAI_API_KEY", "ZHIPU_API_KEY"],
     "zai": ["ZAI_API_KEY", "GLM_API_KEY"],
-    "qwen_image": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
-    "qwen_image_beijing": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
-    "qwen_image_singapore": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
-    "qwen_image_us": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
-    "qwen_image_germany": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "DEEPSEEK_PROXY_DASHSCOPE_API_KEY"],
-    "stability": ["STABILITY_API_KEY", "DEEPSEEK_PROXY_STABILITY_API_KEY"],
-    "fal": ["FAL_KEY", "FAL_API_KEY", "DEEPSEEK_PROXY_FAL_API_KEY"],
+    "qwen_image": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "COX_DASHSCOPE_API_KEY"],
+    "qwen_image_beijing": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "COX_DASHSCOPE_API_KEY"],
+    "qwen_image_singapore": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "COX_DASHSCOPE_API_KEY"],
+    "qwen_image_us": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "COX_DASHSCOPE_API_KEY"],
+    "qwen_image_germany": ["DASHSCOPE_API_KEY", "ALIBABA_DASHSCOPE_API_KEY", "COX_DASHSCOPE_API_KEY"],
+    "stability": ["STABILITY_API_KEY", "COX_STABILITY_API_KEY"],
+    "fal": ["FAL_KEY", "FAL_API_KEY", "COX_FAL_API_KEY"],
 }
 
 
@@ -3844,14 +3844,14 @@ def _image_provider_primary_env_key(provider: str | None) -> str:
         "stability": "STABILITY_API_KEY",
         "fal": "FAL_KEY",
     }
-    return mapping.get(canonical, "DEEPSEEK_PROXY_IMAGE_API_KEY")
+    return mapping.get(canonical, "COX_IMAGE_API_KEY")
 
 
 def _image_provider_probe_keys(canonical: str, env_values: dict[str, str]) -> list[str]:
-    selected = _canonical_probe_image_provider(env_values.get("DEEPSEEK_PROXY_IMAGE_PROVIDER", "")) or "zhipu"
+    selected = _canonical_probe_image_provider(env_values.get("COX_IMAGE_PROVIDER", "")) or "zhipu"
     keys = list(_IMAGE_PROVIDER_ENV_KEYS.get(canonical) or [])
-    if selected == canonical and "DEEPSEEK_PROXY_IMAGE_API_KEY" not in keys:
-        keys = ["DEEPSEEK_PROXY_IMAGE_API_KEY", *keys]
+    if selected == canonical and "COX_IMAGE_API_KEY" not in keys:
+        keys = ["COX_IMAGE_API_KEY", *keys]
     return keys
 
 
@@ -3973,12 +3973,12 @@ def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, byte
     if _is_qwen_image_provider(provider):
         info = _qwen_image_region_status(provider)
         endpoint = (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
+            os.environ.get("COX_IMAGE_BASE_URL")
             or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
             or str(info.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
         )
         model = (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            os.environ.get("COX_IMAGE_MODEL")
             or os.environ.get("DASHSCOPE_IMAGE_MODEL")
             or "qwen-image-2.0-pro"
         )
@@ -3990,7 +3990,7 @@ def _provider_probe_image_payload(provider: str, prompt: str) -> tuple[str, byte
         return endpoint, json.dumps(payload).encode("utf-8"), {"Content-Type": "application/json"}
     if provider == "stability":
         endpoint = "https://api.stability.ai/v2beta/stable-image/generate/core"
-        boundary = "----CoDeepSeedeXProviderProbeBoundary"
+        boundary = "----CodeXchangeProviderProbeBoundary"
         parts = []
         for name, value in [("prompt", prompt), ("output_format", "png")]:
             parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
@@ -4175,25 +4175,25 @@ def _canonical_tool_routing_policy(value: object) -> str | None:
 
 def _tool_routing_env_key(kind: str) -> str:
     if kind == "web_search":
-        return "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING"
+        return "COX_WEB_SEARCH_ROUTING"
     if kind == "image_generation":
-        return "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING"
+        return "COX_IMAGE_GENERATION_ROUTING"
     raise ValueError(f"unsupported_tool_routing_kind:{kind}")
 
 
 def _tool_routing_policy_from_env_values(kind: str, env_values: dict[str, str]) -> tuple[str, str | None]:
     if kind == "web_search":
         names = [
-            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING",
-            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING_POLICY",
-            "CODEEPSEEDEX_WEB_SEARCH_ROUTING",
+            "COX_WEB_SEARCH_ROUTING",
+            "COX_WEB_SEARCH_ROUTING_POLICY",
+            "COX_WEB_SEARCH_ROUTING",
         ]
     elif kind == "image_generation":
         names = [
-            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING",
-            "DEEPSEEK_PROXY_IMAGE_ROUTING",
-            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING_POLICY",
-            "CODEEPSEEDEX_IMAGE_GENERATION_ROUTING",
+            "COX_IMAGE_GENERATION_ROUTING",
+            "COX_IMAGE_ROUTING",
+            "COX_IMAGE_GENERATION_ROUTING_POLICY",
+            "COX_IMAGE_GENERATION_ROUTING",
         ]
     else:
         return "auto", None
@@ -4207,7 +4207,7 @@ def _tool_routing_policy_from_env_values(kind: str, env_values: dict[str, str]) 
 
 def _tool_routing_provider_config_status(kind: str, env_values: dict[str, str], env_file: Path) -> dict[str, object]:
     if kind == "web_search":
-        provider = str(env_values.get("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER") or os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER") or "serpapi").strip().lower()
+        provider = str(env_values.get("COX_WEB_SEARCH_PROVIDER") or os.environ.get("COX_WEB_SEARCH_PROVIDER") or "serpapi").strip().lower()
         keys = _WEB_SEARCH_PROVIDER_ENV_KEYS.get(provider) or []
         api_key, source, env_key = _provider_probe_secret(keys, env_values, env_file)
         policy, policy_source = _tool_routing_policy_from_env_values(kind, env_values)
@@ -4221,11 +4221,11 @@ def _tool_routing_provider_config_status(kind: str, env_values: dict[str, str], 
             "routing_policy": policy,
             "routing_policy_source": policy_source or "default:auto",
             "routing_env_key": _tool_routing_env_key(kind),
-            "managed_function_name": "codeepseedex_web_search",
-            "action": None if api_key else "run dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
+            "managed_function_name": "codexchange_web_search",
+            "action": None if api_key else "run cox config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
         }
     if kind == "image_generation":
-        provider = _canonical_probe_image_provider(str(env_values.get("DEEPSEEK_PROXY_IMAGE_PROVIDER") or os.environ.get("DEEPSEEK_PROXY_IMAGE_PROVIDER") or "zhipu"))
+        provider = _canonical_probe_image_provider(str(env_values.get("COX_IMAGE_PROVIDER") or os.environ.get("COX_IMAGE_PROVIDER") or "zhipu"))
         keys = _image_provider_probe_keys(provider, env_values)
         api_key, source, env_key = _provider_probe_secret(keys, env_values, env_file)
         policy, policy_source = _tool_routing_policy_from_env_values(kind, env_values)
@@ -4239,8 +4239,8 @@ def _tool_routing_provider_config_status(kind: str, env_values: dict[str, str], 
             "routing_policy": policy,
             "routing_policy_source": policy_source or "default:auto",
             "routing_env_key": _tool_routing_env_key(kind),
-            "managed_function_name": "codeepseedex_generate_image",
-            "action": None if api_key else "run dsproxy config set-image-api-key --provider zhipu|qwen_image|stability|fal",
+            "managed_function_name": "codexchange_generate_image",
+            "action": None if api_key else "run cox config set-image-api-key --provider zhipu|qwen_image|stability|fal",
         }
     raise ValueError(f"unsupported_tool_routing_kind:{kind}")
 
@@ -4249,7 +4249,7 @@ def _tool_routing_config_status(env_file: Path | None = None, env_values: dict[s
     env_path = env_file or default_env_file_path()
     values = env_values if env_values is not None else _read_env_exports(env_path)
     return {
-        "enabled": _env_value_truthy(values.get("DEEPSEEK_PROXY_TOOL_BRIDGE", os.environ.get("DEEPSEEK_PROXY_TOOL_BRIDGE", "1"))),
+        "enabled": _env_value_truthy(values.get("COX_TOOL_BRIDGE", os.environ.get("COX_TOOL_BRIDGE", "1"))),
         "policies": list(_TOOL_ROUTING_POLICY_VALUES),
         "web_search": _tool_routing_provider_config_status("web_search", values, env_path),
         "image_generation": _tool_routing_provider_config_status("image_generation", values, env_path),
@@ -4270,7 +4270,7 @@ def _set_tool_routing_policy(args: argparse.Namespace, env_file: Path) -> int:
         }, ensure_ascii=False, indent=2))
         return 2
     values = _read_env_exports(env_file)
-    values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
+    values["COX_TOOL_BRIDGE"] = "1"
     env_key = _tool_routing_env_key(kind)
     values[env_key] = policy
     _write_env_exports(env_file, values)
@@ -4531,7 +4531,7 @@ def _doctor(args: argparse.Namespace) -> int:
         "config_path": str(config_path),
         "config_exists": config_path.exists(),
         "state_dir": str(state_dir),
-        "deepseek_api_key_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
+        "deepseek_api_key_configured": bool(os.environ.get("COX_MODEL_API_KEY")),
         "target": "thinking" if thinking else "stable",
         "port": port,
     }
@@ -4593,12 +4593,12 @@ def _mask_api_key(value: str) -> str:
 
 
 def _load_deepseek_api_key(*, env_file: Path | None = None) -> tuple[str, str | None]:
-    env_value = os.environ.get("DEEPSEEK_API_KEY", "")
+    env_value = os.environ.get("COX_MODEL_API_KEY", "")
     if env_value:
         return env_value, "environment"
     path = env_file or default_env_file_path()
     values = _read_env_exports(path)
-    file_value = values.get("DEEPSEEK_API_KEY", "")
+    file_value = values.get("COX_MODEL_API_KEY", "")
     if file_value:
         return file_value, str(path)
     return "", str(path)
@@ -4701,7 +4701,7 @@ def _check_deepseek_api_key(api_key: str, *, url: str, timeout: float) -> dict[s
             "ok": False,
             "status": "error",
             "error": "missing_deepseek_api_key",
-            "message": "DEEPSEEK_API_KEY is empty.",
+            "message": "COX_MODEL_API_KEY is empty.",
         }
 
     request = urllib.request.Request(
@@ -5079,7 +5079,7 @@ def _validate_image_api_key(provider: str, api_key: str, *, timeout: float = 10.
         if not bool(info.get("model_available")):
             return _qwen_image_region_unavailable_result(selected)
         endpoint = (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL")
+            os.environ.get("COX_IMAGE_BASE_URL")
             or os.environ.get("DASHSCOPE_IMAGE_ENDPOINT")
             or str(info.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
         )
@@ -5182,8 +5182,8 @@ def _release_tag_matches_runtime(tag: str, runtime_version: str = PROXY_VERSION)
 
 def _startup_release_check_mode() -> str:
     value = (
-        os.environ.get("DEEPSEEK_PROXY_RELEASE_CHECK")
-        or os.environ.get("CODEEPSEEDEX_RELEASE_CHECK")
+        os.environ.get("COX_RELEASE_CHECK")
+        or os.environ.get("COX_RELEASE_CHECK")
         or "auto"
     )
     return str(value).strip().lower()
@@ -5202,31 +5202,31 @@ def _maybe_print_startup_release_update_notice() -> None:
     if not _startup_release_check_enabled():
         return
     try:
-        latest_tag, release = _resolve_latest_release_tag(timeout=float(os.environ.get("DEEPSEEK_PROXY_RELEASE_CHECK_TIMEOUT", "1.5")))
+        latest_tag, release = _resolve_latest_release_tag(timeout=float(os.environ.get("COX_RELEASE_CHECK_TIMEOUT", "1.5")))
     except Exception:
         return
     if _release_tag_matches_runtime(latest_tag):
         return
     release_url = release.get("html_url") if isinstance(release, dict) else None
     print(
-        f"[CoDeepSeedeX] update available: current runtime {PROXY_VERSION}, latest Release {latest_tag}. Run: dsproxy upgrade",
+        f"[CodeXchange] update available: current runtime {PROXY_VERSION}, latest Release {latest_tag}. Run: cox upgrade",
         file=sys.stderr,
     )
     if release_url:
-        print(f"[CoDeepSeedeX] release notes: {release_url}", file=sys.stderr)
+        print(f"[CodeXchange] release notes: {release_url}", file=sys.stderr)
 
 
 def _model_api_config_status(env_file: Path | None = None, values: dict[str, str] | None = None) -> dict[str, Any]:
     path = env_file or default_env_file_path()
     env_values = values if values is not None else _read_env_exports(path)
-    provider = _canonical_model_api_provider(env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    provider = _canonical_model_api_provider(env_values.get("COX_MODEL_PROVIDER") or "deepseek")
     try:
         provider_config = _model_api_provider_config(provider)
     except ValueError:
         provider_config = {"base_url": "", "model": "", "validation_path": "/models", "display_name": provider}
-    base_url = str(env_values.get("DEEPSEEK_BASE_URL") or provider_config.get("base_url") or "").strip().rstrip("/")
-    model = str(env_values.get("DEEPSEEK_PROXY_MODEL") or provider_config.get("model") or "").strip()
-    api_key = env_values.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+    base_url = str(env_values.get("COX_MODEL_BASE_URL") or provider_config.get("base_url") or "").strip().rstrip("/")
+    model = str(env_values.get("COX_MODEL") or provider_config.get("model") or "").strip()
+    api_key = env_values.get("COX_MODEL_API_KEY") or os.environ.get("COX_MODEL_API_KEY", "")
     validation_path = str(provider_config.get("validation_path") or "/models")
     validation_url = (
         str(getattr(argparse.Namespace(), "x", "") or "")
@@ -5237,9 +5237,9 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "base_url": base_url,
         "model": model,
         "configured": bool(api_key and base_url and (model or provider != "custom")),
-        "api_key_source": "env_file" if env_values.get("DEEPSEEK_API_KEY") else ("environment" if os.environ.get("DEEPSEEK_API_KEY") else None),
+        "api_key_source": "env_file" if env_values.get("COX_MODEL_API_KEY") else ("environment" if os.environ.get("COX_MODEL_API_KEY") else None),
         "api_key_preview": _mask_api_key(api_key),
-        "validation_command": "dsproxy config test-api-key",
+        "validation_command": "cox config test-api-key",
         "validation_url": validation_url,
         "validation_method": "deepseek_balance" if provider == "deepseek" else "openai_compatible_models",
         "may_consume_quota": False,
@@ -5249,7 +5249,7 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
 
 def _model_provider_registry_path(env_file: Path | None = None) -> Path:
     env_values = _read_env_exports(env_file or default_env_file_path())
-    configured = env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY") or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY")
+    configured = env_values.get("COX_MODEL_PROVIDER_REGISTRY") or os.environ.get("COX_MODEL_PROVIDER_REGISTRY")
     if configured:
         return Path(configured).expanduser()
     base = (env_file or default_env_file_path()).expanduser().parent
@@ -5370,7 +5370,7 @@ def _custom_provider_codex_profile_name(provider_id: str, explicit: str | None =
 
 def _custom_provider_model_catalog_path(codex_config: Path | str | None = None) -> Path:
     codex_path = Path(codex_config).expanduser() if codex_config else default_codex_config_path()
-    return codex_path.parent / "model-catalogs" / "codeepseedex-custom-providers.json"
+    return codex_path.parent / "model-catalogs" / "codexchange-custom-providers.json"
 
 
 def _write_custom_provider_model_catalog(
@@ -5470,7 +5470,7 @@ def _write_custom_provider_model_catalog(
     })
     data.update({
         "version": 1,
-        "source": "codeepseedex_custom_provider_registry",
+        "source": "codexchange_custom_provider_registry",
         "models": models,
     })
     catalog_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -5495,7 +5495,7 @@ def _custom_provider_entry_for_profile(
     candidates = [
         _custom_provider_registry_slug(profile_name),
         _custom_provider_registry_slug((provider_name or "").removesuffix("-proxy")),
-        _custom_provider_registry_slug(str((env_values or {}).get("DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME") or "")),
+        _custom_provider_registry_slug(str((env_values or {}).get("COX_CUSTOM_PROVIDER_NAME") or "")),
         str(registry.get("active_provider") or "").strip(),
     ]
     for candidate in candidates:
@@ -5510,7 +5510,7 @@ def _profile_thinking_status(
     env_values: dict[str, str],
 ) -> dict[str, object]:
     base_url = str(provider_section.get("base_url") or "")
-    thinking_port = str(env_values.get("DEEPSEEK_PROXY_THINKING_PORT") or DEFAULT_THINKING_PORT).strip()
+    thinking_port = str(env_values.get("COX_THINKING_PORT") or DEFAULT_THINKING_PORT).strip()
     if thinking_port and re.search(rf":{re.escape(thinking_port)}(?:/|$)", base_url):
         return {"enabled": True, "source": "provider_base_url"}
     if profile_name.endswith("thinking"):
@@ -5533,7 +5533,7 @@ def _sync_custom_provider_codex_profile_from_entry(
         return {"status": "error", "error": "custom_provider_model_missing", "provider_id": provider_id, "profile": codex_profile}
     env_values = _read_env_exports(env_file)
     codex_path = Path(codex_config).expanduser() if codex_config else default_codex_config_path()
-    thinking_port = str(env_values.get("DEEPSEEK_PROXY_THINKING_PORT") or os.environ.get("DEEPSEEK_PROXY_THINKING_PORT") or DEFAULT_THINKING_PORT).strip() or str(DEFAULT_THINKING_PORT)
+    thinking_port = str(env_values.get("COX_THINKING_PORT") or os.environ.get("COX_THINKING_PORT") or DEFAULT_THINKING_PORT).strip() or str(DEFAULT_THINKING_PORT)
     local_base_url = f"http://127.0.0.1:{thinking_port}/v1"
     provider_name = f"{codex_profile}-proxy"
     context_window = DEFAULT_CONTEXT_WINDOW_TOKENS
@@ -5650,16 +5650,16 @@ def _apply_custom_provider_registry_entry(
     _write_custom_provider_registry(path, data)
 
     values = _read_env_exports(env_file)
-    values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = "custom"
-    values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] = str(entry.get("display_name") or provider_name)
-    values["DEEPSEEK_BASE_URL"] = str(entry.get("base_url") or "")
-    values["DEEPSEEK_PROXY_MODEL"] = selected_model
-    values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] = str(path)
+    values["COX_MODEL_PROVIDER"] = "custom"
+    values["COX_CUSTOM_PROVIDER_NAME"] = str(entry.get("display_name") or provider_name)
+    values["COX_MODEL_BASE_URL"] = str(entry.get("base_url") or "")
+    values["COX_MODEL"] = selected_model
+    values["COX_MODEL_PROVIDER_REGISTRY"] = str(path)
     if entry.get("api_key"):
-        values["DEEPSEEK_API_KEY"] = str(entry.get("api_key") or "")
-    values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+        values["COX_MODEL_API_KEY"] = str(entry.get("api_key") or "")
+    values["COX_FORCE_MODEL"] = values.get("COX_FORCE_MODEL", "1")
     custom_effort, effort_capability = _custom_provider_effective_reasoning_effort(entry, values)
-    values["DEEPSEEK_REASONING_EFFORT"] = custom_effort
+    values["COX_REASONING_EFFORT"] = custom_effort
     _write_env_exports(env_file, values)
 
     output = {
@@ -5693,7 +5693,7 @@ def _apply_custom_provider_registry_entry(
             "status": "skipped",
             "reason": "custom_provider_profiles_are_provider_backed",
             "target_profiles": [],
-            "deprecated_legacy_profiles": list(CODEEPSEEDEX_LEGACY_CODEX_PROFILES),
+            "deprecated_legacy_profiles": list(COX_LEGACY_CODEX_PROFILES),
         }
     else:
         output["codex_profile_sync"] = {
@@ -5705,7 +5705,7 @@ def _apply_custom_provider_registry_entry(
             "status": "skipped",
             "reason": "profile_sync_disabled",
             "target_profiles": [],
-            "deprecated_legacy_profiles": list(CODEEPSEEDEX_LEGACY_CODEX_PROFILES),
+            "deprecated_legacy_profiles": list(COX_LEGACY_CODEX_PROFILES),
         }
     return output
 
@@ -5903,29 +5903,29 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
     values = _read_env_exports(path)
     web_search_keys = [
         "SERPAPI_API_KEY",
-        "DEEPSEEK_PROXY_SERPAPI_API_KEY",
+        "COX_SERPAPI_API_KEY",
         "TAVILY_API_KEY",
-        "DEEPSEEK_PROXY_TAVILY_API_KEY",
-        "DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY",
+        "COX_TAVILY_API_KEY",
+        "COX_BRAVE_SEARCH_API_KEY",
         "EXA_API_KEY",
-        "DEEPSEEK_PROXY_EXA_API_KEY",
+        "COX_EXA_API_KEY",
         "FIRECRAWL_API_KEY",
-        "DEEPSEEK_PROXY_FIRECRAWL_API_KEY",
+        "COX_FIRECRAWL_API_KEY",
     ]
     image_keys = [
-        "DEEPSEEK_PROXY_IMAGE_API_KEY",
+        "COX_IMAGE_API_KEY",
         "ZAI_API_KEY",
         "ZHIPUAI_API_KEY",
         "ZHIPU_API_KEY",
         "GLM_API_KEY",
-        "DEEPSEEK_PROXY_DASHSCOPE_API_KEY",
+        "COX_DASHSCOPE_API_KEY",
         "DASHSCOPE_API_KEY",
         "ALIBABA_DASHSCOPE_API_KEY",
         "STABILITY_API_KEY",
-        "DEEPSEEK_PROXY_STABILITY_API_KEY",
+        "COX_STABILITY_API_KEY",
         "FAL_KEY",
         "FAL_API_KEY",
-        "DEEPSEEK_PROXY_FAL_API_KEY",
+        "COX_FAL_API_KEY",
     ]
     model_api = _model_api_config_status(path, values)
     missing = {
@@ -5939,10 +5939,10 @@ def _api_configuration_status(env_file: Path | None = None) -> dict[str, Any]:
         "all_configured": not any(missing.values()),
         "model_api": model_api,
         "commands": {
-            "guided": "dsproxy config wizard",
-            "model_api": "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom",
-            "web_search_api": "dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
-            "image_generation_api": "dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal",
+            "guided": "cox config wizard",
+            "model_api": "cox config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom",
+            "web_search_api": "cox config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl",
+            "image_generation_api": "cox config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal",
         },
         "supported": {
             "model_api": _supported_model_api_providers(),
@@ -6124,9 +6124,9 @@ def _wizard_print_box_line(text: str = "", *, width: int | None = None, style: s
             print(f"  {line}\033[K", file=sys.stderr)
 
 
-def _wizard_print_box_top(title: str = "CoDeepSeedeX", *, width: int | None = None) -> None:
+def _wizard_print_box_top(title: str = "CodeXchange", *, width: int | None = None) -> None:
     width = width or _wizard_terminal_width()
-    label = str(title or "CoDeepSeedeX")
+    label = str(title or "CodeXchange")
     max_label = max(8, width - 8)
     if len(label) > max_label:
         label = label[: max(1, max_label - 1)] + "…"
@@ -6147,7 +6147,7 @@ def _wizard_print_step_footer(label: str = "Step 2/5", *, width: int | None = No
 
 def _wizard_render_panel(title: str, lines: list[str], *, footer: str = "Step 2/5") -> None:
     width = _wizard_terminal_width()
-    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_top("CodeXchange", width=width)
     _wizard_print_box_line("", width=width)
     _wizard_print_box_line(title, width=width, style="\033[1;38;5;75m")
     body = list(lines or [])
@@ -6200,7 +6200,7 @@ def _wizard_render_menu(prompt: str, options: list[tuple[str, str, str]], select
             value = value[: max(1, inner - 1)] + "…"
         return value.ljust(inner)
 
-    _wizard_print_box_top("CoDeepSeedeX", width=width)
+    _wizard_print_box_top("CodeXchange", width=width)
     _wizard_print_box_line("", width=width)
     _wizard_print_box_line(prompt, width=width, style="\033[1;38;5;75m")
     _wizard_print_box_line("", width=width)
@@ -6270,7 +6270,7 @@ def _wizard_read_menu_choice(prompt: str, options: list[tuple[str, str, str]], d
             if ch in {"\r", "\n"}:
                 return options[selected][0]
             if ch in {"\x7f", "\b"}:
-                return "__CODEEPSEEDEX_BACK__"
+                return "__COX_BACK__"
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         print("\033[?25h", file=sys.stderr)
@@ -6418,12 +6418,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
     while wizard_step <= 4:
         if wizard_step == 2:
             choice = _wizard_yes_no_choice("Configure model API now?", "Y", non_interactive=non_interactive)
-            if choice == "__CODEEPSEEDEX_BACK__":
+            if choice == "__COX_BACK__":
                 wizard_step = 2
                 continue
             if choice == "Y":
                 provider = _wizard_model_provider_choice(non_interactive=non_interactive)
-                if provider == "__CODEEPSEEDEX_BACK__":
+                if provider == "__COX_BACK__":
                     wizard_step = 2
                     continue
                 if provider in {"0", "mimo", "baichuan"}:
@@ -6439,15 +6439,15 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     if provider == "custom":
                         custom_provider_name = _clean_wizard_input_value(_wizard_read_line(
                             "Custom provider name / Codex profile id",
-                            values.get("DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME", "") or "custom-provider",
+                            values.get("COX_CUSTOM_PROVIDER_NAME", "") or "custom-provider",
                             non_interactive=non_interactive,
                             title="Custom OpenAI-compatible model API",
                             footer="Step 2/5",
-                            detail="Used locally for dsproxy provider switching and codex --profile <provider-id>; it is not sent upstream.",
+                            detail="Used locally for cox provider switching and codex --profile <provider-id>; it is not sent upstream.",
                         )) or "custom-provider"
                         base_url = _normalize_openai_base_url_value(_wizard_read_line(
                             "OpenAI-compatible base URL",
-                            values.get("DEEPSEEK_BASE_URL", ""),
+                            values.get("COX_MODEL_BASE_URL", ""),
                             non_interactive=non_interactive,
                             title="Custom OpenAI-compatible model API",
                             footer="Step 2/5",
@@ -6456,7 +6456,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         while True:
                             model = _clean_wizard_input_value(_wizard_read_line(
                                 "Upstream model name",
-                                values.get("DEEPSEEK_PROXY_MODEL", ""),
+                                values.get("COX_MODEL", ""),
                                 non_interactive=non_interactive,
                                 title="Custom OpenAI-compatible model API",
                                 footer="Step 2/5",
@@ -6474,7 +6474,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                     if provider:
                         key = _wizard_read_secret(
                             f"{provider_config['display_name']} API key",
-                            values.get("DEEPSEEK_API_KEY", ""),
+                            values.get("COX_MODEL_API_KEY", ""),
                             non_interactive=non_interactive,
                             title="Model API key",
                             footer="Step 2/5",
@@ -6513,13 +6513,13 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                                         "codex_profile_sync": profile_sync,
                                         "codex_command": profile_sync.get("codex_command") if isinstance(profile_sync, dict) else None,
                                     }
-                                    values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] = custom_provider_name
-                                    values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] = str(registry_path)
-                                values["DEEPSEEK_API_KEY"] = key
-                                values["DEEPSEEK_BASE_URL"] = base_url
-                                values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider
-                                values["DEEPSEEK_PROXY_MODEL"] = model
-                                values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+                                    values["COX_CUSTOM_PROVIDER_NAME"] = custom_provider_name
+                                    values["COX_MODEL_PROVIDER_REGISTRY"] = str(registry_path)
+                                values["COX_MODEL_API_KEY"] = key
+                                values["COX_MODEL_BASE_URL"] = base_url
+                                values["COX_MODEL_PROVIDER"] = provider
+                                values["COX_MODEL"] = model
+                                values["COX_FORCE_MODEL"] = values.get("COX_FORCE_MODEL", "1")
                                 configured.append(f"model_api:{provider}")
                                 print(f"Model API key validated for provider: {provider}.", file=sys.stderr)
                             else:
@@ -6534,12 +6534,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
 
         if wizard_step == 3:
             choice = _wizard_yes_no_choice("Configure web search API now?", "N", non_interactive=non_interactive)
-            if choice == "__CODEEPSEEDEX_BACK__":
+            if choice == "__COX_BACK__":
                 wizard_step = 2
                 continue
             if choice == "Y":
                 provider = _wizard_web_provider_choice(non_interactive=non_interactive)
-                if provider == "__CODEEPSEEDEX_BACK__":
+                if provider == "__COX_BACK__":
                     wizard_step = 3
                     continue
                 web_provider_map = {
@@ -6562,10 +6562,10 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         validation = _validate_web_search_api_key(provider, key, timeout=10.0)
                         validation_results.append(validation)
                         if validation.get("ok"):
-                            values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                            values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = provider
-                            values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
-                            values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+                            values["COX_TOOL_BRIDGE"] = "1"
+                            values["COX_WEB_SEARCH_PROVIDER"] = provider
+                            values["COX_WEB_SEARCH_MAX_RESULTS"] = values.get("COX_WEB_SEARCH_MAX_RESULTS", "6")
+                            values["COX_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("COX_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
                             values[env_key] = key
                             configured.append(f"web_search_api:{provider}")
                             print(f"Web search API key validated for provider: {provider}.", file=sys.stderr)
@@ -6583,12 +6583,12 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
 
         if wizard_step == 4:
             choice = _wizard_yes_no_choice("Configure image generation API now?", "N", non_interactive=non_interactive)
-            if choice == "__CODEEPSEEDEX_BACK__":
+            if choice == "__COX_BACK__":
                 wizard_step = 3
                 continue
             if choice == "Y":
                 provider = _wizard_image_provider_choice(non_interactive=non_interactive)
-                if provider == "__CODEEPSEEDEX_BACK__":
+                if provider == "__COX_BACK__":
                     wizard_step = 4
                     continue
                 image_provider_map = {
@@ -6603,7 +6603,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                 }
                 if provider in image_provider_map:
                     provider, prompt, env_key = image_provider_map[provider]
-                    saved_default = values.get(env_key, "") or values.get("DEEPSEEK_PROXY_IMAGE_API_KEY", "")
+                    saved_default = values.get(env_key, "") or values.get("COX_IMAGE_API_KEY", "")
                     key = _wizard_read_secret(
                         prompt,
                         saved_default,
@@ -6617,13 +6617,13 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         validation_results.append(validation)
                         if validation.get("ok"):
                             canonical = _canonical_image_generation_provider(provider)
-                            values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-                            values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical
-                            values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = key
+                            values["COX_TOOL_BRIDGE"] = "1"
+                            values["COX_IMAGE_PROVIDER"] = canonical
+                            values["COX_IMAGE_API_KEY"] = key
                             values[env_key] = key
                             base_url = _image_generation_base_url_for_provider(canonical)
                             if base_url:
-                                values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
+                                values["COX_IMAGE_BASE_URL"] = base_url
                             configured.append(f"image_generation_api:{canonical}")
                             print(f"Image generation API key validated for provider: {canonical}.", file=sys.stderr)
                         else:
@@ -6694,7 +6694,7 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
                 "status": "error",
                 "error": "missing_model",
                 "message": "Provide a model name, or use --provider with --value to configure the model API provider and API key.",
-                "preferred_command": "dsproxy config set-model <model> --provider <provider>",
+                "preferred_command": "cox config set-model <model> --provider <provider>",
             }, ensure_ascii=False, indent=2))
             return 2
         if model_value not in allowed:
@@ -6703,12 +6703,12 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
                 "error": "invalid_model",
                 "allowed": sorted(allowed),
                 "message": "Use --provider when setting a non-DeepSeek model or configuring a model API provider.",
-                "preferred_command": "dsproxy config set-model <model> --provider <provider>",
+                "preferred_command": "cox config set-model <model> --provider <provider>",
             }, ensure_ascii=False, indent=2))
             return 2
         values = _read_env_exports(env_file)
-        values["DEEPSEEK_PROXY_MODEL"] = model_value
-        values.setdefault("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+        values["COX_MODEL"] = model_value
+        values.setdefault("COX_FORCE_MODEL", "1")
         _write_env_exports(env_file, values)
 
         codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
@@ -6735,7 +6735,7 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
             "error": "missing_custom_model_api_details",
             "message": "Custom model API providers require --base-url and a model name.",
             "env_file": str(env_file),
-            "preferred_command": "dsproxy config set-model <model> --provider custom --base-url <url>",
+            "preferred_command": "cox config set-model <model> --provider custom --base-url <url>",
         }, ensure_ascii=False, indent=2))
         return 1
 
@@ -6749,7 +6749,7 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
             "error": "missing_model_api_key",
             "provider": provider,
             "env_file": str(env_file),
-            "preferred_command": f"dsproxy config set-model {resolved_model or '<model>'} --provider {provider}",
+            "preferred_command": f"cox config set-model {resolved_model or '<model>'} --provider {provider}",
         }, ensure_ascii=False, indent=2))
         return 1
 
@@ -6776,7 +6776,7 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
                 "model_provider": provider,
                 "base_url": base_url_value,
                 "model": resolved_model,
-                "preferred_command": f"dsproxy config set-model {resolved_model or '<model>'} --provider {provider}",
+                "preferred_command": f"cox config set-model {resolved_model or '<model>'} --provider {provider}",
             })
             if provider == "deepseek":
                 validation_result["deepseek_api_key_configured"] = False
@@ -6787,11 +6787,11 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         validation_result = _skipped_validation("model_api", provider)
 
     values = _read_env_exports(env_file)
-    values["DEEPSEEK_API_KEY"] = api_key_value
-    values["DEEPSEEK_BASE_URL"] = base_url_value
-    values["DEEPSEEK_PROXY_MODEL_PROVIDER"] = provider
-    values["DEEPSEEK_PROXY_MODEL"] = resolved_model
-    values["DEEPSEEK_PROXY_FORCE_MODEL"] = values.get("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    values["COX_MODEL_API_KEY"] = api_key_value
+    values["COX_MODEL_BASE_URL"] = base_url_value
+    values["COX_MODEL_PROVIDER"] = provider
+    values["COX_MODEL"] = resolved_model
+    values["COX_FORCE_MODEL"] = values.get("COX_FORCE_MODEL", "1")
     _write_env_exports(env_file, values)
 
     codex_path = Path(args.codex_config).expanduser() if getattr(args, "codex_config", None) else default_codex_config_path()
@@ -6810,13 +6810,13 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         "base_url": base_url_value,
         "model": resolved_model,
         "validation": validation_result,
-        "preferred_command": f"dsproxy config set-model {resolved_model} --provider {provider}",
+        "preferred_command": f"cox config set-model {resolved_model} --provider {provider}",
         "post_config_apply": _post_config_apply(),
     }
     output.update(profile_sync)
     if legacy_command:
         output["deprecated_command"] = "set-api-key"
-        output["compatibility_note"] = "dsproxy config set-api-key remains supported as a compatibility alias; prefer dsproxy config set-model for model provider, model, and API key setup."
+        output["compatibility_note"] = "cox config set-api-key remains supported as a compatibility alias; prefer cox config set-model for model provider, model, and API key setup."
     if provider == "deepseek":
         output["deepseek_api_key_configured"] = True
         output["deepseek_api_key_preview"] = _mask_api_key(api_key_value)
@@ -6885,7 +6885,7 @@ def _config(args: argparse.Namespace) -> int:
         env_values = _read_env_exports(env_file)
         provider_arg = getattr(args, "provider", None)
         provider_arg = None if provider_arg is None or str(provider_arg).strip() == "" else str(provider_arg).strip()
-        provider = _canonical_model_api_provider(provider_arg or env_values.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+        provider = _canonical_model_api_provider(provider_arg or env_values.get("COX_MODEL_PROVIDER") or "deepseek")
         api_key, source = _load_deepseek_api_key(env_file=env_file)
         try:
             provider_config = _model_api_provider_config(provider)
@@ -6897,8 +6897,8 @@ def _config(args: argparse.Namespace) -> int:
                 "supported_providers": _supported_model_api_providers(),
             }, ensure_ascii=False, indent=2))
             return 1
-        base_url = str(getattr(args, "base_url", "") or env_values.get("DEEPSEEK_BASE_URL") or provider_config.get("base_url", "") or "").strip().rstrip("/")
-        model = str(env_values.get("DEEPSEEK_PROXY_MODEL") or provider_config.get("model", "") or "").strip()
+        base_url = str(getattr(args, "base_url", "") or env_values.get("COX_MODEL_BASE_URL") or provider_config.get("base_url", "") or "").strip().rstrip("/")
+        model = str(env_values.get("COX_MODEL") or provider_config.get("model", "") or "").strip()
         if provider == "custom" and (not base_url or not model):
             result = {
                 "ok": False,
@@ -6906,7 +6906,7 @@ def _config(args: argparse.Namespace) -> int:
                 "kind": "model_api",
                 "provider": provider,
                 "error": "missing_custom_model_api_details",
-                "message": "Custom model API validation requires DEEPSEEK_BASE_URL and DEEPSEEK_PROXY_MODEL, or --base-url plus a configured model.",
+                "message": "Custom model API validation requires COX_MODEL_BASE_URL and COX_MODEL, or --base-url plus a configured model.",
                 "base_url": base_url,
                 "model": model,
             }
@@ -6988,10 +6988,10 @@ def _config(args: argparse.Namespace) -> int:
                 return 1
 
         values = _read_env_exports(env_file)
-        values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-        values["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] = canonical_provider
-        values["DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
-        values["DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+        values["COX_TOOL_BRIDGE"] = "1"
+        values["COX_WEB_SEARCH_PROVIDER"] = canonical_provider
+        values["COX_WEB_SEARCH_MAX_RESULTS"] = values.get("COX_WEB_SEARCH_MAX_RESULTS", "6")
+        values["COX_WEB_SEARCH_TIMEOUT_SECONDS"] = values.get("COX_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
         values[env_key] = api_key
         _write_env_exports(env_file, values)
         output = {
@@ -7075,26 +7075,26 @@ def _config(args: argparse.Namespace) -> int:
                 return 1
 
         values = _read_env_exports(env_file)
-        values["DEEPSEEK_PROXY_TOOL_BRIDGE"] = "1"
-        values["DEEPSEEK_PROXY_IMAGE_PROVIDER"] = canonical_provider
-        values["DEEPSEEK_PROXY_IMAGE_MODEL"] = values.get("DEEPSEEK_PROXY_IMAGE_MODEL", default_model)
-        values["DEEPSEEK_PROXY_IMAGE_SIZE"] = values.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")
-        values["DEEPSEEK_PROXY_IMAGE_N"] = values.get("DEEPSEEK_PROXY_IMAGE_N", "1")
-        values["DEEPSEEK_PROXY_IMAGE_DOWNLOAD"] = values.get("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
+        values["COX_TOOL_BRIDGE"] = "1"
+        values["COX_IMAGE_PROVIDER"] = canonical_provider
+        values["COX_IMAGE_MODEL"] = values.get("COX_IMAGE_MODEL", default_model)
+        values["COX_IMAGE_SIZE"] = values.get("COX_IMAGE_SIZE", "1024x1024")
+        values["COX_IMAGE_N"] = values.get("COX_IMAGE_N", "1")
+        values["COX_IMAGE_DOWNLOAD"] = values.get("COX_IMAGE_DOWNLOAD", "1")
         base_url = _image_generation_base_url_for_provider(canonical_provider)
         if base_url:
-            values["DEEPSEEK_PROXY_IMAGE_BASE_URL"] = base_url
+            values["COX_IMAGE_BASE_URL"] = base_url
         else:
-            values.pop("DEEPSEEK_PROXY_IMAGE_BASE_URL", None)
+            values.pop("COX_IMAGE_BASE_URL", None)
         provider_env_key = _image_provider_primary_env_key(canonical_provider)
         values[provider_env_key] = api_key
-        values["DEEPSEEK_PROXY_IMAGE_API_KEY"] = api_key
+        values["COX_IMAGE_API_KEY"] = api_key
         _write_env_exports(env_file, values)
         output = {
             "status": "ok",
             "env_file": str(env_file),
             "image_provider": canonical_provider,
-            "image_model": values["DEEPSEEK_PROXY_IMAGE_MODEL"],
+            "image_model": values["COX_IMAGE_MODEL"],
             "image_api_key_configured": True,
             "image_api_key_preview": _mask_api_key(api_key),
             "validation": validation,
@@ -7229,7 +7229,7 @@ def _git_remote_tag_commit_in_repo(repo_root: Path, tag: str, remote: str = "ori
 
 
 def _upgrade_tty_enabled() -> bool:
-    return bool(sys.stdin.isatty() and sys.stderr.isatty() and os.environ.get("DEEPSEEK_PROXY_UPGRADE_JSON_ONLY") != "1")
+    return bool(sys.stdin.isatty() and sys.stderr.isatty() and os.environ.get("COX_UPGRADE_JSON_ONLY") != "1")
 
 
 def _upgrade_render_tty_panel(title: str, lines: list[str], *, footer: str = "Upgrade") -> None:
@@ -7243,13 +7243,13 @@ def _upgrade_bootstrap_urls_for_ref(target_ref: str, *, target_source: str | Non
     ref = str(target_ref or "").strip()
     urls: list[str] = []
     if target_source == "latest_release":
-        urls.append("https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh")
+        urls.append("https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh")
     if ref:
         quoted_ref = urllib.parse.quote(ref, safe="")
         urls.extend([
-            f"https://github.com/Awenforever/CoDeepSeedeX/releases/download/{quoted_ref}/bootstrap.sh",
-            f"https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/{urllib.parse.quote(ref, safe='/._-')}/bootstrap.sh",
-            f"https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/{quoted_ref}/bootstrap.sh",
+            f"https://github.com/Awenforever/CodeXchange/releases/download/{quoted_ref}/bootstrap.sh",
+            f"https://raw.githubusercontent.com/Awenforever/CodeXchange/{urllib.parse.quote(ref, safe='/._-')}/bootstrap.sh",
+            f"https://github.com/Awenforever/CodeXchange/raw/refs/tags/{quoted_ref}/bootstrap.sh",
         ])
     deduped: list[str] = []
     for url in urls:
@@ -7289,7 +7289,7 @@ def _download_upgrade_bootstrap(
     dry_run: bool,
 ) -> bool:
     urls = _upgrade_bootstrap_urls_for_ref(target_ref, target_source=target_source)
-    result["one_line_upgrade"] = f"curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/{target_ref}/bootstrap.sh | bash -s -- --install-ref {target_ref}"
+    result["one_line_upgrade"] = f"curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/{target_ref}/bootstrap.sh | bash -s -- --install-ref {target_ref}"
     result["bootstrap_urls"] = urls
     step: dict[str, Any] = {
         "label": "download_release_bootstrap",
@@ -7308,7 +7308,7 @@ def _download_upgrade_bootstrap(
             request = urllib.request.Request(
                 url,
                 headers={
-                    "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+                    "User-Agent": f"CodeXchange/{PROXY_VERSION}",
                     "Accept": "application/octet-stream,*/*",
                 },
             )
@@ -7345,7 +7345,7 @@ def _upgrade_non_git_install(
         "upgrade_path": upgrade_path,
         "non_git_install": non_git_install,
         "repo_root": None if non_git_install else str(repo_hint),
-        "hint": hint or "This install is not a git checkout, so dsproxy upgrade will rerun the release bootstrap installer with an explicit install ref.",
+        "hint": hint or "This install is not a git checkout, so cox upgrade will rerun the release bootstrap installer with an explicit install ref.",
         "fallback": "If the automatic release-bootstrap upgrade fails, rerun the one-line installer shown in one_line_upgrade.",
     })
     same_public_version = _release_tag_matches_runtime(target_ref, str(result.get("current_public_version") or ""))
@@ -7360,7 +7360,7 @@ def _upgrade_non_git_install(
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
-    with tempfile.TemporaryDirectory(prefix="codeepseedex-upgrade-bootstrap-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="codexchange-upgrade-bootstrap-") as tmp:
         bootstrap_path = Path(tmp) / "bootstrap.sh"
         if not _download_upgrade_bootstrap(
             result,
@@ -7408,13 +7408,13 @@ def _upgrade_non_git_install(
 
         env = os.environ.copy()
         for metadata_key in (
-            "DEEPSEEK_PROXY_PUBLIC_COMMIT",
-            "DEEPSEEK_PROXY_INTERNAL_COMMIT",
-            "DEEPSEEK_PROXY_INTERNAL_VERSION",
+            "COX_PUBLIC_COMMIT",
+            "COX_INTERNAL_COMMIT",
+            "COX_INTERNAL_VERSION",
         ):
             env.pop(metadata_key, None)
-        env["DEEPSEEK_PROXY_INSTALL_REF"] = target_ref
-        env["DEEPSEEK_PROXY_INSTALL_DIR"] = str(repo_hint)
+        env["COX_INSTALL_REF"] = target_ref
+        env["COX_INSTALL_DIR"] = str(repo_hint)
         step["metadata_env_sanitized"] = True
         try:
             completed = subprocess.run(
@@ -7539,12 +7539,12 @@ def _upgrade_run_step(
 
 
 
-LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest"
-ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases?per_page=50"
+LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CodeXchange/releases/latest"
+ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CodeXchange/releases?per_page=50"
 
 
 def _default_latest_release_fallback_tag() -> str:
-    configured = str(os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG") or "").strip()
+    configured = str(os.environ.get("COX_LATEST_RELEASE_FALLBACK_TAG") or "").strip()
     if configured:
         return configured
     current = str(PROXY_PUBLIC_VERSION or "").strip()
@@ -7564,24 +7564,24 @@ def _latest_release_resolution_fallback(
     return fallback_tag, {
         "api_url": release_url,
         "tag_name": fallback_tag,
-        "name": f"CoDeepSeedeX {fallback_tag}",
-        "html_url": f"https://github.com/Awenforever/CoDeepSeedeX/releases/tag/{fallback_tag}",
+        "name": f"CodeXchange {fallback_tag}",
+        "html_url": f"https://github.com/Awenforever/CodeXchange/releases/tag/{fallback_tag}",
         "prerelease": False,
         "draft": False,
         "resolution_fallback": True,
         "fallback_reason": "latest_release_resolution_failed",
         "resolution_error": f"{type(exc).__name__}: {exc}",
-        "fallback_source": "DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG_or_runtime_public_version",
+        "fallback_source": "COX_LATEST_RELEASE_FALLBACK_TAG_or_runtime_public_version",
     }
 
 
 def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
-    url = api_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
+    url = api_url or os.environ.get("COX_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
     request = urllib.request.Request(
         url,
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+            "User-Agent": f"CodeXchange/{PROXY_VERSION}",
         },
     )
     with urllib.request.urlopen(request, timeout=15 if timeout is None else timeout) as response:
@@ -7600,12 +7600,12 @@ def _resolve_latest_release_tag(api_url: str | None = None, *, timeout: float | 
     }
 
 def _resolve_latest_prerelease_tag(api_url: str | None = None, *, timeout: float | None = None) -> tuple[str, dict[str, Any]]:
-    url = api_url or os.environ.get("DEEPSEEK_PROXY_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
+    url = api_url or os.environ.get("COX_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
     request = urllib.request.Request(
         url,
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"CoDeepSeedeX/{PROXY_VERSION}",
+            "User-Agent": f"CodeXchange/{PROXY_VERSION}",
         },
     )
     with urllib.request.urlopen(request, timeout=15 if timeout is None else timeout) as response:
@@ -7649,7 +7649,7 @@ def _upgrade(args: argparse.Namespace) -> int:
             "current_runtime_version": PROXY_VERSION,
             "error": "conflicting_upgrade_target",
             "message": "Use either --tag for an explicit ref or --alpha for the latest GitHub pre-release, not both.",
-            "mode": "dsproxy_upgrade",
+            "mode": "cox_upgrade",
             "dry_run": dry_run,
         }, ensure_ascii=False, indent=2))
         return 2
@@ -7667,7 +7667,7 @@ def _upgrade(args: argparse.Namespace) -> int:
                 target_source = "latest_release"
         except Exception as exc:
             if alpha_channel:
-                release_url = getattr(args, "alpha_release_url", None) or os.environ.get("DEEPSEEK_PROXY_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
+                release_url = getattr(args, "alpha_release_url", None) or os.environ.get("COX_ALPHA_RELEASES_API_URL") or ALPHA_RELEASES_API_URL
                 error_code = "latest_prerelease_resolution_failed"
                 hint = "Alpha upgrades follow the newest non-draft GitHub pre-release. Pass --tag <tag-or-branch> to select an explicit ref, or publish a pre-release first."
                 url_key = "alpha_release_url"
@@ -7680,13 +7680,13 @@ def _upgrade(args: argparse.Namespace) -> int:
                     url_key: release_url,
                     "repo_hint": str(repo_hint),
                     "dry_run": dry_run,
-                    "mode": "dsproxy_upgrade",
+                    "mode": "cox_upgrade",
                     "hint": hint,
                 }
                 print(json.dumps(result, ensure_ascii=False, indent=2))
                 return 1
 
-            release_url = args.latest_release_url or os.environ.get("DEEPSEEK_PROXY_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
+            release_url = args.latest_release_url or os.environ.get("COX_LATEST_RELEASE_API_URL") or LATEST_RELEASE_API_URL
             fallback = _latest_release_resolution_fallback(release_url=release_url, exc=exc)
             if fallback is None:
                 result = {
@@ -7698,7 +7698,7 @@ def _upgrade(args: argparse.Namespace) -> int:
                     "latest_release_url": release_url,
                     "repo_hint": str(repo_hint),
                     "dry_run": dry_run,
-                    "mode": "dsproxy_upgrade",
+                    "mode": "cox_upgrade",
                     "hint": "Default upgrades follow the GitHub Latest Release. Pass --tag <tag-or-branch> to select an explicit ref, or rerun the latest Release bootstrap installer.",
                 }
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -7724,7 +7724,7 @@ def _upgrade(args: argparse.Namespace) -> int:
         "repo_hint": str(repo_hint),
         "dry_run": dry_run,
         "force_reinstall": force_reinstall,
-        "mode": "dsproxy_upgrade",
+        "mode": "cox_upgrade",
         "fallback": "If this install is not a git checkout, rerun the one-line installer from the GitHub Latest Release.",
         "skip_profile": bool(args.skip_profile),
         "no_restart": bool(args.no_restart),
@@ -7797,7 +7797,7 @@ def _upgrade(args: argparse.Namespace) -> int:
                     dry_run=dry_run,
                     upgrade_path="git_fetch_failed_release_bootstrap",
                     non_git_install=False,
-                    hint="Git fetch failed for this installed checkout, so dsproxy upgrade is falling back to the release bootstrap installer with an explicit install ref.",
+                    hint="Git fetch failed for this installed checkout, so cox upgrade is falling back to the release bootstrap installer with an explicit install ref.",
                 )
         if not target_commit:
             target_commit = _git_commit_for_ref_in_repo(repo_root, target_ref)
@@ -7865,12 +7865,12 @@ def _upgrade(args: argparse.Namespace) -> int:
                 [
                     sys.executable,
                     "-m",
-                    "deepseek_responses_proxy.cli",
+                    "codexchange_proxy.cli",
                     "install-codex-profile",
                     "--name",
-                    "deepseek-thinking",
+                    "cox",
                     "--provider-name",
-                    "deepseek-thinking-proxy",
+                    "cox-proxy",
                     "--base-url",
                     "http://127.0.0.1:8001/v1",
                     "--model",
@@ -7886,9 +7886,9 @@ def _upgrade(args: argparse.Namespace) -> int:
 
     if not args.no_restart:
         commands.extend([
-            ("stop_stable_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop"], True),
-            ("stop_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "stop", "--thinking"], True),
-            ("start_thinking_proxy", [sys.executable, "-m", "deepseek_responses_proxy.cli", "start", "--thinking"], False),
+            ("stop_stable_proxy", [sys.executable, "-m", "codexchange_proxy.cli", "stop"], True),
+            ("stop_thinking_proxy", [sys.executable, "-m", "codexchange_proxy.cli", "stop", "--thinking"], True),
+            ("start_thinking_proxy", [sys.executable, "-m", "codexchange_proxy.cli", "start", "--thinking"], False),
         ])
 
     for label, argv, allow_failure in commands:
@@ -7917,7 +7917,7 @@ def _upgrade(args: argparse.Namespace) -> int:
         [
             f"Status: {result.get('status')}",
             f"Target: {target_ref}",
-            "Run dsproxy --version and dsproxy config show to inspect the active runtime.",
+            "Run cox --version and cox config show to inspect the active runtime.",
         ],
         footer="Upgrade",
     )
@@ -8318,16 +8318,16 @@ def _debug(args: argparse.Namespace) -> int:
 
 
 def _balance(args: argparse.Namespace) -> int:
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = os.environ.get("COX_MODEL_API_KEY", "")
     if not api_key:
         env_values = _read_env_exports(Path(args.env_file).expanduser() if args.env_file else default_env_file_path())
-        api_key = env_values.get("DEEPSEEK_API_KEY", "")
+        api_key = env_values.get("COX_MODEL_API_KEY", "")
 
     if not api_key:
         print(json.dumps({
             "status": "error",
             "error": "missing_deepseek_api_key",
-            "hint": "Set DEEPSEEK_API_KEY or write the local env file.",
+            "hint": "Set COX_MODEL_API_KEY or write the local env file.",
         }, ensure_ascii=False, indent=2))
         return 1
 
@@ -8357,7 +8357,7 @@ def _balance(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="dsproxy", description="DeepSeek Responses Proxy command line tools")
+    parser = argparse.ArgumentParser(prog="cox", description="CodeXchange command line tools")
     parser.add_argument("--version", action="store_true", help="print proxy version and exit")
     parser.add_argument("-H", "--help-all", action="help", help="show this help message and exit")
 
@@ -8429,7 +8429,7 @@ def build_parser() -> argparse.ArgumentParser:
     usage.add_argument("--thinking-filter", choices=["true", "false"])
     usage.set_defaults(func=_usage)
 
-    pricing = sub.add_parser("pricing", help="inspect or refresh dsproxy pricing cache")
+    pricing = sub.add_parser("pricing", help="inspect or refresh cox pricing cache")
     pricing_sub = pricing.add_subparsers(dest="pricing_command", required=True)
 
     pricing_show = pricing_sub.add_parser("show", help="show current pricing cache")
@@ -8496,7 +8496,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_api_key = config_sub.add_parser(
         "set-api-key",
         help="deprecated compatibility alias for model API key setup; prefer set-model",
-        description="deprecated compatibility alias for model API key setup; prefer set-model (dsproxy config set-model).",
+        description="deprecated compatibility alias for model API key setup; prefer set-model (cox config set-model).",
     )
     config_set_api_key.add_argument("--env-file")
     config_set_api_key.add_argument("--provider", default="deepseek", choices=_supported_model_api_providers())
@@ -8510,7 +8510,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     config_test_api_key = config_sub.add_parser("test-api-key", help="validate model API key")
     config_test_api_key.add_argument("--env-file")
-    config_test_api_key.add_argument("--provider", default=None, choices=_supported_model_api_providers(), help="model API provider; defaults to DEEPSEEK_PROXY_MODEL_PROVIDER from env")
+    config_test_api_key.add_argument("--provider", default=None, choices=_supported_model_api_providers(), help="model API provider; defaults to COX_MODEL_PROVIDER from env")
     config_test_api_key.add_argument("--base-url", help="OpenAI-compatible base URL for --provider custom or provider override")
     config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)
@@ -8543,7 +8543,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
     config_set_model.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_model.add_argument("--codex-config")
-    config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek-thinking")
+    config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update cox")
     config_set_model.set_defaults(func=_config)
 
     config_custom_provider = config_sub.add_parser("custom-provider", help="manage named custom OpenAI-compatible providers")
@@ -8568,7 +8568,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     config_set_effort.add_argument("--env-file")
     config_set_effort.add_argument("--codex-config")
-    config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update deepseek-thinking")
+    config_set_effort.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update cox")
     config_set_effort.add_argument("--no-refresh", action="store_true", help="save configuration without refreshing running proxy processes")
     config_set_effort.set_defaults(func=_config)
 
@@ -8589,17 +8589,17 @@ def build_parser() -> argparse.ArgumentParser:
     provider.add_argument("--no-profile-sync", action="store_true", help="do not write/remove Codex profile files")
     provider.set_defaults(func=_provider)
 
-    profile = sub.add_parser("profile", help="inspect and manage CoDeepSeedeX-owned Codex profiles")
+    profile = sub.add_parser("profile", help="inspect and manage CodeXchange-owned Codex profiles")
     profile_sub = profile.add_subparsers(dest="profile_command", required=True)
 
     profile_status = profile_sub.add_parser("status", help="print machine-readable Codex profile status")
-    profile_status.add_argument("profile", nargs="?", default="deepseek-thinking")
+    profile_status.add_argument("profile", nargs="?", default="cox")
     profile_status.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     profile_status.add_argument("--env-file")
     profile_status.add_argument("--codex-config")
     profile_status.set_defaults(func=_profile)
 
-    profile_set_effort = profile_sub.add_parser("set-effort", help="set one managed Codex profile effort through the dsproxy contract")
+    profile_set_effort = profile_sub.add_parser("set-effort", help="set one managed Codex profile effort through the cox contract")
     profile_set_effort.add_argument("profile")
     profile_set_effort.add_argument("effort")
     profile_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
@@ -8609,7 +8609,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_set_effort.set_defaults(func=_profile)
 
     profile_repair = profile_sub.add_parser("repair", help="repair managed Codex profile model and effort fields")
-    profile_repair.add_argument("--managed-only", action="store_true", help="repair CoDeepSeedeX-managed profiles only")
+    profile_repair.add_argument("--managed-only", action="store_true", help="repair CodeXchange-managed profiles only")
     profile_repair.add_argument("--profile", default="__managed__", help="profile to repair when --managed-only is not used")
     profile_repair.add_argument("--env-file")
     profile_repair.add_argument("--codex-config")
@@ -8619,7 +8619,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_repair.set_defaults(func=_profile)
 
     profile_refresh_wrapper = profile_sub.add_parser("refresh-wrapper", help="refresh the managed Codex wrapper from the install manifest")
-    profile_refresh_wrapper.add_argument("--manifest", help="install manifest path; defaults to ~/.config/deepseek-responses-proxy/install-manifest.env")
+    profile_refresh_wrapper.add_argument("--manifest", help="install manifest path; defaults to ~/.config/codexchange/install-manifest.env")
     profile_refresh_wrapper.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     profile_refresh_wrapper.add_argument("--dry-run", action="store_true")
     profile_refresh_wrapper.add_argument("--force", action="store_true", help="allow backup and replacement of an unknown existing codex command")
@@ -8681,8 +8681,8 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade = sub.add_parser("upgrade", help="upgrade a git checkout or source-archive installation")
     upgrade.add_argument("--tag", help="target git tag or ref; defaults to the GitHub Latest Release tag")
     upgrade.add_argument("--alpha", action="store_true", help="upgrade to the newest non-draft GitHub pre-release instead of the Latest Release")
-    upgrade.add_argument("--latest-release-url", help="GitHub latest Release API URL; defaults to the CoDeepSeedeX releases/latest endpoint")
-    upgrade.add_argument("--alpha-release-url", help="GitHub releases API URL used by --alpha; defaults to the CoDeepSeedeX releases list endpoint")
+    upgrade.add_argument("--latest-release-url", help="GitHub latest Release API URL; defaults to the CodeXchange releases/latest endpoint")
+    upgrade.add_argument("--alpha-release-url", help="GitHub releases API URL used by --alpha; defaults to the CodeXchange releases list endpoint")
     upgrade.add_argument("--repo", help="installation repository path, defaults to the current package checkout")
     upgrade.add_argument("--dry-run", action="store_true", help="print the upgrade plan without changing files")
     upgrade.add_argument("--force", "--force-reinstall", dest="force", action="store_true", help="reinstall even when the target public version and commit already match")
@@ -8696,7 +8696,7 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade.set_defaults(func=_upgrade)
 
     install_profile = sub.add_parser("install-codex-profile", help="install a Codex config profile")
-    install_profile.add_argument("--name", default="deepseek-thinking")
+    install_profile.add_argument("--name", default="cox")
     install_profile.add_argument("--path")
     install_profile.add_argument("--provider-name")
     install_profile.add_argument("--base-url", default="http://127.0.0.1:8001/v1")
@@ -8713,7 +8713,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_profile.set_defaults(func=_install_codex_profile)
 
     uninstall_profile = sub.add_parser("uninstall-codex-profile", help="remove a Codex config profile")
-    uninstall_profile.add_argument("--name", default="deepseek-thinking")
+    uninstall_profile.add_argument("--name", default="cox")
     uninstall_profile.add_argument("--path")
     uninstall_profile.add_argument("--provider-name")
     uninstall_profile.add_argument("--dry-run", action="store_true")

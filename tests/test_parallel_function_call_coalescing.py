@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _input_items_to_messages,
     _repair_tool_call_message_order,
 )

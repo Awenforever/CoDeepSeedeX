@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def _app_module():
-    return importlib.import_module("deepseek_responses_proxy.app")
+    return importlib.import_module("codexchange_proxy.app")
 
 
 def _sample_compaction_report() -> dict:
@@ -14,7 +14,7 @@ def _sample_compaction_report() -> dict:
         "enabled": True,
         "compacted": True,
         "reason": "token_first_auto_compact_threshold_exceeded",
-        "profile": "deepseek-thinking",
+        "profile": "cox",
         "observed_at": "2026-05-22T12:34:00Z",
         "source": "runtime_context_builder",
         "estimated_context_tokens": 66022,
@@ -40,7 +40,7 @@ def _sample_trimming_report() -> dict:
         "enabled": True,
         "trimmed": False,
         "reason": "estimated_payload_tokens_within_token_first_runtime_limit",
-        "profile": "deepseek-thinking",
+        "profile": "cox",
         "observed_at": "2026-05-22T12:34:01Z",
         "source": "live_request_payload",
         "token_first_runtime_trim": {
@@ -67,7 +67,7 @@ def test_sqlite_runtime_payload_reports_restore_after_restart(tmp_path: Path) ->
     store.save_runtime_payload_report(
         _sample_compaction_report(),
         kind="compaction",
-        profile="deepseek-thinking",
+        profile="cox",
         session_id="sess-1",
         request_id="resp-1",
         response_id="resp-1",
@@ -75,14 +75,14 @@ def test_sqlite_runtime_payload_reports_restore_after_restart(tmp_path: Path) ->
     store.save_runtime_payload_report(
         _sample_trimming_report(),
         kind="trimming",
-        profile="deepseek-thinking",
+        profile="cox",
         session_id="sess-1",
         request_id="resp-1",
         response_id="resp-1",
     )
 
-    restored_compaction = store.runtime_payload_report("deepseek-thinking", kind="compaction", session_id="sess-1")
-    restored_trimming = store.runtime_payload_report("deepseek-thinking", kind="trimming", session_id="sess-1")
+    restored_compaction = store.runtime_payload_report("cox", kind="compaction", session_id="sess-1")
+    restored_trimming = store.runtime_payload_report("cox", kind="trimming", session_id="sess-1")
 
     assert restored_compaction is not None
     assert restored_compaction["restored_from_persistence"] is True
@@ -108,7 +108,7 @@ def test_weclaw_status_restores_runtime_payload_guard_from_persisted_reports(tmp
     store.save_runtime_payload_report(
         _sample_compaction_report(),
         kind="compaction",
-        profile="deepseek-thinking",
+        profile="cox",
         session_id="sess-1",
         request_id="resp-1",
         response_id="resp-1",
@@ -116,14 +116,14 @@ def test_weclaw_status_restores_runtime_payload_guard_from_persisted_reports(tmp
     store.save_runtime_payload_report(
         _sample_trimming_report(),
         kind="trimming",
-        profile="deepseek-thinking",
+        profile="cox",
         session_id="sess-1",
         request_id="resp-1",
         response_id="resp-1",
     )
 
-    restored_compaction = store.runtime_payload_report("deepseek-thinking", kind="compaction", session_id="sess-1")
-    restored_trimming = store.runtime_payload_report("deepseek-thinking", kind="trimming", session_id="sess-1")
+    restored_compaction = store.runtime_payload_report("cox", kind="compaction", session_id="sess-1")
+    restored_trimming = store.runtime_payload_report("cox", kind="trimming", session_id="sess-1")
     assert restored_compaction is not None
     assert restored_compaction["estimated_tokens_before_compact"] == 66022
     assert restored_compaction["estimated_tokens_after_compact"] == 17849
@@ -132,7 +132,7 @@ def test_weclaw_status_restores_runtime_payload_guard_from_persisted_reports(tmp
     assert restored_trimming["token_first_runtime_trim"]["before_tokens"] == 20100
 
     payload = app._runtime_weclaw_status(
-        "deepseek-thinking",
+        "cox",
         store=store,
         balance=None,
         deepseek_client=object(),
@@ -180,7 +180,7 @@ def test_weclaw_status_prefers_persisted_matching_trim_report_over_stale_in_memo
     store.save_runtime_payload_report(
         _sample_trimming_report(),
         kind="trimming",
-        profile="deepseek-thinking",
+        profile="cox",
         session_id="sess-1",
         request_id="resp-1",
         response_id="resp-1",
@@ -203,7 +203,7 @@ def test_weclaw_status_prefers_persisted_matching_trim_report_over_stale_in_memo
         }
 
     payload = app._runtime_weclaw_status(
-        "deepseek-thinking",
+        "cox",
         store=store,
         balance=None,
         deepseek_client=StaleTrimClient(),
@@ -224,7 +224,7 @@ def test_profile_scoped_trim_fallback_exposes_not_triggered_session_estimate() -
     app = _app_module()
 
     report = app._profile_scoped_token_first_trim_not_triggered_report(
-        profile="deepseek-thinking",
+        profile="cox",
         context_window={
             "used_tokens": 19852,
             "auto_compact_token_limit": 900000,
@@ -235,7 +235,7 @@ def test_profile_scoped_trim_fallback_exposes_not_triggered_session_estimate() -
         session_id="sess-current",
         diagnostic_report={
             "reason": "runtime_trimming_report_profile_mismatch",
-            "requested_profile": "deepseek-thinking",
+            "requested_profile": "cox",
             "observed_profile": "deepseek",
         },
     )
@@ -251,8 +251,8 @@ def test_profile_scoped_trim_fallback_exposes_not_triggered_session_estimate() -
     assert trim["progress_numerator_tokens"] == 19852
     assert trim["progress_denominator_tokens"] == 19852
     assert trim["retention_ratio"] == 1.0
-    assert trim["requested_profile"] == "deepseek-thinking"
-    assert trim["observed_profile"] == "deepseek-thinking"
+    assert trim["requested_profile"] == "cox"
+    assert trim["observed_profile"] == "cox"
 
     guard = app._runtime_payload_guard_contract({"compaction": {"config": {}}}, trimming_report=report)
     assert guard["trimming"]["available"] is True

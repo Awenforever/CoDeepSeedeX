@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app
+from codexchange_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app
 
 
 class UsageDeepSeekClient(DeepSeekClient):
@@ -396,9 +396,9 @@ class UsageSequenceDeepSeekClient(DeepSeekClient):
 @pytest.mark.asyncio
 async def test_usage_records_internal_tool_bridge_call_purposes(tmp_path, monkeypatch):
     for key in [
-        "DEEPSEEK_PROXY_MODEL",
-        "DEEPSEEK_PROXY_FORCE_MODEL",
-        "DEEPSEEK_MODEL",
+        "COX_MODEL",
+        "COX_FORCE_MODEL",
+        "COX_MODEL",
     ]:
         monkeypatch.delenv(key, raising=False)
 

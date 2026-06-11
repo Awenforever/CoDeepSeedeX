@@ -1,14 +1,14 @@
-# CoDeepSeedeX
+# CodeXchange
 
 [中文说明](README.zh-CN.md) | English
 
-<!-- CODEEPSEEDEX_LOGO_START -->
+<!-- COX_LOGO_START -->
 <p align="center">
-  <img src="docs/logo.png" alt="CoDeepSeedeX logo" width="220">
+  <img src="docs/logo.png" alt="CodeXchange logo" width="220">
 </p>
-<!-- CODEEPSEEDEX_LOGO_END -->
+<!-- COX_LOGO_END -->
 
-CoDeepSeedeX is a local OpenAI Responses-compatible proxy for running Codex with DeepSeek-compatible model providers. It keeps the normal `codex` CLI, adds managed `deepseek` and `deepseek-thinking` profiles, and exposes `dsproxy` for setup, status, upgrade, provider diagnostics, pricing, and WeClaw integration.
+CodeXchange is a local OpenAI Responses-compatible provider exchange for running Codex across managed and custom model API providers. It keeps the normal `codex` CLI, exposes the `cox` command for setup, status, upgrade, provider diagnostics, model routing, tool routing, pricing, and WeClaw integration, and treats DeepSeek as one provider rather than the product boundary.
 
 ## Requirements
 
@@ -30,13 +30,13 @@ npm install -g @openai/codex
 Default channel, using the GitHub Latest Release asset:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
 ```
 
 Pinned current Latest Release tag (`v0.4.3-alpha`):
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
+curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
@@ -46,22 +46,22 @@ tag="v0.4.3-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/releases/download/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs"
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CodeXchange/releases/download/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://raw.githubusercontent.com/Awenforever/CodeXchange/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://cdn.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://fastly.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" -o "$bs"
 ) && bash "$bs" --install-ref "$tag"
 ```
 
-The installer places CoDeepSeedeX under `~/.local/share/deepseek-responses-proxy`, creates the `dsproxy` command, creates the primary Codex profile `deepseek-thinking`, and can install a narrow `codex` wrapper for CoDeepSeedeX-managed profiles and provider-backed custom profiles. It also writes shell startup snippets so new terminals prefer `~/.local/bin/dsproxy` and `~/.local/bin/codex`.
+The installer places CodeXchange under `~/.local/share/codexchange`, creates the `cox` command, creates the primary Codex profile `cox`, and can install a narrow `codex` wrapper for CodeXchange-managed profiles and provider-backed profiles. It also writes shell startup snippets so new terminals prefer `~/.local/bin/cox` and `~/.local/bin/codex`.
 
 ## Verify
 
 ```bash
-dsproxy --version
-dsproxy status
-dsproxy status thinking
+cox --version
+cox status
+cox status thinking
 ```
 
 Expected version output has two lines:
@@ -74,7 +74,7 @@ internal version: p2.x-topic | <internal-commit>
 Start Codex through the managed profiles:
 
 ```bash
-codex --profile deepseek-thinking
+codex --profile cox
 ```
 
 ## Configure model API
@@ -82,76 +82,76 @@ codex --profile deepseek-thinking
 Use the guided menu when you are not sure which provider or option to configure:
 
 ```bash
-dsproxy config wizard
+cox config wizard
 ```
 
 Show saved settings without printing secret values:
 
 ```bash
-dsproxy config show
+cox config show
 ```
 
 Configure the model provider used by Codex itself:
 
 ```bash
-dsproxy config set-model --provider deepseek
-dsproxy config set-model --provider kimi
-dsproxy config set-model --provider zhipu
-dsproxy config set-model --provider zhipu-coding
-dsproxy config set-model --provider zai
-dsproxy config set-model --provider zai-coding
-dsproxy config set-model --provider qwen-beijing
-dsproxy config set-model --provider qwen-singapore
-dsproxy config set-model --provider qwen-us
+cox config set-model --provider deepseek
+cox config set-model --provider kimi
+cox config set-model --provider zhipu
+cox config set-model --provider zhipu-coding
+cox config set-model --provider zai
+cox config set-model --provider zai-coding
+cox config set-model --provider qwen-beijing
+cox config set-model --provider qwen-singapore
+cox config set-model --provider qwen-us
 ```
 
 Non-interactive form, using a fake key for documentation only:
 
 ```bash
-dsproxy config set-model --provider deepseek --value sk-fake-deepseek-api-key
+cox config set-model --provider deepseek --value sk-fake-deepseek-api-key
 ```
 
 Custom provider examples:
 
 ```bash
-dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
-dsproxy config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation
-dsproxy config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation
+cox config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
+cox config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --value sk-fake-custom-api-key --skip-validation
+cox config set-model qwen3-coder-plus --provider custom --base-url https://coding-intl.dashscope.aliyuncs.com/v1 --skip-validation
 ```
 
-API keys are stored locally in the CoDeepSeedeX env file with restrictive file permissions. Interactive commands use a hidden prompt for secret input; the hidden prompt only prevents the key from being printed on screen and is not cryptographic encryption. API keys are passed with `--value` or hidden prompt input, not as a positional argument.
+API keys are stored locally in the CodeXchange env file with restrictive file permissions. Interactive commands use a hidden prompt for secret input; the hidden prompt only prevents the key from being printed on screen and is not cryptographic encryption. API keys are passed with `--value` or hidden prompt input, not as a positional argument.
 
 ## Optional tool providers
 
 Supported web search providers in the guided flow are SerpAPI, Tavily, Exa, and Firecrawl.
 
 ```bash
-dsproxy config set-web-search-api-key --provider serpapi
-dsproxy config set-web-search-api-key --provider tavily
-dsproxy config set-web-search-api-key --provider exa
-dsproxy config set-web-search-api-key --provider firecrawl
+cox config set-web-search-api-key --provider serpapi
+cox config set-web-search-api-key --provider tavily
+cox config set-web-search-api-key --provider exa
+cox config set-web-search-api-key --provider firecrawl
 ```
 
 Non-interactive web search example, using a fake key for documentation only:
 
 ```bash
-dsproxy config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key --skip-validation
+cox config set-web-search-api-key --provider serpapi --value fake-serpapi-api-key --skip-validation
 ```
 
 Supported image generation providers include ZhipuAI/BigModel, Z.AI, Qwen Image/DashScope, Stability AI, and fal.ai.
 
 ```bash
-dsproxy config set-image-api-key --provider zhipu
-dsproxy config set-image-api-key --provider zai
-dsproxy config set-image-api-key --provider qwen_image
-dsproxy config set-image-api-key --provider stability
-dsproxy config set-image-api-key --provider fal
+cox config set-image-api-key --provider zhipu
+cox config set-image-api-key --provider zai
+cox config set-image-api-key --provider qwen_image
+cox config set-image-api-key --provider stability
+cox config set-image-api-key --provider fal
 ```
 
 Non-interactive image provider example, using a fake key for documentation only:
 
 ```bash
-dsproxy config set-image-api-key --provider zhipu --value fake-zhipu-api-key --skip-validation
+cox config set-image-api-key --provider zhipu --value fake-zhipu-api-key --skip-validation
 ```
 
 Qwen Image regional provider names are documented explicitly for validation and troubleshooting:
@@ -166,8 +166,8 @@ Germany Frankfurt     # documented unsupported region reference
 Provider diagnostics:
 
 ```bash
-dsproxy doctor providers --json
-dsproxy doctor providers --live --allow-spend --json
+cox doctor providers --json
+cox doctor providers --live --allow-spend --json
 ```
 
 Live provider diagnostics may call external APIs and may consume quota or credits.
@@ -175,34 +175,34 @@ Live provider diagnostics may call external APIs and may consume quota or credit
 ## Run and stop proxy
 
 ```bash
-dsproxy start
-dsproxy start thinking
-dsproxy status
-dsproxy status thinking
-dsproxy stop
-dsproxy stop thinking
+cox start
+cox start thinking
+cox status
+cox status thinking
+cox stop
+cox stop thinking
 ```
 
-`deepseek` uses the non-thinking proxy route. `deepseek-thinking` uses the thinking proxy route. The wrapper starts or refreshes the matching proxy automatically before launching Codex for these managed profiles.
+`cox` is the primary managed CodeXchange route. Provider-backed profiles such as `deepseek`, `qwen-us`, or custom provider ids are independent Codex profiles resolved through the generic provider routing contract.
 
 ## Pricing and cost metadata
 
 Show the current local pricing table and metadata:
 
 ```bash
-dsproxy pricing show --json
+cox pricing show --json
 ```
 
 Fetch and validate DeepSeek official pricing HTML without writing cache:
 
 ```bash
-dsproxy pricing refresh --json
+cox pricing refresh --json
 ```
 
 Fetch and persist the validated official pricing cache:
 
 ```bash
-dsproxy pricing refresh --write-cache --json
+cox pricing refresh --write-cache --json
 ```
 
 Cost estimates must keep their pricing source visible. Bundled fallback prices are labelled separately from a freshly fetched `official_docs_html` cache.
@@ -212,60 +212,60 @@ Cost estimates must keep their pricing source visible. Bundled fallback prices a
 Default upgrade path follows the GitHub Latest Release:
 
 ```bash
-dsproxy upgrade
-dsproxy upgrade --dry-run
+cox upgrade
+cox upgrade --dry-run
 ```
 
 Future alpha/pre-release upgrade path follows the newest non-draft GitHub pre-release, when one exists:
 
 ```bash
-dsproxy upgrade --alpha
+cox upgrade --alpha
 ```
 
 Explicit tag or ref:
 
 ```bash
-dsproxy upgrade --tag v0.4.3-alpha
+cox upgrade --tag v0.4.3-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
 
 Managed tokenizer resources are ignored by the upgrade dirty-worktree guard, so a clean release install can be upgraded without passing `--allow-dirty`.
 
-Older installations that do not have `dsproxy upgrade` should rerun the installer. Source-archive/non-git installs on versions with the p2.14a9 fallback can also use `dsproxy upgrade --alpha`; the command reruns the release bootstrap installer with the resolved `--install-ref`.
+Older installations that do not have `cox upgrade` should rerun the installer. Source-archive/non-git installs on versions with the p2.14a9 fallback can also use `cox upgrade --alpha`; the command reruns the release bootstrap installer with the resolved `--install-ref`.
 
 ## Uninstall
 
-The product-level uninstall entrypoint is the installer, not `dsproxy uninstall`.
+The product-level uninstall entrypoint is the installer, not `cox uninstall`.
 
-Remove CoDeepSeedeX integration while preserving configuration files and the install directory:
+Remove CodeXchange integration while preserving configuration files and the install directory:
 
 ```bash
-bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall
+bash ~/.local/share/codexchange/scripts/install.sh --uninstall
 ```
 
-Remove the integration and also remove the CoDeepSeedeX install directory, env file, and install manifest:
+Remove the integration and also remove the CodeXchange install directory, env file, and install manifest:
 
 ```bash
-bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files
+bash ~/.local/share/codexchange/scripts/install.sh --uninstall --remove-files
 ```
 
 Uninstall scope:
 
 ```text
-- removes the managed Codex profiles `deepseek` and `deepseek-thinking`
-- removes the CoDeepSeedeX-managed `codex` wrapper and restores the previous `codex` command backup when available
-- removes the `dsproxy` wrapper installed by CoDeepSeedeX
-- with `--remove-files`, also removes `~/.local/share/deepseek-responses-proxy`, the CoDeepSeedeX env file, and the install manifest
+- removes the managed Codex profiles `deepseek` and `cox`
+- removes the CodeXchange-managed `codex` wrapper and restores the previous `codex` command backup when available
+- removes the `cox` wrapper installed by CodeXchange
+- with `--remove-files`, also removes `~/.local/share/codexchange`, the CodeXchange env file, and the install manifest
 ```
 
-The uninstaller must not delete unrelated user files or non-CoDeepSeedeX configuration.
+The uninstaller must not delete unrelated user files or non-CodeXchange configuration.
 
 ## WeClaw integration
 
-CoDeepSeedeX can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
+CodeXchange can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
 
-If WeClaw integration is used with the current CoDeepSeedeX public Release, WeClaw must be at least:
+If WeClaw integration is used with the current CodeXchange public Release, WeClaw must be at least:
 
 ```text
 weclaw_dev >= v0.1.9-alpha
@@ -274,7 +274,7 @@ weclaw_dev >= v0.1.9-alpha
 Machine-readable status contract:
 
 ```bash
-dsproxy status thinking --weclaw-json
+cox status thinking --weclaw-json
 ```
 
 Important fields exposed for WeClaw include:
@@ -297,7 +297,7 @@ semantic_compaction
 
 ## Security and data boundaries
 
-CoDeepSeedeX stores local configuration under your user account and modifies user-level Codex profile files only when installing, upgrading, refreshing profiles, or changing configuration.
+CodeXchange stores local configuration under your user account and modifies user-level Codex profile files only when installing, upgrading, refreshing profiles, or changing configuration.
 
 Do not put real API keys directly in shell history unless you intentionally accept that risk. Prefer hidden prompts or a secure secret workflow.
 
@@ -322,7 +322,7 @@ Historical release notes and long development records belong in `docs/developmen
 
 ## WeClaw status telemetry
 
-CoDeepSeedeX exposes structured WeClaw status telemetry through `dsproxy status thinking --weclaw-json`.
+CodeXchange exposes structured WeClaw status telemetry through `cox status thinking --weclaw-json`.
 
 Current WeClaw-facing fields include:
 - token usage from provider-reported usage totals,
@@ -351,10 +351,10 @@ The current public release improves custom OpenAI-compatible provider support, f
 ### Provider-backed Codex profiles
 
 ```bash
-dsproxy provider add --name ustc --base-url https://api.llm.ustc.edu.cn/v1 --model deepseek-v4-flash-ascend --value sk-your-key --skip-validation --use
+cox provider add --name ustc --base-url https://api.llm.ustc.edu.cn/v1 --model deepseek-v4-flash-ascend --value sk-your-key --skip-validation --use
 codex --profile ustc
 ```
 
-When adding a custom provider in the guided wizard, the provider name becomes the local provider id/profile id after slug normalization. CoDeepSeedeX does not modify Codex's native `/model` list; use `dsproxy provider add-model/use` or a provider-backed profile for model switching.
+When adding a custom provider in the guided wizard, the provider name becomes the local provider id/profile id after slug normalization. CodeXchange does not modify Codex's native `/model` list; use `cox provider add-model/use` or a provider-backed profile for model switching.
 
-Codex TUI `/model` integration is not claimed here; use `dsproxy provider add-model/use` or provider-backed profiles until Codex behavior proves profile-level model catalogs are honored.
+Codex TUI `/model` integration is not claimed here; use `cox provider add-model/use` or provider-backed profiles until Codex behavior proves profile-level model catalogs are honored.

@@ -1,24 +1,24 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from deepseek_responses_proxy.app import PROXY_VERSION, create_app
-from deepseek_responses_proxy.app import _proxy_web_search
+from codexchange_proxy.app import PROXY_VERSION, create_app
+from codexchange_proxy.app import _proxy_web_search
 
 
 def test_proxy_status_exposes_tool_bridge_provider_config(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", "7")
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "serpapi")
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "6")
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_MAX_ROUNDS", "7")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "serpapi")
+    monkeypatch.setenv("COX_WEB_SEARCH_MAX_RESULTS", "6")
+    monkeypatch.setenv("COX_WEB_SEARCH_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setenv("SERPAPI_API_KEY", "dummy-serpapi-key")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "glm")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_MODEL", "cogView-test")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_SIZE", "512x512")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_N", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "true")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "dummy-image-key")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "glm")
+    monkeypatch.setenv("COX_IMAGE_MODEL", "cogView-test")
+    monkeypatch.setenv("COX_IMAGE_SIZE", "512x512")
+    monkeypatch.setenv("COX_IMAGE_N", "2")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "true")
+    monkeypatch.setenv("COX_IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "dummy-image-key")
 
     client = TestClient(create_app())
     data = client.get("/v1/proxy/status").json()
@@ -47,9 +47,9 @@ def test_proxy_status_exposes_tool_bridge_provider_config(monkeypatch, tmp_path)
 
 
 def test_dedicated_tool_bridge_status_route(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("COX_WEB_SEARCH_PROVIDER", raising=False)
     monkeypatch.delenv("SEARCH_PROVIDER", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", raising=False)
+    monkeypatch.delenv("COX_IMAGE_PROVIDER", raising=False)
     monkeypatch.delenv("IMAGE_PROVIDER", raising=False)
 
     client = TestClient(create_app())
@@ -66,10 +66,10 @@ def test_dedicated_tool_bridge_status_route(monkeypatch):
 
 def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "888")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_AUDIT", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "888")
 
     app = create_app()
     client = TestClient(app)
@@ -97,7 +97,7 @@ def test_proxy_status_exposes_semantic_compaction_config(monkeypatch, tmp_path):
 
 def test_proxy_debug_semantic_selftest_route(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
 
     app = create_app()
     client = TestClient(app)
@@ -119,8 +119,8 @@ def test_proxy_debug_semantic_selftest_route(monkeypatch, tmp_path):
 
 def test_proxy_debug_semantic_canary_check_route_blocks_without_allow(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "0")
 
     app = create_app()
     client = TestClient(app)
@@ -135,8 +135,8 @@ def test_proxy_debug_semantic_canary_check_route_blocks_without_allow(monkeypatc
 
 def test_proxy_debug_semantic_canary_check_route_ready_with_allow(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
 
     app = create_app()
     client = TestClient(app)
@@ -147,7 +147,7 @@ def test_proxy_debug_semantic_canary_check_route_ready_with_allow(monkeypatch, t
     assert data["ready_for_limited_enabled_session"] is True
     assert data["guard"]["allowed"] is True
     assert data["selftest"]["status"] == "ok"
-    assert data["required_enable_env"]["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] == "enabled"
+    assert data["required_enable_env"]["COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] == "enabled"
 
 
 def test_proxy_debug_long_session_route_without_trace(monkeypatch, tmp_path):
@@ -172,9 +172,9 @@ def test_proxy_debug_long_session_route_without_trace(monkeypatch, tmp_path):
 async def test_proxy_web_search_tavily_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "tavily")
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
 
     class FakeResponse:
@@ -221,9 +221,9 @@ async def test_proxy_web_search_tavily_provider(monkeypatch):
 async def test_proxy_web_search_brave_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "brave")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "brave")
     monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "brave-test-key")
 
     class FakeResponse:
@@ -272,12 +272,12 @@ async def test_proxy_web_search_brave_provider(monkeypatch):
 async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "qwen_image")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "dashscope-test-key")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "qwen_image")
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "dashscope-test-key")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("COX_IMAGE_MODEL", raising=False)
     monkeypatch.delenv("DASHSCOPE_IMAGE_MODEL", raising=False)
 
     class FakeResponse:
@@ -329,13 +329,13 @@ async def test_proxy_image_generation_qwen_image_provider(monkeypatch):
 async def test_proxy_image_generation_zhipu_provider_uses_domestic_endpoint(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "zhipu")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "zhipu-test-key")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "zhipu")
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "zhipu-test-key")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("COX_IMAGE_BASE_URL", raising=False)
+    monkeypatch.delenv("COX_IMAGE_MODEL", raising=False)
     monkeypatch.delenv("ZAI_IMAGE_MODEL", raising=False)
     monkeypatch.delenv("ZHIPUAI_API_KEY", raising=False)
     monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
@@ -376,12 +376,12 @@ async def test_proxy_image_generation_zhipu_provider_uses_domestic_endpoint(monk
 async def test_proxy_image_generation_zai_provider_uses_international_endpoint(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "zai")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "zai-test-key")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", raising=False)
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "zai")
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "zai-test-key")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("COX_IMAGE_BASE_URL", raising=False)
 
     class FakeResponse:
         def raise_for_status(self):
@@ -419,9 +419,9 @@ async def test_proxy_image_generation_zai_provider_uses_international_endpoint(m
 async def test_proxy_web_search_exa_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "exa")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "exa")
     monkeypatch.setenv("EXA_API_KEY", "exa-test-key")
 
     class FakeResponse:
@@ -469,9 +469,9 @@ async def test_proxy_web_search_exa_provider(monkeypatch):
 async def test_proxy_web_search_firecrawl_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "firecrawl")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "firecrawl")
     monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-test-key")
 
     class FakeResponse:
@@ -518,11 +518,11 @@ async def test_proxy_web_search_firecrawl_provider(monkeypatch):
 async def test_proxy_image_generation_stability_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "stability")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "stability-test-key")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "stability")
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "stability-test-key")
+    monkeypatch.delenv("COX_IMAGE_MODEL", raising=False)
     monkeypatch.delenv("STABILITY_IMAGE_MODEL", raising=False)
 
     class FakeResponse:
@@ -563,14 +563,14 @@ async def test_proxy_image_generation_stability_provider(monkeypatch):
 async def test_proxy_image_generation_fal_provider(monkeypatch):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "fal")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_API_KEY", "fal-test-key")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "0")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_MODEL", raising=False)
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "fal")
+    monkeypatch.setenv("COX_IMAGE_API_KEY", "fal-test-key")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "0")
+    monkeypatch.delenv("COX_IMAGE_MODEL", raising=False)
     monkeypatch.delenv("FAL_IMAGE_MODEL", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FAL_IMAGE_URL", raising=False)
+    monkeypatch.delenv("COX_FAL_IMAGE_URL", raising=False)
 
     class FakeResponse:
         def raise_for_status(self):
@@ -614,33 +614,33 @@ async def test_proxy_image_generation_fal_provider(monkeypatch):
 
 def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
-    from deepseek_responses_proxy.app import create_app
+    from codexchange_proxy.app import create_app
 
     codex_config = tmp_path / "config.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"glm-5.1\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     client = TestClient(create_app())
-    data = client.get("/v1/proxy/weclaw/profile-status?profile=deepseek-thinking").json()
+    data = client.get("/v1/proxy/weclaw/profile-status?profile=cox").json()
 
     assert data["status"] == "ok"
-    assert data["profile"] == "deepseek-thinking"
+    assert data["profile"] == "cox"
     assert data["model"]["codex_model"] == "glm-5.1"
     assert data["model"]["effective_model"] == "deepseek-v4-flash"
     assert data["model"]["force_model_enabled"] is True
     assert data["model"]["model_conflict"] is True
     assert data["model"]["display_hint"] is None
-    assert data["model"]["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+    assert data["model"]["diagnostic_hint"] == "Codex profile model differs from forced upstream model; cox effective_model is authoritative."
     assert data["model"]["user_visible"] is False
     assert data["context_window"]["effective_safe_window_tokens"] == 1000000
     assert data["context_window"]["used_tokens"] is None
@@ -651,11 +651,11 @@ def test_weclaw_http_profile_status_reports_effective_model_contract(monkeypatch
 
 def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
-    from deepseek_responses_proxy.app import create_app
+    from codexchange_proxy.app import create_app
 
     codex_config = tmp_path / "config.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
@@ -663,19 +663,19 @@ def test_weclaw_http_status_exposes_runtime_context_contract(monkeypatch, tmp_pa
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION_TRIGGER_CHARS", "12345")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONTEXT_COMPACTION_TARGET_CHARS", "6789")
+    monkeypatch.setenv("COX_CONTEXT_COMPACTION", "1")
+    monkeypatch.setenv("COX_CONTEXT_COMPACTION_TRIGGER_CHARS", "12345")
+    monkeypatch.setenv("COX_CONTEXT_COMPACTION_TARGET_CHARS", "6789")
 
     client = TestClient(create_app())
-    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking").json()
+    data = client.get("/v1/proxy/weclaw/status?profile=cox").json()
 
     assert data["status"] == "ok"
-    assert data["profile"] == "deepseek-thinking"
+    assert data["profile"] == "cox"
     assert data["context_window"]["codex_profile"]["unit"] == "tokens"
     assert data["context_window"]["used_tokens"] is None
     assert data["context_window"]["used_tokens_available"] is False
-    assert data["context_window"]["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
+    assert data["context_window"]["used_tokens_source"] == "cox_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     assert data["context_window"]["runtime"]["unit"] == "tokens"
     assert data["context_window"]["runtime"]["available"] is True
     assert data["runtime_payload_guard"]["available"] is False
@@ -696,7 +696,7 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
     )
     codex_config = tmp_path / "config.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
@@ -705,11 +705,11 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
+    monkeypatch.setenv("COX_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
 
     client = TestClient(create_app())
-    profile_data = client.get("/v1/proxy/weclaw/profile-status?profile=deepseek-thinking").json()
-    status_data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking").json()
+    profile_data = client.get("/v1/proxy/weclaw/profile-status?profile=cox").json()
+    status_data = client.get("/v1/proxy/weclaw/status?profile=cox").json()
 
     assert profile_data["context_window"]["model_catalog"]["available"] is True
     assert profile_data["context_window"]["model_catalog"]["context_window_tokens"] == 1000000
@@ -735,11 +735,11 @@ def test_weclaw_http_status_exposes_round3_contract_foundation(monkeypatch, tmp_
 
 def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
-    from deepseek_responses_proxy.app import create_app
+    from codexchange_proxy.app import create_app
 
     codex_config = tmp_path / "config.toml"
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
@@ -747,20 +747,20 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
+    monkeypatch.setenv("COX_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
 
     client = TestClient(create_app())
-    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false").json()
+    data = client.get("/v1/proxy/weclaw/status?profile=cox&include_balance=false").json()
 
     assert data["status"] == "ok"
     tokens = data["tokens"]
     assert tokens["taxonomy"]["version"] == 11
     assert tokens["taxonomy"]["precision"]["provider_usage_totals"] == "exact_provider_reported"
-    assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_dsproxy_call_purpose"
+    assert tokens["taxonomy"]["precision"]["purpose_attribution"] == "exact_cox_call_purpose"
     assert tokens["taxonomy"]["precision"]["prompt_subcategory_split"] == "unavailable"
 
     assert tokens["attribution"]["provider_usage_totals"]["precision"] == "exact_provider_reported"
-    assert tokens["attribution"]["purpose_attribution"]["precision"] == "exact_dsproxy_call_purpose"
+    assert tokens["attribution"]["purpose_attribution"]["precision"] == "exact_cox_call_purpose"
     assert tokens["attribution"]["profile_tokenizer"]["available"] is False
     assert tokens["attribution"]["profile_tokenizer"]["billing_authoritative"] is False
 
@@ -775,11 +775,11 @@ def test_weclaw_http_status_exposes_token_attribution_boundaries(monkeypatch, tm
 def test_weclaw_status_route_is_token_only_public_surface(monkeypatch, tmp_path):
     import json
     from fastapi.testclient import TestClient
-    from deepseek_responses_proxy.app import create_app
+    from codexchange_proxy.app import create_app
 
     monkeypatch.chdir(tmp_path)
     client = TestClient(create_app())
-    data = client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false").json()
+    data = client.get("/v1/proxy/weclaw/status?profile=cox&include_balance=false").json()
     dumped = json.dumps(data, sort_keys=True)
 
     assert data["status"] == "ok"
@@ -804,10 +804,10 @@ def test_weclaw_status_route_is_token_only_public_surface(monkeypatch, tmp_path)
 
 @pytest.mark.asyncio
 async def test_p219a15_brave_runtime_compat_message_marks_deprecated(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "brave")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "brave")
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY", raising=False)
+    monkeypatch.delenv("COX_BRAVE_SEARCH_API_KEY", raising=False)
 
     result = await _proxy_web_search({"query": "test", "max_results": 1})
     assert result["provider"] == "brave"

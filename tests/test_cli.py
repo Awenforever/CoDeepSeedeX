@@ -3,26 +3,26 @@ import shlex
 
 import json
 
-import deepseek_responses_proxy.cli as cli_module
-from deepseek_responses_proxy.cli import default_config_path, main
+import codexchange_proxy.cli as cli_module
+from codexchange_proxy.cli import default_config_path, main
 import pytest
-from deepseek_responses_proxy.cli import _api_configuration_status
+from codexchange_proxy.cli import _api_configuration_status
 import os
 
 
 
-def _codex_profile_file(config_path, profile="deepseek-thinking"):
+def _codex_profile_file(config_path, profile="cox"):
     return config_path.parent / f"{profile}.config.toml"
 
 
-def _codex_profile_text(config_path, profile="deepseek-thinking"):
+def _codex_profile_text(config_path, profile="cox"):
     path = _codex_profile_file(config_path, profile)
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 
 
-def _write_split_codex_profile(config_path, profile="deepseek-thinking", body=""):
+def _write_split_codex_profile(config_path, profile="cox", body=""):
     profile_path = _codex_profile_file(config_path, profile)
     profile_path.write_text(body, encoding="utf-8")
     return profile_path
@@ -32,26 +32,26 @@ def _write_split_codex_profile(config_path, profile="deepseek-thinking", body=""
 def _clear_provider_probe_test_env(monkeypatch):
     for key in [
         "SERPAPI_API_KEY",
-        "DEEPSEEK_PROXY_SERPAPI_API_KEY",
+        "COX_SERPAPI_API_KEY",
         "TAVILY_API_KEY",
-        "DEEPSEEK_PROXY_TAVILY_API_KEY",
+        "COX_TAVILY_API_KEY",
         "EXA_API_KEY",
-        "DEEPSEEK_PROXY_EXA_API_KEY",
+        "COX_EXA_API_KEY",
         "FIRECRAWL_API_KEY",
-        "DEEPSEEK_PROXY_FIRECRAWL_API_KEY",
-        "DEEPSEEK_PROXY_IMAGE_API_KEY",
+        "COX_FIRECRAWL_API_KEY",
+        "COX_IMAGE_API_KEY",
         "ZAI_API_KEY",
         "ZHIPUAI_API_KEY",
         "ZHIPU_API_KEY",
         "GLM_API_KEY",
-        "DEEPSEEK_PROXY_DASHSCOPE_API_KEY",
+        "COX_DASHSCOPE_API_KEY",
         "DASHSCOPE_API_KEY",
         "ALIBABA_DASHSCOPE_API_KEY",
         "STABILITY_API_KEY",
-        "DEEPSEEK_PROXY_STABILITY_API_KEY",
+        "COX_STABILITY_API_KEY",
         "FAL_KEY",
         "FAL_API_KEY",
-        "DEEPSEEK_PROXY_FAL_API_KEY",
+        "COX_FAL_API_KEY",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -65,7 +65,7 @@ def test_cli_version(capsys):
 
 def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
     config_path = tmp_path / "config.toml"
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONFIG", str(config_path))
+    monkeypatch.setenv("COX_CONFIG", str(config_path))
 
     assert default_config_path() == config_path
     assert main(["config", "path"]) == 0
@@ -76,7 +76,7 @@ def test_cli_config_path_uses_env(monkeypatch, tmp_path, capsys):
 
 def test_cli_config_init_writes_default_config(monkeypatch, tmp_path, capsys):
     config_path = tmp_path / "config.toml"
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONFIG", str(config_path))
+    monkeypatch.setenv("COX_CONFIG", str(config_path))
 
     assert main(["config", "init"]) == 0
 
@@ -92,7 +92,7 @@ def test_cli_config_init_writes_default_config(monkeypatch, tmp_path, capsys):
 
 
 def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("COX_CONFIG", str(tmp_path / "config.toml"))
 
     assert main(["doctor", "--thinking", "--port", "9", "--timeout", "0.05", "--allow-down"]) == 0
 
@@ -125,13 +125,13 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
         def poll(self):
             return None
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
-    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
+    monkeypatch.setenv("COX_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("COX_TOOL_OUTPUT_TRIM_MODE", raising=False)
+    monkeypatch.delenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
     def fake_tcp_port_open(host, port):
         return process_started["value"]
 
-    monkeypatch.setattr("deepseek_responses_proxy.cli._tcp_port_open", fake_tcp_port_open)
+    monkeypatch.setattr("codexchange_proxy.cli._tcp_port_open", fake_tcp_port_open)
 
     def fake_healthz_for_port(port, *, timeout=1.0):
         if not process_started["value"]:
@@ -141,7 +141,7 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
             "version": cli_module.PROXY_VERSION,
         }, None
 
-    monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
+    monkeypatch.setattr("codexchange_proxy.cli._healthz_for_port", fake_healthz_for_port)
 
     def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
         process_started["value"] = True
@@ -154,9 +154,9 @@ def test_cli_start_thinking_defaults_tool_output_trim_rollout(monkeypatch, tmp_p
 
     assert main(["start", "--thinking", "--port", "8766", "--state-dir", str(tmp_path)]) == 0
 
-    assert captured["env"]["DEEPSEEK_THINKING"] == "enabled"
-    assert captured["env"]["DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE"] == "enabled"
-    assert captured["env"]["DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] == "12000"
+    assert captured["env"]["COX_REASONING"] == "enabled"
+    assert captured["env"]["COX_TOOL_OUTPUT_TRIM_MODE"] == "enabled"
+    assert captured["env"]["COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS"] == "12000"
 
 
 def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch, tmp_path):
@@ -169,13 +169,13 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
         def poll(self):
             return None
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
-    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
+    monkeypatch.setenv("COX_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("COX_TOOL_OUTPUT_TRIM_MODE", raising=False)
+    monkeypatch.delenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", raising=False)
     def fake_tcp_port_open(host, port):
         return process_started["value"]
 
-    monkeypatch.setattr("deepseek_responses_proxy.cli._tcp_port_open", fake_tcp_port_open)
+    monkeypatch.setattr("codexchange_proxy.cli._tcp_port_open", fake_tcp_port_open)
 
     def fake_healthz_for_port(port, *, timeout=1.0):
         if not process_started["value"]:
@@ -185,7 +185,7 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
             "version": cli_module.PROXY_VERSION,
         }, None
 
-    monkeypatch.setattr("deepseek_responses_proxy.cli._healthz_for_port", fake_healthz_for_port)
+    monkeypatch.setattr("codexchange_proxy.cli._healthz_for_port", fake_healthz_for_port)
 
     def fake_popen(cmd, env=None, stdout=None, stderr=None, cwd=None, start_new_session=None):
         process_started["value"] = True
@@ -198,13 +198,13 @@ def test_cli_start_stable_does_not_default_tool_output_trim_rollout(monkeypatch,
 
     assert main(["start", "--port", "8765", "--state-dir", str(tmp_path)]) == 0
 
-    assert "DEEPSEEK_THINKING" not in captured["env"]
-    assert "DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE" not in captured["env"]
-    assert "DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS" not in captured["env"]
+    assert "COX_REASONING" not in captured["env"]
+    assert "COX_TOOL_OUTPUT_TRIM_MODE" not in captured["env"]
+    assert "COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS" not in captured["env"]
 
 
 def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     monkeypatch.setattr(cli, "_healthz_for_port", lambda port, timeout=1.0: (200, {"version": "v0.old"}, None))
     monkeypatch.setattr(cli, "_tcp_port_open", lambda host, port: True)
@@ -226,7 +226,7 @@ def test_cli_start_rejects_different_running_proxy_version(monkeypatch, tmp_path
 
 
 def test_cli_start_accepts_matching_running_proxy_version(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     monkeypatch.setattr(
         cli,
@@ -243,9 +243,9 @@ def test_cli_start_accepts_matching_running_proxy_version(monkeypatch, capsys):
 
 
 def test_cli_doctor_reports_version_mismatch(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("COX_CONFIG", str(tmp_path / "config.toml"))
 
     def fake_http_json(url, timeout=3.0):
         if url.endswith("/healthz"):
@@ -273,7 +273,7 @@ def test_cli_install_codex_profile_writes_profile(tmp_path, capsys):
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -282,17 +282,17 @@ def test_cli_install_codex_profile_writes_profile(tmp_path, capsys):
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    assert result["profile"] == "deepseek-thinking"
-    assert result["provider"] == "deepseek-thinking-proxy"
+    assert result["profile"] == "cox"
+    assert result["provider"] == "cox-proxy"
 
     text = config_path.read_text(encoding="utf-8")
     assert "[features]" in text
-    assert "[model_providers.deepseek-thinking-proxy]" in text
+    assert "[model_providers.cox-proxy]" in text
     assert 'base_url = "http://127.0.0.1:8001/v1"' in text
-    assert "[profiles.deepseek-thinking]" not in text
+    assert "[profiles.cox]" not in text
     profile_text = _codex_profile_text(config_path)
     assert 'model = "deepseek-v4-pro"' in profile_text
-    assert 'model_provider = "deepseek-thinking-proxy"' in profile_text
+    assert 'model_provider = "cox-proxy"' in profile_text
     assert 'model_reasoning_effort = "xhigh"' in profile_text
     assert 'model_context_window = 1000000' in profile_text
     assert 'model_auto_compact_token_limit = 900000' in profile_text
@@ -313,7 +313,7 @@ def test_cli_install_codex_profile_dry_run_does_not_write(tmp_path, capsys):
 
     result = json.loads(capsys.readouterr().out)
     assert result["dry_run"] is True
-    assert "[profiles.deepseek-thinking]" not in result["config_preview"]
+    assert "[profiles.cox]" not in result["config_preview"]
     assert 'model = "deepseek-v4-pro"' in result["profile_config_preview"]
     assert not config_path.exists()
     assert not _codex_profile_file(config_path).exists()
@@ -341,32 +341,32 @@ def test_cli_uninstall_codex_profile_removes_profile_and_provider(tmp_path, caps
     assert result["provider_removed"] is True
 
     text = config_path.read_text(encoding="utf-8")
-    assert "[profiles.deepseek-thinking]" not in text
-    assert "[model_providers.deepseek-thinking-proxy]" not in text
+    assert "[profiles.cox]" not in text
+    assert "[model_providers.cox-proxy]" not in text
     assert not _codex_profile_file(config_path).exists()
 
 
 def test_cli_config_set_model_updates_env_and_codex_profile(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\nmodel_provider = \"deepseek-thinking-proxy\"\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\nmodel_provider = \"cox-proxy\"\n", encoding="utf-8")
     assert main(["config", "set-model", "deepseek-v4-flash", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["model"] == "deepseek-v4-flash"
     assert result["codex_profile_patched"] is True
-    assert "DEEPSEEK_PROXY_MODEL=deepseek-v4-flash" in env_file.read_text(encoding="utf-8")
+    assert "COX_MODEL=deepseek-v4-flash" in env_file.read_text(encoding="utf-8")
     assert 'model = "deepseek-v4-flash"' in _codex_profile_text(config_path)
 
 
 def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
     assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["effort"] == "high"
     assert result["codex_profile_patched"] is True
-    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in _codex_profile_text(config_path)
 
 
@@ -374,25 +374,25 @@ def test_cli_config_set_effort_updates_env_and_codex_profile(tmp_path, capsys):
 def test_cli_config_set_effort_accepts_codex_medium_as_high(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
 
     assert main(["config", "set-effort", "medium", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
     assert result["requested_effort"] == "medium"
     assert result["effort"] == "high"
-    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in _codex_profile_text(config_path)
 
 
 def test_cli_balance_missing_api_key(monkeypatch, tmp_path, capsys):
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("COX_MODEL_API_KEY", raising=False)
     assert main(["balance", "--env-file", str(tmp_path / "missing.env")]) == 1
     result = json.loads(capsys.readouterr().out)
     assert result["error"] == "missing_deepseek_api_key"
 
 def test_cli_upgrade_dry_run_outputs_plan(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -427,7 +427,7 @@ def test_cli_upgrade_dry_run_outputs_plan(monkeypatch, tmp_path, capsys):
     assert data["status"] == "ok"
     assert data["dry_run"] is True
     assert data["target_ref"] == "v9.9-test"
-    assert data["mode"] == "dsproxy_upgrade"
+    assert data["mode"] == "cox_upgrade"
 
     commands = [" ".join(step["cmd"]) for step in data["steps"]]
     assert any("git" in cmd and "fetch --tags origin" in cmd for cmd in commands)
@@ -439,7 +439,7 @@ def test_cli_upgrade_dry_run_outputs_plan(monkeypatch, tmp_path, capsys):
 
 
 def test_cli_upgrade_dry_run_ignores_managed_resource_directory_dirty(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -478,7 +478,7 @@ def test_cli_upgrade_dry_run_ignores_managed_resource_directory_dirty(monkeypatc
 
 
 def test_cli_upgrade_still_rejects_real_dirty_worktree_with_managed_resources(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -493,7 +493,7 @@ def test_cli_upgrade_still_rejects_real_dirty_worktree_with_managed_resources(mo
         if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["rev-parse", "--show-toplevel"]:
             return FakeCompleted(stdout=str(repo) + "\n")
         if argv[:3] == ["git", "-C", str(repo)] and argv[3:] == ["status", "--porcelain"]:
-            return FakeCompleted(stdout="?? resources/\n M deepseek_responses_proxy/cli.py\n")
+            return FakeCompleted(stdout="?? resources/\n M codexchange_proxy/cli.py\n")
         raise AssertionError(f"unexpected command: {argv}")
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
@@ -513,14 +513,14 @@ def test_cli_upgrade_still_rejects_real_dirty_worktree_with_managed_resources(mo
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "error"
     assert data["error"] == "dirty_worktree"
-    assert data["git_status"] == "M deepseek_responses_proxy/cli.py"
+    assert data["git_status"] == "M codexchange_proxy/cli.py"
     assert data["git_dirty_ignored_managed_resources"] == "?? resources/"
 
 
 def test_cli_upgrade_latest_release_resolution_fallback_uses_runtime_public_tag(monkeypatch, tmp_path, capsys):
     import urllib.error
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "not-git"
     repo.mkdir()
@@ -557,7 +557,7 @@ def test_cli_upgrade_latest_release_resolution_fallback_uses_runtime_public_tag(
 
 
 def test_cli_upgrade_non_git_checkout_dry_run_uses_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "not-git"
     repo.mkdir()
@@ -599,7 +599,7 @@ def test_cli_upgrade_non_git_checkout_dry_run_uses_release_bootstrap_fallback(mo
 
 
 def test_cli_upgrade_non_git_checkout_executes_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "not-git"
     repo.mkdir()
@@ -664,7 +664,7 @@ def test_cli_upgrade_non_git_checkout_executes_release_bootstrap_fallback(monkey
 
 
 def test_cli_upgrade_git_fetch_failure_uses_release_bootstrap_fallback(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -734,7 +734,7 @@ def test_cli_upgrade_git_fetch_failure_uses_release_bootstrap_fallback(monkeypat
 
 
 def test_cli_upgrade_dry_run_defaults_to_latest_release(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -760,7 +760,7 @@ def test_cli_upgrade_dry_run_defaults_to_latest_release(monkeypatch, tmp_path, c
             return False
 
         def read(self):
-            return b'{"tag_name":"v9.9-latest","name":"CoDeepSeedeX v9.9-latest","html_url":"https://example.test/release"}'
+            return b'{"tag_name":"v9.9-latest","name":"CodeXchange v9.9-latest","html_url":"https://example.test/release"}'
 
     def fake_urlopen(request, timeout=0):
         assert "releases/latest" in request.full_url
@@ -791,7 +791,7 @@ def test_cli_upgrade_dry_run_defaults_to_latest_release(monkeypatch, tmp_path, c
     assert not any("checkout master" in cmd for cmd in commands)
     assert not any("pull --ff-only origin master" in cmd for cmd in commands)
 def test_cli_debug_status(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
 
@@ -830,7 +830,7 @@ def test_cli_debug_status(monkeypatch, capsys):
 
 
 def test_cli_debug_latest_uses_limit_and_thinking_port(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
 
@@ -866,7 +866,7 @@ def test_cli_debug_latest_uses_limit_and_thinking_port(monkeypatch, capsys):
 
 
 def test_cli_debug_returns_nonzero_when_proxy_unreachable(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     def fake_urlopen(url, timeout=0):
         raise OSError("connection refused")
@@ -882,7 +882,7 @@ def test_cli_debug_returns_nonzero_when_proxy_unreachable(monkeypatch, capsys):
 
 
 def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
 
@@ -1013,7 +1013,7 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
 
 
 def test_cli_debug_behavioral_summarizes_long_session_readiness(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1085,7 +1085,7 @@ def test_cli_debug_behavioral_summarizes_long_session_readiness(monkeypatch, cap
 
 
 def test_cli_debug_long_session_fetches_long_session_endpoint(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1130,7 +1130,7 @@ def test_cli_debug_long_session_fetches_long_session_endpoint(monkeypatch, capsy
 
 
 def test_cli_debug_semantic_canary_check_fetches_canary_endpoint(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1167,7 +1167,7 @@ def test_cli_debug_semantic_canary_check_fetches_canary_endpoint(monkeypatch, ca
 
 
 def test_cli_debug_semantic_self_test_fetches_selftest_endpoint(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1208,7 +1208,7 @@ def test_cli_debug_semantic_self_test_fetches_selftest_endpoint(monkeypatch, cap
 
 
 def test_cli_debug_semantic_combines_status_and_trace_events(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1273,7 +1273,7 @@ def test_cli_debug_semantic_combines_status_and_trace_events(monkeypatch, capsys
 
 
 def test_cli_debug_budget_extracts_semantic_compaction_events(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1325,7 +1325,7 @@ def test_cli_debug_budget_extracts_semantic_compaction_events(monkeypatch, capsy
 
 
 def test_cli_debug_budget_marks_truncated_tool_output_event(monkeypatch, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1363,7 +1363,7 @@ def test_cli_debug_budget_marks_truncated_tool_output_event(monkeypatch, capsys)
 
 
 def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     long_session = {
         "status": "ok",
@@ -1418,7 +1418,7 @@ def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
 
 
 def test_cli_config_set_api_key_writes_env_and_masks(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main(["config", "set-api-key", "--skip-validation", "--env-file", str(env_file), "--value", "sk-test-123456"]) == 0
@@ -1428,15 +1428,15 @@ def test_cli_config_set_api_key_writes_env_and_masks(tmp_path, capsys):
     assert result["deepseek_api_key_configured"] is True
     assert result["deepseek_api_key_preview"] == "sk-t...3456"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_API_KEY=sk-test-123456" in text
+    assert "COX_MODEL_API_KEY=sk-test-123456" in text
 
     assert main(["config", "show", "--env-file", str(env_file)]) == 0
     shown = json.loads(capsys.readouterr().out)
-    assert shown["values"]["DEEPSEEK_API_KEY"] == "***"
+    assert shown["values"]["COX_MODEL_API_KEY"] == "***"
 
 
 def test_cli_config_test_api_key_reads_env_file(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     class FakeResponse:
         status = 200
@@ -1458,8 +1458,8 @@ def test_cli_config_test_api_key_reads_env_file(monkeypatch, tmp_path, capsys):
         return FakeResponse()
 
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_API_KEY=sk-file-123456\n", encoding="utf-8")
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    env_file.write_text("export COX_MODEL_API_KEY=sk-file-123456\n", encoding="utf-8")
+    monkeypatch.delenv("COX_MODEL_API_KEY", raising=False)
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
 
     assert cli.main(["config", "test-api-key", "--env-file", str(env_file), "--timeout", "2"]) == 0
@@ -1472,16 +1472,16 @@ def test_cli_config_test_api_key_reads_env_file(monkeypatch, tmp_path, capsys):
 
 
 def test_cli_install_codex_profile_writes_model_catalog_json(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     config_path = tmp_path / "codex.toml"
-    catalog_json = '"/tmp/deepseek-proxy-models.json"'
+    catalog_json = '"/tmp/cox-proxy-models.json"'
     assert main([
         "install-codex-profile",
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--provider-name",
-        "deepseek-thinking-proxy",
+        "cox-proxy",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -1493,10 +1493,10 @@ def test_cli_install_codex_profile_writes_model_catalog_json(tmp_path, capsys):
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    assert result["profile"] == "deepseek-thinking"
+    assert result["profile"] == "cox"
     text = _codex_profile_text(config_path)
     assert "model_catalog_json" in text
-    assert "/tmp/deepseek-proxy-models.json" in text
+    assert "/tmp/cox-proxy-models.json" in text
 
 
 def test_cli_config_set_web_search_api_key(monkeypatch, tmp_path, capsys):
@@ -1516,9 +1516,9 @@ def test_cli_config_set_web_search_api_key(monkeypatch, tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "ok"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi" in text
+    assert "COX_WEB_SEARCH_PROVIDER=serpapi" in text
     assert "SERPAPI_API_KEY=serpapi-test-key" in text
-    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+    assert "COX_TOOL_BRIDGE=1" in text
 
 
 def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
@@ -1538,16 +1538,16 @@ def test_cli_config_set_image_api_key(monkeypatch, tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "ok"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=glm" in text
-    assert "DEEPSEEK_PROXY_IMAGE_MODEL=cogView-4-250304" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=glm-test-key" in text
+    assert "COX_IMAGE_PROVIDER=glm" in text
+    assert "COX_IMAGE_MODEL=cogView-4-250304" in text
+    assert "COX_IMAGE_API_KEY=glm-test-key" in text
     assert "ZAI_API_KEY=glm-test-key" in text
-    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
-    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+    assert "COX_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
+    assert "COX_TOOL_BRIDGE=1" in text
 
 
 def test_cli_config_set_zhipu_image_api_key_sets_domestic_endpoint(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -1565,14 +1565,14 @@ def test_cli_config_set_zhipu_image_api_key_sets_domestic_endpoint(tmp_path, cap
     assert out["status"] == "ok"
     assert out["image_provider"] == "zhipu"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu" in text
-    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://open.bigmodel.cn/api/paas/v4/images/generations" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key" in text
+    assert "COX_IMAGE_PROVIDER=zhipu" in text
+    assert "COX_IMAGE_BASE_URL=https://open.bigmodel.cn/api/paas/v4/images/generations" in text
+    assert "COX_IMAGE_API_KEY=zhipu-test-key" in text
     assert "ZHIPUAI_API_KEY=zhipu-test-key" in text
 
 
 def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -1590,9 +1590,9 @@ def test_cli_config_set_zai_image_api_key_sets_international_endpoint(tmp_path, 
     assert out["status"] == "ok"
     assert out["image_provider"] == "zai"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=zai" in text
-    assert "DEEPSEEK_PROXY_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=zai-test-key" in text
+    assert "COX_IMAGE_PROVIDER=zai" in text
+    assert "COX_IMAGE_BASE_URL=https://api.z.ai/api/paas/v4/images/generations" in text
+    assert "COX_IMAGE_API_KEY=zai-test-key" in text
     assert "ZAI_API_KEY=zai-test-key" in text
 
 
@@ -1602,12 +1602,12 @@ def test_cli_config_show_includes_tool_routing_status(monkeypatch, tmp_path, cap
     _clear_provider_probe_test_env(monkeypatch)
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi\n"
+        "export COX_WEB_SEARCH_PROVIDER=serpapi\n"
         "export SERPAPI_API_KEY=serpapi-test-key\n"
-        "export DEEPSEEK_PROXY_WEB_SEARCH_ROUTING=managed_only\n"
-        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
-        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n"
-        "export DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING=disabled\n",
+        "export COX_WEB_SEARCH_ROUTING=managed_only\n"
+        "export COX_IMAGE_PROVIDER=zhipu\n"
+        "export COX_IMAGE_API_KEY=zhipu-test-key\n"
+        "export COX_IMAGE_GENERATION_ROUTING=disabled\n",
         encoding="utf-8",
     )
 
@@ -1642,10 +1642,10 @@ def test_cli_config_set_tool_routing_writes_policy(monkeypatch, tmp_path, capsys
     assert result["status"] == "ok"
     assert result["tool"] == "image_generation"
     assert result["routing_policy"] == "managed_only"
-    assert result["routing_env_key"] == "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING"
+    assert result["routing_env_key"] == "COX_IMAGE_GENERATION_ROUTING"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
-    assert "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING=managed_only" in text
+    assert "COX_TOOL_BRIDGE=1" in text
+    assert "COX_IMAGE_GENERATION_ROUTING=managed_only" in text
 
 
 def test_cli_config_set_tool_routing_invalid_policy_errors(capsys, tmp_path):
@@ -1662,10 +1662,10 @@ def test_cli_doctor_tool_routing_reports_runtime_diagnostics(monkeypatch, tmp_pa
     _clear_provider_probe_test_env(monkeypatch)
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=serpapi\n"
+        "export COX_WEB_SEARCH_PROVIDER=serpapi\n"
         "export SERPAPI_API_KEY=serpapi-test-key\n"
-        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
-        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n",
+        "export COX_IMAGE_PROVIDER=zhipu\n"
+        "export COX_IMAGE_API_KEY=zhipu-test-key\n",
         encoding="utf-8",
     )
 
@@ -1685,7 +1685,7 @@ def test_cli_doctor_tool_routing_reports_runtime_diagnostics(monkeypatch, tmp_pa
                     "provider": "serpapi",
                     "configured": True,
                     "routing_policy": "auto",
-                    "managed_function_name": "codeepseedex_web_search",
+                    "managed_function_name": "codexchange_web_search",
                     "last_route_decision": {"action": "mapped_to_managed"},
                     "last_execution": {"ok": True, "provider": "mock"},
                 },
@@ -1693,7 +1693,7 @@ def test_cli_doctor_tool_routing_reports_runtime_diagnostics(monkeypatch, tmp_pa
                     "provider": "zhipu",
                     "configured": True,
                     "routing_policy": "auto",
-                    "managed_function_name": "codeepseedex_generate_image",
+                    "managed_function_name": "codexchange_generate_image",
                     "last_route_decision": None,
                     "last_execution": None,
                     "native_tool_observed": False,
@@ -1720,13 +1720,13 @@ def test_cli_doctor_tool_routing_reports_runtime_diagnostics(monkeypatch, tmp_pa
 
 
 def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     env_file.write_text(
         "export SERPAPI_API_KEY=serpapi-test-key\n"
-        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=zhipu\n"
-        "export DEEPSEEK_PROXY_IMAGE_API_KEY=zhipu-test-key\n",
+        "export COX_IMAGE_PROVIDER=zhipu\n"
+        "export COX_IMAGE_API_KEY=zhipu-test-key\n",
         encoding="utf-8",
     )
 
@@ -1748,14 +1748,14 @@ def test_cli_doctor_providers_lists_configured_without_live(tmp_path, capsys):
 
 
 def test_cli_doctor_providers_scopes_generic_image_key_to_selected_provider(tmp_path, capsys, monkeypatch):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     _clear_provider_probe_test_env(monkeypatch)
 
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image\n"
-        "export DEEPSEEK_PROXY_IMAGE_API_KEY=generic-qwen-test-key\n",
+        "export COX_IMAGE_PROVIDER=qwen_image\n"
+        "export COX_IMAGE_API_KEY=generic-qwen-test-key\n",
         encoding="utf-8",
     )
 
@@ -1767,13 +1767,13 @@ def test_cli_doctor_providers_scopes_generic_image_key_to_selected_provider(tmp_
     assert providers[("image_generation", "zhipu")]["configured"] is False
     assert providers[("image_generation", "zai")]["configured"] is False
     assert providers[("image_generation", "qwen_image")]["configured"] is True
-    assert providers[("image_generation", "qwen_image")]["api_key_env_key"] == "DEEPSEEK_PROXY_IMAGE_API_KEY"
+    assert providers[("image_generation", "qwen_image")]["api_key_env_key"] == "COX_IMAGE_API_KEY"
     assert providers[("image_generation", "stability")]["configured"] is False
     assert providers[("image_generation", "fal")]["configured"] is False
 
 
 def test_cli_doctor_providers_live_requires_allow_spend(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     env_file.write_text("export SERPAPI_API_KEY='serpapi-test-key'\n", encoding="utf-8")
@@ -1785,7 +1785,7 @@ def test_cli_doctor_providers_live_requires_allow_spend(tmp_path, capsys):
 
 
 def test_cli_doctor_providers_web_live_uses_validation(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     _clear_provider_probe_test_env(monkeypatch)
 
@@ -1834,12 +1834,12 @@ def test_cli_doctor_providers_image_live_zhipu_posts_generation(monkeypatch, tmp
     import io
     import urllib.request
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     _clear_provider_probe_test_env(monkeypatch)
 
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_PROXY_IMAGE_API_KEY='zhipu-test-key'\n", encoding="utf-8")
+    env_file.write_text("export COX_IMAGE_API_KEY='zhipu-test-key'\n", encoding="utf-8")
     seen = {}
 
     class FakeHeaders(dict):
@@ -1899,7 +1899,7 @@ def test_cli_doctor_providers_image_live_zhipu_posts_generation(monkeypatch, tmp
 
 
 def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
     status_base_url_calls = []
@@ -1941,7 +1941,7 @@ def test_lifecycle_commands_accept_positional_thinking(monkeypatch):
 
 
 def test_lifecycle_commands_keep_thinking_flag_compatibility(monkeypatch):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
     status_base_url_calls = []
@@ -1982,7 +1982,7 @@ def test_lifecycle_commands_keep_thinking_flag_compatibility(monkeypatch):
     assert status_http_calls[-1][1] == 1.0
 
 def test_cli_start_prints_latest_release_update_notice(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     process_started = {"value": False}
 
@@ -1992,8 +1992,8 @@ def test_cli_start_prints_latest_release_update_notice(monkeypatch, tmp_path, ca
         def poll(self):
             return None
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_RELEASE_CHECK", "always")
-    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("COX_RELEASE_CHECK", "always")
+    monkeypatch.setenv("COX_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
         cli,
         "_resolve_latest_release_tag",
@@ -2020,11 +2020,11 @@ def test_cli_start_prints_latest_release_update_notice(monkeypatch, tmp_path, ca
     err = capsys.readouterr().err
     assert "update available" in err
     assert "v0.3.3-alpha" in err
-    assert "dsproxy upgrade" in err
+    assert "cox upgrade" in err
 
 
 def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     process_started = {"value": False}
 
@@ -2034,8 +2034,8 @@ def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_pat
         def poll(self):
             return None
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_RELEASE_CHECK", "always")
-    monkeypatch.setenv("DEEPSEEK_PROXY_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("COX_RELEASE_CHECK", "always")
+    monkeypatch.setenv("COX_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
         cli,
         "_resolve_latest_release_tag",
@@ -2063,13 +2063,13 @@ def test_cli_start_does_not_warn_for_matching_alpha_release(monkeypatch, tmp_pat
 
 
 def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys, monkeypatch):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     for key in [
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        "DEEPSEEK_PROXY_MODEL",
-        "DEEPSEEK_PROXY_MODEL_PROVIDER",
+        "COX_MODEL_API_KEY",
+        "COX_MODEL_BASE_URL",
+        "COX_MODEL",
+        "COX_MODEL_PROVIDER",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -2082,10 +2082,10 @@ def test_cli_config_wizard_non_interactive_reports_missing(tmp_path, capsys, mon
     assert data["configuration_status"]["missing"]["model_api"] is True
     assert data["configuration_status"]["missing"]["web_search_api"] is True
     assert data["configuration_status"]["missing"]["image_generation_api"] is True
-    assert data["configuration_status"]["commands"]["guided"] == "dsproxy config wizard"
+    assert data["configuration_status"]["commands"]["guided"] == "cox config wizard"
 
 def test_cli_config_set_tavily_web_search_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2103,11 +2103,11 @@ def test_cli_config_set_tavily_web_search_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["web_search_provider"] == "tavily"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=tavily" in text
+    assert "COX_WEB_SEARCH_PROVIDER=tavily" in text
     assert "TAVILY_API_KEY=tvly-test-key" in text
-    assert "DEEPSEEK_PROXY_TOOL_BRIDGE=1" in text
+    assert "COX_TOOL_BRIDGE=1" in text
 def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2125,13 +2125,13 @@ def test_cli_config_set_qwen_image_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["image_provider"] == "qwen_image"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=qwen_image" in text
-    assert "DEEPSEEK_PROXY_IMAGE_MODEL=qwen-image-2.0-pro" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=dashscope-test-key" in text
+    assert "COX_IMAGE_PROVIDER=qwen_image" in text
+    assert "COX_IMAGE_MODEL=qwen-image-2.0-pro" in text
+    assert "COX_IMAGE_API_KEY=dashscope-test-key" in text
     assert "DASHSCOPE_API_KEY=dashscope-test-key" in text
 
 def test_cli_config_set_exa_web_search_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2149,12 +2149,12 @@ def test_cli_config_set_exa_web_search_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["web_search_provider"] == "exa"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=exa" in text
+    assert "COX_WEB_SEARCH_PROVIDER=exa" in text
     assert "EXA_API_KEY=exa-test-key" in text
 
 
 def test_cli_config_set_firecrawl_web_search_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2172,12 +2172,12 @@ def test_cli_config_set_firecrawl_web_search_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["web_search_provider"] == "firecrawl"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=firecrawl" in text
+    assert "COX_WEB_SEARCH_PROVIDER=firecrawl" in text
     assert "FIRECRAWL_API_KEY=firecrawl-test-key" in text
 
 
 def test_cli_config_set_stability_image_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2195,14 +2195,14 @@ def test_cli_config_set_stability_image_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["image_provider"] == "stability"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=stability" in text
-    assert "DEEPSEEK_PROXY_IMAGE_MODEL=stable-image-core" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=stability-test-key" in text
+    assert "COX_IMAGE_PROVIDER=stability" in text
+    assert "COX_IMAGE_MODEL=stable-image-core" in text
+    assert "COX_IMAGE_API_KEY=stability-test-key" in text
     assert "STABILITY_API_KEY=stability-test-key" in text
 
 
 def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2220,14 +2220,14 @@ def test_cli_config_set_fal_image_api_key(tmp_path, capsys):
     assert out["status"] == "ok"
     assert out["image_provider"] == "fal"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_PROXY_IMAGE_PROVIDER=fal" in text
-    assert "DEEPSEEK_PROXY_IMAGE_MODEL=fal-ai/flux/schnell" in text
-    assert "DEEPSEEK_PROXY_IMAGE_API_KEY=fal-test-key" in text
+    assert "COX_IMAGE_PROVIDER=fal" in text
+    assert "COX_IMAGE_MODEL=fal-ai/flux/schnell" in text
+    assert "COX_IMAGE_API_KEY=fal-test-key" in text
     assert "FAL_KEY=fal-test-key" in text
 
 
 def test_cli_config_set_api_key_validates_before_write(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     env_file = tmp_path / "env"
 
@@ -2250,7 +2250,7 @@ def test_cli_config_set_api_key_validates_before_write(monkeypatch, tmp_path, ca
 
 
 def test_cli_config_set_web_search_api_key_validates_before_write(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     env_file = tmp_path / "env"
 
@@ -2282,7 +2282,7 @@ def test_cli_config_set_web_search_api_key_validates_before_write(monkeypatch, t
 
 
 def test_cli_config_set_image_api_key_validation_failure_does_not_write(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     env_file = tmp_path / "env"
 
@@ -2315,27 +2315,27 @@ def test_cli_config_set_image_api_key_validation_failure_does_not_write(monkeypa
 
 
 def test_cli_config_show_masks_all_api_keys(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_API_KEY=sk-test\n"
+        "export COX_MODEL_API_KEY=sk-test\n"
         "export TAVILY_API_KEY=tvly-test\n"
         "export FAL_KEY=fal-test\n"
-        "export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=tavily\n",
+        "export COX_WEB_SEARCH_PROVIDER=tavily\n",
         encoding="utf-8",
     )
 
     assert main(["config", "show", "--env-file", str(env_file)]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["values"]["DEEPSEEK_API_KEY"] == "***"
+    assert result["values"]["COX_MODEL_API_KEY"] == "***"
     assert result["values"]["TAVILY_API_KEY"] == "***"
     assert result["values"]["FAL_KEY"] == "***"
-    assert result["values"]["DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER"] == "tavily"
+    assert result["values"]["COX_WEB_SEARCH_PROVIDER"] == "tavily"
 
 
 def test_cli_provider_auth_error_detects_provider_specific_fields():
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     assert cli._provider_auth_error_detected({
         "error": {
@@ -2361,7 +2361,7 @@ def test_cli_validation_matrix_all_supported_providers(monkeypatch):
     import json
     import urllib.error
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     calls = []
 
@@ -2433,7 +2433,7 @@ def test_cli_non_generation_probe_rejects_empty_400_422_body(monkeypatch):
     import io
     import urllib.error
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     def fake_urlopen(request, timeout=0):
         raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {}, io.BytesIO(b"{}"))
@@ -2451,7 +2451,7 @@ def test_cli_non_generation_probe_rejects_empty_400_422_body(monkeypatch):
 
 
 def test_cli_skipped_validation_reports_non_functional_semantics():
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     result = cli._skipped_validation("image_generation", "zhipu")
     assert result["status"] == "skipped"
@@ -2466,7 +2466,7 @@ def test_cli_config_set_image_api_key_output_reports_non_functional_probe(monkey
     import json
     import urllib.error
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     env_file = tmp_path / "env"
 
@@ -2496,7 +2496,7 @@ def test_cli_config_set_image_api_key_output_reports_non_functional_probe(monkey
 
 
 def test_cli_config_set_qwen_model_api_key(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2516,14 +2516,14 @@ def test_cli_config_set_qwen_model_api_key(tmp_path, capsys):
     assert result["base_url"] == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     assert result["model"] == "qwen-plus"
     text = env_file.read_text(encoding="utf-8")
-    assert "DEEPSEEK_API_KEY=qwen-test-key" in text
-    assert "DEEPSEEK_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
-    assert "DEEPSEEK_PROXY_MODEL_PROVIDER=qwen_singapore" in text
-    assert "DEEPSEEK_PROXY_MODEL=qwen-plus" in text
+    assert "COX_MODEL_API_KEY=qwen-test-key" in text
+    assert "COX_MODEL_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1" in text
+    assert "COX_MODEL_PROVIDER=qwen_singapore" in text
+    assert "COX_MODEL=qwen-plus" in text
 
 
 def test_cli_config_set_custom_model_api_requires_base_url(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main([
@@ -2546,7 +2546,7 @@ def test_cli_config_set_custom_model_api_requires_base_url(tmp_path, capsys):
 
 
 def test_cli_config_set_kimi_model_api_validation_failure_does_not_write(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     env_file = tmp_path / "env"
 
@@ -2581,13 +2581,13 @@ def test_cli_config_set_kimi_model_api_validation_failure_does_not_write(monkeyp
 
 
 def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     env_file = tmp_path / "env"
     assert main(["config", "wizard", "--env-file", str(env_file), "--non-interactive"]) == 0
     result = json.loads(capsys.readouterr().out)
     status = result["configuration_status"]
-    assert status["commands"]["model_api"] == "dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
+    assert status["commands"]["model_api"] == "cox config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
     assert status["supported"]["model_api"] == ["deepseek", "kimi", "zhipu", "zhipu-coding", "zai", "zai-coding", "qwen-beijing", "qwen-singapore", "qwen-us", "custom"]
     assert status["unsupported_catalog"]["model_api"] == ["mimo", "baichuan"]
 
@@ -2595,11 +2595,11 @@ def test_cli_config_status_lists_model_api_providers(tmp_path, capsys):
 def test_cli_qwen_image_probe_payload_respects_region_endpoint_env(monkeypatch):
     import json
 
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", endpoint)
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_MODEL", "qwen-image-region-test")
+    monkeypatch.setenv("COX_IMAGE_BASE_URL", endpoint)
+    monkeypatch.setenv("COX_IMAGE_MODEL", "qwen-image-region-test")
 
     url, payload_bytes, headers = cli._provider_probe_image_payload("qwen_image", "draw a region test image")
     payload = json.loads(payload_bytes.decode("utf-8"))
@@ -2611,7 +2611,7 @@ def test_cli_qwen_image_probe_payload_respects_region_endpoint_env(monkeypatch):
 
 
 def test_cli_qwen_image_validation_respects_region_endpoint_env(monkeypatch):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     endpoint = "https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
     calls = {}
@@ -2628,7 +2628,7 @@ def test_cli_qwen_image_validation_respects_region_endpoint_env(monkeypatch):
         }
 
     monkeypatch.setattr(cli, "_validation_http_json", fake_validation_http_json)
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_BASE_URL", endpoint)
+    monkeypatch.setenv("COX_IMAGE_BASE_URL", endpoint)
 
     result = cli._validate_image_api_key("qwen_image", "dashscope-region-key", timeout=2.0)
 
@@ -2639,7 +2639,7 @@ def test_cli_qwen_image_validation_respects_region_endpoint_env(monkeypatch):
     assert calls["payload"] == {}
 
 def test_cli_model_api_provider_catalog_uses_explicit_sites_and_plans():
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     providers = cli._supported_model_api_providers()
     assert "glm" not in providers
@@ -2670,7 +2670,7 @@ def test_cli_upgrade_help_exposes_alpha_channel() -> None:
     from pathlib import Path
 
     result = subprocess.run(
-        [sys.executable, "-m", "deepseek_responses_proxy.cli", "upgrade", "--help"],
+        [sys.executable, "-m", "codexchange_proxy.cli", "upgrade", "--help"],
         cwd=Path(__file__).resolve().parents[1],
         text=True,
         capture_output=True,
@@ -2685,7 +2685,7 @@ def test_cli_upgrade_help_exposes_alpha_channel() -> None:
 def test_resolve_latest_prerelease_tag_selects_first_non_draft_prerelease(monkeypatch) -> None:
     import io
     import json
-    from deepseek_responses_proxy import cli
+    from codexchange_proxy import cli
 
     payload = json.dumps([
         {"tag_name": "v0.3.9-alpha", "draft": True, "prerelease": True, "name": "draft"},
@@ -2716,7 +2716,7 @@ def test_cli_upgrade_alpha_dry_run_uses_latest_prerelease(monkeypatch, tmp_path,
     import io
     import json
     import subprocess
-    from deepseek_responses_proxy import cli
+    from codexchange_proxy import cli
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -2755,7 +2755,7 @@ def test_cli_upgrade_alpha_dry_run_uses_latest_prerelease(monkeypatch, tmp_path,
 
 def test_cli_upgrade_alpha_rejects_explicit_tag(capsys) -> None:
     import json
-    from deepseek_responses_proxy import cli
+    from codexchange_proxy import cli
 
     rc = cli.main(["upgrade", "--alpha", "--tag", "v0.3.9-alpha", "--dry-run"])
 
@@ -2773,7 +2773,7 @@ def test_cli_install_codex_profile_writes_plan_mode_reasoning_effort(tmp_path, c
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -2784,7 +2784,7 @@ def test_cli_install_codex_profile_writes_plan_mode_reasoning_effort(tmp_path, c
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    assert result["profile"] == "deepseek-thinking"
+    assert result["profile"] == "cox"
     profile_text = _codex_profile_text(config_path)
     assert 'model_reasoning_effort = "xhigh"' in profile_text
     assert 'plan_mode_reasoning_effort = "high"' in profile_text
@@ -2793,7 +2793,7 @@ def test_cli_install_codex_profile_writes_plan_mode_reasoning_effort(tmp_path, c
 def test_cli_config_set_effort_pins_codex_plan_mode_to_high(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
 
     assert main(["config", "set-effort", "medium", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
@@ -2803,7 +2803,7 @@ def test_cli_config_set_effort_pins_codex_plan_mode_to_high(tmp_path, capsys):
     assert result["effort"] == "high"
     assert result["codex_plan_mode_reasoning_effort"] == "high"
     assert result["codex_plan_mode_profile_patched"] is True
-    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in patched
     assert 'plan_mode_reasoning_effort = "high"' in patched
 
@@ -2815,7 +2815,7 @@ def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"high\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -2824,13 +2824,13 @@ def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp
     assert main(["config", "set-effort", "max", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "deepseek-thinking")
+    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "cox")
     assert result["requested_effort"] == "max"
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
-    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
+    assert set(result["updated_profiles"]) == {"cox"}
     assert result["codex_config_loadable"] is True
-    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "xhigh"' in text
     assert 'model_reasoning_effort = "max"' not in text
 
@@ -2838,15 +2838,15 @@ def test_cli_config_set_effort_max_keeps_deepseek_max_but_writes_codex_xhigh(tmp
 def test_cli_config_set_effort_xhigh_is_compat_input_for_max(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-flash\"\nmodel_reasoning_effort = \"high\"\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel = \"deepseek-v4-flash\"\nmodel_reasoning_effort = \"high\"\n", encoding="utf-8")
 
-    assert main(["config", "set-effort", "xhigh", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
+    assert main(["config", "set-effort", "xhigh", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "cox"]) == 0
 
     result = json.loads(capsys.readouterr().out)
     text = _codex_profile_text(config_path)
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
-    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "xhigh"' in text
     assert 'model_reasoning_effort = "max"' not in text
 
@@ -2855,26 +2855,26 @@ def test_cli_config_set_effort_high_repairs_previous_codex_max(tmp_path, capsys)
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"max\"\n",
         encoding="utf-8",
     )
 
-    assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "deepseek-thinking"]) == 0
+    assert main(["config", "set-effort", "high", "--env-file", str(env_file), "--codex-config", str(config_path), "--profile", "cox"]) == 0
 
     result = json.loads(capsys.readouterr().out)
     text = _codex_profile_text(config_path)
     assert result["deepseek_reasoning_effort"] == "high"
     assert result["codex_model_reasoning_effort"] == "high"
     assert result["codex_config_loadable"] is True
-    assert "DEEPSEEK_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=high" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "high"' in text
     assert 'model_reasoning_effort = "max"' not in text
 
 
 def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path, capsys, monkeypatch):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
@@ -2882,7 +2882,7 @@ def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path,
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"high\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -2891,8 +2891,8 @@ def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path,
     def fail_if_live_port_checked(port):
         raise AssertionError(f"live proxy port should not be checked when --no-refresh is used: {port}")
 
-    monkeypatch.delenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", raising=False)
-    monkeypatch.delenv("CODEEPSEEDEX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("COX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("COX_POST_CONFIG_APPLY", raising=False)
     monkeypatch.setattr(cli, "_port_status_looks_like_proxy", fail_if_live_port_checked)
 
     assert main([
@@ -2908,24 +2908,24 @@ def test_cli_config_set_effort_json_no_refresh_skips_post_config_apply(tmp_path,
     ]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "deepseek-thinking")
+    text = _codex_profile_text(config_path, "deepseek") + _codex_profile_text(config_path, "cox")
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
     assert result["post_config_apply"]["status"] == "skipped"
     assert result["post_config_apply"]["mode"] == "disabled"
     assert result["post_config_apply"]["message"] == "post-config apply disabled"
-    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "xhigh"' in text
     assert 'model_reasoning_effort = "max"' not in text
 
 
 def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, capsys, monkeypatch):
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -2934,14 +2934,14 @@ def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, cap
     def fail_if_live_port_checked(port):
         raise AssertionError(f"live proxy port should not be checked when --no-refresh is used: {port}")
 
-    monkeypatch.delenv("DEEPSEEK_PROXY_POST_CONFIG_APPLY", raising=False)
-    monkeypatch.delenv("CODEEPSEEDEX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("COX_POST_CONFIG_APPLY", raising=False)
+    monkeypatch.delenv("COX_POST_CONFIG_APPLY", raising=False)
     monkeypatch.setattr(cli, "_port_status_looks_like_proxy", fail_if_live_port_checked)
 
     assert main([
         "profile",
         "set-effort",
-        "deepseek-thinking",
+        "cox",
         "max",
         "--json",
         "--no-refresh",
@@ -2953,13 +2953,13 @@ def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, cap
 
     result = json.loads(capsys.readouterr().out)
     text = _codex_profile_text(config_path)
-    assert result["codex_profile"] == "deepseek-thinking"
-    assert result["target_profiles"] == ["deepseek-thinking"]
+    assert result["codex_profile"] == "cox"
+    assert result["target_profiles"] == ["cox"]
     assert result["deepseek_reasoning_effort"] == "max"
     assert result["codex_model_reasoning_effort"] == "xhigh"
     assert result["post_config_apply"]["status"] == "skipped"
     assert result["post_config_apply"]["mode"] == "disabled"
-    assert "DEEPSEEK_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
+    assert "COX_REASONING_EFFORT=max" in env_file.read_text(encoding="utf-8")
     assert 'model_reasoning_effort = "xhigh"' in text
     assert 'model_reasoning_effort = "max"' not in text
 
@@ -2967,28 +2967,28 @@ def test_cli_profile_set_effort_no_refresh_skips_post_config_apply(tmp_path, cap
 def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    env_file.write_text("export COX_REASONING_EFFORT=max\nexport COX_MODEL=deepseek-v4-flash\n", encoding="utf-8")
     config_path.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
+        "cox",
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
     )
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
-    assert result["profile"] == "deepseek-thinking"
+    assert result["profile"] == "cox"
     assert result["effort"]["user_facing"] == "max"
     assert result["effort"]["deepseek_reasoning_effort"] == "max"
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
@@ -3002,10 +3002,10 @@ def test_cli_profile_status_reports_weclaw_profile_contract(tmp_path, capsys):
 def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\n", encoding="utf-8")
-    config_path.write_text("[profiles.deepseek-thinking]\nmodel_reasoning_effort = \"max\"\n", encoding="utf-8")
+    env_file.write_text("export COX_REASONING_EFFORT=max\n", encoding="utf-8")
+    config_path.write_text("[profiles.cox]\nmodel_reasoning_effort = \"max\"\n", encoding="utf-8")
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 1
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 1
 
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "error"
@@ -3016,20 +3016,20 @@ def test_cli_profile_status_reports_invalid_codex_effort(tmp_path, capsys):
 
 
 def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    env_file.write_text("export COX_REASONING_EFFORT=max\nexport COX_MODEL=deepseek-v4-flash\n", encoding="utf-8")
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
+        "cox",
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("COX_ENV_FILE", str(env_file))
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
 
     def fake_http_json(url, timeout=2.0):
@@ -3041,36 +3041,36 @@ def test_cli_status_weclaw_json_returns_contract(monkeypatch, tmp_path, capsys):
 
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
-    assert result["profile"] == "deepseek-thinking"
+    assert result["profile"] == "cox"
     assert result["effort"]["deepseek_reasoning_effort"] == "max"
     assert result["effort"]["codex_model_reasoning_effort"] == "xhigh"
     assert result["tokens"]["last_turn"]["available"] is False
-    assert result["tokens"]["last_turn"]["missing"] == ["running_dsproxy_weclaw_status_endpoint"]
+    assert result["tokens"]["last_turn"]["missing"] == ["running_cox_weclaw_status_endpoint"]
     assert result["pricing"]["available"] is False
-    assert result["pricing"]["missing"] == ["running_dsproxy_weclaw_status_endpoint"]
+    assert result["pricing"]["missing"] == ["running_cox_weclaw_status_endpoint"]
     assert result["cost"]["available"] is False
     assert result["balance"]["available"] is False
     assert result["balance"]["status"] == "not_configured"
-    assert result["balance"]["reason"] == "running_dsproxy_weclaw_status_endpoint_unavailable"
-    assert result["balance"]["action"] == "start the selected dsproxy route and re-run dsproxy status --weclaw-json"
+    assert result["balance"]["reason"] == "running_cox_weclaw_status_endpoint_unavailable"
+    assert result["balance"]["action"] == "start the selected cox route and re-run cox status --weclaw-json"
 
     assert result["runtime_status"]["available"] is False
 
 def test_cli_status_weclaw_json_exposes_legacy_compact_audit_when_runtime_weclaw_unavailable(monkeypatch, tmp_path, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_REASONING_EFFORT=max\nexport DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n", encoding="utf-8")
+    env_file.write_text("export COX_REASONING_EFFORT=max\nexport COX_MODEL=deepseek-v4-flash\n", encoding="utf-8")
     config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("COX_ENV_FILE", str(env_file))
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
 
     def fake_http_json(url, timeout=2.0):
@@ -3124,21 +3124,21 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
+        "cox",
         "model = \"glm-5.1\"\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n",
     )
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
 
     result = json.loads(capsys.readouterr().out)
     assert result["profile_source"] == "split_profile_file"
@@ -3149,7 +3149,7 @@ def test_cli_profile_status_reports_effective_model_conflict(tmp_path, capsys):
     assert model["force_model_enabled"] is True
     assert model["model_conflict"] is True
     assert model["display_hint"] is None
-    assert model["diagnostic_hint"] == "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+    assert model["diagnostic_hint"] == "Codex profile model differs from forced upstream model; cox effective_model is authoritative."
     assert model["user_visible"] is False
     assert "codex_profile_model_differs_from_effective_upstream_model" in result["health"]["warnings"]
 
@@ -3157,26 +3157,26 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     config_path.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "name = \"Wrong Provider\"\n"
         "base_url = \"http://127.0.0.1:9999/v1\"\n"
         "wire_api = \"responses\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"glm-5.1\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 750000\n"
         "tool_output_token_limit = 12000\n"
         "model_reasoning_effort = \"medium\"\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
 
     assert main([
         "profile",
@@ -3193,7 +3193,7 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
     assert result["status"] == "ok"
     assert result["profile_contract_version"] == 2
     assert result["post_validation_errors"] == []
-    repaired = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
+    repaired = next(item for item in result["profile_results"] if item["profile"] == "cox")
     assert repaired["codex_model_before"] == "glm-5.1"
     assert repaired["codex_model_after"] == "deepseek-v4-flash"
     assert repaired["model_needs_patch"] is True
@@ -3203,19 +3203,19 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
 
     text = config_path.read_text(encoding="utf-8")
     profile_text = _codex_profile_text(config_path)
-    assert '[model_providers.deepseek-thinking-proxy]' in text
+    assert '[model_providers.cox-proxy]' in text
     assert 'name = "DeepSeek Thinking Responses Proxy"' in text
     assert 'base_url = "http://127.0.0.1:8001/v1"' in text
-    assert 'env_key = "DEEPSEEK_API_KEY"' in text
+    assert 'env_key = "COX_MODEL_API_KEY"' in text
     assert 'wire_api = "responses"' in text
-    assert '[profiles.deepseek-thinking]' not in text
+    assert '[profiles.cox]' not in text
     assert 'model = "deepseek-v4-flash"' in profile_text
     assert 'model = "glm-5.1"' not in profile_text
     assert 'model_auto_compact_token_limit = 900000' in profile_text
     assert 'model_reasoning_effort = "xhigh"' in profile_text
     assert 'plan_mode_reasoning_effort = "high"' in profile_text
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["model"]["codex_model"] == "deepseek-v4-flash"
     assert status["model"]["effective_model"] == "deepseek-v4-flash"
@@ -3229,13 +3229,13 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
-    dsproxy = bin_dir / "dsproxy"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for p in (real_codex, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for p in (real_codex, cox, wrapper):
         p.chmod(0o755)
 
     manifest.write_text(
@@ -3254,24 +3254,24 @@ def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_pat
     text = wrapper.read_text(encoding="utf-8")
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
-    assert "CODEEPSEEDEX_TITLE_KEEPER_PID" in text
-    assert "stop_codeepseedex_terminal_title_keeper()" in text
-    assert 'kill "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert 'wait "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert "run_codeepseedex_codex()" in text
+    assert "COX_TITLE_KEEPER_PID" in text
+    assert "stop_codexchange_terminal_title_keeper()" in text
+    assert 'kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert 'wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert "run_codexchange_codex()" in text
     assert "set +e" in text
     assert "local codex_rc=$?" in text
     assert "return \"$codex_rc\"" in text
-    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in text
-    assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
-    assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
+    assert "trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP" in text
+    assert "COX_TITLE_KEEPER_SECONDS:-60" in text
+    assert "COX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
     assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
     assert 'exec "$REAL_CODEX" "$@"' not in text
     case_idx = text.index('case "$profile" in')
-    start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
-    schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
+    start_call_idx = text.index('start_cox_profile "$profile"', case_idx)
+    schedule_call_idx = text.index("schedule_codexchange_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
+    cleanup_idx = text.index("stop_codexchange_terminal_title_keeper", real_codex_idx)
     return_idx = text.index('return "$codex_rc"', cleanup_idx)
     assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
 
@@ -3281,13 +3281,13 @@ def test_cli_profile_refresh_wrapper_repairs_and_fail_closes_managed_profiles_be
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
-    dsproxy = bin_dir / "dsproxy"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for item in (real_codex, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (real_codex, cox, wrapper):
         item.chmod(0o755)
 
     manifest.write_text(
@@ -3304,14 +3304,14 @@ def test_cli_profile_refresh_wrapper_repairs_and_fail_closes_managed_profiles_be
 
     _result = json.loads(capsys.readouterr().out)
     text = wrapper.read_text(encoding="utf-8")
-    assert "repair_codeepseedex_managed_profile_contract()" in text
+    assert "repair_codexchange_managed_profile_contract()" in text
     assert 'profile repair --managed-only --json' in text
     assert 'profile status "$profile_name" --json' in text
     assert '"model_conflict"[[:space:]]*:[[:space:]]*true' in text
-    assert 'CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT' in text
+    assert 'COX_ALLOW_PROFILE_MODEL_CONFLICT' in text
     assert 'Refusing to launch Codex with a stale or incompatible profile' in text
-    repair_idx = text.index('repair_codeepseedex_managed_profile_contract "$profile"')
-    start_idx = text.index('start_dsproxy_profile "$profile"')
+    repair_idx = text.index('repair_codexchange_managed_profile_contract "$profile"')
+    start_idx = text.index('start_cox_profile "$profile"')
     real_idx = text.index('"$REAL_CODEX" "$@"')
     assert repair_idx < start_idx < real_idx
 
@@ -3348,23 +3348,23 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"glm-5.1\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("COX_ENV_FILE", str(env_file))
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(config_path))
 
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     monkeypatch.setattr(
         cli_module,
@@ -3375,7 +3375,7 @@ def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkey
     assert main(["status", "thinking", "--weclaw-json", "--timeout", "0.05"]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    assert result["profile"] == "deepseek-thinking"
+    assert result["profile"] == "cox"
     assert result["model"]["effective_model"] == "deepseek-v4-flash"
     assert result["model"]["model_conflict"] is True
     assert result["context_window"]["codex_profile"]["auto_compact_token_limit"] == 900000
@@ -3391,20 +3391,20 @@ def test_cli_profile_repair_managed_models_syncs_effective_models(tmp_path, caps
     env_file = tmp_path / "env"
     codex_config = tmp_path / "config.toml"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     codex_config.write_text(
         "[profiles.deepseek]\n"
         "model = \"old-stable-model\"\n"
-        "model_provider = \"deepseek-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_reasoning_effort = \"high\"\n"
         "plan_mode_reasoning_effort = \"medium\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"glm-5.1\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_reasoning_effort = \"xhigh\"\n"
         "plan_mode_reasoning_effort = \"high\"\n",
         encoding="utf-8",
@@ -3413,12 +3413,12 @@ def test_cli_profile_repair_managed_models_syncs_effective_models(tmp_path, caps
     assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    text = _codex_profile_text(codex_config, "deepseek") + _codex_profile_text(codex_config, "deepseek-thinking")
+    text = _codex_profile_text(codex_config, "deepseek") + _codex_profile_text(codex_config, "cox")
     assert result["status"] == "ok"
-    assert result["target_profiles"] == ["deepseek-thinking"]
-    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
-    assert 'model = "deepseek-v4-flash"' in _codex_profile_text(codex_config, "deepseek-thinking")
-    assert 'model = "glm-5.1"' not in _codex_profile_text(codex_config, "deepseek-thinking")
+    assert result["target_profiles"] == ["cox"]
+    assert set(result["updated_profiles"]) == {"cox"}
+    assert 'model = "deepseek-v4-flash"' in _codex_profile_text(codex_config, "cox")
+    assert 'model = "glm-5.1"' not in _codex_profile_text(codex_config, "cox")
     assert _codex_profile_text(codex_config, "deepseek") == ""
     assert 'model = "old-stable-model"' not in text
     assert 'plan_mode_reasoning_effort = "high"' in text
@@ -3428,23 +3428,23 @@ def test_cli_profile_repair_clears_model_conflict(tmp_path, capsys):
     env_file = tmp_path / "env"
     codex_config = tmp_path / "config.toml"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     codex_config.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"glm-5.1\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
 
-    assert main(["profile", "repair", "--profile", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+    assert main(["profile", "repair", "--profile", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
     capsys.readouterr()
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(codex_config)]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["model"]["codex_model"] == "deepseek-v4-flash"
     assert status["model"]["effective_model"] == "deepseek-v4-flash"
@@ -3458,13 +3458,13 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
-    dsproxy = bin_dir / "dsproxy"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for p in (real_codex, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for p in (real_codex, cox, wrapper):
         p.chmod(0o755)
 
     manifest.write_text(
@@ -3483,24 +3483,24 @@ def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_pat
     text = wrapper.read_text(encoding="utf-8")
     assert result["status"] == "ok"
     assert result["emoji_firebird_count"] == 1
-    assert "CODEEPSEEDEX_TITLE_KEEPER_PID" in text
-    assert "stop_codeepseedex_terminal_title_keeper()" in text
-    assert 'kill "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert 'wait "$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert "run_codeepseedex_codex()" in text
+    assert "COX_TITLE_KEEPER_PID" in text
+    assert "stop_codexchange_terminal_title_keeper()" in text
+    assert 'kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert 'wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
+    assert "run_codexchange_codex()" in text
     assert "set +e" in text
     assert "local codex_rc=$?" in text
     assert "return \"$codex_rc\"" in text
-    assert "trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP" in text
-    assert "CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60" in text
-    assert "CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
+    assert "trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP" in text
+    assert "COX_TITLE_KEEPER_SECONDS:-60" in text
+    assert "COX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
     assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
     assert 'exec "$REAL_CODEX" "$@"' not in text
     case_idx = text.index('case "$profile" in')
-    start_call_idx = text.index('start_dsproxy_profile "$profile"', case_idx)
-    schedule_call_idx = text.index("schedule_codeepseedex_terminal_title_refresh", start_call_idx)
+    start_call_idx = text.index('start_cox_profile "$profile"', case_idx)
+    schedule_call_idx = text.index("schedule_codexchange_terminal_title_refresh", start_call_idx)
     real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    cleanup_idx = text.index("stop_codeepseedex_terminal_title_keeper", real_codex_idx)
+    cleanup_idx = text.index("stop_codexchange_terminal_title_keeper", real_codex_idx)
     return_idx = text.index('return "$codex_rc"', cleanup_idx)
     assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
 
@@ -3512,18 +3512,18 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
         encoding="utf-8",
     )
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\nexport DEEPSEEK_REASONING_EFFORT=max\n", encoding="utf-8")
+    env_file.write_text("export COX_MODEL=deepseek-v4-flash\nexport COX_REASONING_EFFORT=max\n", encoding="utf-8")
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         codex_config,
-        "deepseek-thinking",
+        "cox",
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -3533,7 +3533,7 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
     assert main([
         "profile",
         "status",
-        "deepseek-thinking",
+        "cox",
         "--json",
         "--env-file",
         str(env_file),
@@ -3551,7 +3551,7 @@ def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_pat
     assert "context_window.used_tokens" in paths
 
 def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, capsys):
-    import deepseek_responses_proxy.cli as cli_module
+    import codexchange_proxy.cli as cli_module
 
     pricing_path = tmp_path / "pricing.json"
     cache_path = tmp_path / "pricing-cache.json"
@@ -3567,7 +3567,7 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     assert main(["pricing", "show", "--json", "--model", "deepseek-v4-flash"]) == 0
     show = json.loads(capsys.readouterr().out)
@@ -3621,22 +3621,22 @@ def test_cli_profile_repair_ignores_env_ratio_without_shrinking_window(tmp_path,
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n"
-        "export DEEPSEEK_PROXY_AUTO_COMPACT_RATIO=0.02\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n"
+        "export COX_AUTO_COMPACT_RATIO=0.02\n",
         encoding="utf-8",
     )
     config_path.write_text(
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
 
     assert main([
         "profile",
@@ -3651,7 +3651,7 @@ def test_cli_profile_repair_ignores_env_ratio_without_shrinking_window(tmp_path,
 
     repaired = json.loads(capsys.readouterr().out)
     assert repaired["managed_auto_compact_ratio"] == 0.9
-    profile = next(item for item in repaired["profile_results"] if item["profile"] == "deepseek-thinking")
+    profile = next(item for item in repaired["profile_results"] if item["profile"] == "cox")
     assert profile["model_context_window_tokens"] == 1_000_000
     assert profile["expected_model_auto_compact_token_limit"] == 900_000
 
@@ -3661,7 +3661,7 @@ def test_cli_profile_repair_ignores_env_ratio_without_shrinking_window(tmp_path,
     assert "model_auto_compact_token_limit = 900000" in text
     assert "model_auto_compact_token_limit = 10800" not in text
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["context_window"]["model_context_window_tokens"] == 1_000_000
     assert status["context_window"]["auto_compact_ratio"] == 0.9
@@ -3671,20 +3671,20 @@ def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_thresh
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_PROXY_AUTO_COMPACT_RATIO=0.02\n",
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_AUTO_COMPACT_RATIO=0.02\n",
         encoding="utf-8",
     )
     config_path.write_text(
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
 
     assert main([
         "profile",
@@ -3709,22 +3709,22 @@ def test_cli_profile_repair_explicit_ratio_overrides_env_without_absolute_thresh
 
 
 def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     for key in [
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        "DEEPSEEK_PROXY_MODEL",
-        "DEEPSEEK_PROXY_MODEL_PROVIDER",
+        "COX_MODEL_API_KEY",
+        "COX_MODEL_BASE_URL",
+        "COX_MODEL",
+        "COX_MODEL_PROVIDER",
     ]:
         monkeypatch.delenv(key, raising=False)
 
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_API_KEY=sk-fake-custom\n"
-        "export DEEPSEEK_PROXY_MODEL_PROVIDER=custom\n"
-        "export DEEPSEEK_BASE_URL=https://api.llm.exampleprovider.edu.cn/v1\n"
-        "export DEEPSEEK_PROXY_MODEL=example-chat-model\n",
+        "export COX_MODEL_API_KEY=sk-fake-custom\n"
+        "export COX_MODEL_PROVIDER=custom\n"
+        "export COX_MODEL_BASE_URL=https://api.llm.exampleprovider.edu.cn/v1\n"
+        "export COX_MODEL=example-chat-model\n",
         encoding="utf-8",
     )
     seen = {"validate": [], "deepseek": []}
@@ -3753,12 +3753,12 @@ def test_cli_config_test_api_key_defaults_to_env_custom_provider(tmp_path, monke
 
 def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch, capsys):
     import json
-    from deepseek_responses_proxy.cli import main, _read_env_exports
+    from codexchange_proxy.cli import main, _read_env_exports
 
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
     env_file = tmp_path / "env"
     registry = tmp_path / "model-providers.json"
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+    monkeypatch.setenv("COX_MODEL_PROVIDER_REGISTRY", str(registry))
 
     assert main([
         "config",
@@ -3787,11 +3787,11 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
     assert data["providers"]["exampleprovider"]["models"] == ["example-chat-model"]
 
     values = _read_env_exports(env_file)
-    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
-    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "ExampleProvider"
-    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.exampleprovider.edu.cn/v1"
-    assert values["DEEPSEEK_PROXY_MODEL"] == "example-chat-model"
-    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY"] == str(registry)
+    assert values["COX_MODEL_PROVIDER"] == "custom"
+    assert values["COX_CUSTOM_PROVIDER_NAME"] == "ExampleProvider"
+    assert values["COX_MODEL_BASE_URL"] == "https://api.llm.exampleprovider.edu.cn/v1"
+    assert values["COX_MODEL"] == "example-chat-model"
+    assert values["COX_MODEL_PROVIDER_REGISTRY"] == str(registry)
 
     assert main([
         "config",
@@ -3823,7 +3823,7 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
     ]) == 0
     capsys.readouterr()
     values = _read_env_exports(env_file)
-    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-pro"
+    assert values["COX_MODEL"] == "deepseek-v4-pro"
 
     assert main(["config", "show", "--env-file", str(env_file)]) == 0
     show_output = capsys.readouterr().out
@@ -3834,13 +3834,13 @@ def test_p219a1_custom_provider_registry_add_use_and_show(tmp_path, monkeypatch,
 
 def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(tmp_path, monkeypatch, capsys):
     import json
-    from deepseek_responses_proxy.cli import main, _read_env_exports
+    from codexchange_proxy.cli import main, _read_env_exports
 
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
     env_file = tmp_path / "env"
     codex_config = tmp_path / "codex.toml"
     registry = tmp_path / "model-providers.json"
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+    monkeypatch.setenv("COX_MODEL_PROVIDER_REGISTRY", str(registry))
 
     assert main([
         "provider", "add",
@@ -3861,14 +3861,14 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
     assert result["activated"]["managed_codex_profile_sync"]["target_profiles"] == []
     assert "sk-test-ustc" not in json.dumps(result)
     assert not (tmp_path / "deepseek.config.toml").exists()
-    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
+    assert not (tmp_path / "cox.config.toml").exists()
 
     values = _read_env_exports(env_file)
-    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "custom"
-    assert values["DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME"] == "USTC"
-    assert values["DEEPSEEK_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
-    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash-ascend"
-    assert values["DEEPSEEK_REASONING_EFFORT"] == "high"
+    assert values["COX_MODEL_PROVIDER"] == "custom"
+    assert values["COX_CUSTOM_PROVIDER_NAME"] == "USTC"
+    assert values["COX_MODEL_BASE_URL"] == "https://api.llm.ustc.edu.cn/v1"
+    assert values["COX_MODEL"] == "deepseek-v4-flash-ascend"
+    assert values["COX_REASONING_EFFORT"] == "high"
 
     main_config_text = codex_config.read_text(encoding="utf-8")
     profile_text = (tmp_path / "ustc.config.toml").read_text(encoding="utf-8")
@@ -3915,13 +3915,13 @@ def test_p220a1_custom_provider_crud_generates_codex_profile_and_provider_alias(
 
 def test_p220a2_custom_provider_use_does_not_sync_deprecated_managed_profiles(tmp_path, monkeypatch, capsys):
     import json
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
     env_file = tmp_path / "env"
     codex_config = tmp_path / "codex.toml"
     registry = tmp_path / "model-providers.json"
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY", str(registry))
+    monkeypatch.setenv("COX_MODEL_PROVIDER_REGISTRY", str(registry))
 
     assert main([
         "provider", "add",
@@ -3939,36 +3939,36 @@ def test_p220a2_custom_provider_use_does_not_sync_deprecated_managed_profiles(tm
     assert result["activated"]["managed_codex_profile_sync"]["target_profiles"] == []
     assert result["activated"]["provider_codex_profile_sync"]["profile"] == "ustc"
     assert not (tmp_path / "deepseek.config.toml").exists()
-    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
-    assert "[model_providers.deepseek-proxy]" not in codex_config.read_text(encoding="utf-8")
-    assert "[model_providers.deepseek-thinking-proxy]" not in codex_config.read_text(encoding="utf-8")
+    assert not (tmp_path / "cox.config.toml").exists()
+    assert "[model_providers.cox-proxy]" not in codex_config.read_text(encoding="utf-8")
+    assert "[model_providers.cox-proxy]" not in codex_config.read_text(encoding="utf-8")
     assert "[model_providers.ustc-proxy]" in codex_config.read_text(encoding="utf-8")
 
 
 def test_p220a2_managed_targets_are_primary_thinking_only():
-    import deepseek_responses_proxy.cli as cli
+    import codexchange_proxy.cli as cli
 
-    assert cli.CODEEPSEEDEX_MANAGED_CODEX_PROFILES == ("deepseek-thinking",)
-    assert cli.CODEEPSEEDEX_LEGACY_CODEX_PROFILES == ("deepseek",)
-    assert cli._managed_profile_targets("__managed__") == ["deepseek-thinking"]
-    assert cli._managed_profile_targets("all") == ["deepseek-thinking"]
+    assert cli.COX_MANAGED_CODEX_PROFILES == ("cox",)
+    assert cli.COX_LEGACY_CODEX_PROFILES == ("deepseek",)
+    assert cli._managed_profile_targets("__managed__") == ["cox"]
+    assert cli._managed_profile_targets("all") == ["cox"]
 
 
 
 def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     config_path = tmp_path / "config.toml"
-    monkeypatch.setenv("CODEEPSEEDEX_CODEX_CLI_VERSION", "codex-cli 0.130.0")
+    monkeypatch.setenv("COX_CODEX_CLI_VERSION", "codex-cli 0.130.0")
 
     assert main([
         "install-codex-profile",
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--provider-name",
-        "deepseek-thinking-proxy",
+        "cox-proxy",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -3982,27 +3982,27 @@ def test_p219a5_install_codex_profile_legacy_layout_for_old_codex(tmp_path, monk
     assert "0.130.0" in result["codex_cli_version"]
 
     text = config_path.read_text(encoding="utf-8")
-    assert "[model_providers.deepseek-thinking-proxy]" in text
-    assert "[profiles.deepseek-thinking]" in text
+    assert "[model_providers.cox-proxy]" in text
+    assert "[profiles.cox]" in text
     assert 'model = "example-chat-model"' in text
-    assert 'model_provider = "deepseek-thinking-proxy"' in text
-    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
+    assert 'model_provider = "cox-proxy"' in text
+    assert not (tmp_path / "cox.config.toml").exists()
 
 
 def test_p219a5_install_codex_profile_split_layout_for_new_codex(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     config_path = tmp_path / "config.toml"
-    monkeypatch.setenv("CODEEPSEEDEX_CODEX_CLI_VERSION", "codex-cli 0.134.0")
+    monkeypatch.setenv("COX_CODEX_CLI_VERSION", "codex-cli 0.134.0")
 
     assert main([
         "install-codex-profile",
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--provider-name",
-        "deepseek-thinking-proxy",
+        "cox-proxy",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -4013,24 +4013,24 @@ def test_p219a5_install_codex_profile_split_layout_for_new_codex(tmp_path, monke
     result = json.loads(capsys.readouterr().out)
     assert result["codex_profile_layout"] == "split_profile_files"
     assert result["layout_reason"] == "codex_cli_gte_0_134_or_unknown"
-    assert "[profiles.deepseek-thinking]" not in config_path.read_text(encoding="utf-8")
-    profile_text = (tmp_path / "deepseek-thinking.config.toml").read_text(encoding="utf-8")
+    assert "[profiles.cox]" not in config_path.read_text(encoding="utf-8")
+    profile_text = (tmp_path / "cox.config.toml").read_text(encoding="utf-8")
     assert 'model = "example-chat-model"' in profile_text
-    assert 'model_provider = "deepseek-thinking-proxy"' in profile_text
+    assert 'model_provider = "cox-proxy"' in profile_text
 
 
 def test_p219a5_install_codex_profile_explicit_layout_overrides_version(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     config_path = tmp_path / "config.toml"
-    monkeypatch.setenv("CODEEPSEEDEX_CODEX_CLI_VERSION", "codex-cli 0.130.0")
+    monkeypatch.setenv("COX_CODEX_CLI_VERSION", "codex-cli 0.130.0")
 
     assert main([
         "install-codex-profile",
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--profile-layout",
         "split_profile_files",
         "--no-backup",
@@ -4039,17 +4039,17 @@ def test_p219a5_install_codex_profile_explicit_layout_overrides_version(tmp_path
     result = json.loads(capsys.readouterr().out)
     assert result["codex_profile_layout"] == "split_profile_files"
     assert result["layout_reason"] == "explicit_split_profile_files"
-    assert "[profiles.deepseek-thinking]" not in config_path.read_text(encoding="utf-8")
+    assert "[profiles.cox]" not in config_path.read_text(encoding="utf-8")
 
 
 def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     config_path = tmp_path / "config.toml"
     empty_bin = tmp_path / "empty-bin"
     empty_bin.mkdir()
-    monkeypatch.delenv("CODEEPSEEDEX_CODEX_CLI_VERSION", raising=False)
-    monkeypatch.delenv("CODEEPSEEDEX_CODEX_PROFILE_LAYOUT", raising=False)
+    monkeypatch.delenv("COX_CODEX_CLI_VERSION", raising=False)
+    monkeypatch.delenv("COX_CODEX_PROFILE_LAYOUT", raising=False)
     monkeypatch.setenv("PATH", str(empty_bin))
 
     assert main([
@@ -4057,9 +4057,9 @@ def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, mo
         "--path",
         str(config_path),
         "--name",
-        "deepseek-thinking",
+        "cox",
         "--provider-name",
-        "deepseek-thinking-proxy",
+        "cox-proxy",
         "--base-url",
         "http://127.0.0.1:8001/v1",
         "--model",
@@ -4072,26 +4072,26 @@ def test_p219a6_install_codex_profile_unknown_codex_defaults_legacy(tmp_path, mo
     assert result["layout_reason"] == "codex_cli_unknown_default_legacy"
 
     text = config_path.read_text(encoding="utf-8")
-    assert "[model_providers.deepseek-thinking-proxy]" in text
-    assert "[profiles.deepseek-thinking]" in text
-    assert not (tmp_path / "deepseek-thinking.config.toml").exists()
+    assert "[model_providers.cox-proxy]" in text
+    assert "[profiles.cox]" in text
+    assert not (tmp_path / "cox.config.toml").exists()
 
 
 def test_p219a7_profile_status_reports_legacy_layout_for_legacy_profile_table(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_REASONING_EFFORT=max\n"
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        "export COX_REASONING_EFFORT=max\n"
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n",
         encoding="utf-8",
     )
     config_path.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -4099,7 +4099,7 @@ def test_p219a7_profile_status_reports_legacy_layout_for_legacy_profile_table(tm
         encoding="utf-8",
     )
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
 
     assert result["status"] == "ok"
@@ -4113,13 +4113,13 @@ def test_p219a7_profile_status_reports_legacy_layout_for_legacy_profile_table(tm
 def test_p219a7_runtime_status_reports_legacy_layout(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
     config_path = tmp_path / "codex.toml"
     config_path.write_text(
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n",
         encoding="utf-8",
@@ -4138,16 +4138,16 @@ def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrap
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     stale_wrapper = bin_dir / "stale-codex-wrapper"
-    dsproxy = bin_dir / "dsproxy"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     stale_wrapper.write_text(
-        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        "#!/usr/bin/env bash\n# CodeXchange codex wrapper\nprintf stale\n",
         encoding="utf-8",
     )
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for item in (stale_wrapper, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, cox, wrapper):
         item.chmod(0o755)
 
     manifest.write_text(
@@ -4161,27 +4161,27 @@ def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrap
     )
 
     monkeypatch.setenv("PATH", str(bin_dir))
-    monkeypatch.delenv("CODEEPSEEDEX_REAL_CODEX", raising=False)
+    monkeypatch.delenv("COX_REAL_CODEX", raising=False)
 
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "error"
-    assert payload["error"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert payload["error"] == "real_codex_points_to_codexchange_wrapper"
     assert "safe real Codex binary" in payload["hint"]
-    assert payload["real_codex_resolution"]["attempts"][0]["reason"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert payload["real_codex_resolution"]["attempts"][0]["reason"] == "real_codex_points_to_codexchange_wrapper"
 
 def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
-    dsproxy = bin_dir / "dsproxy"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for item in (real_codex, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (real_codex, cox, wrapper):
         item.chmod(0o755)
 
     manifest.write_text(
@@ -4201,24 +4201,24 @@ def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path,
     assert result["status"] == "ok"
     assert result["real_codex"] == str(real_codex.resolve(strict=False))
     assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve(strict=False)))}" in text
-    assert "CoDeepSeedeX codex wrapper" in text
+    assert "CodeXchange codex wrapper" in text
 
 
 def test_p219a9_profile_status_context_window_source_follows_legacy_profile_table(tmp_path, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_REASONING_EFFORT=max\n"
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        "export COX_REASONING_EFFORT=max\n"
+        "export COX_MODEL=deepseek-v4-flash\n"
+        "export COX_FORCE_MODEL=1\n",
         encoding="utf-8",
     )
     config_path.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -4226,7 +4226,7 @@ def test_p219a9_profile_status_context_window_source_follows_legacy_profile_tabl
         encoding="utf-8",
     )
 
-    assert main(["profile", "status", "deepseek-thinking", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
+    assert main(["profile", "status", "cox", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     codex_profile = result["context_window"]["codex_profile"]
 
@@ -4256,7 +4256,7 @@ def test_p219a15_set_api_key_help_marks_deprecated(capsys):
     assert "prefer set-model" in captured.out
 
 def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_to_wrapper(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     wrapper_bin = tmp_path / "wrapper-bin"
     real_bin = tmp_path / "real-bin"
@@ -4264,19 +4264,19 @@ def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_t
     real_bin.mkdir()
 
     wrapper = wrapper_bin / "codex"
-    stale_wrapper = tmp_path / "stale-codeepseedex-wrapper"
+    stale_wrapper = tmp_path / "stale-codexchange-wrapper"
     real_codex = real_bin / "codex"
-    dsproxy = wrapper_bin / "dsproxy"
+    cox = wrapper_bin / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     stale_wrapper.write_text(
-        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        "#!/usr/bin/env bash\n# CodeXchange codex wrapper\nprintf stale\n",
         encoding="utf-8",
     )
     real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.134.0\n'\n", encoding="utf-8")
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for item in (stale_wrapper, real_codex, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, real_codex, cox, wrapper):
         item.chmod(0o755)
 
     manifest.write_text(
@@ -4299,26 +4299,26 @@ def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_t
     wrapper_text = wrapper.read_text(encoding="utf-8")
     assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve()))}" in wrapper_text
     assert str(stale_wrapper) not in wrapper_text
-    assert "REAL_CODEX=/tmp/codeepseedex-" not in wrapper_text
+    assert "REAL_CODEX=/tmp/codexchange-" not in wrapper_text
 
 
 def test_p219a17_refresh_wrapper_still_fails_closed_when_no_safe_real_codex(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy.cli import main
+    from codexchange_proxy.cli import main
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
-    stale_wrapper = tmp_path / "stale-codeepseedex-wrapper"
-    dsproxy = bin_dir / "dsproxy"
+    stale_wrapper = tmp_path / "stale-codexchange-wrapper"
+    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
 
     stale_wrapper.write_text(
-        "#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\nprintf stale\n",
+        "#!/usr/bin/env bash\n# CodeXchange codex wrapper\nprintf stale\n",
         encoding="utf-8",
     )
-    dsproxy.write_text("#!/usr/bin/env bash\nprintf dsproxy\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CoDeepSeedeX codex wrapper\n", encoding="utf-8")
-    for item in (stale_wrapper, dsproxy, wrapper):
+    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (stale_wrapper, cox, wrapper):
         item.chmod(0o755)
 
     manifest.write_text(
@@ -4335,7 +4335,7 @@ def test_p219a17_refresh_wrapper_still_fails_closed_when_no_safe_real_codex(tmp_
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "error"
-    assert result["error"] == "real_codex_points_to_codeepseedex_wrapper"
+    assert result["error"] == "real_codex_points_to_codexchange_wrapper"
     assert "safe real Codex binary" in result["hint"]
 
 def test_p219a19_config_set_custom_model_syncs_all_managed_split_profiles(tmp_path, monkeypatch, capsys):
@@ -4344,14 +4344,14 @@ def test_p219a19_config_set_custom_model_syncs_all_managed_split_profiles(tmp_pa
     _write_split_codex_profile(
         config_path,
         "deepseek",
-        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\n",
+        "model = \"old-stable\"\nmodel_provider = \"cox-proxy\"\n",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
-        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\n",
+        "cox",
+        "model = \"glm-5.1\"\nmodel_provider = \"cox-proxy\"\n",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
 
     assert main([
         "config",
@@ -4373,45 +4373,45 @@ def test_p219a19_config_set_custom_model_syncs_all_managed_split_profiles(tmp_pa
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
     assert result["model_provider"] == "custom"
-    assert result["target_profiles"] == ["deepseek-thinking"]
-    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
+    assert result["target_profiles"] == ["cox"]
+    assert set(result["updated_profiles"]) == {"cox"}
     assert result["codex_profile_patched"] is True
     assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
-    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "cox")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "cox")
 
 
 def test_p219a19_profile_repair_honors_explicit_thinking_model_override(tmp_path, monkeypatch, capsys):
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
-        "export DEEPSEEK_PROXY_THINKING_MODEL=custom-openai-thinking-test-model\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n",
+        "export COX_MODEL=custom-openai-test-model\n"
+        "export COX_THINKING_MODEL=custom-openai-thinking-test-model\n"
+        "export COX_FORCE_MODEL=1\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         config_path,
         "deepseek",
-        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "model = \"old-stable\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
-        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "cox",
+        "model = \"glm-5.1\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
 
     assert main(["profile", "repair", "--managed-only", "--json", "--env-file", str(env_file), "--codex-config", str(config_path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "ok"
-    assert set(result["updated_profiles"]) == {"deepseek-thinking"}
-    thinking = next(item for item in result["profile_results"] if item["profile"] == "deepseek-thinking")
+    assert set(result["updated_profiles"]) == {"cox"}
+    thinking = next(item for item in result["profile_results"] if item["profile"] == "cox")
     assert all(item["profile"] != "deepseek" for item in result["profile_results"])
     assert thinking["codex_model_after"] == "custom-openai-thinking-test-model"
 
 def test_p219a21_status_accepts_json_alias(monkeypatch, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     captured = {}
 
@@ -4431,53 +4431,53 @@ def test_p219a21_status_accepts_json_alias(monkeypatch, capsys):
 
 def test_p219a21_liveness_judge_follows_forced_custom_model(monkeypatch):
     import importlib
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "custom-openai-test-model")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+    monkeypatch.setenv("COX_MODEL", "custom-openai-test-model")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
 
     config = app_module._agent_liveness_judge_env_config()
     assert config["model"] == "v4-flash-no-thinking"
     assert config["upstream_model"] == "custom-openai-test-model"
-    assert config["upstream_model_source"] == "DEEPSEEK_PROXY_MODEL_forced"
+    assert config["upstream_model_source"] == "COX_MODEL_forced"
 
 
 def test_p219a21_liveness_judge_keeps_legacy_alias_when_not_forced(monkeypatch):
     import importlib
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
 
-    monkeypatch.delenv("DEEPSEEK_PROXY_MODEL", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FORCE_MODEL", raising=False)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+    monkeypatch.delenv("COX_MODEL", raising=False)
+    monkeypatch.delenv("COX_FORCE_MODEL", raising=False)
+    monkeypatch.setenv("COX_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
 
     config = app_module._agent_liveness_judge_env_config()
     assert config["upstream_model"] == "deepseek-v4-flash"
-    assert config["upstream_model_source"] == "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL"
+    assert config["upstream_model_source"] == "COX_AGENT_LIVENESS_JUDGE_MODEL"
 
 def test_p219a23_status_preflight_repairs_drifted_split_profiles(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=custom-openai-test-model\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         config_path,
         "deepseek",
-        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "model = \"old-stable\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
-        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "cox",
+        "model = \"glm-5.1\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
-    monkeypatch.setenv("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC", "1")
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_TEST_ALLOW_PROFILE_SYNC", "1")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
     monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
     monkeypatch.setattr(cli_module, "default_codex_config_path", lambda: config_path)
 
@@ -4493,35 +4493,35 @@ def test_p219a23_status_preflight_repairs_drifted_split_profiles(tmp_path, monke
     assert result["status"] == "ok"
     assert captured["url"].endswith("/v1/proxy/status")
     assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
-    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "cox")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "cox")
 
 
 def test_p219a23_start_preflight_repairs_drifted_profiles_before_already_running_return(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     config_path = tmp_path / "codex.toml"
     env_file = tmp_path / "env"
     state_dir = tmp_path / "state"
     env_file.write_text(
-        "export DEEPSEEK_PROXY_MODEL=custom-openai-test-model\n"
-        "export DEEPSEEK_PROXY_FORCE_MODEL=1\n"
-        "export DEEPSEEK_REASONING_EFFORT=max\n",
+        "export COX_MODEL=custom-openai-test-model\n"
+        "export COX_FORCE_MODEL=1\n"
+        "export COX_REASONING_EFFORT=max\n",
         encoding="utf-8",
     )
     _write_split_codex_profile(
         config_path,
         "deepseek",
-        "model = \"old-stable\"\nmodel_provider = \"deepseek-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "model = \"old-stable\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
     _write_split_codex_profile(
         config_path,
-        "deepseek-thinking",
-        "model = \"glm-5.1\"\nmodel_provider = \"deepseek-thinking-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
+        "cox",
+        "model = \"glm-5.1\"\nmodel_provider = \"cox-proxy\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n",
     )
 
-    monkeypatch.setenv("CODEEPSEEDEX_TEST_ALLOW_PROFILE_SYNC", "1")
-    monkeypatch.setenv("CODEEPSEEDEX_POST_CONFIG_APPLY", "disabled")
+    monkeypatch.setenv("COX_TEST_ALLOW_PROFILE_SYNC", "1")
+    monkeypatch.setenv("COX_POST_CONFIG_APPLY", "disabled")
     monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
     monkeypatch.setattr(cli_module, "default_codex_config_path", lambda: config_path)
     monkeypatch.setattr(cli_module, "_maybe_print_startup_release_update_notice", lambda: None)
@@ -4531,17 +4531,17 @@ def test_p219a23_start_preflight_repairs_drifted_profiles_before_already_running
     assert main(["start", "thinking", "--state-dir", str(state_dir)]) == 0
     assert "already_running" in capsys.readouterr().out
     assert 'model = "old-stable"' in _codex_profile_text(config_path, "deepseek")
-    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "deepseek-thinking")
-    assert "glm-5.1" not in _codex_profile_text(config_path, "deepseek-thinking")
+    assert 'model = "custom-openai-test-model"' in _codex_profile_text(config_path, "cox")
+    assert "glm-5.1" not in _codex_profile_text(config_path, "cox")
 
 
 def test_p222a1_start_thinking_moves_alive_stale_pid_not_listening_on_target_port(tmp_path, monkeypatch, capsys):
-    from deepseek_responses_proxy import cli as cli_module
+    from codexchange_proxy import cli as cli_module
 
     pid_file = tmp_path / "proxy-thinking.pid"
     pid_file.write_text("12345", encoding="utf-8")
     env_file = tmp_path / "env"
-    env_file.write_text("export DEEPSEEK_PROXY_THINKING_PORT=8002\n", encoding="utf-8")
+    env_file.write_text("export COX_THINKING_PORT=8002\n", encoding="utf-8")
     monkeypatch.setattr(cli_module, "default_env_file_path", lambda: env_file)
     monkeypatch.setattr(cli_module, "_managed_profile_route_preflight_or_error", lambda reason: None)
     monkeypatch.setattr(cli_module, "_pid_alive", lambda pid: pid == 12345)

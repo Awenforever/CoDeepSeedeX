@@ -35,7 +35,7 @@ REQUIRED_CODEX_MODEL_FIELDS = {
 
 
 def test_repo_model_catalog_entries_have_codex_required_schema():
-    data = json.loads(Path("experiments/model-catalog/deepseek-proxy-models.json").read_text(encoding="utf-8"))
+    data = json.loads(Path("experiments/model-catalog/cox-proxy-models.json").read_text(encoding="utf-8"))
     models = data.get("models", [])
     assert models
     for model in models:
@@ -52,7 +52,7 @@ def test_repo_model_catalog_entries_have_codex_required_schema():
 
 
 def test_custom_provider_catalog_generator_emits_codex_required_schema():
-    source = Path("deepseek_responses_proxy/cli.py").read_text(encoding="utf-8")
+    source = Path("codexchange_proxy/cli.py").read_text(encoding="utf-8")
     start = source.index("def _write_custom_provider_model_catalog(")
     end = source.index("\n\ndef ", start + 1)
     generator = source[start:end]
@@ -70,7 +70,7 @@ def test_custom_provider_catalog_generator_emits_codex_required_schema():
     assert '"visibility": "visible"' not in generator
 
 def test_repo_model_catalog_entries_have_codex_tail_required_schema():
-    data = json.loads(Path("experiments/model-catalog/deepseek-proxy-models.json").read_text(encoding="utf-8"))
+    data = json.loads(Path("experiments/model-catalog/cox-proxy-models.json").read_text(encoding="utf-8"))
     required = {
         "experimental_supported_tools",
         "available_in_plans",
@@ -89,7 +89,7 @@ def test_repo_model_catalog_entries_have_codex_tail_required_schema():
 
 
 def test_custom_provider_catalog_generator_emits_codex_tail_required_schema():
-    source = Path("deepseek_responses_proxy/cli.py").read_text(encoding="utf-8")
+    source = Path("codexchange_proxy/cli.py").read_text(encoding="utf-8")
     start = source.index("def _write_custom_provider_model_catalog(")
     end = source.index("\n\ndef ", start + 1)
     generator = source[start:end]

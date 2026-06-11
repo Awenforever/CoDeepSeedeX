@@ -5,9 +5,9 @@ from pathlib import Path
 
 import importlib
 
-from deepseek_responses_proxy.cli import main
+from codexchange_proxy.cli import main
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def test_runtime_context_window_displays_full_model_window_and_separate_auto_threshold() -> None:
@@ -96,7 +96,7 @@ def test_runtime_token_first_compaction_budget_uses_profile_threshold(tmp_path: 
         """
 [profiles.deepseek]
 model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
+model_provider = "cox-proxy"
 model_context_window = 1000
 model_auto_compact_token_limit = 900
 """.strip()
@@ -104,7 +104,7 @@ model_auto_compact_token_limit = 900
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.delenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", raising=False)
+    monkeypatch.delenv("COX_AUTO_COMPACT_THRESHOLD_TOKENS", raising=False)
     budget = proxy_app._runtime_token_first_compaction_budget(
         messages=[{"role": "user", "content": "hello " * 100}],
         request_payload={"model": "deepseek-v4-flash"},
@@ -149,7 +149,7 @@ def test_runtime_context_contract_ignores_absolute_env_threshold(monkeypatch, tm
         """
 [profiles.deepseek]
 model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
+model_provider = "cox-proxy"
 model_context_window = 1000000
 model_auto_compact_token_limit = 750000
 """.strip()
@@ -157,7 +157,7 @@ model_auto_compact_token_limit = 750000
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", "750000")
+    monkeypatch.setenv("COX_AUTO_COMPACT_THRESHOLD_TOKENS", "750000")
     context = proxy_app._runtime_token_first_context_contract_for_payload(
         {"model": "deepseek-v4-flash"},
         active_profile="deepseek",
@@ -178,7 +178,7 @@ def test_compaction_budget_exposes_strict_plan_token_field_names(tmp_path: Path,
         """
 [profiles.deepseek]
 model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
+model_provider = "cox-proxy"
 model_context_window = 1000
 model_auto_compact_token_limit = 900
 """.strip()
@@ -277,7 +277,7 @@ def test_runtime_payload_guard_contract_is_token_only_visible_surface() -> None:
 
 
 def test_env_auto_compact_ratio_is_ignored_for_managed_runtime_contract(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
+    monkeypatch.setenv("COX_AUTO_COMPACT_RATIO", "0.02")
 
     codex_home = tmp_path / "codex"
     codex_home.mkdir()
@@ -285,7 +285,7 @@ def test_env_auto_compact_ratio_is_ignored_for_managed_runtime_contract(monkeypa
     config_path.write_text(
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n",
         encoding="utf-8",
@@ -331,7 +331,7 @@ def test_runtime_token_compaction_status_reports_threshold_exceeded_skipped_with
 
 
 def test_weclaw_context_limit_explanation_uses_active_managed_ratio_text(monkeypatch) -> None:
-    monkeypatch.setenv("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "0.02")
+    monkeypatch.setenv("COX_AUTO_COMPACT_RATIO", "0.02")
     explanation = proxy_app._weclaw_context_limit_explanation(
         model_context_window=1_000_000,
         auto_compact_token_limit=900_000,
@@ -384,7 +384,7 @@ def test_compaction_budget_does_not_count_raw_responses_input(tmp_path: Path, mo
         """
 [profiles.deepseek]
 model = "deepseek-v4-flash"
-model_provider = "deepseek-proxy"
+model_provider = "cox-proxy"
 model_context_window = 1000000
 model_auto_compact_token_limit = 900000
 """.strip()

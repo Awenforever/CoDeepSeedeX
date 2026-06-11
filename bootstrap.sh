@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
-LATEST_RELEASE_API_URL="${DEEPSEEK_PROXY_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
-INSTALL_REF="${DEEPSEEK_PROXY_INSTALL_REF:-}"
+REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CodeXchange.git}"
+LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CodeXchange/releases/latest}"
+INSTALL_REF="${COX_INSTALL_REF:-}"
 INSTALLER_URL_WAS_EXPLICIT=0
-if [ -n "${DEEPSEEK_PROXY_INSTALLER_URL:-}" ]; then
+if [ -n "${COX_INSTALLER_URL:-}" ]; then
   INSTALLER_URL_WAS_EXPLICIT=1
 fi
-INSTALLER_URL="${DEEPSEEK_PROXY_INSTALLER_URL:-https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh}"
-ALT_INSTALLER_URL="${DEEPSEEK_PROXY_ALT_INSTALLER_URL:-}"
-THIRD_INSTALLER_URL="${DEEPSEEK_PROXY_THIRD_INSTALLER_URL:-}"
+INSTALLER_URL="${COX_INSTALLER_URL:-https://github.com/Awenforever/CodeXchange/releases/latest/download/install.sh}"
+ALT_INSTALLER_URL="${COX_ALT_INSTALLER_URL:-}"
+THIRD_INSTALLER_URL="${COX_THIRD_INSTALLER_URL:-}"
 RESOLVED_INSTALL_REF=""
 RESOLVED_INSTALLER_SOURCE=""
-INSTALL_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S).log}"
-BOOTSTRAP_WORKDIR="${DEEPSEEK_PROXY_BOOTSTRAP_WORKDIR:-/tmp/codeepseedex-bootstrap-$(date +%Y%m%d_%H%M%S)-work}"
+INSTALL_LOG="${COX_BOOTSTRAP_LOG:-/tmp/codexchange-bootstrap-$(date +%Y%m%d_%H%M%S).log}"
+BOOTSTRAP_WORKDIR="${COX_BOOTSTRAP_WORKDIR:-/tmp/codexchange-bootstrap-$(date +%Y%m%d_%H%M%S)-work}"
 INSTALLER_PATH="$BOOTSTRAP_WORKDIR/install.sh"
 
 DRY_RUN=0
@@ -64,10 +64,10 @@ Bootstrap options:
   -h, -H, --help             Show help
 
 Examples:
-  curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
-  curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.8-alpha
+  curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
+  curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/v0.3.8-alpha/bootstrap.sh | bash -s -- --install-ref v0.3.8-alpha
   bash bootstrap.sh -- --non-interactive
-  bash bootstrap.sh -- --repo-url /path/to/local/CoDeepSeedeX
+  bash bootstrap.sh -- --repo-url /path/to/local/CodeXchange
 USAGE
 }
 
@@ -129,7 +129,7 @@ BOOTPY
 
 select_python() {
   local candidate
-  for candidate in "${DEEPSEEK_PROXY_PYTHON_BIN:-}" python3.13 python3.12 python3.11 python3; do
+  for candidate in "${COX_PYTHON_BIN:-}" python3.13 python3.12 python3.11 python3; do
     if [ -z "$candidate" ]; then
       continue
     fi
@@ -195,10 +195,10 @@ download_installer() {
   local third_url="$THIRD_INSTALLER_URL"
   if [ -n "$fallback_ref" ]; then
     if [ "$INSTALLER_URL_WAS_EXPLICIT" != "1" ]; then
-      primary_url="https://github.com/Awenforever/CoDeepSeedeX/releases/download/${fallback_ref}/install.sh"
+      primary_url="https://github.com/Awenforever/CodeXchange/releases/download/${fallback_ref}/install.sh"
     fi
-    alt_url="${alt_url:-https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${fallback_ref}/scripts/install.sh}"
-    third_url="${third_url:-https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${fallback_ref}/scripts/install.sh}"
+    alt_url="${alt_url:-https://raw.githubusercontent.com/Awenforever/CodeXchange/${fallback_ref}/scripts/install.sh}"
+    third_url="${third_url:-https://github.com/Awenforever/CodeXchange/raw/refs/tags/${fallback_ref}/scripts/install.sh}"
   fi
 
   RESOLVED_INSTALLER_SOURCE="$primary_url"
@@ -264,7 +264,7 @@ download_installer() {
 
 main() {
   printf 'bootstrap log: %s\n' "$INSTALL_LOG" >> "$INSTALL_LOG"
-  printf 'bootstrap source: %s\n' "${DEEPSEEK_PROXY_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}" >> "$INSTALL_LOG"
+  printf 'bootstrap source: %s\n' "${COX_BOOTSTRAP_SOURCE:-downloaded or local bootstrap.sh}" >> "$INSTALL_LOG"
   printf 'requested install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
 
   if [ "$HELP_REQUESTED" = "1" ]; then
@@ -298,23 +298,23 @@ main() {
   printf 'install ref: %s\n' "${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<GitHub Latest Release>}}" >> "$INSTALL_LOG"
 
   if [ "$DRY_RUN" = "1" ]; then
-    warn "dry-run: would run install.sh with DEEPSEEK_PROXY_PYTHON_BIN=$selected_python"
-    warn "dry-run: would pass DEEPSEEK_PROXY_INSTALL_REF=${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<install.sh resolves latest>}}"
-    warn "dry-run: would pass DEEPSEEK_PROXY_INSTALLER_SOURCE=${RESOLVED_INSTALLER_SOURCE:-unknown}"
+    warn "dry-run: would run install.sh with COX_PYTHON_BIN=$selected_python"
+    warn "dry-run: would pass COX_INSTALL_REF=${RESOLVED_INSTALL_REF:-${INSTALL_REF:-<install.sh resolves latest>}}"
+    warn "dry-run: would pass COX_INSTALLER_SOURCE=${RESOLVED_INSTALLER_SOURCE:-unknown}"
     printf '  install args:'
     printf ' %q' "${INSTALL_ARGS[@]}"
     printf '\n'
     return 0
   fi
 
-  unset DEEPSEEK_PROXY_PUBLIC_COMMIT
-  unset DEEPSEEK_PROXY_INTERNAL_COMMIT
-  unset DEEPSEEK_PROXY_INTERNAL_VERSION
+  unset COX_PUBLIC_COMMIT
+  unset COX_INTERNAL_COMMIT
+  unset COX_INTERNAL_VERSION
 
-  if [ -n "$RESOLVED_INSTALL_REF" ] && [ -z "${DEEPSEEK_PROXY_INSTALL_REF:-}" ]; then
-    DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG" DEEPSEEK_PROXY_INSTALL_REF="$RESOLVED_INSTALL_REF" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+  if [ -n "$RESOLVED_INSTALL_REF" ] && [ -z "${COX_INSTALL_REF:-}" ]; then
+    COX_BOOTSTRAP_LOG="$INSTALL_LOG" COX_INSTALL_REF="$RESOLVED_INSTALL_REF" COX_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" COX_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   else
-    DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG" DEEPSEEK_PROXY_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" DEEPSEEK_PROXY_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
+    COX_BOOTSTRAP_LOG="$INSTALL_LOG" COX_INSTALLER_SOURCE="${RESOLVED_INSTALLER_SOURCE:-unknown}" COX_PYTHON_BIN="$selected_python" bash "$INSTALLER_PATH" --python-bin "$selected_python" "${INSTALL_ARGS[@]}"
   fi
 }
 

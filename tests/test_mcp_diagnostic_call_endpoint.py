@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from deepseek_responses_proxy.app import InMemoryResponseStore, create_app
+from codexchange_proxy.app import InMemoryResponseStore, create_app
 
 
 class NoopDeepSeekClient:
@@ -72,8 +72,8 @@ def test_mcp_diagnostic_call_is_disabled_by_default(tmp_path, monkeypatch):
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", raising=False)
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.delenv("COX_MCP_DIAGNOSTIC_CALL", raising=False)
 
     response = _client().post(
         "/v1/proxy/mcp/diagnostic-call",
@@ -92,11 +92,11 @@ def test_mcp_diagnostic_call_requires_stdio_backend(tmp_path, monkeypatch):
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "none")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DIAGNOSTIC_CALL", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "none")
 
     response = _client().post(
         "/v1/proxy/mcp/diagnostic-call",
@@ -121,11 +121,11 @@ args = []
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "fake.write_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DIAGNOSTIC_CALL", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "fake.write_tool")
 
     response = _client().post(
         "/v1/proxy/mcp/diagnostic-call",
@@ -159,11 +159,11 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DIAGNOSTIC_CALL", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
 
     response = _client().post(
         "/v1/proxy/mcp/diagnostic-call",

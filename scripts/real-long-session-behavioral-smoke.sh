@@ -19,7 +19,7 @@ Purpose:
 
 Safety:
   The real smoke uses:
-    codex exec --profile deepseek-thinking --dangerously-bypass-approvals-and-sandbox
+    codex exec --profile cox --dangerously-bypass-approvals-and-sandbox
 
   This bypass is required because Codex workspace-write sandbox cannot reliably access
   the host WSL listener at 127.0.0.1:8001. The smoke prompt restricts Codex to
@@ -95,7 +95,7 @@ if [ "$dry_run" -eq 1 ]; then
     echo "limit=${limit}"
     echo "timeout=${timeout_seconds}"
     echo "uses_bypass=${allow_bypass}"
-    echo "codex_profile=deepseek-thinking"
+    echo "codex_profile=cox"
     echo "real_run_requires=--allow-bypass"
   } > "$out"
   printf 'stage=%s\nrun_ok=1\nout=%s\n' "${stage}-dry-run" "$out"
@@ -130,7 +130,7 @@ run_ok=1
   echo "branch_before=$(git branch --show-current)"
   echo "status_count_before=$(git status --short | wc -l)"
   echo "head_before=$(git log --oneline --decorate --max-count=1)"
-  expected_version="$(.venv/bin/python -m deepseek_responses_proxy.cli --version)"
+  expected_version="$(.venv/bin/python -m codexchange_proxy.cli --version)"
   echo "expected_version=${expected_version}"
   if [ "$(git status --short | wc -l)" -ne 0 ]; then
     echo "error=working_tree_not_clean"
@@ -141,12 +141,12 @@ run_ok=1
   echo "===== proxy preflight ====="
   curl -sS --max-time "$timeout_seconds" http://127.0.0.1:8001/healthz
   echo
-  .venv/bin/python -m deepseek_responses_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "${prefix}.pre-behavioral.json"
+  .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "${prefix}.pre-behavioral.json"
 
   echo
   echo "===== write codex prompt ====="
   cat > "$prompt_file" <<'PROMPT'
-You are running a controlled real long-session behavioral validation for the deepseek-responses-proxy repository.
+You are running a controlled real long-session behavioral validation for the codexchange repository.
 
 Hard constraints:
 1. Do not modify repository files.
@@ -160,14 +160,14 @@ Working directory is already the repository root.
 Run these commands in order:
 1. git branch --show-current && git status --short && git log --oneline --decorate --max-count=3
 2. .venv/bin/python -m pytest tests/test_cli.py::test_cli_debug_behavioral_summarizes_long_session_readiness -q
-3. .venv/bin/python -m deepseek_responses_proxy.cli --version
+3. .venv/bin/python -m codexchange_proxy.cli --version
 4. .venv/bin/python - <<'PY_TRIM_TRIGGER'
 print("REAL_LONG_SESSION_TRIM_TRIGGER_BEGIN")
 for i in range(3000):
     print(f"REAL_LONG_SESSION_TRIM_TRIGGER line={i:04d} " + ("controlled-output-" * 8))
 print("REAL_LONG_SESSION_TRIM_TRIGGER_END")
 PY_TRIM_TRIGGER
-5. .venv/bin/python -m deepseek_responses_proxy.cli debug behavioral --thinking --limit 200 --timeout 5
+5. .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit 200 --timeout 5
 6. git status --short
 
 Your final answer must be valid compact JSON only. The first character must be `{` and the last character must be `}`. Do not wrap it in Markdown fences.
@@ -193,7 +193,7 @@ PROMPT
   echo
   echo "===== run codex real session with bypass ====="
   timeout 900s codex exec \
-    --profile deepseek-thinking \
+    --profile cox \
     --dangerously-bypass-approvals-and-sandbox \
     --cd "$repo_root" \
     --json \
@@ -203,7 +203,7 @@ PROMPT
 
   echo
   echo "===== post behavioral check ====="
-  .venv/bin/python -m deepseek_responses_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "$post_behavioral_json"
+  .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "$post_behavioral_json"
 
   .venv/bin/python - "$post_behavioral_json" "$post_behavioral_summary" <<'PY_POST_SUMMARY'
 import json

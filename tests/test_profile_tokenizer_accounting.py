@@ -11,14 +11,14 @@ from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     DeepSeekClient,
     SQLiteResponseStore,
     _profile_tokenizer_report_for_messages,
     _weclaw_tokens_contract,
     create_app,
 )
-from deepseek_responses_proxy.cli import (
+from codexchange_proxy.cli import (
     _sync_deepseek_tokenizer_resource,
     _tokenizer_resource_status,
 )
@@ -64,7 +64,7 @@ def _write_test_tokenizer(path: Path) -> None:
 def tokenizer_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "tokenizer.json"
     _write_test_tokenizer(path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON", str(path))
+    monkeypatch.setenv("COX_DEEPSEEK_TOKENIZER_JSON", str(path))
     return path
 
 
@@ -77,7 +77,7 @@ def test_profile_tokenizer_counts_prompt_subcategories_with_env_tokenizer(tokeni
             {"role": "tool", "content": "tool output text"},
             {
                 "role": "user",
-                "content": "[deepseek-proxy persistent compaction summary]\nolder context",
+                "content": "[cox-proxy persistent compaction summary]\nolder context",
             },
         ],
         profile="deepseek",
@@ -180,11 +180,11 @@ async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(
 ) -> None:
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
-        "[model_providers.deepseek-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8000/v1\"\n\n"
         "[profiles.deepseek]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -192,8 +192,8 @@ async def test_runtime_weclaw_status_includes_latest_profile_tokenizer_report(
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     app = create_app(deepseek_client=DeepSeekClient(), store=store)
@@ -243,7 +243,7 @@ def test_weclaw_tokens_contract_reports_tokenizer_available_before_prompt_observ
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     tokens = _weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_model="deepseek-v4-flash",
         provider="deepseek",
         profile_tokenizer_report=None,
@@ -275,11 +275,11 @@ async def test_runtime_weclaw_status_reports_tokenizer_resource_before_prompt_ob
 ) -> None:
     codex_config = tmp_path / "codex.toml"
     codex_config.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -287,13 +287,13 @@ async def test_runtime_weclaw_status_reports_tokenizer_resource_before_prompt_ob
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     app = create_app(deepseek_client=DeepSeekClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox&include_balance=false")
 
     assert response.status_code == 200
     data = response.json()
@@ -339,7 +339,7 @@ def test_profile_tokenizer_reclassifies_codex_user_role_injected_segments(tokeni
                 "content": "reply ok exactly",
             },
         ],
-        profile="deepseek-thinking",
+        profile="cox",
         model="deepseek-v4-flash",
         provider="deepseek",
     )

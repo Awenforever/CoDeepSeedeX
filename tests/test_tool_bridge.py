@@ -3,7 +3,7 @@ import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
+from codexchange_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
 
 
 class FakeDeepSeekClient(DeepSeekClient):
@@ -51,7 +51,7 @@ def deepseek_tool_call_response(call_id, name, args):
 
 @pytest.mark.asyncio
 async def test_proxy_echo_tool_call_is_executed_and_final_response_is_returned(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake = FakeDeepSeekClient(
         [
@@ -97,7 +97,7 @@ async def test_proxy_echo_tool_call_is_executed_and_final_response_is_returned(m
 
 @pytest.mark.asyncio
 async def test_unknown_proxy_tool_returns_structured_tool_error(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake = FakeDeepSeekClient(
         [
@@ -135,7 +135,7 @@ async def test_unknown_proxy_tool_returns_structured_tool_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_tool_bridge_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "0")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "0")
 
     fake = FakeDeepSeekClient(
         [
@@ -170,7 +170,7 @@ async def test_tool_bridge_can_be_disabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_proxy_tool_calls_keep_existing_function_call_output_behavior(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake = FakeDeepSeekClient(
         [
@@ -204,9 +204,9 @@ async def test_non_proxy_tool_calls_keep_existing_function_call_output_behavior(
 
 
 @pytest.mark.asyncio
-async def test_web_search_tool_is_mapped_to_codeepseedex_web_search(monkeypatch, tmp_path):
+async def test_web_search_tool_is_mapped_to_codexchange_web_search(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake = FakeDeepSeekClient([deepseek_text_response("search tool available")])
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -226,13 +226,13 @@ async def test_web_search_tool_is_mapped_to_codeepseedex_web_search(monkeypatch,
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "codeepseedex_web_search" in tool_names
+    assert "codexchange_web_search" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
     assert any(
         item.get("kind") == "mapped_tool_type"
         and item.get("tool_type") == "web_search"
-        and item.get("mapped_to") == "codeepseedex_web_search"
+        and item.get("mapped_to") == "codexchange_web_search"
         for item in warnings
     )
     assert any(
@@ -244,8 +244,8 @@ async def test_web_search_tool_is_mapped_to_codeepseedex_web_search(monkeypatch,
 
 @pytest.mark.asyncio
 async def test_proxy_web_search_mock_provider_executes(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "mock")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "mock")
 
     fake = FakeDeepSeekClient(
         [
@@ -283,10 +283,10 @@ async def test_proxy_web_search_mock_provider_executes(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_proxy_web_search_missing_serpapi_key_returns_structured_error(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER", "serpapi")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_WEB_SEARCH_PROVIDER", "serpapi")
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_SERPAPI_API_KEY", raising=False)
+    monkeypatch.delenv("COX_SERPAPI_API_KEY", raising=False)
 
     fake = FakeDeepSeekClient(
         [
@@ -346,13 +346,13 @@ async def test_deepseek_proxy_account_namespace_is_mapped_while_image_generation
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "codeepseedex_generate_image" in tool_names
+    assert "codexchange_generate_image" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
     assert any(
         item.get("kind") == "mapped_tool_type"
         and item.get("tool_type") == "image_generation"
-        and item.get("mapped_to") == "codeepseedex_generate_image"
+        and item.get("mapped_to") == "codexchange_generate_image"
         for item in warnings
     )
     unsupported = [
@@ -362,9 +362,9 @@ async def test_deepseek_proxy_account_namespace_is_mapped_while_image_generation
 
 
 @pytest.mark.asyncio
-async def test_image_generation_tool_is_mapped_to_codeepseedex_generate_image(monkeypatch, tmp_path):
+async def test_image_generation_tool_is_mapped_to_codexchange_generate_image(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake = FakeDeepSeekClient([deepseek_text_response("image tool available")])
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -384,13 +384,13 @@ async def test_image_generation_tool_is_mapped_to_codeepseedex_generate_image(mo
         (tool.get("function") or {}).get("name")
         for tool in fake.payloads[0].get("tools", [])
     ]
-    assert "codeepseedex_generate_image" in tool_names
+    assert "codexchange_generate_image" in tool_names
 
     warnings = json.loads((tmp_path / ".debug" / "last_compat_warnings.json").read_text())
     assert any(
         item.get("kind") == "mapped_tool_type"
         and item.get("tool_type") == "image_generation"
-        and item.get("mapped_to") == "codeepseedex_generate_image"
+        and item.get("mapped_to") == "codexchange_generate_image"
         for item in warnings
     )
     assert any(
@@ -402,8 +402,8 @@ async def test_image_generation_tool_is_mapped_to_codeepseedex_generate_image(mo
 
 @pytest.mark.asyncio
 async def test_proxy_image_generate_mock_provider_executes(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "mock")
 
     fake = FakeDeepSeekClient(
         [
@@ -445,9 +445,9 @@ async def test_proxy_image_generate_mock_provider_executes(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_proxy_image_generate_missing_glm_key_returns_structured_error(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "glm")
-    monkeypatch.delenv("DEEPSEEK_PROXY_IMAGE_API_KEY", raising=False)
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "glm")
+    monkeypatch.delenv("COX_IMAGE_API_KEY", raising=False)
     monkeypatch.delenv("ZAI_API_KEY", raising=False)
     monkeypatch.delenv("ZHIPUAI_API_KEY", raising=False)
     monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
@@ -487,8 +487,8 @@ async def test_proxy_image_generate_missing_glm_key_returns_structured_error(mon
 
 @pytest.mark.asyncio
 async def test_proxy_image_generate_result_is_surfaced_in_output_text(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "mock")
 
     fake = FakeDeepSeekClient(
         [
@@ -526,10 +526,10 @@ async def test_proxy_image_generate_result_is_surfaced_in_output_text(monkeypatc
 async def test_proxy_image_generate_mock_download_creates_local_artifact(monkeypatch, tmp_path):
     from pathlib import Path
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "mock")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("COX_IMAGE_DOWNLOAD", "1")
+    monkeypatch.setenv("COX_IMAGE_OUTPUT_DIR", str(tmp_path / "images"))
 
     fake = FakeDeepSeekClient(
         [

@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _deepseek_message_to_output_items,
     _normalize_response_tool,
 )
@@ -26,9 +26,9 @@ def _mcp_namespace_tool():
 
 
 def test_mcp_namespace_is_ignored_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_READONLY_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_WRITE_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", "0")
 
     warnings = []
     mapping = {}
@@ -40,9 +40,9 @@ def test_mcp_namespace_is_ignored_by_default(monkeypatch):
 
 
 def test_mcp_readonly_namespace_builds_mapping(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "1")
+    monkeypatch.setenv("COX_FORWARD_MCP_WRITE_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_READONLY_TOOLS", "1")
 
     warnings = []
     mapping = {}

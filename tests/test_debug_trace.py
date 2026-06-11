@@ -2,12 +2,12 @@ import importlib
 import json
 from pathlib import Path
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def test_debug_trace_disabled_by_default(monkeypatch, tmp_path):
-    monkeypatch.delenv("DEEPSEEK_PROXY_DEBUG_TRACE", raising=False)
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(tmp_path / "traces"))
+    monkeypatch.delenv("COX_DEBUG_TRACE", raising=False)
+    monkeypatch.setenv("COX_DEBUG_DIR", str(tmp_path / "traces"))
 
     proxy_app._debug_trace_event("resp_disabled", "request_received", payload={"input": "hello"})
 
@@ -19,9 +19,9 @@ def test_debug_trace_disabled_by_default(monkeypatch, tmp_path):
 
 def test_debug_trace_none_mode_summarizes_without_raw_content(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_unit",
@@ -62,9 +62,9 @@ def test_debug_trace_none_mode_summarizes_without_raw_content(monkeypatch, tmp_p
 
 def test_debug_trace_preview_mode_redacts_secret_like_keys(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "preview")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "preview")
 
     proxy_app._debug_trace_event(
         "resp_preview",
@@ -84,9 +84,9 @@ def test_debug_trace_preview_mode_redacts_secret_like_keys(monkeypatch, tmp_path
 
 def test_debug_trace_latest_returns_recent_events(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event("resp_latest", "request_received", payload={"input": "a"})
     proxy_app._debug_trace_event("resp_latest", "response_envelope_built", output_item_count=1)
@@ -107,9 +107,9 @@ def test_debug_trace_latest_returns_recent_events(monkeypatch, tmp_path):
 
 def test_debug_trace_sanitizes_response_id(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event("resp/unsafe value", "request_received")
 
@@ -118,9 +118,9 @@ def test_debug_trace_sanitizes_response_id(monkeypatch, tmp_path):
 
 def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_compaction",
@@ -158,8 +158,8 @@ def test_debug_trace_none_mode_preserves_compaction_metadata(monkeypatch, tmp_pa
 
 def test_long_session_observability_report_aggregates_trace_files(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
 
     proxy_app._debug_trace_event(
         "resp_one",
@@ -212,8 +212,8 @@ def test_long_session_observability_report_aggregates_trace_files(monkeypatch, t
 
 def test_long_session_observability_report_latest_mode_uses_latest_trace(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
 
     proxy_app._debug_trace_event("resp_one", "context_budget_breakdown", chat_payload_chars=1000)
     proxy_app._debug_trace_event("resp_two", "context_budget_breakdown", chat_payload_chars=2400)
@@ -502,9 +502,9 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
 
 
 def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_ITEM_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_TOTAL_CHARS", "150")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", "2")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_WARN_ITEM_CHARS", "100")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_WARN_TOTAL_CHARS", "150")
 
     input_items = [
         {
@@ -547,9 +547,9 @@ def test_tool_output_budget_breakdown_identifies_largest_outputs(monkeypatch):
 
 
 def test_tool_output_image_payload_category_and_policy(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
 
     image_output = "IMAGE-BEGIN\\n" + ("0123456789" * 800) + "\\nIMAGE-END"
     input_items = [
@@ -580,11 +580,11 @@ def test_tool_output_image_payload_category_and_policy(monkeypatch):
 
 
 def test_tool_output_image_payload_enabled_preserves_artifact_ref(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     image_output = "IMAGE-BEGIN\n" + ("abcdef" * 2000) + "\nIMAGE-END"
     input_items = [
@@ -615,9 +615,9 @@ def test_tool_output_image_payload_enabled_preserves_artifact_ref(monkeypatch, t
 
 
 def test_tool_output_trimming_serializes_and_preserves_structured_image_artifact(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     original_payload = [{"image": "X" * 34085}]
     input_items = [
@@ -646,8 +646,8 @@ def test_tool_output_trimming_serializes_and_preserves_structured_image_artifact
 
 
 def test_tool_output_trimming_preserves_small_structured_output(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
 
     input_items = [
         {"type": "function_call", "call_id": "call_image", "name": "view_image", "arguments": "{}"},
@@ -664,9 +664,9 @@ def test_tool_output_trimming_preserves_small_structured_output(monkeypatch):
 
 
 def test_tool_output_trimming_can_classify_before_previous_response_filter(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "12000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     image_output = "IMAGE-BEGIN\n" + ("abcdef" * 6000) + "\nIMAGE-END"
     input_items = [
@@ -686,10 +686,10 @@ def test_tool_output_trimming_can_classify_before_previous_response_filter(monke
     assert not list((tmp_path / "tool-output-artifacts").glob("*.json"))
 
 def test_tool_output_image_policy_does_not_affect_shell_below_shell_policy(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_HEAD_CHARS", "80")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_KEEP_TAIL_CHARS", "80")
 
     shell_output = "Traceback (most recent call last):\\n" + ("shell-log\\n" * 300)
     input_items = [
@@ -716,9 +716,9 @@ def test_tool_output_image_policy_does_not_affect_shell_below_shell_policy(monke
 
 def test_debug_trace_none_mode_preserves_largest_outputs_metadata(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_tool_budget",
@@ -743,13 +743,13 @@ def test_debug_trace_none_mode_preserves_largest_outputs_metadata(monkeypatch, t
 
 
 def test_tool_output_trim_dry_run_estimates_item_and_total_savings(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS", "180")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS", "20")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS", "20")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_NOTICE_CHARS", "20")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MAX_TARGETS", "5")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "dry_run")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_MAX_ITEM_CHARS", "100")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_MAX_TOTAL_CHARS", "180")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_KEEP_HEAD_CHARS", "20")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_KEEP_TAIL_CHARS", "20")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_NOTICE_CHARS", "20")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MAX_TARGETS", "5")
 
     input_items = [
         {
@@ -798,9 +798,9 @@ def test_tool_output_trim_dry_run_estimates_item_and_total_savings(monkeypatch):
 
 def test_debug_trace_none_mode_preserves_trim_dry_run_mode(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_trim_dry_run",
@@ -821,8 +821,8 @@ def test_debug_trace_none_mode_preserves_trim_dry_run_mode(monkeypatch, tmp_path
 
 
 def test_tool_output_policy_dry_run_classifies_generic_tool_names(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "500")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", "10")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "500")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_POLICY_MAX_TARGETS", "10")
 
     input_items = [
         {
@@ -882,8 +882,8 @@ def test_tool_output_policy_dry_run_classifies_generic_tool_names(monkeypatch):
 
 
 def test_tool_output_policy_dry_run_event_stays_compact(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "80000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", "20")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", "80000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_POLICY_MAX_TARGETS", "20")
 
     input_items = []
     for index in range(80):
@@ -911,7 +911,7 @@ def test_tool_output_policy_dry_run_event_stays_compact(monkeypatch):
 
 
 def test_tool_output_safe_trimming_default_dry_run_does_not_change_input(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "dry_run")
     input_items = [
         {
             "type": "function_call",
@@ -936,11 +936,11 @@ def test_tool_output_safe_trimming_default_dry_run_does_not_change_input(monkeyp
 
 
 def test_tool_output_safe_trimming_enabled_trims_only_function_call_output(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_MAX_ITEM_CHARS", "1000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_KEEP_HEAD_CHARS", "20")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_KEEP_TAIL_CHARS", "30")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_SHELL_COMMAND_NOTICE_CHARS", "128")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_SHELL_COMMAND_MAX_ITEM_CHARS", "1000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_SHELL_COMMAND_KEEP_HEAD_CHARS", "20")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_SHELL_COMMAND_KEEP_TAIL_CHARS", "30")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_SHELL_COMMAND_NOTICE_CHARS", "128")
 
     input_items = [
         {
@@ -972,14 +972,14 @@ def test_tool_output_safe_trimming_enabled_trims_only_function_call_output(monke
     assert report["targets"][0]["category"] == "shell_command"
     assert trimmed[0] == input_items[0]
     assert trimmed[1] == input_items[1]
-    assert "[tool output trimmed by CoDeepSeedeX]" in trimmed[2]["output"]
+    assert "[tool output trimmed by CodeXchange]" in trimmed[2]["output"]
     assert "--- kept head ---" in trimmed[2]["output"]
     assert "--- kept tail ---" in trimmed[2]["output"]
     assert trimmed[2]["output"].endswith("TAIL")
 
 
 def test_tool_output_safe_trimming_handles_non_list_input(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
 
     trimmed, report = proxy_app._apply_tool_output_safe_trimming("plain input")
 
@@ -1037,9 +1037,9 @@ def test_history_growth_breakdown_classifies_flattened_tool_transcripts():
 
 def test_debug_trace_none_mode_preserves_largest_messages_metadata(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_history_growth",
@@ -1062,10 +1062,10 @@ def test_debug_trace_none_mode_preserves_largest_messages_metadata(monkeypatch, 
 
 
 def test_flattened_tool_transcript_compaction_dry_run_estimates_savings(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", "50")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_TARGETS", "5")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", "50")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_COMPACTION_TARGETS", "5")
 
     old_flattened = {
         "role": "user",
@@ -1112,7 +1112,7 @@ def test_flattened_tool_transcript_compaction_dry_run_estimates_savings(monkeypa
 
 
 def test_flattened_tool_transcript_compaction_dry_run_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_DRY_RUN", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_COMPACTION_DRY_RUN", "0")
     messages = [
         {
             "role": "user",
@@ -1129,7 +1129,7 @@ def test_flattened_tool_transcript_compaction_dry_run_can_be_disabled(monkeypatc
 
 
 def test_flattened_tool_transcript_semantic_audit_classifies_types_and_risks(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", "10")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", "10")
 
     passed_test = {
         "role": "user",
@@ -1189,7 +1189,7 @@ def test_flattened_tool_transcript_semantic_audit_classifies_types_and_risks(mon
 
 
 def test_flattened_tool_transcript_semantic_audit_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_AUDIT", "0")
 
     report = proxy_app._flattened_tool_transcript_semantic_audit(
         [
@@ -1208,9 +1208,9 @@ def test_flattened_tool_transcript_semantic_audit_can_be_disabled(monkeypatch):
 
 def test_debug_trace_none_mode_preserves_semantic_audit_targets(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_semantic_audit",
@@ -1237,8 +1237,8 @@ def test_debug_trace_none_mode_preserves_semantic_audit_targets(monkeypatch, tmp
 
 
 def test_flattened_tool_transcript_semantic_policy_dry_run_recommends_actions(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", "10")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", "200")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", "10")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", "200")
 
     passed_test = {
         "role": "user",
@@ -1309,7 +1309,7 @@ def test_flattened_tool_transcript_semantic_policy_dry_run_recommends_actions(mo
 
 
 def test_flattened_tool_transcript_semantic_policy_dry_run_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "0")
 
     report = proxy_app._flattened_tool_transcript_semantic_compaction_policy_dry_run(
         [
@@ -1328,9 +1328,9 @@ def test_flattened_tool_transcript_semantic_policy_dry_run_can_be_disabled(monke
 
 def test_debug_trace_none_mode_preserves_semantic_policy_targets(monkeypatch, tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(trace_dir))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(trace_dir))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     proxy_app._debug_trace_event(
         "resp_semantic_policy",
@@ -1386,12 +1386,12 @@ def test_semantic_compaction_request_trace_event_order_is_stable():
 
 
 def test_semantic_compaction_default_environment_is_safe(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_AUDIT", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", raising=False)
 
     payload_config = proxy_app._flattened_tool_semantic_payload_compaction_env_config()
     canary_config = proxy_app._semantic_payload_canary_env_config()
@@ -1408,11 +1408,11 @@ def test_semantic_compaction_default_environment_is_safe(monkeypatch):
 def test_semantic_payload_compaction_enabled_mutates_only_payload_copy(monkeypatch):
     from copy import deepcopy
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     messages = proxy_app._semantic_compaction_selftest_messages()
     original_messages = deepcopy(messages)
@@ -1424,15 +1424,15 @@ def test_semantic_payload_compaction_enabled_mutates_only_payload_copy(monkeypat
     assert compacted is not messages
     assert messages == original_messages
     assert compacted != original_messages
-    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert "[semantic flattened tool transcript compacted by CodeXchange]" in compacted[1]["content"]
     assert original_messages[1]["content"] == messages[1]["content"]
 
 
 def test_semantic_payload_canary_blocks_enabled_without_allow(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.delenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.delenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", raising=False)
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
 
     messages = proxy_app._semantic_compaction_selftest_messages()
     compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
@@ -1447,11 +1447,11 @@ def test_semantic_payload_canary_blocks_enabled_without_allow(monkeypatch):
 
 
 def test_semantic_payload_canary_allows_enabled_with_allow(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     messages = proxy_app._semantic_compaction_selftest_messages()
     compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction(messages)
@@ -1465,7 +1465,7 @@ def test_semantic_payload_canary_allows_enabled_with_allow(monkeypatch):
 
 
 def test_semantic_compaction_selftest_report_passes(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
 
     report = proxy_app._semantic_compaction_selftest_report()
 
@@ -1485,7 +1485,7 @@ def test_semantic_compaction_selftest_report_passes(monkeypatch):
 
 
 def test_flattened_tool_semantic_payload_compaction_default_does_not_change_messages(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [
         {
             "role": "user",
@@ -1509,11 +1509,11 @@ def test_flattened_tool_semantic_payload_compaction_default_does_not_change_mess
 
 
 def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_risk_copy(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     low_risk_test = (
         "assistant_requested_tool_calls:\n"
@@ -1576,7 +1576,7 @@ def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_ri
     assert report["estimated_tokens_removed"] > 0
     assert report["semantic_plan_types"]["pytest_success"] == 1
 
-    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert "[semantic flattened tool transcript compacted by CodeXchange]" in compacted[1]["content"]
     assert "recommended_action: compact_test_output_summary" in compacted[1]["content"]
     assert "4 passed in 0.10s" in compacted[1]["content"]
     assert compacted[2]["content"] == medium_stacktrace
@@ -1592,7 +1592,7 @@ def test_flattened_tool_semantic_payload_compaction_enabled_only_compacts_low_ri
 
 
 def test_flattened_tool_semantic_payload_compaction_non_list_fallback(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
 
     compacted, report = proxy_app._apply_flattened_tool_transcript_semantic_payload_compaction("not messages")
 
@@ -1602,7 +1602,7 @@ def test_flattened_tool_semantic_payload_compaction_non_list_fallback(monkeypatc
 
 
 def test_flattened_tool_payload_compaction_default_does_not_change_messages(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run")
     messages = [
         {
             "role": "user",
@@ -1620,10 +1620,10 @@ def test_flattened_tool_payload_compaction_default_does_not_change_messages(monk
 
 
 def test_flattened_tool_payload_compaction_enabled_changes_only_copy(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", "700")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", "700")
 
     old_content = "assistant_requested_tool_calls:\ntool_outputs:\n" + ("x" * 5000)
     recent_content = "assistant_requested_tool_calls:\ntool_outputs:\n" + ("y" * 5000)
@@ -1645,12 +1645,12 @@ def test_flattened_tool_payload_compaction_enabled_changes_only_copy(monkeypatch
     assert report["compacted_count"] == 1
     assert report["retained_recent_flattened_count"] == 1
     assert report["chars_removed"] > 0
-    assert "[flattened tool transcript compacted by CoDeepSeedeX]" in compacted[1]["content"]
+    assert "[flattened tool transcript compacted by CodeXchange]" in compacted[1]["content"]
     assert compacted[3]["content"] == recent_content
 
 
 def test_flattened_tool_payload_compaction_non_list_fallback(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "enabled")
 
     compacted, report = proxy_app._apply_flattened_tool_transcript_payload_compaction("not messages")
 
@@ -1667,10 +1667,10 @@ def test_long_session_report_marks_last_payload_fallback_when_trace_disabled(tmp
 
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("DEEPSEEK_PROXY_DEBUG_TRACE", raising=False)
+    monkeypatch.delenv("COX_DEBUG_TRACE", raising=False)
 
     debug_dir = Path(".debug")
     trace_dir = debug_dir / "traces"
@@ -1713,7 +1713,7 @@ def test_long_session_report_marks_last_payload_fallback_when_trace_disabled(tmp
     os.utime(old_trace, (1000, 1000))
 
     responses_payload = {
-        "model": "deepseek-thinking",
+        "model": "cox",
         "input": [
             {"type": "message", "role": "user", "content": "hello"},
             {
@@ -1729,7 +1729,7 @@ def test_long_session_report_marks_last_payload_fallback_when_trace_disabled(tmp
             {
                 "role": "user",
                 "content": (
-                    "[tool output trimmed by CoDeepSeedeX]\n"
+                    "[tool output trimmed by CodeXchange]\n"
                     "call_id: call_img\n"
                     "tool_name: view_image\n"
                     "category: image_payload\n"

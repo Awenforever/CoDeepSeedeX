@@ -4,10 +4,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-cli = importlib.import_module("deepseek_responses_proxy.cli")
+cli = importlib.import_module("codexchange_proxy.cli")
 ROOT = Path(__file__).resolve().parents[1]
 
-def _codex_profile_text(config_path: Path, profile: str = "deepseek-thinking") -> str:
+def _codex_profile_text(config_path: Path, profile: str = "cox") -> str:
     path = config_path.parent / f"{profile}.config.toml"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
@@ -21,7 +21,7 @@ def test_set_model_can_configure_provider_key_and_model(tmp_path, monkeypatch, c
     _patch_post_config(monkeypatch)
     env_file = tmp_path / "env"
     codex_config = tmp_path / "config.toml"
-    codex_config.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    codex_config.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
 
     rc = cli.main([
         "config",
@@ -44,13 +44,13 @@ def test_set_model_can_configure_provider_key_and_model(tmp_path, monkeypatch, c
     assert result["model_provider"] == "kimi"
     assert result["model"] == "moonshot-v1-8k"
     assert result["validation"]["status"] == "skipped"
-    assert result["preferred_command"] == "dsproxy config set-model moonshot-v1-8k --provider kimi"
+    assert result["preferred_command"] == "cox config set-model moonshot-v1-8k --provider kimi"
     values = cli._read_env_exports(env_file)
-    assert values["DEEPSEEK_API_KEY"] == "sk-kimi-test-123456"
-    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "kimi"
-    assert values["DEEPSEEK_PROXY_MODEL"] == "moonshot-v1-8k"
+    assert values["COX_MODEL_API_KEY"] == "sk-kimi-test-123456"
+    assert values["COX_MODEL_PROVIDER"] == "kimi"
+    assert values["COX_MODEL"] == "moonshot-v1-8k"
     assert 'model = "moonshot-v1-8k"' in _codex_profile_text(codex_config)
-    assert "[profiles.deepseek-thinking]" not in codex_config.read_text(encoding="utf-8")
+    assert "[profiles.cox]" not in codex_config.read_text(encoding="utf-8")
 
 
 def test_set_api_key_remains_compatibility_alias(tmp_path, monkeypatch, capsys):
@@ -75,17 +75,17 @@ def test_set_api_key_remains_compatibility_alias(tmp_path, monkeypatch, capsys):
     assert result["model_provider"] == "zai"
     assert result["deprecated_command"] == "set-api-key"
     assert "compatibility alias" in result["compatibility_note"]
-    assert result["preferred_command"].startswith("dsproxy config set-model")
+    assert result["preferred_command"].startswith("cox config set-model")
     values = cli._read_env_exports(env_file)
-    assert values["DEEPSEEK_API_KEY"] == "sk-zai-test-123456"
-    assert values["DEEPSEEK_PROXY_MODEL_PROVIDER"] == "zai"
+    assert values["COX_MODEL_API_KEY"] == "sk-zai-test-123456"
+    assert values["COX_MODEL_PROVIDER"] == "zai"
 
 
 def test_set_model_model_only_flow_remains_supported(tmp_path, monkeypatch, capsys):
     _patch_post_config(monkeypatch)
     env_file = tmp_path / "env"
     codex_config = tmp_path / "config.toml"
-    codex_config.write_text("[profiles.deepseek-thinking]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
+    codex_config.write_text("[profiles.cox]\nmodel = \"deepseek-v4-pro\"\n", encoding="utf-8")
 
     rc = cli.main([
         "config",
@@ -102,13 +102,13 @@ def test_set_model_model_only_flow_remains_supported(tmp_path, monkeypatch, caps
     assert result["status"] == "ok"
     assert result["model"] == "deepseek-v4-flash"
     values = cli._read_env_exports(env_file)
-    assert "DEEPSEEK_API_KEY" not in values
-    assert values["DEEPSEEK_PROXY_MODEL"] == "deepseek-v4-flash"
+    assert "COX_MODEL_API_KEY" not in values
+    assert values["COX_MODEL"] == "deepseek-v4-flash"
 
 
 def test_set_model_help_is_provider_setup_entrypoint():
     result = subprocess.run(
-        [sys.executable, "-m", "deepseek_responses_proxy.cli", "config", "set-model", "--help"],
+        [sys.executable, "-m", "codexchange_proxy.cli", "config", "set-model", "--help"],
         cwd=ROOT,
         text=True,
         capture_output=True,

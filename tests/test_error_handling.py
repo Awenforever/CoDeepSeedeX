@@ -4,7 +4,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
+from codexchange_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
 
 
 class UpstreamErrorClient(DeepSeekClient):

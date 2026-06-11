@@ -9,7 +9,7 @@ from typing import Any
 
 
 DEFAULT_MCP_PROTOCOL_VERSION = os.environ.get(
-    "DEEPSEEK_PROXY_MCP_PROTOCOL_VERSION",
+    "COX_MCP_PROTOCOL_VERSION",
     "2025-03-26",
 )
 
@@ -130,7 +130,7 @@ async def _terminate_process(proc: asyncio.subprocess.Process) -> None:
 async def discover_stdio_mcp_tools(
     config: StdioMCPServerConfig,
     *,
-    client_name: str = "deepseek-responses-proxy",
+    client_name: str = "codexchange",
     client_version: str = "unknown",
     protocol_version: str = DEFAULT_MCP_PROTOCOL_VERSION,
 ) -> dict[str, Any]:
@@ -254,7 +254,7 @@ async def call_stdio_mcp_tool(
     *,
     tool_name: str,
     arguments: dict[str, Any] | None = None,
-    client_name: str = "deepseek-responses-proxy",
+    client_name: str = "codexchange",
     client_version: str = "unknown",
     protocol_version: str = DEFAULT_MCP_PROTOCOL_VERSION,
 ) -> dict[str, Any]:

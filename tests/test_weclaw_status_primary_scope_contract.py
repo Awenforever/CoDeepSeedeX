@@ -7,7 +7,7 @@ from pathlib import Path
 
 import importlib
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def test_usage_events_support_session_id_filter(tmp_path: Path) -> None:
@@ -63,7 +63,7 @@ def test_weclaw_tokens_contract_separates_latest_primary_from_auxiliary(tmp_path
         request_id="req2",
         session_id="s2",
     )
-    tokens = proxy_app._weclaw_tokens_contract(store, profile="deepseek-thinking", session_id="s2")
+    tokens = proxy_app._weclaw_tokens_contract(store, profile="cox", session_id="s2")
     assert tokens["session"]["available"] is True
     assert tokens["session"]["summary"]["prompt_tokens"] == 250
     assert tokens["latest_primary_turn"]["summary"]["prompt_tokens"] == 200

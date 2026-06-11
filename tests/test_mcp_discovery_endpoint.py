@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from deepseek_responses_proxy.app import InMemoryResponseStore, create_app
+from codexchange_proxy.app import InMemoryResponseStore, create_app
 
 
 class NoopDeepSeekClient:
@@ -65,8 +65,8 @@ args = []
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_DISCOVERY", raising=False)
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.delenv("COX_MCP_DISCOVERY", raising=False)
 
     response = _client().get("/v1/proxy/mcp/discovery")
 
@@ -101,8 +101,8 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DISCOVERY", "1")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DISCOVERY", "1")
 
     response = _client().get("/v1/proxy/mcp/discovery")
 
@@ -140,9 +140,9 @@ args = []
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DISCOVERY", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DISCOVERY_SERVERS", "fake")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DISCOVERY", "1")
+    monkeypatch.setenv("COX_MCP_DISCOVERY_SERVERS", "fake")
 
     response = _client().get("/v1/proxy/mcp/discovery")
 
@@ -157,9 +157,9 @@ def test_tool_bridge_status_reports_discovery_config(tmp_path, monkeypatch):
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DISCOVERY", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_DISCOVERY_SERVERS", "fake,other")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_DISCOVERY", "1")
+    monkeypatch.setenv("COX_MCP_DISCOVERY_SERVERS", "fake,other")
 
     response = _client().get("/v1/proxy/tool-bridge/status")
 

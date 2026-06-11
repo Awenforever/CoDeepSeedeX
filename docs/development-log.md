@@ -1,3 +1,11 @@
+## p3.0a1-codexchange-hardcut-generalized-router
+
+- Started the CodeXchange / CoX hard-cut line.
+- Renamed the product surface to CodeXchange, the CLI to `cox`, and the Python package to `codexchange_proxy`.
+- Moved the product-level configuration namespace to `COX_`.
+- Added a hard-cut guard test so retired product markers cannot silently re-enter tracked source.
+- Kept DeepSeek as a model provider name while removing it as the product boundary.
+
 ## p2.22a1-custom-provider-capability-metadata
 
 Date: 2026-06-10
@@ -62,9 +70,9 @@ Date: 2026-06-09
 Scope:
 
 - Fixed the p2.21a3 real-HOME VM follow-up where installation reached the refreshed `v0.4.3-alpha` build and selected `/usr/bin/python3.11`, but the optional Codex wrapper step returned rc=1 when no real Codex launcher existed behind the existing managed wrapper.
-- The Codex wrapper step now skips nonfatally when no real Codex launcher is available, while preserving a clear diagnostic and the boundary that CoDeepSeedeX does not install or patch Node.js or Codex.
-- The installer now forces the primary managed `deepseek-thinking` profile installation to the Codex 0.134+ split profile-file layout instead of relying on auto layout when Codex cannot be probed.
-- The installer removes the deprecated managed `deepseek` profile after installing the primary `deepseek-thinking` profile so stale legacy `[profiles.deepseek]` tables do not survive normal upgrade.
+- The Codex wrapper step now skips nonfatally when no real Codex launcher is available, while preserving a clear diagnostic and the boundary that CodeXchange does not install or patch Node.js or Codex.
+- The installer now forces the primary managed `cox` profile installation to the Codex 0.134+ split profile-file layout instead of relying on auto layout when Codex cannot be probed.
+- The installer removes the deprecated managed `deepseek` profile after installing the primary `cox` profile so stale legacy `[profiles.deepseek]` tables do not survive normal upgrade.
 - The CLI upgrade path also forces managed profile refreshes to `split_profile_files`.
 
 Validation target:
@@ -85,8 +93,8 @@ Scope:
 
 - Fixed the p2.21a2 installer ordering regression where `PYTHON_BIN` intentionally starts empty until compatible interpreter selection, but the guided setup flow could read existing env values before that selection occurred.
 - The VM symptom was `install.sh: line 2913: : command not found` before the requirements check; the failing path was `env_file_value`, which executed an empty `PYTHON_BIN`.
-- The installer now selects a compatible Python before env-backed guided setup helpers run, and `ensure_codeepseedex_python_bin` is idempotent so the later requirements check can safely call it again.
-- This preserves the p2.21a2 boundary: CoDeepSeedeX selects from existing compatible interpreters, but does not install, patch, or replace Python.
+- The installer now selects a compatible Python before env-backed guided setup helpers run, and `ensure_codexchange_python_bin` is idempotent so the later requirements check can safely call it again.
+- This preserves the p2.21a2 boundary: CodeXchange selects from existing compatible interpreters, but does not install, patch, or replace Python.
 
 Validation target:
 
@@ -105,9 +113,9 @@ Scope:
 
 - Fixed the real-HOME upgrade blocker where the installer could select a stale generic `python3` interpreter and abort before refreshing an existing installation.
 - The installer now resolves a compatible Python interpreter before the requirements check, trying versioned Python commands (`python3.13`, `python3.12`, `python3.11`), the existing managed virtual environment, then generic `python3`/`python`.
-- Explicit `--python-bin` / `DEEPSEEK_PROXY_PYTHON_BIN` remains authoritative; if that explicit interpreter is incompatible, the installer fails with a clear diagnostic instead of silently changing the user's explicit choice.
+- Explicit `--python-bin` / `COX_PYTHON_BIN` remains authoritative; if that explicit interpreter is incompatible, the installer fails with a clear diagnostic instead of silently changing the user's explicit choice.
 - When the existing managed virtual environment is the only compatible interpreter, the installer reuses it instead of trying to recreate the same venv with itself.
-- CoDeepSeedeX still does not install, patch, or replace Python.
+- CodeXchange still does not install, patch, or replace Python.
 - This node is source-only; public `v0.4.3-alpha` must be refreshed after validation.
 
 Validation target:
@@ -125,10 +133,10 @@ Date: 2026-06-08
 
 Scope:
 
-- Hardened installed-user Codex entry behavior on the CoDeepSeedeX side.
-- The installer now persists `~/.local/bin` discovery more broadly and performs post-install entrypoint diagnostics for `dsproxy` and `codex` wrapper precedence.
-- Generated Codex wrappers now preflight Node-backed Codex launchers and report a clear CoDeepSeedeX diagnostic when Node.js is missing; CoDeepSeedeX still does not install or patch Node automatically.
-- `dsproxy config wizard` now uses cbreak menu input so terminal output keeps normal line rendering, matching the installer guided UI more closely.
+- Hardened installed-user Codex entry behavior on the CodeXchange side.
+- The installer now persists `~/.local/bin` discovery more broadly and performs post-install entrypoint diagnostics for `cox` and `codex` wrapper precedence.
+- Generated Codex wrappers now preflight Node-backed Codex launchers and report a clear CodeXchange diagnostic when Node.js is missing; CodeXchange still does not install or patch Node automatically.
+- `cox config wizard` now uses cbreak menu input so terminal output keeps normal line rendering, matching the installer guided UI more closely.
 - The config wizard custom-provider path now collects a provider name/profile id, writes the custom provider registry, and syncs a provider-backed Codex profile for `codex --profile <provider-id>`.
 
 Validation target:
@@ -172,7 +180,7 @@ Date: 2026-06-08
 
 Scope:
 
-- Make `deepseek-thinking` the only primary managed Codex profile.
+- Make `cox` the only primary managed Codex profile.
 - Stop custom provider activation from synchronizing deprecated `deepseek` or managed DeepSeek profiles.
 - Keep provider-backed custom profiles independent: `codex --profile <provider-id>` activates that provider and starts the thinking proxy.
 - Make wrapper entry fail closed for deprecated `codex --profile deepseek`.
@@ -194,12 +202,12 @@ Date: 2026-06-08
 Scope:
 
 - Start the provider/profile abstraction line.
-- Add top-level `dsproxy provider` alias for named custom OpenAI-compatible providers.
+- Add top-level `cox provider` alias for named custom OpenAI-compatible providers.
 - Add provider CRUD and model management actions for custom providers.
 - Generate provider-backed Codex split profiles so users can run `codex --profile <provider-id>`.
 - Keep custom provider validation on the OpenAI-compatible `/models` path, not the DeepSeek account balance endpoint.
 - Keep Codex TUI `/model` integration explicitly unclaimed until real Codex behavior proves it reads profile-level model catalogs.
-- Keep ordinary `deepseek` profile as legacy compatibility in this foundation node; `deepseek-thinking` remains the preferred primary DeepSeek entry.
+- Keep ordinary `deepseek` profile as legacy compatibility in this foundation node; `cox` remains the preferred primary DeepSeek entry.
 
 Validation target:
 
@@ -239,7 +247,7 @@ Date: 2026-06-08
 Scope:
 
 - Move the public `v0.4.3-alpha` Release/tag from `01d6cee` to `6a96593` after p2.19a23 closure and p2.19a24 real Codex entry validation.
-- Preserve GitHub Release title `CoDeepSeedeX v0.4.3-alpha`.
+- Preserve GitHub Release title `CodeXchange v0.4.3-alpha`.
 - Keep GitHub Release as non-draft and non-prerelease, making it the current Latest ordinary Release.
 - Re-upload Release assets `bootstrap.sh` and `install.sh`.
 - Write public Release notes from a temporary `/tmp` file only; no tracked per-release note file is added under `docs/`.
@@ -249,7 +257,7 @@ Final state:
 - `master = origin/master = 6a96593` at the time of Release refresh.
 - Public tag `v0.4.3-alpha = 6a96593`.
 - Internal checkpoint included in the Release: `p2.19a23-profile-drift-failclosed-guard = 6a96593`.
-- GitHub Release `CoDeepSeedeX v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
+- GitHub Release `CodeXchange v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
 - GitHub Latest API returns `v0.4.3-alpha`.
 - Release assets are exactly `bootstrap.sh` and `install.sh`.
 - Asset digests:
@@ -259,7 +267,7 @@ Final state:
 Release-note coverage:
 
 - Custom provider profile/model consistency for managed Codex profiles.
-- `dsproxy status --json` normal status output and separate `--weclaw-json` contract.
+- `cox status --json` normal status output and separate `--weclaw-json` contract.
 - Auxiliary agent-liveness model selection under forced/custom model configuration.
 - Runtime-entry managed profile drift guard with fail-closed behavior.
 - Wrapper path hygiene and `/tmp` wrapper-chain prevention.
@@ -278,10 +286,10 @@ Date: 2026-06-08
 Scope:
 
 - Close the real-HOME profile drift gap observed after p2.19a22.
-- Add a CLI-route preflight guard that repairs CoDeepSeedeX-managed split Codex profile models from the default dsproxy env before `dsproxy start` and `dsproxy status` continue.
+- Add a CLI-route preflight guard that repairs CodeXchange-managed split Codex profile models from the default cox env before `cox start` and `cox status` continue.
 - The guard uses `profile repair --managed-only` semantics internally, disables post-config apply during the guard to avoid recursion, and fails closed if the repair itself fails.
 - This makes the runtime/status entry path self-healing for stale split profiles such as `glm-5.1` while the env forces `deepseek-v4-flash-ascend`.
-- Existing Codex wrapper launch repair remains in place; this node extends the protection to dsproxy CLI startup/status paths.
+- Existing Codex wrapper launch repair remains in place; this node extends the protection to cox CLI startup/status paths.
 - No model-provider call is required for validation.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 
@@ -301,11 +309,11 @@ Date: 2026-06-07
 
 Scope:
 
-- Add `dsproxy status --json` as an explicit machine-readable alias for normal status output.
-- Preserve existing `dsproxy status thinking` JSON behavior.
+- Add `cox status --json` as an explicit machine-readable alias for normal status output.
+- Preserve existing `cox status thinking` JSON behavior.
 - Keep `--weclaw-json` as the WeClaw-specific status contract.
 - Fix auxiliary agent-liveness judge upstream model selection under forced/custom model configuration.
-- When `DEEPSEEK_PROXY_FORCE_MODEL=1` and `DEEPSEEK_PROXY_MODEL` is set, liveness judge upstream calls now follow the forced upstream model instead of silently normalizing the default no-thinking alias to a different provider model.
+- When `COX_FORCE_MODEL=1` and `COX_MODEL` is set, liveness judge upstream calls now follow the forced upstream model instead of silently normalizing the default no-thinking alias to a different provider model.
 - This closes the real-HOME leakage where the runtime status showed an agent-liveness judge upstream model that could request an inaccessible default model even though the main profile used the env-selected custom model.
 - No model-provider call is needed for validation; local status endpoints and CLI status are sufficient.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
@@ -318,7 +326,7 @@ Validation target:
 - maintained ghost audit smoke with `must_fix=0`
 - focused CLI status/liveness/docs/version tests
 - full test suite
-- real-HOME local status validation: `dsproxy status thinking --json` returns JSON and agent-liveness `upstream_model` matches the forced env-selected model.
+- real-HOME local status validation: `cox status thinking --json` returns JSON and agent-liveness `upstream_model` matches the forced env-selected model.
 
 ## p2.19a19-real-home-profile-model-consistency — Real-HOME split-profile model consistency
 
@@ -327,11 +335,11 @@ Date: 2026-06-07
 Scope:
 
 - Fix managed Codex split-profile model synchronization after model API configuration changes.
-- `dsproxy config set-model` and the deprecated compatibility alias `dsproxy config set-api-key` now sync the selected upstream model to all managed Codex profiles by default (`deepseek` and `deepseek-thinking`), unless the user explicitly passes `--profile`.
+- `cox config set-model` and the deprecated compatibility alias `cox config set-api-key` now sync the selected upstream model to all managed Codex profiles by default (`deepseek` and `cox`), unless the user explicitly passes `--profile`.
 - Custom-provider activation and guided wizard configuration sync managed Codex profile models when operating on the default real-user env file.
-- `profile repair` now honors an explicit `DEEPSEEK_PROXY_THINKING_MODEL` / `DEEPSEEK_THINKING_MODEL` override for `deepseek-thinking`; otherwise both managed profiles use `DEEPSEEK_PROXY_MODEL`.
-- Keep provider blocks as local dsproxy providers (`deepseek-proxy` and `deepseek-thinking-proxy`); the upstream provider/base URL/model remain dsproxy env concerns.
-- Repair the observed real-HOME drift where env selected `custom/deepseek-v4-flash-ascend` while `~/.codex/deepseek-thinking.config.toml` still contained `glm-5.1`.
+- `profile repair` now honors an explicit `COX_THINKING_MODEL` / `COX_REASONING_MODEL` override for `cox`; otherwise both managed profiles use `COX_MODEL`.
+- Keep provider blocks as local cox providers (`cox-proxy` and `cox-proxy`); the upstream provider/base URL/model remain cox env concerns.
+- Repair the observed real-HOME drift where env selected `custom/deepseek-v4-flash-ascend` while `~/.codex/cox.config.toml` still contained `glm-5.1`.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 
 Validation target:
@@ -352,9 +360,9 @@ Scope:
 
 - Harden managed Codex wrapper refresh when the install manifest contains a stale or unsafe `REAL_CODEX`.
 - Keep the existing fail-closed guard for wrapper-to-wrapper recursion.
-- Add safe recovery: if manifest `REAL_CODEX` points to a CoDeepSeedeX wrapper, to the wrapper itself, or to a stale `/tmp/codeepseedex-*` wrapper, `dsproxy profile refresh-wrapper` now searches `CODEEPSEEDEX_REAL_CODEX`, current `PATH`, and common npm/nvm Codex locations for a non-CoDeepSeedeX real Codex executable.
-- If no safe real Codex executable exists, refresh still fails closed with `real_codex_points_to_codeepseedex_wrapper`.
-- Preserve the real-user invariant: generated wrappers must not use another CoDeepSeedeX wrapper as `REAL_CODEX`, and must not use a prior test-HOME `/tmp/codeepseedex-*` wrapper as `REAL_CODEX`.
+- Add safe recovery: if manifest `REAL_CODEX` points to a CodeXchange wrapper, to the wrapper itself, or to a stale `/tmp/codexchange-*` wrapper, `cox profile refresh-wrapper` now searches `COX_REAL_CODEX`, current `PATH`, and common npm/nvm Codex locations for a non-CodeXchange real Codex executable.
+- If no safe real Codex executable exists, refresh still fails closed with `real_codex_points_to_codexchange_wrapper`.
+- Preserve the real-user invariant: generated wrappers must not use another CodeXchange wrapper as `REAL_CODEX`, and must not use a prior test-HOME `/tmp/codexchange-*` wrapper as `REAL_CODEX`.
 - Do not clean `/tmp` as a substitute for fixing source behavior.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 
@@ -378,8 +386,8 @@ Scope:
 - Keep `model_auto_compact_token_limit`, `auto_compact_token_limit`, and `auto_compact_ratio` as current generated/telemetry fields, not legacy input contracts.
 - Keep stale absolute threshold and ratio inputs as ignored/compatibility evidence only:
   - historical `750000` and `0.75` remain history or negative-guard material.
-  - `DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS` and `DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT` remain legacy absolute-threshold inputs and are reported as ignored by managed runtime code.
-  - `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` and `CODEEPSEEDEX_AUTO_COMPACT_RATIO` remain ignored legacy ratio overrides for managed profiles.
+  - `COX_AUTO_COMPACT_THRESHOLD_TOKENS` and `COX_MODEL_AUTO_COMPACT_TOKEN_LIMIT` remain legacy absolute-threshold inputs and are reported as ignored by managed runtime code.
+  - `COX_AUTO_COMPACT_RATIO` and `COX_AUTO_COMPACT_RATIO` remain ignored legacy ratio overrides for managed profiles.
 - Narrow the maintained ghost-audit threshold pattern so it no longer classifies current 90% fields as old-threshold review debt.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 
@@ -404,8 +412,8 @@ Scope:
 - Remove or de-emphasize deprecated aliases from user-facing supported-provider summaries:
   - unsupported image provider messages no longer list `glm` as a current public provider.
   - unsupported web search provider messages no longer list Brave as a current public provider.
-  - `dsproxy config status` supported image provider catalog no longer promotes `glm` or `dashscope` shortcuts.
-- Keep `dsproxy config set-api-key` as a compatibility command, but mark it as deprecated and point users to `dsproxy config set-model`.
+  - `cox config status` supported image provider catalog no longer promotes `glm` or `dashscope` shortcuts.
+- Keep `cox config set-api-key` as a compatibility command, but mark it as deprecated and point users to `cox config set-model`.
 - Refine ghost audit rules so `qwen-us` is treated as current public regional provider, while `glm`, Brave, and `set-api-key` remain review-only alias-boundary markers.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 
@@ -447,7 +455,7 @@ Date: 2026-06-07
 Scope:
 
 - Clean user-facing README wording so the current `v0.4.3-alpha` Latest ordinary Release is no longer described as the current pre-release channel.
-- Keep `dsproxy upgrade --alpha` documented only as a future/non-draft GitHub pre-release channel.
+- Keep `cox upgrade --alpha` documented only as a future/non-draft GitHub pre-release channel.
 - Simplify the WeClaw integration requirement to the current public Release instead of listing older public Release tags in the user README.
 - Replace site-specific custom provider examples in installer and CLI help with generic placeholders: `ExampleProvider`, `https://api.example.com/v1`, and `your-model-id`.
 - Update custom-provider tests so they validate generic OpenAI-compatible provider behavior without making USTC a public contract.
@@ -500,7 +508,7 @@ Scope:
 Validation target:
 
 - `git diff --check`
-- `python -m py_compile deepseek_responses_proxy/app.py`
+- `python -m py_compile codexchange_proxy/app.py`
 - focused documentation/version tests
 - full tests
 
@@ -511,7 +519,7 @@ Date: 2026-06-07
 Scope:
 
 - Move the public `v0.4.3-alpha` Release/tag to `01d6cee` after p2.19a10 VM real-home validation.
-- Preserve GitHub Release title `CoDeepSeedeX v0.4.3-alpha`.
+- Preserve GitHub Release title `CodeXchange v0.4.3-alpha`.
 - Keep GitHub Release as non-draft and non-prerelease, making it the current Latest ordinary Release.
 - Re-upload Release assets `bootstrap.sh` and `install.sh`.
 - Write public Release notes from a temporary `/tmp` file only; no tracked per-release note file is added under `docs/`.
@@ -521,7 +529,7 @@ Final state:
 - `master = origin/master = 01d6cee`.
 - Public tag `v0.4.3-alpha = 01d6cee`.
 - Internal checkpoint included in the Release: `p2.19a10-guided-installer-contextual-hints = 01d6cee`.
-- GitHub Release `CoDeepSeedeX v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
+- GitHub Release `CodeXchange v0.4.3-alpha`: `isDraft=false`, `isPrerelease=false`.
 - GitHub Latest API returns `v0.4.3-alpha`.
 - Release assets are exactly `bootstrap.sh` and `install.sh`.
 - Asset digests:
@@ -543,7 +551,7 @@ Release-note coverage:
 Validation evidence before Release:
 
 - Local full test suite passed: `629 passed, 1 skipped`.
-- VM real-home validation passed for custom provider configuration, Codex wrapper execution, legacy Codex profile layout, context-window profile-source consistency, guided-hint contamination checks, and absence of `/tmp/codeepseedex-*` in the installed wrapper.
+- VM real-home validation passed for custom provider configuration, Codex wrapper execution, legacy Codex profile layout, context-window profile-source consistency, guided-hint contamination checks, and absence of `/tmp/codexchange-*` in the installed wrapper.
 
 
 ## p2.19a10-guided-installer-contextual-hints — Guided installer contextual hints
@@ -564,7 +572,7 @@ Date: 2026-06-06
 Scope:
 
 - Keep public `v0.4.3-alpha` unrefreshed until final VM validation and release refresh.
-- Align `context_window.codex_profile.source` with the profile source used by `dsproxy profile status`.
+- Align `context_window.codex_profile.source` with the profile source used by `cox profile status`.
 - When `profile_source=legacy_profile_table`, report `context_window.codex_profile.source=codex_profile.legacy_profile_table` instead of the stale `codex_split_profile_file` label.
 - Preserve the p2.19a8 real Codex binary wrapper fix and p2.19a7 legacy layout status contract.
 
@@ -575,9 +583,9 @@ Date: 2026-06-06
 Scope:
 
 - Keep public `v0.4.3-alpha` unrefreshed until VM wrapper validation passes.
-- Fix installer real Codex resolution so CoDeepSeedeX never writes a wrapper whose `REAL_CODEX` points to another CoDeepSeedeX wrapper.
-- Skip managed wrappers, temporary `/tmp/codeepseedex-*` wrappers, and the destination wrapper path while resolving the real Codex command.
-- Fail closed for invalid `CODEEPSEEDEX_REAL_CODEX` and stale refresh-wrapper manifests that point to a managed wrapper.
+- Fix installer real Codex resolution so CodeXchange never writes a wrapper whose `REAL_CODEX` points to another CodeXchange wrapper.
+- Skip managed wrappers, temporary `/tmp/codexchange-*` wrappers, and the destination wrapper path while resolving the real Codex command.
+- Fail closed for invalid `COX_REAL_CODEX` and stale refresh-wrapper manifests that point to a managed wrapper.
 
 ## p2.19a7-codex-wrapper-env-and-status-layout — Codex wrapper environment and status layout
 
@@ -599,7 +607,7 @@ Scope:
 - Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
 - Finalize the custom provider empty-state menu so unavailable existing-provider actions are not shown before a provider exists.
 - Render saved custom provider selection through the guided arrow-key UI instead of exact-name text entry.
-- Replace completion-page `Next commands` wording with `Start using CoDeepSeedeX` and `Optional verification`.
+- Replace completion-page `Next commands` wording with `Start using CodeXchange` and `Optional verification`.
 - Remove the old post-install command dump from the default guided install path.
 - Make unknown Codex CLI version resolve to legacy main-config profile tables instead of split profile files.
 - Preserve explicit `--profile-layout split_profile_files` and the Codex `>= 0.134.0` split-profile path.
@@ -614,7 +622,7 @@ Scope:
 - Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
 - Make managed Codex profile installation version-aware.
 - Codex CLI `>= 0.134.0` keeps the split profile file layout.
-- Codex CLI `< 0.134.0` uses legacy named profile tables for the managed deepseek and deepseek-thinking profiles in the main `config.toml` so older Codex can resolve profiles.
+- Codex CLI `< 0.134.0` uses legacy named profile tables for the managed deepseek and cox profiles in the main `config.toml` so older Codex can resolve profiles.
 - Expose `codex_cli_version`, `codex_profile_layout`, and `layout_reason` in install-codex-profile JSON output.
 - Preserve p2.19 custom provider registry and guided UI work.
 - Do not refresh Release assets in this patch step.
@@ -666,8 +674,8 @@ Scope:
 - Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
 - Add a minimal custom OpenAI-compatible provider registry at `model-providers.json` while preserving the legacy env mirror.
 - Let users assign a display-only custom provider name, store multiple custom providers, store multiple models per provider, and switch active provider/model.
-- Keep runtime compatibility by mirroring the active provider/model/key to `DEEPSEEK_PROXY_MODEL_PROVIDER=custom`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_PROXY_MODEL`, and `DEEPSEEK_API_KEY`.
-- Add CLI entry points for `dsproxy config custom-provider list|add|use|add-model`.
+- Keep runtime compatibility by mirroring the active provider/model/key to `COX_MODEL_PROVIDER=custom`, `COX_MODEL_BASE_URL`, `COX_MODEL`, and `COX_MODEL_API_KEY`.
+- Add CLI entry points for `cox config custom-provider list|add|use|add-model`.
 - Keep API-key output redacted and registry files written with user-only permissions.
 - Do not refresh Release assets in this patch step.
 
@@ -732,7 +740,7 @@ Date: 2026-06-05
 Scope:
 
 - Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
-- Add a final model-name guard for installer and `dsproxy config wizard`: URL/path/control-character values, whitespace, and API-key-like values such as `sk-*` or `Bearer ...` are rejected as model ids.
+- Add a final model-name guard for installer and `cox config wizard`: URL/path/control-character values, whitespace, and API-key-like values such as `sk-*` or `Bearer ...` are rejected as model ids.
 - Preserve the p2.18a4 stable splash entry and p2.18a3 custom base URL normalization.
 - Do not refresh Release assets in this patch step.
 
@@ -743,7 +751,7 @@ Date: 2026-06-05
 Scope:
 
 - Keep the public `v0.4.3-alpha` release rolled back until VM user-path validation passes.
-- Add an explicit stable installer splash entry: users see the CoDeepSeedeX logo, Welcome panel, and setup summary first, then press Enter to start Step 1 language selection.
+- Add an explicit stable installer splash entry: users see the CodeXchange logo, Welcome panel, and setup summary first, then press Enter to start Step 1 language selection.
 - Keep non-interactive installs non-blocking.
 - Do not refresh Release assets in this patch step.
 
@@ -757,8 +765,8 @@ Scope:
 - Replace the risky `p2.18a2` full-screen input clearing behavior with stable panel rendering.
 - Preserve a visible brand/setup plan before Step 1 language selection.
 - Sanitize TTY input, handle Backspace/DEL control characters, normalize custom OpenAI-compatible base URLs, and reject URL/path-like model names.
-- Apply the same input contract to installer and `dsproxy config wizard`.
-- Keep `dsproxy upgrade` TTY panels but avoid refreshing the public release in this patch step.
+- Apply the same input contract to installer and `cox config wizard`.
+- Keep `cox upgrade` TTY panels but avoid refreshing the public release in this patch step.
 
 ## p2.18a2-end-to-end-guided-ui — end-to-end guided UI
 
@@ -766,7 +774,7 @@ Date: 2026-06-05
 
 Scope:
 
-- Keep public version `v0.4.3-alpha` while making the interactive user path consistent across install, upgrade, and `dsproxy config wizard`.
+- Keep public version `v0.4.3-alpha` while making the interactive user path consistent across install, upgrade, and `cox config wizard`.
 - Treat language selection as Step 1/5 in the guided installer instead of a pre-flow prompt.
 - Replace bare custom-provider text prompts with the same open terminal panel style used by arrow menus.
 - Add TTY upgrade panels for plan, progress, blocked-state, fallback bootstrap, and completion while keeping non-TTY / JSON output machine-readable.
@@ -779,14 +787,14 @@ Date: 2026-06-04
 Scope:
 
 - Keep `v0.4.3-alpha` as the public Latest line while hardening the user upgrade path.
-- Add a latest-release resolution fallback so `dsproxy upgrade` can continue with the current public release tag when the GitHub Latest Release API is rate-limited.
+- Add a latest-release resolution fallback so `cox upgrade` can continue with the current public release tag when the GitHub Latest Release API is rate-limited.
 - Let git-backed installs fall back to the release bootstrap installer if `git fetch` fails, preserving the same safe backup/install path used by non-git installs.
-- Keep installer and `dsproxy config wizard` guided surfaces aligned with the arrow-key open terminal UI contract.
+- Keep installer and `cox config wizard` guided surfaces aligned with the arrow-key open terminal UI contract.
 
 Validation focus:
 
-- `dsproxy upgrade --tag v0.4.3-alpha` remains the reliable legacy path for already-installed old runtimes whose own code cannot be patched retroactively.
-- Future `dsproxy upgrade` from this checkpoint should report structured fallback metadata instead of stopping at `latest_release_resolution_failed` when GitHub API resolution fails.
+- `cox upgrade --tag v0.4.3-alpha` remains the reliable legacy path for already-installed old runtimes whose own code cannot be patched retroactively.
+- Future `cox upgrade` from this checkpoint should report structured fallback metadata instead of stopping at `latest_release_resolution_failed` when GitHub API resolution fails.
 
 ## p2.17a9-upgrade-ignore-managed-resources-dirty — v0.4.3-alpha public release
 
@@ -828,7 +836,7 @@ Scope:
 
 - Add a provider capability profile layer for chat/completions payload adaptation.
 - Keep custom/OpenAI-compatible providers on a conservative common-parameter allowlist by default.
-- Support explicit `DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS`, `DEEPSEEK_PROXY_CHAT_DROP_PARAMS`, and `DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON` overrides for provider-specific custom extensions.
+- Support explicit `COX_CHAT_ALLOW_PARAMS`, `COX_CHAT_DROP_PARAMS`, and `COX_CHAT_EXTRA_PARAMS_JSON` overrides for provider-specific custom extensions.
 - Keep DeepSeek official extensions enabled for the official provider, while letting custom providers opt in explicitly.
 - Enrich upstream error diagnostics with provider, base URL host, compatibility mode, capability profile, and unsupported parameter extraction.
 
@@ -847,7 +855,7 @@ Scope:
 - Custom providers now strip DeepSeek-only chat extensions such as `user_id`, `thinking`, and `reasoning_effort` by default before `/chat/completions` calls.
 - DeepSeek official keeps stable `user_id` and DeepSeek-specific fields for cache/accounting compatibility.
 - Upstream error details now report the configured provider and base URL host so custom-provider failures are not mislabeled as DeepSeek official failures.
-- Operators can opt into DeepSeek extension passthrough for compatible custom endpoints with `DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS=1` or `DEEPSEEK_PROXY_CHAT_COMPAT_MODE=deepseek`.
+- Operators can opt into DeepSeek extension passthrough for compatible custom endpoints with `COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS=1` or `COX_CHAT_COMPAT_MODE=deepseek`.
 
 Release boundary:
 
@@ -905,7 +913,7 @@ Scope:
 
 - Add the installer language choice as the first user-facing decision, with English and Simplified Chinese options.
 - Align the setup plan with the five guided user decisions: language, model API, web search API, image generation API, and Codex wrapper.
-- Remove manual dsproxy port prompts from the guided path; installer selects available non-thinking and thinking ports automatically.
+- Remove manual cox port prompts from the guided path; installer selects available non-thinking and thinking ports automatically.
 - Make installer Backspace handling safe under `set -e` so the previous-step sentinel is consumed by the step loop instead of ending installation.
 - Keep the boxed UI compact and avoid inner separator clutter.
 
@@ -937,7 +945,7 @@ Scope:
 
 - Fixed the terminal menu frame redraw model so interactive installer selections redraw the whole panel instead of leaving stale right-border fragments.
 - Replaced the placeholder `Step interactive` footer with explicit step labels such as `Step 2/5`, `Step 3/5`, `Step 4/5`, and `Step 5/5`.
-- Narrowed interactive panels to a calmer 72-88 column range and applied the same footer convention to `dsproxy config wizard`.
+- Narrowed interactive panels to a calmer 72-88 column range and applied the same footer convention to `cox config wizard`.
 
 Release boundary:
 
@@ -949,7 +957,7 @@ Date: 2026-05-28
 
 Scope:
 
-- Reworked the installer and `dsproxy config wizard` terminal panels from compact box-only output into a more spacious framed layout.
+- Reworked the installer and `cox config wizard` terminal panels from compact box-only output into a more spacious framed layout.
 - Separated the main question, hint/details, option list, and keybinding footer so long guidance does not visually crowd the selection rows.
 - Kept non-interactive and dry-run output machine-readable; this node only changes interactive TTY presentation.
 - Public `v0.4.3-alpha` is not moved in this internal UI iteration.
@@ -961,7 +969,7 @@ Date: 2026-05-28
 Scope:
 
 - Replace the p2.16a1 box-only terminal UI with a shared framed renderer that wraps long text and keeps menu content inside the panel.
-- Improve installer arrow menus and `dsproxy config wizard` with a consistent title, hint, options, and Step footer layout.
+- Improve installer arrow menus and `cox config wizard` with a consistent title, hint, options, and Step footer layout.
 - Keep non-interactive and JSON/dry-run paths machine-readable; this node does not update the public Release.
 
 ## p2.16a1 Image payload preservation and terminal UI foundation
@@ -972,7 +980,7 @@ Scope:
 
 - Treat image payloads as opaque, lossless request payloads. They are excluded from tool-output trimming, artifact-ref replacement, semantic-envelope replacement, token-first compaction, and char fallback trimming.
 - Add reporting semantics for `image_payload_preserved_verbatim_no_compact_no_trim` so downstream status/debug surfaces can distinguish preservation from a missing trim opportunity.
-- Start a boxed terminal UI foundation for installer and `dsproxy config wizard`, preserving arrow-key navigation while improving structure and visual hierarchy.
+- Start a boxed terminal UI foundation for installer and `cox config wizard`, preserving arrow-key navigation while improving structure and visual hierarchy.
 
 Release boundary:
 
@@ -1001,7 +1009,7 @@ Date: 2026-05-28
 Scope:
 
 - Fix the `v0.4.3-alpha` VM validation failure where non-interactive install rewrote an existing env file without loading its configured model provider before choosing defaults.
-- Preserve existing `DEEPSEEK_PROXY_MODEL_PROVIDER`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_PROXY_MODEL` values during non-interactive install/upgrade.
+- Preserve existing `COX_MODEL_PROVIDER`, `COX_MODEL_BASE_URL`, and `COX_MODEL` values during non-interactive install/upgrade.
 - Use the resolved non-DeepSeek/custom model when generating managed Codex split profile files, so upgraded Codex 0.134+ users keep their configured upstream model.
 
 Release boundary:
@@ -1040,7 +1048,7 @@ Scope:
 Validation target:
 
 - `python -m py_compile` for app/CLI/focused tests.
-- `bash -n bootstrap.sh`, `bash -n scripts/install.sh`, and `bash -n scripts/dsproxy-config`.
+- `bash -n bootstrap.sh`, `bash -n scripts/install.sh`, and `bash -n scripts/cox-config`.
 - `git diff --check`.
 - Focused CLI/docs/version/provider tests.
 - Full tests.
@@ -1057,10 +1065,10 @@ Date: 2026-05-28
 Scope:
 
 - Adapt managed Codex profiles to the Codex 0.134+ split profile file layout.
-- Keep provider blocks in the main Codex config and write profile bodies to `deepseek.config.toml` and `deepseek-thinking.config.toml`.
+- Keep provider blocks in the main Codex config and write profile bodies to `deepseek.config.toml` and `cox.config.toml`.
 - Treat legacy embedded profile tables and top-level deepseek profile selectors as migration input only.
-- Make `dsproxy config test-api-key` read the configured model provider/base URL/model from env by default, so custom providers validate against their configured `/models` endpoint instead of DeepSeek official `/user/balance`.
-- Align `dsproxy config wizard` with the installer arrow-key menu contract.
+- Make `cox config test-api-key` read the configured model provider/base URL/model from env by default, so custom providers validate against their configured `/models` endpoint instead of DeepSeek official `/user/balance`.
+- Align `cox config wizard` with the installer arrow-key menu contract.
 
 Release boundary:
 
@@ -1074,15 +1082,15 @@ Date: 2026-05-27
 Scope:
 
 - Fix stale release metadata env pollution found during `v0.4.0-alpha` VM validation.
-- Runtime commit metadata now ignores `DEEPSEEK_PROXY_PUBLIC_COMMIT` and `DEEPSEEK_PROXY_INTERNAL_COMMIT` when the env file also exposes a mismatched `DEEPSEEK_PROXY_INTERNAL_VERSION`.
+- Runtime commit metadata now ignores `COX_PUBLIC_COMMIT` and `COX_INTERNAL_COMMIT` when the env file also exposes a mismatched `COX_INTERNAL_VERSION`.
 - `scripts/install.sh` now writes the current internal version parsed from installed source instead of the old hard-coded `p2.10a26-wrapper-start-plan-mode-hardening` value.
-- `bootstrap.sh` and `dsproxy upgrade` non-git fallback scrub stale release metadata env keys before invoking the installer.
+- `bootstrap.sh` and `cox upgrade` non-git fallback scrub stale release metadata env keys before invoking the installer.
 - Added regression tests for stale env metadata, non-git upgrade env scrubbing, and installer release metadata output.
 
 Reason:
 
-- VM validation showed `dsproxy --version` returning `v0.4.0-alpha | 72e0f77` although remote `v0.4.0-alpha^{}` and `p2.14a9-upgrade-alpha-non-git-fallback^{}` both pointed to `e5111c5`.
-- Narrow audit showed `72e0f77` came from `/home/wjh/.config/deepseek-responses-proxy/env`, not from the Release tag or installed source.
+- VM validation showed `cox --version` returning `v0.4.0-alpha | 72e0f77` although remote `v0.4.0-alpha^{}` and `p2.14a9-upgrade-alpha-non-git-fallback^{}` both pointed to `e5111c5`.
+- Narrow audit showed `72e0f77` came from `/home/wjh/.config/codexchange/env`, not from the Release tag or installed source.
 
 Release boundary:
 
@@ -1095,7 +1103,7 @@ Date: 2026-05-26
 
 Scope:
 
-- Fix future `dsproxy upgrade --alpha` behavior for source-archive/non-git installs.
+- Fix future `cox upgrade --alpha` behavior for source-archive/non-git installs.
 - Replace the old `not_a_git_checkout` terminal error with a release-bootstrap fallback.
 - The fallback downloads target-ref `bootstrap.sh` and runs it with `--install-ref <target-ref>` plus `--non-interactive --install-dir <repo_hint>`.
 - `--dry-run` now reports the non-git bootstrap plan without downloading or executing it.
@@ -1106,7 +1114,7 @@ Scope:
 
 Reason:
 
-- VM validation showed explicit `--install-ref v0.4.0-alpha` succeeds, but `v0.3.9-alpha` source-archive installs return `not_a_git_checkout` for `dsproxy upgrade --alpha`.
+- VM validation showed explicit `--install-ref v0.4.0-alpha` succeeds, but `v0.3.9-alpha` source-archive installs return `not_a_git_checkout` for `cox upgrade --alpha`.
 - Because `v0.3.9-alpha` must not move, old clients still need the explicit installer path. p2.14a9 prevents the same failure for future installed versions once this fix is published in a later public alpha.
 
 Validation target:
@@ -1139,17 +1147,17 @@ Scope:
 
 p2.14 release coverage:
 
-- Managed native tool routing core maps native `web_search` and `image_generation` to `codeepseedex_web_search` and `codeepseedex_generate_image` when policy allows managed routing.
+- Managed native tool routing core maps native `web_search` and `image_generation` to `codexchange_web_search` and `codexchange_generate_image` when policy allows managed routing.
 - Runtime diagnostics expose last route decisions, last execution evidence, tool calls, tool results, request-scoped no-native-tool/no-tool-call diagnostics, and WeClaw-facing status.
-- `dsproxy config show`, `dsproxy config set-tool-routing`, and `dsproxy doctor tool-routing` expose routing configuration and non-spending diagnostics.
+- `cox config show`, `cox config set-tool-routing`, and `cox doctor tool-routing` expose routing configuration and non-spending diagnostics.
 - Real Codex `--search` E2E passed through real SerpAPI.
-- Real Zhipu image-generation E2E passed through the dsproxy provider bridge using an ASGI/mock DeepSeek client.
-- Current Codex CLI did not expose native `image_generation` to dsproxy; image provider E2E validates the provider bridge rather than Codex native image entry.
+- Real Zhipu image-generation E2E passed through the cox provider bridge using an ASGI/mock DeepSeek client.
+- Current Codex CLI did not expose native `image_generation` to cox; image provider E2E validates the provider bridge rather than Codex native image entry.
 - Future real-provider E2E scripts must not log signed image URLs, temporary provider URLs, or query-string tokens.
 
 Validation target:
 
-- `python -m py_compile deepseek_responses_proxy/app.py deepseek_responses_proxy/cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
+- `python -m py_compile codexchange_proxy/app.py codexchange_proxy/cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
 - `git diff --check`
@@ -1168,15 +1176,15 @@ Date: 2026-05-26
 
 Scope:
 
-- Expose managed native tool routing configuration in `dsproxy config show`.
-- Add `dsproxy config set-tool-routing <web-search|image-generation> <auto|managed-only|native-only|disabled>`.
-- Add `dsproxy doctor tool-routing` for non-spending diagnostics over provider configuration, routing policy, last route decision, last execution, and no-native-tool/no-tool-call status.
-- Keep live provider probes behind `dsproxy doctor providers --live --allow-spend`.
+- Expose managed native tool routing configuration in `cox config show`.
+- Add `cox config set-tool-routing <web-search|image-generation> <auto|managed-only|native-only|disabled>`.
+- Add `cox doctor tool-routing` for non-spending diagnostics over provider configuration, routing policy, last route decision, last execution, and no-native-tool/no-tool-call status.
+- Keep live provider probes behind `cox doctor providers --live --allow-spend`.
 - Do not move public `v0.3.9-alpha` and do not rebuild Release assets.
 
 Validation:
 
-- `python -m py_compile deepseek_responses_proxy/app.py deepseek_responses_proxy/cli.py tests/test_cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
+- `python -m py_compile codexchange_proxy/app.py codexchange_proxy/cli.py tests/test_cli.py tests/test_version_metadata.py tests/test_docs_release_readiness.py`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
 - `git diff --check`
@@ -1190,7 +1198,7 @@ Date: 2026-05-25
 Scope:
 
 - Add no-native-tool/no-tool-call diagnostics for managed tool routing without claiming execution.
-- Explain the real Codex image-generation observation where Codex did not send a native `image_generation` Responses tool to dsproxy.
+- Explain the real Codex image-generation observation where Codex did not send a native `image_generation` Responses tool to cox.
 - Expose request-scoped diagnostics through `tool_bridge.managed_tool_routing`, per-tool status, and WeClaw-facing tools status.
 - Emit `managed_tool_routing_no_native_tool_observed` when the latest request lacks one or more managed native tool capabilities.
 - Keep diagnostics redacted and avoid raw prompt/query/provider payload exposure.
@@ -1200,7 +1208,7 @@ Validation:
 - `git diff --check`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
-- `python -m py_compile deepseek_responses_proxy/app.py`
+- `python -m py_compile codexchange_proxy/app.py`
 - focused managed-tool-routing/tool-bridge/proxy/provider/version/docs tests
 - full tests
 
@@ -1227,7 +1235,7 @@ Validation:
 - `git diff --check`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
-- `python -m py_compile deepseek_responses_proxy/app.py`
+- `python -m py_compile codexchange_proxy/app.py`
 - focused managed-tool-routing/tool-bridge/proxy/status/version/docs tests
 - full tests
 
@@ -1244,9 +1252,9 @@ Date: 2026-05-25
 Scope:
 
 - Start the p2.14 managed tool routing line without moving the public `v0.3.9-alpha` Release.
-- Add a dsproxy-owned managed tool routing core for native Responses web/image tools on DeepSeek/Codex third-party profiles.
+- Add a cox-owned managed tool routing core for native Responses web/image tools on DeepSeek/Codex third-party profiles.
 - Add policy normalization for `auto`, `managed_only`, `native_only`, and `disabled`.
-- Map native `web_search` to `codeepseedex_web_search` and native `image_generation` to `codeepseedex_generate_image` when the policy is `auto` or `managed_only`.
+- Map native `web_search` to `codexchange_web_search` and native `image_generation` to `codexchange_generate_image` when the policy is `auto` or `managed_only`.
 - Keep legacy `proxy_web_search` and `proxy_image_generate` execution aliases working for compatibility.
 - Add managed routing instruction injection, route decision reporting, debug trace event emission, and tool-bridge status registry fields.
 - Expose routing status through normal status and WeClaw-facing status while keeping provider cost attribution out of scope for this core node.
@@ -1256,7 +1264,7 @@ Validation:
 - `git diff --check`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
-- `python -m py_compile deepseek_responses_proxy/app.py`
+- `python -m py_compile codexchange_proxy/app.py`
 - focused managed-tool-routing/tool-bridge/provider/version tests
 - full tests
 
@@ -1282,7 +1290,7 @@ Validation:
 - `git diff --check`
 - `bash -n bootstrap.sh`
 - `bash -n scripts/install.sh`
-- `python -m py_compile deepseek_responses_proxy/app.py`
+- `python -m py_compile codexchange_proxy/app.py`
 - focused documentation/version tests
 - full tests
 
@@ -1300,7 +1308,7 @@ Date: 2026-05-24
 Scope:
 
 - Move the public `v0.3.9-alpha` Latest Release from the previous peeled commit `d674a61` to `82a4428` after p2.13a5 validation.
-- Keep the GitHub Release title `CoDeepSeedeX v0.3.9-alpha` and state as non-draft, non-prerelease, Latest ordinary Release.
+- Keep the GitHub Release title `CodeXchange v0.3.9-alpha` and state as non-draft, non-prerelease, Latest ordinary Release.
 - Re-upload the public Release assets `bootstrap.sh` and `install.sh`.
 - Write Release text through a temporary `/tmp` notes file instead of creating any tracked repository Release-note source.
 
@@ -1338,7 +1346,7 @@ Scope:
 
 - Close the pre-existing full-test failure in `tests/test_weclaw_pricing_discount_contract.py`.
 - Confirm the bundled `config/pricing.json` snapshot already carries `deepseek-v4-pro` discount metadata, including `valid_until=2026-05-31T23:59:00+08:00`.
-- Make the WeClaw pricing discount contract test explicitly pin `DEEPSEEK_PROXY_PRICING_PATH` to the bundled project snapshot so user pricing cache files cannot mask bundled snapshot metadata during tests.
+- Make the WeClaw pricing discount contract test explicitly pin `COX_PRICING_PATH` to the bundled project snapshot so user pricing cache files cannot mask bundled snapshot metadata during tests.
 - Keep runtime pricing source precedence unchanged: real status still uses configured/cache/project pricing source order.
 
 ## p2.13a3 Managed auto-compact ratio repair
@@ -1347,8 +1355,8 @@ Date: 2026-05-24
 
 Scope:
 
-- Lock managed CoDeepSeedeX auto-compact ratio to `0.90` for runtime status, profile status, install-codex-profile defaults, and managed profile repair.
-- Treat `DEEPSEEK_PROXY_AUTO_COMPACT_RATIO` and `CODEEPSEEDEX_AUTO_COMPACT_RATIO` as ignored legacy low-trigger experiment residue unless an explicit CLI `--auto-compact-ratio` argument is used for a deliberate one-shot repair.
+- Lock managed CodeXchange auto-compact ratio to `0.90` for runtime status, profile status, install-codex-profile defaults, and managed profile repair.
+- Treat `COX_AUTO_COMPACT_RATIO` and `COX_AUTO_COMPACT_RATIO` as ignored legacy low-trigger experiment residue unless an explicit CLI `--auto-compact-ratio` argument is used for a deliberate one-shot repair.
 - Repair real managed Codex profiles so `model_context_window=1000000` derives `model_auto_compact_token_limit=900000`.
 - Keep public `v0.3.9-alpha` unchanged.
 
@@ -1358,9 +1366,9 @@ Date: 2026-05-23
 
 Scope:
 
-- Treat CoDeepSeedeX runtime Compact as a fallback-only path after Codex native compact summaries are present.
-- Detect Codex native compact summaries by the audited Codex summary prefix and protect them from dsproxy LLM re-compaction.
-- Expose `codex_native_compact` in WeClaw-facing runtime status as an observed/inferred dsproxy payload contract, not as Codex internal session truth.
+- Treat CodeXchange runtime Compact as a fallback-only path after Codex native compact summaries are present.
+- Detect Codex native compact summaries by the audited Codex summary prefix and protect them from cox LLM re-compaction.
+- Expose `codex_native_compact` in WeClaw-facing runtime status as an observed/inferred cox payload contract, not as Codex internal session truth.
 - Keep remote `responses/compact` unsupported for the managed DeepSeek third-party provider unless future request evidence proves Codex is incorrectly calling it.
 - Reject `/v1/responses` completed envelopes that would otherwise return `output=[]` and `output_text=""` while upstream reports completion tokens.
 
@@ -1376,7 +1384,7 @@ Scope:
 
 - Correct the handbook current-state drift after p2.12a13 so the startup baseline no longer points to the historical p2.10a80/p2.10a81 `80bb0ea` Release-note-source state.
 - Reaffirm that `the retired v0.3.9-alpha per-release note file under docs` must not be restored and README files must not link to a repository-tracked Release-note file.
-- Prepare a source-audit bundle for Codex native Compact/Fork behavior, including local CoDeepSeedeX source grep evidence and upstream OpenAI Codex source snapshots when network access is available.
+- Prepare a source-audit bundle for Codex native Compact/Fork behavior, including local CodeXchange source grep evidence and upstream OpenAI Codex source snapshots when network access is available.
 
 Boundary:
 
@@ -1414,10 +1422,10 @@ Boundary:
 
 
 - Closed the post-P0 audit gap for uninstall documentation.
-- Pre-release upgrade was already covered by `dsproxy upgrade --alpha`, explicit `--tag`, and `--dry-run`.
-- Product-level uninstall remains installer-owned and is documented as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall`.
-- Full removal is documented as `bash ~/.local/share/deepseek-responses-proxy/scripts/install.sh --uninstall --remove-files`.
-- README.md and README.zh-CN.md now document uninstall scope, including managed Codex profiles, the CoDeepSeedeX codex wrapper, the dsproxy wrapper, optional install directory/env/manifest removal, and the boundary against deleting unrelated user files.
+- Pre-release upgrade was already covered by `cox upgrade --alpha`, explicit `--tag`, and `--dry-run`.
+- Product-level uninstall remains installer-owned and is documented as `bash ~/.local/share/codexchange/scripts/install.sh --uninstall`.
+- Full removal is documented as `bash ~/.local/share/codexchange/scripts/install.sh --uninstall --remove-files`.
+- README.md and README.zh-CN.md now document uninstall scope, including managed Codex profiles, the CodeXchange codex wrapper, the cox wrapper, optional install directory/env/manifest removal, and the boundary against deleting unrelated user files.
 - Added a README regression test for uninstall documentation.
 - Public `v0.3.9-alpha` remains at `ac63043`; this node does not update Release assets or Release notes.
 
@@ -1427,8 +1435,8 @@ Boundary:
 - Synchronized repository docs after updating public pre-release `v0.3.9-alpha` to `p2.10a62-weclaw-runtime-payload-guard`.
 - Current trusted state: `master = origin/master = ac63043`, `p2.10a62-weclaw-runtime-payload-guard = ac63043`, and `v0.3.9-alpha` peeled commit `ac63043`.
 - `v0.3.8-alpha` remains `dfdc629`; forbidden plain tags `v0.3.9` and `v0.3.5` remain absent.
-- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, pre-release, and includes `bootstrap.sh` and `install.sh` assets.
-- P0 is closed from the CoDeepSeedeX implementation and pre-release delivery side; the mainline is now waiting for WeClaw-side validation.
+- GitHub Release `CodeXchange v0.3.9-alpha` is non-draft, pre-release, and includes `bootstrap.sh` and `install.sh` assets.
+- P0 is closed from the CodeXchange implementation and pre-release delivery side; the mainline is now waiting for WeClaw-side validation.
 - If WeClaw reports new issues, treat them as the next explicit requirement round rather than reopening this P0 scope by default.
 
 
@@ -1457,17 +1465,17 @@ Boundary:
 - Kept the boundary that session totals are cumulative spend and must not be used as current context-window occupancy.
 
 
-# CoDeepSeedeX详尽开发日志
+# CodeXchange详尽开发日志
 
 ## p2.10a60-weclaw-status-context-pricing-contract
 
 - Scope: token attribution boundary contract for WeClaw third-round status display.
 - Starting point: `master = origin/master = d5bdd0b`, internal tag `p2.10a58-weclaw-round3-pricing-refresh = d5bdd0b`, public pre-release tag `v0.3.9-alpha = 677d923`.
-- Audit conclusion: dsproxy usage ledger records provider aggregate usage fields and dsproxy purpose/call-index/model attribution, but it does not store prompt subcategory token splits.
+- Audit conclusion: cox usage ledger records provider aggregate usage fields and cox purpose/call-index/model attribution, but it does not store prompt subcategory token splits.
 - Audit conclusion: no audited tokenizer or local token estimator was present. `tiktoken` and `token_estimate` were not found in the p2.10a59 audit.
 - Contract: `tokens.taxonomy.version` is now `3`.
 - Contract: `tokens.attribution.provider_usage_totals` is exact provider-reported aggregate usage.
-- Contract: `tokens.attribution.purpose_attribution` is exact dsproxy model-call purpose attribution.
+- Contract: `tokens.attribution.purpose_attribution` is exact cox model-call purpose attribution.
 - Contract: `tokens.attribution.prompt_subcategory_split` and `tokens.prompt_subcategory_split` are explicitly unavailable with reason/action/missing fields.
 - Boundary: this node does not estimate user/tool/environment/history tokens and does not derive context-window used tokens from session totals.
 - Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
@@ -1477,8 +1485,8 @@ Boundary:
 - Scope: guarded pricing refresh for WeClaw third-round status/cost display.
 - Starting point: `master = origin/master = 861f260`, internal tag `p2.10a57-weclaw-round3-contract-foundation = 861f260`, public pre-release tag `v0.3.9-alpha = 677d923`.
 - Audit conclusion: the current V4 pricing source is the human HTML page `https://api-docs.deepseek.com/quick_start/pricing`; `pricing-details-usd` and `pricing-details-cny` still describe legacy `deepseek-chat`/`deepseek-reasoner` pricing and must not be treated as V4 sources.
-- Implementation: `dsproxy pricing refresh --json` fetches and validates official pricing HTML without writing cache by default.
-- Implementation: `dsproxy pricing refresh --json --write-cache` writes validated pricing atomically to the user pricing cache or explicit `--cache-path`.
+- Implementation: `cox pricing refresh --json` fetches and validates official pricing HTML without writing cache by default.
+- Implementation: `cox pricing refresh --json --write-cache` writes validated pricing atomically to the user pricing cache or explicit `--cache-path`.
 - Contract: refresh failures preserve existing cache and return structured reason/error/source metadata.
 - Contract: `pricing show --json` reports metadata from official-docs cache files, including `source_url`, `source_kind`, `fetched_at`, `expires_at`, `ttl_seconds`, and `is_stale`.
 - Boundary: this node does not claim a stable official pricing API and does not modify project `config/pricing.json` by default.
@@ -1492,7 +1500,7 @@ Boundary:
 - Contract: keep `context_window.used_tokens` unavailable while adding `used_tokens_action` and `used_tokens_precision=unavailable`.
 - Contract: bind `context_window.model_catalog` to a readable managed Codex `model_catalog_json` entry when available, otherwise return stable reason/action fields.
 - Contract: add stable pricing fields `source_url`, `ttl_seconds`, and refresh action metadata.
-- CLI: add `dsproxy pricing show --json` and structured `dsproxy pricing refresh --json` not-implemented output without live network or cache writes.
+- CLI: add `cox pricing show --json` and structured `cox pricing refresh --json` not-implemented output without live network or cache writes.
 - Contract: mirror runtime semantic compaction status to top-level `semantic_compaction` and add rollout `action` and `missing_events`.
 - Boundary: this node does not implement context used-token estimation, prompt subcategory attribution, official live pricing refresh, or semantic payload compaction enablement.
 - Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
@@ -1515,10 +1523,10 @@ Boundary:
 
 - Scope: docs-only plan for token shadow accounting and token-vs-char drift observability before semantic payload compaction implementation.
 - Starting point: `master = origin/master = 2781892`, internal tag `p2.10a53-tui-compact-path-evidence-sync = 2781892`, public pre-release tag `v0.3.9-alpha = 677d923`.
-- Decision: keep current dsproxy runtime compaction and trimming as character-based payload guards.
+- Decision: keep current cox runtime compaction and trimming as character-based payload guards.
 - Decision: do not directly switch runtime compaction to token-based triggering.
 - Decision: add token shadow accounting before semantic payload compaction implementation.
-- Required boundary: Codex profile context and Codex status are token-level surfaces, dsproxy runtime payload guard is char-level, provider usage remains authoritative for token/cost accounting, and local token estimates must be labelled as estimates.
+- Required boundary: Codex profile context and Codex status are token-level surfaces, cox runtime payload guard is char-level, provider usage remains authoritative for token/cost accounting, and local token estimates must be labelled as estimates.
 - Required future work: report token-vs-char drift, warn when token risk and char risk diverge, and only then consider dual-threshold triggering.
 - WeClaw implication: WeClaw display should separate token context window from char proxy payload guard and should not merge them into one unitless progress bar.
 - Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
@@ -1527,12 +1535,12 @@ Boundary:
 
 - Scope: docs-only evidence sync for the Codex TUI compact path after p2.10a52.
 - Starting point: `master = origin/master = 2fe8c12`, internal tag `p2.10a52-semantic-payload-compaction-tui-plan = 2fe8c12`, public pre-release tag `v0.3.9-alpha = 677d923`.
-- Evidence: isolated TUI run under `codex --profile deepseek` started successfully with the dsproxy-backed profile.
+- Evidence: isolated TUI run under `codex --profile deepseek` started successfully with the cox-backed profile.
 - Evidence: ordinary short request `reply ok exactly` returned successfully.
 - Evidence: manual `/compact` displayed `Context compacted`.
 - Evidence: TUI transcript markers did not contain `responses/compact` or `/responses/compact`.
 - Evidence: Codex-side logs showed `codex.op="compact"`, `session_task.compact`, `model_client.stream_responses_api`, `wire_api=responses`, `http.method="POST"`, and `api.path="responses"`.
-- Evidence: the dsproxy listener on port 8000 was the local uvicorn process for `deepseek_responses_proxy.app:app`; proxy access logs showed ordinary `POST /v1/responses HTTP/1.1` requests.
+- Evidence: the cox listener on port 8000 was the local uvicorn process for `codexchange_proxy.app:app`; proxy access logs showed ordinary `POST /v1/responses HTTP/1.1` requests.
 - Interpretation: manual `/compact` in Codex CLI `0.130.0` with `codex --profile deepseek` currently uses ordinary `/v1/responses`, not a dedicated `/responses/compact` endpoint.
 - Remaining risk: auto-compact near `model_auto_compact_token_limit` remains unverified, as does long-session repeated compact behavior and usage/cost attribution for compact turns.
 - Release state: no public Release tag is moved, no GitHub Release is created, and no Release assets are rebuilt.
@@ -1541,17 +1549,17 @@ Boundary:
 
 - Scope: record the inserted semantic payload compaction hardening plan and Codex TUI third-party profile compatibility plan after the `v0.3.9-alpha` pre-release and p2.10a51 post-release documentation sync.
 - Starting point: `master = origin/master = 9337fdc`, internal tag `p2.10a51-post-v039-alpha-release-doc-sync = 9337fdc`, public pre-release tag `v0.3.9-alpha = 677d923`.
-- Trigger: the maintainer identified that Codex profile context is token-based while dsproxy runtime compaction/trimming is char-based, and that native Codex `/compact` or auto-compact may still run under `codex --profile deepseek`.
+- Trigger: the maintainer identified that Codex profile context is token-based while cox runtime compaction/trimming is char-based, and that native Codex `/compact` or auto-compact may still run under `codex --profile deepseek`.
 - Planning result: add `P0.5 semantic payload compaction hardening` after WeClaw second-round requirements and before AnyCodeX-level architecture work, unless a high-risk TUI compaction failure forces escalation.
 - Planning result: add `P0.6 Codex TUI third-party profile command compatibility` to verify `/compact`, auto-compact, `/fork`, `/resume`, `/model`, `/status`, `/diff`, `/review`, approval, sandbox, and related TUI commands under the third-party `deepseek` profile.
-- Risk recorded: dsproxy character-level persistent compaction cannot be assumed to automatically replace Codex native token-level compact unless the compact request actually reaches dsproxy through a compatible path.
+- Risk recorded: cox character-level persistent compaction cannot be assumed to automatically replace Codex native token-level compact unless the compact request actually reaches cox through a compatible path.
 - Required future evidence: isolated TUI command matrix output, exact compact request path, whether `/responses/compact` is used, whether inline compact works, whether session store and provider filtering preserve `/fork` and `/resume`, and whether WeClaw display fields need token-window plus char-budget separation.
 - This node updates planning documentation and runtime internal version metadata only. It does not move `v0.3.9-alpha`, create a GitHub Release, or rebuild Release assets.
 
 ## p2.10a51-post-v0.3.9-alpha-release-doc-sync
 
 - Synchronized post-release documentation after the `v0.3.9-alpha` GitHub pre-release was created successfully.
-- Verified release state before this sync: `v0.3.9-alpha = 677d923`, GitHub Release title `CoDeepSeedeX v0.3.9-alpha`, non-draft and pre-release, assets `bootstrap.sh` and `install.sh` uploaded.
+- Verified release state before this sync: `v0.3.9-alpha = 677d923`, GitHub Release title `CodeXchange v0.3.9-alpha`, non-draft and pre-release, assets `bootstrap.sh` and `install.sh` uploaded.
 - Confirmed `v0.3.8-alpha = dfdc629` remained unmoved and plain `v0.3.9` did not exist.
 - Updated developer handbooks from release-readiness wording to published pre-release wording.
 - Updated the long-term mainline checklist so the `v0.3.9-alpha` public pre-release task is marked completed.
@@ -1585,12 +1593,12 @@ Boundary:
 ## p2.10a48-weclaw-full-telemetry-contract
 
 - Reopened P0 after the p2.10a46/p2.10a47 basic contract and documentation sync because the original WeClaw requirements were not fully closed by structured degraded fields.
-- Added runtime WeClaw telemetry aggregation from the dsproxy usage ledger for `tokens.last_turn`, `tokens.session_total`, and `tokens.auxiliary_model_calls`.
-- Added runtime WeClaw pricing and cost fields based on the existing dsproxy pricing cache and usage ledger `estimated_cost_usd` values.
+- Added runtime WeClaw telemetry aggregation from the cox usage ledger for `tokens.last_turn`, `tokens.session_total`, and `tokens.auxiliary_model_calls`.
+- Added runtime WeClaw pricing and cost fields based on the existing cox pricing cache and usage ledger `estimated_cost_usd` values.
 - Added provider balance integration into runtime WeClaw status.
-- Updated CLI `dsproxy status [thinking] --weclaw-json` to prefer the runtime `/v1/proxy/weclaw/status` endpoint when reachable.
+- Updated CLI `cox status [thinking] --weclaw-json` to prefer the runtime `/v1/proxy/weclaw/status` endpoint when reachable.
 - Added tests for HTTP full telemetry contract and CLI runtime WeClaw status preference.
-- Token counts are exact provider-reported ledger totals. Cost is estimated from dsproxy pricing cache. Prompt subcategory splits remain explicitly not provider-reported without a future audited tokenizer layer.
+- Token counts are exact provider-reported ledger totals. Cost is estimated from cox pricing cache. Prompt subcategory splits remain explicitly not provider-reported without a future audited tokenizer layer.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
 
 ## p2.10a47-doc-weclaw-contract-sync
@@ -1606,8 +1614,8 @@ Boundary:
 
 - Completed the P0 WeClaw contract acceptance checkpoint.
 - Final merged state: `master = origin/master = 3e6b922`, internal tag `p2.10a46-weclaw-usage-test-env-isolation = 3e6b922`, public Release tag `v0.3.8-alpha = dfdc629`.
-- Delivered accepted CLI surfaces: `dsproxy profile status <profile> --json`, `dsproxy profile set-effort <profile> <effort> --json`, and `dsproxy status [thinking] --weclaw-json`.
-- Delivered accepted HTTP surfaces: `GET /v1/proxy/weclaw/profile-status?profile=deepseek-thinking` and `GET /v1/proxy/weclaw/status?profile=deepseek-thinking`.
+- Delivered accepted CLI surfaces: `cox profile status <profile> --json`, `cox profile set-effort <profile> <effort> --json`, and `cox status [thinking] --weclaw-json`.
+- Delivered accepted HTTP surfaces: `GET /v1/proxy/weclaw/profile-status?profile=cox` and `GET /v1/proxy/weclaw/status?profile=cox`.
 - Ready fields include effective model, Codex model, model conflict, force-model status, user-facing effort, DeepSeek effort, Codex effort, token-level context-window declarations, and char-level runtime compaction/trimming data.
 - Structured degraded fields remain for turn/session token attribution, auxiliary model calls, pricing, cost, and balance-in-status. They must remain explicit `available=false` or `missing=[...]` values until exact sources are audited.
 - Fixed the usage ledger test isolation gap by clearing model override environment variables before asserting request-model attribution.
@@ -1637,8 +1645,8 @@ Boundary:
 ## p2.10a43-effort-json-refresh-control
 
 - Added explicit refresh control for WeClaw/CI-safe effort configuration.
-- `dsproxy config set-effort` now accepts `--json` for parser/help consistency with the always-JSON output contract.
-- `dsproxy config set-effort` and `dsproxy profile set-effort` now accept `--no-refresh`, which routes through the existing post-config apply disabled mode and returns `post_config_apply.status = "skipped"`.
+- `cox config set-effort` now accepts `--json` for parser/help consistency with the always-JSON output contract.
+- `cox config set-effort` and `cox profile set-effort` now accept `--no-refresh`, which routes through the existing post-config apply disabled mode and returns `post_config_apply.status = "skipped"`.
 - Preserved effort semantics: DeepSeek/env effort may be `max`, Codex `model_reasoning_effort` stores `xhigh`, compatibility inputs `low`, `medium`, `minimal`, and `none` normalize to DeepSeek `high`, and `plan_mode_reasoning_effort` stays `high`.
 - Added isolated tests to ensure `--no-refresh` does not check or restart live proxy ports.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
@@ -1655,7 +1663,7 @@ Boundary:
 
 - Converted the read-only generalized provider architecture audit into an internal planning node.
 - Confirmed the current baseline before the planning patch: `master = origin/master = p2.10a39 = e0b16fd`, public Release tag `v0.3.8-alpha = dfdc629`, and a clean worktree.
-- Confirmed the naming boundary: user-facing docs, code, scripts, and tests keep the current CoDeepSeedeX name; AnyCodeX remains future-name planning text only inside developer docs.
+- Confirmed the naming boundary: user-facing docs, code, scripts, and tests keep the current CodeXchange name; AnyCodeX remains future-name planning text only inside developer docs.
 - Identified the main DeepSeek-specific runtime seams: `DeepSeekClient`, `DEEPSEEK_*` runtime environment variables, `reasoning_content`, thinking-mode history repair, Responses-to-ChatCompletions conversion, stream event normalization, usage/cost accounting, model catalog assumptions, and WeClaw profile/status contracts.
 - Defined the next implementation order as provider-capability metadata first, then upstream adapter interfaces, then reasoning/thinking strategy separation, then stream and tool-call normalization.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
@@ -1663,22 +1671,22 @@ Boundary:
 ## p2.10a39-name-boundary-cleanup
 
 - Cleaned remaining legacy lowercase alternate-name branch-plan wording from internal documentation so future real branches use neutral names such as `work/p2.10-generalized-provider-architecture-audit`.
-- Kept AnyCodeX as a future plan name and possible future brand in developer-only planning text, while keeping code, commands, tags, branches, installers, wrappers, public paths, and user-facing documentation under the current CoDeepSeedeX name.
+- Kept AnyCodeX as a future plan name and possible future brand in developer-only planning text, while keeping code, commands, tags, branches, installers, wrappers, public paths, and user-facing documentation under the current CodeXchange name.
 - Updated developer runtime internal version metadata to `p2.10a39-name-boundary-cleanup`.
 - Fixed the p2.10a39 validation bug: the validation script incorrectly treated allowed internal AnyCodeX future-name planning text as forbidden, then introduced a self-conflicting lowercase legacy spelling in the development log.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
 ## p2.10a38-version-metadata-name-boundary
 
 - Updated runtime internal version metadata from the stale p2.10a35 tag to `p2.10a38-version-metadata-name-boundary`, while keeping public version metadata at `v0.3.8-alpha`.
-- Updated version metadata tests so `dsproxy --version` must report the declared current internal tag.
-- Clarified the naming boundary: CoDeepSeedeX remains the current project and public product name. AnyCodeX is a future plan name and possible future brand, not a current code, command, tag, branch, installer, wrapper, public-path, or user-facing documentation name.
+- Updated version metadata tests so `cox --version` must report the declared current internal tag.
+- Clarified the naming boundary: CodeXchange remains the current project and public product name. AnyCodeX is a future plan name and possible future brand, not a current code, command, tag, branch, installer, wrapper, public-path, or user-facing documentation name.
 - Reframed future provider work as AnyCodeX-level generalized provider architecture in internal developer documentation only.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
 
 ## p2.10a37-sanitized-test-env-rule
 
 - Added a handbook rule for sanitized test environments after p2.10a36 showed that full-suite failures can be caused by local exported model/provider/API-key variables rather than by the patch under test.
-- The recurring contamination pattern includes `DEEPSEEK_PROXY_MODEL`, `DEEPSEEK_PROXY_FORCE_MODEL`, `DEEPSEEK_PROXY_IMAGE_PROVIDER`, `DEEPSEEK_PROXY_IMAGE_DOWNLOAD`, provider API keys, and web-search/image-provider variables.
+- The recurring contamination pattern includes `COX_MODEL`, `COX_FORCE_MODEL`, `COX_IMAGE_PROVIDER`, `COX_IMAGE_DOWNLOAD`, provider API keys, and web-search/image-provider variables.
 - Future development scripts should record relevant environment overrides and rerun failing subsets plus full tests under a sanitized environment before attributing failures to the patch.
 - No public Release tag was moved, no GitHub Release was rebuilt, and no Release assets were changed.
 
@@ -1701,7 +1709,7 @@ Boundary:
 
 - Bound the finite tab-title keeper lifecycle to the real Codex command lifecycle.
 - The generated wrapper now records the keeper PID, stops and waits for it after Codex returns, and preserves the original Codex return status through a wrapper function.
-- This prevents the title from being restored to CoDeepSeedeX after the user has already left Codex.
+- This prevents the title from being restored to CodeXchange after the user has already left Codex.
 
 ## p2.10a33-title-runtime-keeper
 
@@ -1712,28 +1720,28 @@ Boundary:
 ## p2.10a32-wrapper-foreground-codex
 
 - Changed generated Codex wrappers to keep the wrapper process alive while the real Codex binary starts.
-- The wrapper now prepares the matching dsproxy route, schedules the finite delayed OSC 0/2 title refresh sequence, and runs the real Codex binary as the final foreground command.
+- The wrapper now prepares the matching cox route, schedules the finite delayed OSC 0/2 title refresh sequence, and runs the real Codex binary as the final foreground command.
 - This preserves the real Codex return status naturally while giving the delayed title refresh process a reliable execution window.
 
 ## p2.10a31-post-start-title-refresh
 
 - Changed generated Codex wrappers to avoid setting the tab title before Codex startup.
-- Kept a finite delayed OSC 0/2 refresh sequence after the matching dsproxy route is prepared, using 8s, 4s and 8s delays.
+- Kept a finite delayed OSC 0/2 refresh sequence after the matching cox route is prepared, using 8s, 4s and 8s delays.
 - Documented the observed failure mode where Codex overwrites a pre-start title with the working-directory title, and where undefined test helper names can print shell job `Exit 127` messages.
 
 ## p2.10a30-profile-model-sync-title-delay
 
-- Added `dsproxy profile repair --managed-only --json` to repair managed Codex profile `model` fields according to each profile's effective upstream model.
+- Added `cox profile repair --managed-only --json` to repair managed Codex profile `model` fields according to each profile's effective upstream model.
 - Kept `codex_model`, `effective_model`, and `model_conflict` as diagnostics, while making normal managed state repairable to `model_conflict=false`.
-- Changed generated Codex wrappers to schedule short delayed OSC 0/2 tab-title refreshes, including a 5-second refresh, after starting the matching dsproxy route and before executing the real Codex binary.
+- Changed generated Codex wrappers to schedule short delayed OSC 0/2 tab-title refreshes, including a 5-second refresh, after starting the matching cox route and before executing the real Codex binary.
 - Preserved the non-duplicated 🐦‍🔥 emoji candidate rule.
 
 本文件保存长期、可回溯的开发流水账。它不是新对话默认上下文。只有需要追溯具体版本、错误、测试或Release细节时才查阅。
 
 ## p2.10a29-weclaw-runtime-contract-unification
 
-- Scope: make dsproxy the owner of Codex profile effort semantics and expose machine-readable profile/status skeletons for WeClaw.
-- Root cause: `config set-effort` wrote the same canonical DeepSeek effort into `DEEPSEEK_REASONING_EFFORT` and Codex `model_reasoning_effort`, allowing `max` to enter Codex config.
+- Scope: make cox the owner of Codex profile effort semantics and expose machine-readable profile/status skeletons for WeClaw.
+- Root cause: `config set-effort` wrote the same canonical DeepSeek effort into `COX_REASONING_EFFORT` and Codex `model_reasoning_effort`, allowing `max` to enter Codex config.
 - Contract: DeepSeek/env effort may be `max`, but Codex profile effort must be `xhigh`; `xhigh` input normalizes to DeepSeek `max`.
 - Added structured profile status and WeClaw status JSON skeletons while marking unaudited token, pricing, cost, balance, auxiliary-call, and compaction fields unavailable instead of letting WeClaw guess.
 - Install/upgrade/uninstall review: installer env effort now uses DeepSeek semantic `max`; install profile generation still writes Codex-compatible `xhigh`; no Release assets or public tags are moved in this internal patch phase.
@@ -1753,7 +1761,7 @@ Boundary:
 - Passed the bootstrap log path into `install.sh` and showed both bootstrap and install logs under `Install logs`.
 - Changed guided image API validation from a non-generating probe to live image generation.
 - Added a dim warning under the image provider family menu explaining that validation generates one safe test image and may consume provider credits.
-- Saved generated validation images under `/tmp/codeepseedex-image-validation-*`.
+- Saved generated validation images under `/tmp/codexchange-image-validation-*`.
 - Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a23-installer-image-validation-tag-fetch
 
@@ -1777,7 +1785,7 @@ Boundary:
 
 - Dimmed secret prompt helper text.
 - Changed empty secret input with an existing model API key to keep the existing key without reporting it as newly entered characters.
-- Added installer guidance explaining that the Codex wrapper enables `codex --profile deepseek` and `codex --profile deepseek-thinking` while automatically starting or refreshing the local dsproxy backend.
+- Added installer guidance explaining that the Codex wrapper enables `codex --profile deepseek` and `codex --profile cox` while automatically starting or refreshing the local cox backend.
 - Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a19-installer-menu-column-alignment
 
@@ -1796,8 +1804,8 @@ Boundary:
 
 ### CLI version metadata source guard
 
-- Fixed the p2.10a18 finalization blocker where `app.py` declared the new internal version but `dsproxy --version` still reported the previous internal tag.
-- Root cause: CLI version metadata was reading `proxy_app.PROXY_INTERNAL_VERSION`; the package-level `app` name can resolve to the FastAPI object rather than the `deepseek_responses_proxy.app` module.
+- Fixed the p2.10a18 finalization blocker where `app.py` declared the new internal version but `cox --version` still reported the previous internal tag.
+- Root cause: CLI version metadata was reading `proxy_app.PROXY_INTERNAL_VERSION`; the package-level `app` name can resolve to the FastAPI object rather than the `codexchange_proxy.app` module.
 - Added a test requiring CLI output to include the declared `PROXY_INTERNAL_VERSION`.
 
 ### Declared internal version precedence
@@ -1816,7 +1824,7 @@ Boundary:
 ## p2.10a16-installer-logo-heredoc-runtime-fix
 
 - Fixed installer logo runtime rendering by using quoted heredocs for ASCII art.
-- Kept the visible version line beside CoDeepSeedeX.
+- Kept the visible version line beside CodeXchange.
 - Added a runtime logo smoke test so `bash -n` cannot miss heredoc command-substitution failures.
 - Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 ## p2.10a15-installer-provider-flow-source-fallback
@@ -1863,13 +1871,13 @@ Boundary:
 - Prepared and published `v0.3.8-alpha` as a GitHub pre-release, not Latest.
 - Updated runtime public version metadata to `v0.3.8-alpha`.
 - Updated package PEP440 version to `0.3.8a0`.
-- Release validation path is `dsproxy upgrade --alpha` on a fresh VM before promoting the same GitHub Release to Latest.
+- Release validation path is `cox upgrade --alpha` on a fresh VM before promoting the same GitHub Release to Latest.
 - Release notes body must start from `Highlights:` and must not duplicate the GitHub Release title.
 ## p2.10a8-upgrade-alpha-terminal-title
 
-- Added `dsproxy upgrade --alpha`, which resolves the newest non-draft GitHub pre-release while preserving the default `dsproxy upgrade` behavior against GitHub Latest Release.
-- Added Codex wrapper terminal tab title randomization for `deepseek` and `deepseek-thinking` profiles. The format is `[emoji]CoDeepSeedeX` using the maintainer-supplied emoji candidate list.
-- Documented the pre-release VM validation principle: publish a pre-release, test with `dsproxy upgrade --alpha`, then promote the same GitHub Release to Latest after validation passes.
+- Added `cox upgrade --alpha`, which resolves the newest non-draft GitHub pre-release while preserving the default `cox upgrade` behavior against GitHub Latest Release.
+- Added Codex wrapper terminal tab title randomization for `deepseek` and `cox` profiles. The format is `[emoji]CodeXchange` using the maintainer-supplied emoji candidate list.
+- Documented the pre-release VM validation principle: publish a pre-release, test with `cox upgrade --alpha`, then promote the same GitHub Release to Latest after validation passes.
 - No public Release tag was moved or recreated.
 ## p2.10a7-doc-sync
 
@@ -1982,34 +1990,34 @@ Boundary:
 
 ## p2.9a25-provider-key-scope-doc-sync
 
-- Scoped image provider diagnostics so a generic `DEEPSEEK_PROXY_IMAGE_API_KEY` no longer marks every image provider as configured.
-- Kept compatibility for the currently selected `DEEPSEEK_PROXY_IMAGE_PROVIDER` while preserving provider-specific key variables for unselected providers.
+- Scoped image provider diagnostics so a generic `COX_IMAGE_API_KEY` no longer marks every image provider as configured.
+- Kept compatibility for the currently selected `COX_IMAGE_PROVIDER` while preserving provider-specific key variables for unselected providers.
 - Made `set-image-api-key` and the guided wizard write provider-specific image API key variables in addition to the legacy generic variable.
 - Updated README image provider examples from the old `glm` shortcut to explicit `zhipu` and `zai` examples.
 
 ## p2.9a26-provider-live-web-search-doc-sync
 
 - Confirmed the real SerpAPI web search live probe on the developer machine.
-- Command class: `dsproxy doctor providers --kind web-search --provider serpapi --live --allow-spend`.
+- Command class: `cox doctor providers --kind web-search --provider serpapi --live --allow-spend`.
 - Result: `doctor_status=ok`, `provider_ok=True`, HTTP status 200, `validation_method=fixed_query_search`, `validation_strength=live_query_probe`, `functional_probe=True`, and `functional_validation=performed`.
 - The probe did not print API key values.
 - Other web search providers remain untested because their API keys are not configured.
-- This validates the CoDeepSeedeX provider bridge path for SerpAPI. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
+- This validates the CodeXchange provider bridge path for SerpAPI. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
 
 ## p2.9a27-zhipu-live-image-doc-sync
 
 - Confirmed the real Zhipu image generation live probe on the developer machine.
-- Command class: `dsproxy doctor providers --kind image --provider zhipu --live --allow-spend`.
+- Command class: `cox doctor providers --kind image --provider zhipu --live --allow-spend`.
 - Result: `doctor_status=ok`, `provider_ok=True`, HTTP status 200, `validation_method=live_image_generation`, `validation_strength=live_generation_probe`, `functional_probe=True`, and `functional_validation=performed`.
 - The probe returned image evidence: `has_image=True` and `evidence=data_url_or_base64`.
 - The probe did not print API key values.
-- This validates the CoDeepSeedeX provider bridge path for Zhipu image generation. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
+- This validates the CodeXchange provider bridge path for Zhipu image generation. It does not by itself prove the full Codex TUI end-to-end tool selection path, which should be validated separately before release readiness.
 
 ## p2.9a29-qwen-region-endpoint-probe
 
-- Fixed Qwen/DashScope provider diagnostics so `dsproxy doctor providers --kind image --provider qwen_image --live --allow-spend` respects `DEEPSEEK_PROXY_IMAGE_BASE_URL` and `DASHSCOPE_IMAGE_ENDPOINT`.
+- Fixed Qwen/DashScope provider diagnostics so `cox doctor providers --kind image --provider qwen_image --live --allow-spend` respects `COX_IMAGE_BASE_URL` and `DASHSCOPE_IMAGE_ENDPOINT`.
 - Fixed the Qwen non-generation image API validation path to use the same regional endpoint override.
-- Root cause: runtime image generation already respected `DEEPSEEK_PROXY_IMAGE_BASE_URL`, but the CLI provider diagnostic path had a separate hardcoded Beijing endpoint.
+- Root cause: runtime image generation already respected `COX_IMAGE_BASE_URL`, but the CLI provider diagnostic path had a separate hardcoded Beijing endpoint.
 - This prevents Singapore, US Virginia, and Germany Frankfurt DashScope keys from being incorrectly tested against the Beijing endpoint.
 
 ## p2.9a30-qwen-region-live-matrix-doc-sync
@@ -2100,7 +2108,7 @@ Boundary:
 
 ## p2.10a2-config-refresh-and-effort-ux
 
-- Added a CoDeepSeedeX-only post-config apply hook for successful config writes.
+- Added a CodeXchange-only post-config apply hook for successful config writes.
 - API key, model, and effort config updates refresh already-running local stable/thinking proxy processes instead of requiring users to infer whether a restart is needed.
 - The hook reports `all updates applied` when the local apply path completes.
 - WeClaw stop/start/resume automation remains out of scope for this repository line.
@@ -2116,15 +2124,15 @@ Boundary:
 
 ## p2.10a4-config-menu-model-provider-ux
 
-- Made `dsproxy config set-model` the primary model API setup entrypoint for provider, upstream model, and optional API key configuration.
-- Kept `dsproxy config set-api-key` as a compatibility alias and added a compatibility/deprecation note in JSON output.
-- Preserved the old model-only flow: `dsproxy config set-model deepseek-v4-flash`.
+- Made `cox config set-model` the primary model API setup entrypoint for provider, upstream model, and optional API key configuration.
+- Kept `cox config set-api-key` as a compatibility alias and added a compatibility/deprecation note in JSON output.
+- Preserved the old model-only flow: `cox config set-model deepseek-v4-flash`.
 - Updated the guided wizard model provider catalog so supported model API providers are selectable from the wizard instead of only DeepSeek being handled as supported.
 - Updated installer guidance, README, README.zh-CN, developer handbooks, and tests to prefer `set-model` for model API setup.
 
 ## p2.10a5-post-config-ux-consistency
 
-- Synchronized the model API command summary shown by `dsproxy config wizard --non-interactive` with the full explicit provider surface.
+- Synchronized the model API command summary shown by `cox config wizard --non-interactive` with the full explicit provider surface.
 - Replaced the remaining README and README.zh-CN Qwen Coding Plan custom-provider examples from the old `set-api-key --provider custom --model ...` form to the new `set-model <model> --provider custom --base-url ...` form.
 - Added tests to prevent README custom model API examples from regressing to the old `set-api-key --provider custom` command shape.
 
@@ -2137,10 +2145,10 @@ Boundary:
 
 ### p2.10a26-wrapper-start-plan-mode-hardening
 
-- Made the CoDeepSeedeX Codex wrapper fail closed: it now starts the matching stable/thinking proxy route, verifies `dsproxy status`, and refuses to enter Codex if the backend remains unavailable.
+- Made the CodeXchange Codex wrapper fail closed: it now starts the matching stable/thinking proxy route, verifies `cox status`, and refuses to enter Codex if the backend remains unavailable.
 - Added `plan_mode_reasoning_effort = "high"` to generated Codex profiles so native Codex Plan mode uses the DeepSeek-compatible high effort.
 - Kept proxy-side compatibility normalization for legacy or Codex-originated `low` and `medium` inputs, which still map to DeepSeek `high`.
-- Added explicit uninstall rollback coverage to ensure a previous Codex command backup is restored after the CoDeepSeedeX wrapper is removed.
+- Added explicit uninstall rollback coverage to ensure a previous Codex command backup is restored after the CodeXchange wrapper is removed.
 - Rebuilt `v0.3.8-alpha` pre-release assets after merge.
 
 
@@ -2151,7 +2159,7 @@ Added profile-aware DeepSeek tokenizer accounting for WeClaw-facing status. The 
 
 ## p2.10a66-tokenizer-resource-installer-sync
 
-Moved DeepSeek tokenizer resource delivery out of the repository and into installer/user-machine synchronization through `dsproxy tokenizer sync deepseek --json`. The runtime now uses managed tokenizer resources from the install/user resource directory or explicit env overrides, while provider usage remains billing-authoritative and local profile tokenizer counts remain estimates.
+Moved DeepSeek tokenizer resource delivery out of the repository and into installer/user-machine synchronization through `cox tokenizer sync deepseek --json`. The runtime now uses managed tokenizer resources from the install/user resource directory or explicit env overrides, while provider usage remains billing-authoritative and local profile tokenizer counts remain estimates.
 
 
 ## p2.10a67-status-tokenizer-contract-consistency
@@ -2166,7 +2174,7 @@ Added sanitized latest prompt segmentation for WeClaw Details and refined profil
 
 ## p2.10a69-pricing-currency-turn-ledger
 
-Added structured Pricing/Cost currency metadata for WeClaw, CNY display conversion based on dsproxy-owned FX metadata, per-turn pricing context columns in the usage ledger, cash cost semantics, reasoning-cost unavailable semantics, and a more robust DeepSeek official pricing HTML parser.
+Added structured Pricing/Cost currency metadata for WeClaw, CNY display conversion based on cox-owned FX metadata, per-turn pricing context columns in the usage ledger, cash cost semantics, reasoning-cost unavailable semantics, and a more robust DeepSeek official pricing HTML parser.
 
 
 ## p2.10a70-pricing-cny-primary-source
@@ -2306,7 +2314,7 @@ Final state:
 - `master = origin/master = 80bb0ea`
 - `p2.10a80-docs-release-latest = 80bb0ea`
 - `v0.3.9-alpha = 80bb0ea`
-- GitHub Release `CoDeepSeedeX v0.3.9-alpha` is non-draft, non-prerelease, and Latest.
+- GitHub Release `CodeXchange v0.3.9-alpha` is non-draft, non-prerelease, and Latest.
 - Release assets are `bootstrap.sh` and `install.sh`.
 - Full tests passed before the Release update.
 
@@ -2335,7 +2343,7 @@ Date: 2026-05-20
 
 Scope:
 
-- Add opt-in append-only upstream payload tracing through `DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR`.
+- Add opt-in append-only upstream payload tracing through `COX_PAYLOAD_TRACE_DIR`.
 - Record one local JSON event per `DeepSeekClient.chat_completions()` call before the upstream POST.
 - Include sanitized raw payload, summary, request purpose metadata, duplicate-content hashes, role character totals, tools schema size, and context trimming report.
 - Restrict trace output to `/tmp` and keep the feature disabled by default.
@@ -2436,7 +2444,7 @@ Date: 2026-05-20
 Scope:
 
 - Added a no-network ASGI end-to-end regression for Compact audit after skipped compaction.
-- The test executes `POST /v1/responses`, then checks `GET /v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false` on the same app instance.
+- The test executes `POST /v1/responses`, then checks `GET /v1/proxy/weclaw/status?profile=cox&include_balance=false` on the same app instance.
 - The test asserts both top-level `compaction.compact_audit` and nested `context_window.runtime.payload_guard.compaction.compact_audit`.
 - The test confirms dry-run classifier semantics, retained-recent metadata, 64-character SHA-256 fingerprint presence, and no raw prompt/material exposure.
 
@@ -2512,7 +2520,7 @@ Date: 2026-05-21
 Scope:
 
 - Replaced the failed installed-package-only Compact conclusion with GitHub source-backed evidence.
-- Included the exact Codex `prompt.md` text in dsproxy's local Compact user message.
+- Included the exact Codex `prompt.md` text in cox's local Compact user message.
 - Recorded `prompt.md` sha256 `ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07`.
 - Recorded `summary_prefix.md` sha256 `e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e`.
 - Exposed `codex_native_source_evidence`, `compact_prompt_alignment`, and `codex_summary_prefix` through Compact metadata, compact audit, runtime payload guard, and WeClaw status paths.
@@ -2550,7 +2558,7 @@ Scope:
 
 - Close the remaining C1/D1 plan blockers by making production COMPACT and production TRIM token-first at runtime.
 - COMPACT now estimates context tokens for the assembled request payload and triggers on `auto_compact_threshold_tokens` / `model_auto_compact_token_limit`.
-- TRIM now uses the active profile auto-compact token limit as the production token target unless `DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS` explicitly overrides it.
+- TRIM now uses the active profile auto-compact token limit as the production token target unless `COX_TRIM_MAX_CONTEXT_TOKENS` explicitly overrides it.
 - Char-level limits remain only as emergency safety fallback after token-first runtime processing.
 - Runtime reports expose `estimated_context_tokens`, `tokens_to_auto_compact`, `token_first_runtime_trim`, token removal fields, and char fallback scope.
 
@@ -2583,7 +2591,7 @@ Date: 2026-05-21
 
 Scope:
 
-- Stabilize dsproxy-owned WeClaw status contracts after `v0.3.9-alpha=282e059`.
+- Stabilize cox-owned WeClaw status contracts after `v0.3.9-alpha=282e059`.
 - Add explicit auto-compact policy diagnostics when an active profile still exposes a legacy/custom threshold such as 750k/0.75 instead of the managed 0.90 ratio.
 - Add a stable token-first Compact contract with trigger, target availability, before/after token estimates, retention ratio, source, reason, and observed timestamp.
 - Guard token-first TRIM status against stale runtime reports from a different route/profile.
@@ -2603,7 +2611,7 @@ Date: 2026-05-21
 
 Scope:
 
-- Persist profile tokenizer reports so `dsproxy status thinking --weclaw-json --session-id <session>` can restore Details origin breakdown after resume or process restart.
+- Persist profile tokenizer reports so `cox status thinking --weclaw-json --session-id <session>` can restore Details origin breakdown after resume or process restart.
 - Mark restored Details origin data with `restored_from_persistence=true` and `source=sqlite_profile_tokenizer_report_store`.
 - Make Pricing lifecycle explicit: bundled official snapshots are active fallback data and should be shown as refresh-recommended, not refresh-required. Only stale official cache is refresh-required.
 - Harden the DeepSeek official pricing HTML parser against capability rows such as `输出长度 / 最大 384K`.
@@ -2622,11 +2630,11 @@ Date: 2026-05-22
 
 Scope:
 
-- Enforce the strict Plan rule that managed CoDeepSeedeX profiles use `auto_compact_ratio=0.90` as the only auto-compact threshold source.
+- Enforce the strict Plan rule that managed CodeXchange profiles use `auto_compact_ratio=0.90` as the only auto-compact threshold source.
 - Runtime status, CLI profile status, Compact, and Trim now derive `model_auto_compact_token_limit` from `model_context_window_tokens * 0.90`.
 - Legacy absolute values such as `750000` are ignored as current runtime thresholds and are surfaced only as generated-profile drift requiring repair.
-- `dsproxy profile repair --managed-only --json` now repairs `model_auto_compact_token_limit` to the ratio-derived value.
-- Current user Codex profiles were backed up and repaired so `deepseek` and `deepseek-thinking` use `900000` for a `1000000` token window.
+- `cox profile repair --managed-only --json` now repairs `model_auto_compact_token_limit` to the ratio-derived value.
+- Current user Codex profiles were backed up and repaired so `deepseek` and `cox` use `900000` for a `1000000` token window.
 - TRIM dry-run now uses the explicit active profile when deriving the token-first runtime target.
 - Tests were updated so `750000` is only a legacy input/negative marker, never a live runtime threshold.
 
@@ -2711,7 +2719,7 @@ Scope:
   - `model_auto_compact_token_limit = 900000`
   - `auto_compact_threshold_tokens = 900000`
 - Validate full tests under sanitized environment. The p2.10a110 read-only audit showed raw-environment failures from local environment leakage:
-  - `DEEPSEEK_PROXY_MODEL` affected model-default assertions.
+  - `COX_MODEL` affected model-default assertions.
   - image-provider environment affected provider mock tests.
   Sanitized full tests are the authoritative CI-style gate for this node.
 - Public `v0.3.9-alpha` is not moved by this internal node.
@@ -2723,9 +2731,9 @@ Date: 2026-05-22
 
 Scope:
 
-- Add dsproxy-owned daily pricing refresh contract.
+- Add cox-owned daily pricing refresh contract.
 - Status / WeClaw JSON now evaluates pricing freshness by local calendar day.
-- When the bundled official snapshot or official cache is older than the current local day, dsproxy attempts an official-docs refresh and writes the managed cache.
+- When the bundled official snapshot or official cache is older than the current local day, cox attempts an official-docs refresh and writes the managed cache.
 - If the official source is unavailable, the previous cache or bundled snapshot is preserved, but the status contract exposes `requires_refresh`, `reason`, and `action` instead of silently treating the old date as current.
 - External pricing configs remain user-managed and are not auto-refreshed.
 - Tests cover cross-day refresh, same-day no-refresh, and failure-preserves-old-prices behavior.
@@ -2737,7 +2745,7 @@ Date: 2026-05-22
 Scope:
 
 - Complete pricing ownership correction.
-- `DEEPSEEK_PROXY_PRICING_PATH` is dsproxy-managed, not user-managed.
+- `COX_PRICING_PATH` is cox-managed, not user-managed.
 - Daily official pricing refresh after local midnight applies to configured pricing paths as well as the default managed cache.
 - A configured pricing path becomes the refresh target when present; otherwise the managed cache path is used.
 - Failed refresh preserves the previous pricing file or bundled snapshot and exposes `requires_refresh`, `reason`, and `action`.
@@ -2848,8 +2856,8 @@ Date: 2026-05-22
 
 Scope:
 
-- Regenerate managed Codex provider/profile blocks during `dsproxy profile repair --managed-only --json`.
-- Clear stale `glm-5.1` model drift in `deepseek-thinking` by rewriting the Codex-visible profile model to the dsproxy effective upstream model.
+- Regenerate managed Codex provider/profile blocks during `cox profile repair --managed-only --json`.
+- Clear stale `glm-5.1` model drift in `cox` by rewriting the Codex-visible profile model to the cox effective upstream model.
 - Refresh the managed Codex wrapper so it repairs and verifies managed profiles before launching Codex.
 - Fail closed if a managed profile still has a model conflict after repair.
 - Keep token-only Compact/Trim runtime migration for the next node.
@@ -2928,8 +2936,8 @@ Scope:
 ## p2.22a2-test-isolation-and-validation
 
 - Fixed the p2.22a1 validation gap: the earlier node correctly implemented custom-provider capability downgrading and model catalog generation, but its test run inherited the developer shell's active provider/model environment.
-- Added test-suite environment isolation for CoDeepSeedeX/DeepSeek/Codex provider variables at import time and per test so local configured shells cannot mutate default model, upstream provider, semantic compaction mode, trace directory, or pricing assertions.
-- Fixed the stale-pid self-heal unit test double to expose the minimal `subprocess.Popen.poll()` surface required by `dsproxy start` readiness handling.
+- Added test-suite environment isolation for CodeXchange/DeepSeek/Codex provider variables at import time and per test so local configured shells cannot mutate default model, upstream provider, semantic compaction mode, trace directory, or pricing assertions.
+- Fixed the stale-pid self-heal unit test double to expose the minimal `subprocess.Popen.poll()` surface required by `cox start` readiness handling.
 - Validation target: rerun static checks, focused tests, and the full pytest suite from a configured local environment before accepting the repair node.
 
 ### p2.22a3-model-catalog-visibility-schema
@@ -2942,31 +2950,31 @@ Scope:
 
 - Fixed Codex 0.138 model catalog schema compatibility for generated custom-provider catalogs requiring `slug`.
 - Custom-provider catalog entries now include `slug` plus common aliases (`id`, `model`, `name`) and display fields.
-- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling the upstream model API.
+- Repaired local `~/.codex/model-catalogs/codexchange-custom-providers.json` without calling the upstream model API.
 
 ### p2.22a5-model-catalog-reasoning-presets-schema
 
 - Fixed Codex 0.138 model catalog schema compatibility for reasoning preset fields.
 - Removed guessed string-array `supported_reasoning_levels` entries from generated and managed custom-provider model catalogs.
-- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+- Repaired local `~/.codex/model-catalogs/codexchange-custom-providers.json` without calling upstream model APIs.
 
 ### p2.22a6-model-catalog-reasoning-preset-objects
 
 - Fixed Codex 0.138 model catalog schema compatibility for `supported_reasoning_levels`.
 - Generated and managed custom-provider catalogs now emit ReasoningEffortPreset objects with `effort` and `description`.
-- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+- Repaired local `~/.codex/model-catalogs/codexchange-custom-providers.json` without calling upstream model APIs.
 
 ### p2.22a7-model-catalog-full-codex-schema
 
 - Fixed Codex 0.138 model catalog schema compatibility by emitting the complete required model entry shape.
 - Added `shell_type`, `minimal_client_version`, `supported_in_api`, `base_instructions`, and `model_messages` to generated custom-provider catalogs.
-- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+- Repaired local `~/.codex/model-catalogs/codexchange-custom-providers.json` without calling upstream model APIs.
 
 ### p2.22a8-model-catalog-final-required-fields
 
 - Fixed Codex 0.138 model catalog schema compatibility by adding final required tail fields.
 - Added `experimental_supported_tools`, `available_in_plans`, `supports_search_tool`, `additional_speed_tiers`, and `supports_reasoning_summaries` to generated custom-provider catalogs.
-- Repaired local `~/.codex/model-catalogs/codeepseedex-custom-providers.json` without calling upstream model APIs.
+- Repaired local `~/.codex/model-catalogs/codexchange-custom-providers.json` without calling upstream model APIs.
 
 ### p2.22a9-profile-agnostic-codex-runtime-autostart
 
@@ -3001,7 +3009,7 @@ Scope:
 
 - Closed install/upgrade propagation for the verified Codex wrapper.
 - `scripts/install.sh` now refreshes a managed `~/.local/bin/codex` from the canonical `scripts/codex-wrapper.bash` template after installer wrapper writes have completed.
-- `deepseek_responses_proxy/cli.py` records the canonical wrapper template and target paths for refresh-wrapper/install propagation audits.
+- `codexchange_proxy/cli.py` records the canonical wrapper template and target paths for refresh-wrapper/install propagation audits.
 - The verified wrapper contract remains dual-use: sourceable function mode and executable dispatcher mode with profile-agnostic local proxy readiness.
 - Do not move `v0.4.3-alpha` and do not rebuild Release assets.
 

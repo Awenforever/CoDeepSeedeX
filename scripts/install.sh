@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR="${DEEPSEEK_PROXY_INSTALL_DIR:-$HOME/.local/share/deepseek-responses-proxy}"
-REPO_URL="${DEEPSEEK_PROXY_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
-LATEST_RELEASE_API_URL="${DEEPSEEK_PROXY_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
-INSTALL_REF="${DEEPSEEK_PROXY_INSTALL_REF:-}"
-CODEEPSEEDEX_PUBLIC_RELEASE_TAG="${DEEPSEEK_PROXY_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"
-BIN_DIR="${DEEPSEEK_PROXY_BIN_DIR:-$HOME/.local/bin}"
-CONFIG_DIR="${DEEPSEEK_PROXY_CONFIG_DIR:-$HOME/.config/deepseek-responses-proxy}"
-ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$CONFIG_DIR/env}"
-MANIFEST_FILE="${DEEPSEEK_PROXY_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
-INSTALL_LOG="${DEEPSEEK_PROXY_INSTALL_LOG:-/tmp/codeepseedex-install-$(date +%Y%m%d_%H%M%S).log}"
-BOOTSTRAP_LOG="${DEEPSEEK_PROXY_BOOTSTRAP_LOG:-}"
-LOCAL_BACKUP_DIR="${DEEPSEEK_PROXY_BACKUP_DIR:-/tmp/codeepseedex-install-backups-$(date +%Y%m%d_%H%M%S)}"
-if [ -n "${DEEPSEEK_PROXY_PYTHON_BIN:-}" ]; then
-  PYTHON_BIN="$DEEPSEEK_PROXY_PYTHON_BIN"
+INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
+REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CodeXchange.git}"
+LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CodeXchange/releases/latest}"
+INSTALL_REF="${COX_INSTALL_REF:-}"
+COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"
+BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
+CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
+ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
+MANIFEST_FILE="${COX_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
+INSTALL_LOG="${COX_INSTALL_LOG:-/tmp/codexchange-install-$(date +%Y%m%d_%H%M%S).log}"
+BOOTSTRAP_LOG="${COX_BOOTSTRAP_LOG:-}"
+LOCAL_BACKUP_DIR="${COX_BACKUP_DIR:-/tmp/codexchange-install-backups-$(date +%Y%m%d_%H%M%S)}"
+if [ -n "${COX_PYTHON_BIN:-}" ]; then
+  PYTHON_BIN="$COX_PYTHON_BIN"
   PYTHON_BIN_EXPLICIT=1
 else
   PYTHON_BIN=""
@@ -23,8 +23,8 @@ fi
 
 DRY_RUN=0
 NON_INTERACTIVE=0
-FORCE_CODEX_WRAPPER="${DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER:-0}"
-FORCE_DSPROXY_WRAPPER="${DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER:-0}"
+FORCE_CODEX_WRAPPER="${COX_FORCE_CODEX_WRAPPER:-0}"
+FORCE_COX_WRAPPER="${COX_FORCE_COX_WRAPPER:-0}"
 INSTALL_CODEX_PROFILE=1
 INSTALL_CODEX_WRAPPER=1
 INSTALL_SHELL_PROFILE=1
@@ -40,17 +40,17 @@ RESOLVED_MODEL_NAME=""
 PROMPTED_CUSTOM_PROVIDER_NAME=""
 RESOLVED_MODEL_PROVIDER_DISPLAY_NAME=""
 RESOLVED_MODEL_PROVIDER_TYPE=""
-MODEL_PROVIDER_REGISTRY_FILE="${DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"
+MODEL_PROVIDER_REGISTRY_FILE="${COX_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"
 
 show_version_source() {
   sub_title "Version source"
   printf '  Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}"
-  printf '  Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}"
+  printf '  Installer source: %s\n' "${COX_INSTALLER_SOURCE:-local script or current checkout}"
   printf '  Repository source: %s\n' "$REPO_URL"
 }
 
 logo() {
-  cat <<'CODEEPSEEDEX_INSTALLER_LOGO_ART'
+  cat <<'COX_INSTALLER_LOGO_ART'
    ____      ____                 ____              _      __  __
   / ___|___ |  _ \  ___  ___ _ __/ ___|  ___  ___  __| | ___ \ \/ /
  | |   / _ \| | | |/ _ \/ _ \ '_ \___ \ / _ \/ _ \/ _` |/ _ \ \  /
@@ -58,11 +58,11 @@ logo() {
   \____\___/|____/ \___|\___| .__/____/ \___|\___|\__,_|\___|/_/\_\
                              |_|
 
-CODEEPSEEDEX_INSTALLER_LOGO_ART
-  printf '  CoDeepSeedeX \033[1;35m%s\033[0m\n' "${INSTALL_REF:-GitHub Latest}"
-  cat <<'CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE'
+COX_INSTALLER_LOGO_ART
+  printf '  CodeXchange \033[1;35m%s\033[0m\n' "${INSTALL_REF:-GitHub Latest}"
+  cat <<'COX_INSTALLER_LOGO_SUBTITLE'
   Codex × DeepSeek local Responses proxy
-CODEEPSEEDEX_INSTALLER_LOGO_SUBTITLE
+COX_INSTALLER_LOGO_SUBTITLE
 }
 
 usage() {
@@ -75,14 +75,14 @@ Options:
   --install-dir DIR      Installation directory
   --repo-url URL         Git repository URL
   --install-ref REF      Target release tag or explicit git ref; defaults to GitHub Latest Release
-  --bin-dir DIR          Directory for dsproxy and optional codex wrapper
+  --bin-dir DIR          Directory for cox and optional codex wrapper
   --config-dir DIR       Config directory
   --env-file FILE        Env file path
-  --python-bin PATH     Python interpreter for venv, default: $DEEPSEEK_PROXY_PYTHON_BIN or python3
+  --python-bin PATH     Python interpreter for venv, default: $COX_PYTHON_BIN or python3
   --no-codex-profile     Skip Codex profile installation
   --no-codex-wrapper     Skip safe codex wrapper installation
   --no-shell-profile    Do not update shell startup files for PATH/env loading
-  --uninstall            Remove profiles and wrappers installed by CoDeepSeedeX
+  --uninstall            Remove profiles and wrappers installed by CodeXchange
   --remove-files         With --uninstall, also remove install dir and env files
   -h, -H, --help         Show help
 
@@ -187,7 +187,7 @@ ui_wrap_text() {
 
 
 ui_box_top() {
-  local title="${1:-CoDeepSeedeX}"
+  local title="${1:-CodeXchange}"
   local width="${2:-$(ui_terminal_width)}"
   local clipped=""
   local fill_count=0
@@ -291,7 +291,7 @@ run_git_quiet() {
   warn "Next step: retry after checking network/proxy/CA certificates, or use --repo-url /path/to/local-or-mirrored-repo."
 
   {
-    printf '\n===== CoDeepSeedeX git setup diagnosis =====\n'
+    printf '\n===== CodeXchange git setup diagnosis =====\n'
     printf 'operation=%s\n' "$operation"
     printf 'repo_url=%s\n' "$REPO_URL"
     printf 'install_dir=%s\n' "$INSTALL_DIR"
@@ -319,21 +319,21 @@ resolve_install_ref() {
     return 0
   fi
 
-  if [ -n "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG" ]; then
-    warn "Could not resolve GitHub Latest Release tag through API; falling back to packaged public release tag: $CODEEPSEEDEX_PUBLIC_RELEASE_TAG"
-    printf '+ Latest Release API fallback used: %s\n' "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG" >> "$INSTALL_LOG"
-    printf '%s\n' "$CODEEPSEEDEX_PUBLIC_RELEASE_TAG"
+  if [ -n "$COX_PUBLIC_RELEASE_TAG" ]; then
+    warn "Could not resolve GitHub Latest Release tag through API; falling back to packaged public release tag: $COX_PUBLIC_RELEASE_TAG"
+    printf '+ Latest Release API fallback used: %s\n' "$COX_PUBLIC_RELEASE_TAG" >> "$INSTALL_LOG"
+    printf '%s\n' "$COX_PUBLIC_RELEASE_TAG"
     return 0
   fi
 
-  echo "ERROR: could not resolve GitHub Latest Release tag; set DEEPSEEK_PROXY_INSTALL_REF or pass --install-ref" >&2
+  echo "ERROR: could not resolve GitHub Latest Release tag; set COX_INSTALL_REF or pass --install-ref" >&2
   return 1
 }
 
 
 clean_tty_input_value() {
   local py="${PYTHON_BIN:-python3}"
-  "$py" - "$1" <<'PYCODEEPSEEDEX_CLEAN_TTY_INPUT_P218A3'
+  "$py" - "$1" <<'PYCOX_CLEAN_TTY_INPUT_P218A3'
 import sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
 buf = []
@@ -351,12 +351,12 @@ for ch in raw:
         continue
     buf.append(ch)
 print("".join(buf).strip())
-PYCODEEPSEEDEX_CLEAN_TTY_INPUT_P218A3
+PYCOX_CLEAN_TTY_INPUT_P218A3
 }
 
 normalize_openai_base_url() {
   local py="${PYTHON_BIN:-python3}"
-  "$py" - "$1" <<'PYCODEEPSEEDEX_NORMALIZE_BASE_URL_P218A3'
+  "$py" - "$1" <<'PYCOX_NORMALIZE_BASE_URL_P218A3'
 import re
 import sys
 url = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -367,12 +367,12 @@ for suffix in ("/chat/completions", "/responses", "/models"):
         break
 url = url.rstrip("/")
 print(url)
-PYCODEEPSEEDEX_NORMALIZE_BASE_URL_P218A3
+PYCOX_NORMALIZE_BASE_URL_P218A3
 }
 
 is_probable_api_key_value() {
   local py="${PYTHON_BIN:-python3}"
-  "$py" - "$1" <<'PYCODEEPSEEDEX_PROBABLE_API_KEY_P218A5'
+  "$py" - "$1" <<'PYCOX_PROBABLE_API_KEY_P218A5'
 import re
 import sys
 
@@ -387,7 +387,7 @@ if re.fullmatch(r"[A-Za-z0-9_.=-]{32,}", value):
     if not any(word in lower for word in model_words):
         raise SystemExit(0)
 raise SystemExit(1)
-PYCODEEPSEEDEX_PROBABLE_API_KEY_P218A5
+PYCOX_PROBABLE_API_KEY_P218A5
 }
 
 is_valid_model_name_value() {
@@ -416,7 +416,7 @@ ui_render_input_panel() {
   width="$(ui_terminal_width)"
 
   printf '\033[?25h' > /dev/tty 2>/dev/null || true
-  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_top "CodeXchange" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "$title" "$width" "\033[1;38;5;75m" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
@@ -458,7 +458,7 @@ show_model_api_validation_hold() {
     return 0
   fi
 
-  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_top "CodeXchange" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "${provider_label} validation" "$width" "\033[1;38;5;75m" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
@@ -479,7 +479,7 @@ show_model_api_validation_hold() {
   ui_step_footer "Step 2/5" "$width" > /dev/tty
 
   printf "\n  Press Enter to continue..." > /dev/tty
-  IFS= read -r CODEEPSEEDEX_MODEL_API_VALIDATION_CONTINUE < /dev/tty || true
+  IFS= read -r COX_MODEL_API_VALIDATION_CONTINUE < /dev/tty || true
   printf "\n" > /dev/tty
 }
 
@@ -490,12 +490,12 @@ show_install_completion_hold() {
   local detected_public
   local detected_internal
   width="$(ui_terminal_width)"
-  public_version="${DEEPSEEK_PROXY_PUBLIC_VERSION:-v0.4.3-alpha}"
-  internal_version="${DEEPSEEK_PROXY_INTERNAL_VERSION:-}"
+  public_version="${COX_PUBLIC_VERSION:-v0.4.3-alpha}"
+  internal_version="${COX_INTERNAL_VERSION:-}"
 
-  if [ -x "${INSTALL_DIR:-}/.venv/bin/dsproxy" ]; then
-    detected_public="$("${INSTALL_DIR}/.venv/bin/dsproxy" --version 2>/dev/null | sed -n 's/^public version: //p' | head -1 || true)"
-    detected_internal="$("${INSTALL_DIR}/.venv/bin/dsproxy" --version 2>/dev/null | sed -n 's/^internal version: //p' | head -1 || true)"
+  if [ -x "${INSTALL_DIR:-}/.venv/bin/cox" ]; then
+    detected_public="$("${INSTALL_DIR}/.venv/bin/cox" --version 2>/dev/null | sed -n 's/^public version: //p' | head -1 || true)"
+    detected_internal="$("${INSTALL_DIR}/.venv/bin/cox" --version 2>/dev/null | sed -n 's/^internal version: //p' | head -1 || true)"
     if [ -n "$detected_public" ]; then
       public_version="$detected_public"
     fi
@@ -511,7 +511,7 @@ show_install_completion_hold() {
     return 0
   fi
 
-  ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+  ui_box_top "CodeXchange" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "Setup complete" "$width" "\033[1;38;5;75m" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
@@ -533,18 +533,18 @@ show_install_completion_hold() {
     ui_box_line "  Detail: ${MODEL_API_VALIDATION_ERROR}" "$width" > /dev/tty
   fi
   ui_box_line "" "$width" > /dev/tty
-  ui_box_line "Start using CoDeepSeedeX:" "$width" > /dev/tty
-  ui_box_line "  codex --profile deepseek-thinking" "$width" > /dev/tty
+  ui_box_line "Start using CodeXchange:" "$width" > /dev/tty
+  ui_box_line "  codex --profile cox" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line "Optional verification:" "$width" > /dev/tty
-  ui_box_line "  dsproxy --version" "$width" > /dev/tty
-  ui_box_line "  dsproxy config show" "$width" > /dev/tty
+  ui_box_line "  cox --version" "$width" > /dev/tty
+  ui_box_line "  cox config show" "$width" > /dev/tty
   ui_box_line "" "$width" > /dev/tty
   ui_box_line_styled "Press Enter to finish." "$width" "\033[1;38;5;75m" > /dev/tty
   ui_step_footer "Complete" "$width" > /dev/tty
 
   printf "\n  Press Enter to finish..." > /dev/tty
-  IFS= read -r CODEEPSEEDEX_FINISH_SETUP < /dev/tty || true
+  IFS= read -r COX_FINISH_SETUP < /dev/tty || true
   printf "\n" > /dev/tty
 }
 
@@ -552,9 +552,9 @@ read_from_tty() {
   local prompt="$1"
   local default_value="${2:-}"
   local value=""
-  local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
-  local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
-  local helper="${CODEEPSEEDEX_INPUT_DETAIL:-}"
+  local title="${COX_INPUT_TITLE:-$prompt}"
+  local footer="${COX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
+  local helper="${COX_INPUT_DETAIL:-}"
   local key=""
   local old_stty=""
 
@@ -586,7 +586,7 @@ read_from_tty() {
         if [ -z "$value" ]; then
           [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
           printf '\n' > /dev/tty
-          printf '%s\n' "__CODEEPSEEDEX_BACK__"
+          printf '%s\n' "__COX_BACK__"
           return 0
         fi
         value="${value%?}"
@@ -632,9 +632,9 @@ read_secret_from_tty() {
   local default_value="${2:-}"
   local helper="${3:-}"
   local value=""
-  local title="${CODEEPSEEDEX_INPUT_TITLE:-$prompt}"
-  local footer="${CODEEPSEEDEX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
-  local detail="${CODEEPSEEDEX_INPUT_DETAIL:-$helper}"
+  local title="${COX_INPUT_TITLE:-$prompt}"
+  local footer="${COX_INPUT_STEP:-$(menu_step_label_for_prompt "$prompt")}"
+  local detail="${COX_INPUT_DETAIL:-$helper}"
   local key=""
   local old_stty=""
 
@@ -657,7 +657,7 @@ read_secret_from_tty() {
         printf "\n\n" > /dev/tty
         value="$(clean_tty_input_value "$value")"
         if [ -z "$value" ] && [ -n "$default_value" ]; then
-          printf '%s\n' "__CODEEPSEEDEX_KEEP_EXISTING__"
+          printf '%s\n' "__COX_KEEP_EXISTING__"
           return 0
         fi
         printf '%s\n' "$value"
@@ -667,7 +667,7 @@ read_secret_from_tty() {
         if [ -z "$value" ]; then
           [ -n "$old_stty" ] && stty "$old_stty" < /dev/tty 2>/dev/null || stty sane < /dev/tty 2>/dev/null || true
           printf "\n\n" > /dev/tty
-          printf '%s\n' "__CODEEPSEEDEX_BACK__"
+          printf '%s\n' "__COX_BACK__"
           return 0
         fi
         value="${value%?}"
@@ -689,7 +689,7 @@ read_secret_from_tty() {
   printf '%s\n' "$default_value"
 }
 
-is_codeepseedex_codex_wrapper_candidate() {
+is_codexchange_codex_wrapper_candidate() {
   local path="$1"
 
   if [ -z "$path" ] || [ ! -f "$path" ]; then
@@ -697,12 +697,12 @@ is_codeepseedex_codex_wrapper_candidate() {
   fi
 
   case "$path" in
-    /tmp/codeepseedex-*/.local/bin/codex|/tmp/codeepseedex-*/*/codex)
+    /tmp/codexchange-*/.local/bin/codex|/tmp/codexchange-*/*/codex)
       return 0
       ;;
   esac
 
-  grep -qE 'CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|start_dsproxy_profile|deepseek-responses-proxy' "$path" 2>/dev/null
+  grep -qE 'CodeXchange codex wrapper|COX_COMMAND|start_cox_profile|codexchange' "$path" 2>/dev/null
 }
 
 codex_candidate_looks_node_backed() {
@@ -734,15 +734,15 @@ is_valid_real_codex_candidate() {
     return 1
   fi
 
-  if is_codeepseedex_codex_wrapper_candidate "$candidate"; then
+  if is_codexchange_codex_wrapper_candidate "$candidate"; then
     return 1
   fi
-  if [ "$candidate_real" != "$candidate" ] && is_codeepseedex_codex_wrapper_candidate "$candidate_real"; then
+  if [ "$candidate_real" != "$candidate" ] && is_codexchange_codex_wrapper_candidate "$candidate_real"; then
     return 1
   fi
 
   case "$candidate_real" in
-    /tmp/codeepseedex-*/.local/bin/codex|/tmp/codeepseedex-*/*/codex)
+    /tmp/codexchange-*/.local/bin/codex|/tmp/codexchange-*/*/codex)
       return 1
       ;;
   esac
@@ -753,8 +753,8 @@ is_valid_real_codex_candidate() {
   fi
 
   # If Node.js is missing, the real Codex launcher may be present but unable to
-  # print a version. Accept a non-CoDeepSeedeX executable named codex so the
-  # managed wrapper can surface a clear CoDeepSeedeX diagnostic instead of
+  # print a version. Accept a non-CodeXchange executable named codex so the
+  # managed wrapper can surface a clear CodeXchange diagnostic instead of
   # letting the shell fall through to /usr/local/bin/codex.
   if [ "$(basename "$candidate_real")" = "codex" ]; then
     return 0
@@ -769,17 +769,17 @@ find_real_codex() {
   local candidate_real=""
   local seen_file=""
 
-  if [ -n "${CODEEPSEEDEX_REAL_CODEX:-}" ]; then
-    if is_valid_real_codex_candidate "$CODEEPSEEDEX_REAL_CODEX" "$wrapper_path"; then
-      readlink -f "$CODEEPSEEDEX_REAL_CODEX" 2>/dev/null || printf '%s
-' "$CODEEPSEEDEX_REAL_CODEX"
+  if [ -n "${COX_REAL_CODEX:-}" ]; then
+    if is_valid_real_codex_candidate "$COX_REAL_CODEX" "$wrapper_path"; then
+      readlink -f "$COX_REAL_CODEX" 2>/dev/null || printf '%s
+' "$COX_REAL_CODEX"
       return 0
     fi
-    warn "CODEEPSEEDEX_REAL_CODEX is not a valid real Codex binary or points to a CoDeepSeedeX wrapper: $CODEEPSEEDEX_REAL_CODEX"
+    warn "COX_REAL_CODEX is not a valid real Codex binary or points to a CodeXchange wrapper: $COX_REAL_CODEX"
     return 1
   fi
 
-  seen_file="/tmp/codeepseedex-real-codex-candidates-$$.txt"
+  seen_file="/tmp/codexchange-real-codex-candidates-$$.txt"
   : > "$seen_file"
 
   add_real_codex_candidate() {
@@ -852,7 +852,7 @@ resolve_python_candidate_path() {
   esac
 }
 
-python_candidate_supports_codeepseedex() {
+python_candidate_supports_codexchange() {
   local candidate="$1"
   local require_venv="${2:-1}"
 
@@ -860,7 +860,7 @@ python_candidate_supports_codeepseedex() {
     return 1
   fi
 
-  "$candidate" - "$require_venv" <<'PYCODEEPSEEDEX_P221A2_PYTHON_CANDIDATE_CHECK'
+  "$candidate" - "$require_venv" <<'PYCOX_P221A2_PYTHON_CANDIDATE_CHECK'
 import sys
 
 require_venv = len(sys.argv) > 1 and sys.argv[1] == "1"
@@ -872,7 +872,7 @@ if require_venv:
     except Exception:
         raise SystemExit(11)
 print(sys.version.split()[0])
-PYCODEEPSEEDEX_P221A2_PYTHON_CANDIDATE_CHECK
+PYCOX_P221A2_PYTHON_CANDIDATE_CHECK
 }
 
 is_existing_install_venv_python() {
@@ -886,7 +886,7 @@ is_existing_install_venv_python() {
   [ "$(canonical_path "$candidate")" = "$(canonical_path "$venv_python")" ]
 }
 
-select_codeepseedex_python_bin() {
+select_codexchange_python_bin() {
   local explicit="${PYTHON_BIN_EXPLICIT:-0}"
   local candidate
   local candidate_path
@@ -899,14 +899,14 @@ select_codeepseedex_python_bin() {
     if is_existing_install_venv_python "$candidate_path"; then
       require_venv=0
     fi
-    if version="$(python_candidate_supports_codeepseedex "$candidate_path" "$require_venv" 2>/dev/null)"; then
+    if version="$(python_candidate_supports_codexchange "$candidate_path" "$require_venv" 2>/dev/null)"; then
       PYTHON_BIN="$candidate_path"
-      CODEEPSEEDEX_SELECTED_PYTHON_VERSION="$version"
+      COX_SELECTED_PYTHON_VERSION="$version"
       return 0
     fi
     if [ "$explicit" = "1" ]; then
       echo "ERROR: Python >= 3.11 is required by the selected interpreter: ${PYTHON_BIN:-<empty>}" >&2
-      echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CoDeepSeedeX does not install or patch Python automatically." >&2
+      echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CodeXchange does not install or patch Python automatically." >&2
       return 1
     fi
   fi
@@ -929,25 +929,25 @@ select_codeepseedex_python_bin() {
       require_venv=0
     fi
 
-    if version="$(python_candidate_supports_codeepseedex "$candidate_path" "$require_venv" 2>/dev/null)"; then
+    if version="$(python_candidate_supports_codexchange "$candidate_path" "$require_venv" 2>/dev/null)"; then
       PYTHON_BIN="$candidate_path"
-      CODEEPSEEDEX_SELECTED_PYTHON_VERSION="$version"
+      COX_SELECTED_PYTHON_VERSION="$version"
       return 0
     fi
   done
 
   echo "ERROR: Python >= 3.11 is required, but no compatible interpreter was found." >&2
   echo "Checked: python3.13, python3.12, python3.11, existing install venv, python3, python." >&2
-  echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CoDeepSeedeX does not install or patch Python automatically." >&2
+  echo "Install Python 3.11+ or pass --python-bin /path/to/python3.11+. CodeXchange does not install or patch Python automatically." >&2
   return 1
 }
 
-ensure_codeepseedex_python_bin() {
-  if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then
+ensure_codexchange_python_bin() {
+  if [ -n "${PYTHON_BIN:-}" ] && [ -n "${COX_SELECTED_PYTHON_VERSION:-}" ]; then
     return 0
   fi
-  select_codeepseedex_python_bin
-  printf '+ Python selected: %s (%s)\n' "$PYTHON_BIN" "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-unknown}" >> "$INSTALL_LOG"
+  select_codexchange_python_bin
+  printf '+ Python selected: %s (%s)\n' "$PYTHON_BIN" "${COX_SELECTED_PYTHON_VERSION:-unknown}" >> "$INSTALL_LOG"
 }
 
 json_string() {
@@ -998,7 +998,7 @@ test_web_search_api_key() {
     return 1
   fi
   local result
-  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCODEEPSEEDEX_INSTALL_WEB_VALIDATION_P28A1'
+  result="$("$PYTHON_BIN" - "$provider" "$api_key" <<'PYCOX_INSTALL_WEB_VALIDATION_P28A1'
 import json
 import sys
 import urllib.parse
@@ -1060,7 +1060,7 @@ elif provider == "firecrawl":
 else:
     ok = False
 print("ok" if ok else "bad")
-PYCODEEPSEEDEX_INSTALL_WEB_VALIDATION_P28A1
+PYCOX_INSTALL_WEB_VALIDATION_P28A1
 )"
   [ "$result" = "ok" ]
 }
@@ -1074,11 +1074,11 @@ test_image_api_key() {
     return 1
   fi
 
-  local out_dir="${TMPDIR:-/tmp}/codeepseedex-image-validation-$(date +%Y%m%d_%H%M%S)"
+  local out_dir="${TMPDIR:-/tmp}/codexchange-image-validation-$(date +%Y%m%d_%H%M%S)"
   mkdir -p "$out_dir"
 
   local result_file="$out_dir/result.env"
-  "$PYTHON_BIN" - "$provider" "$api_key" "$out_dir" <<'PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24' > "$result_file"
+  "$PYTHON_BIN" - "$provider" "$api_key" "$out_dir" <<'PYCOX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24' > "$result_file"
 import base64
 import json
 import mimetypes
@@ -1148,7 +1148,7 @@ def request_binary(url, headers, payload_bytes, content_type, method="POST"):
         return int(resp.status), resp.headers.get("content-type", ""), resp.read()
 
 def download_image(url, target):
-    req = urllib.request.Request(url, headers={"User-Agent": "CoDeepSeedeX image validation"})
+    req = urllib.request.Request(url, headers={"User-Agent": "CodeXchange image validation"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         content_type = resp.headers.get("content-type", "")
         raw = resp.read()
@@ -1217,7 +1217,7 @@ def first_image_evidence(data):
     return ("", "")
 
 def stability_multipart(prompt_text):
-    boundary = "----CoDeepSeedeXBoundary%d" % int(time.time() * 1000)
+    boundary = "----CodeXchangeBoundary%d" % int(time.time() * 1000)
     parts = []
     def add(name, value):
         parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode())
@@ -1302,7 +1302,7 @@ except urllib.error.HTTPError as exc:
     emit(status="bad", provider=provider, error=f"http_{exc.code}", message=msg, artifact="")
 except Exception as exc:
     emit(status="bad", provider=provider, error=type(exc).__name__, message=str(exc)[:240], artifact="")
-PYCODEEPSEEDEX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24
+PYCOX_INSTALL_LIVE_IMAGE_VALIDATION_P210A24
 
   local status=""
   local artifact=""
@@ -1370,7 +1370,7 @@ test_model_api_key() {
     return 1
   fi
   local result
-  result="$($PYTHON_BIN - "$api_key" "$base_url" <<'PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4'
+  result="$($PYTHON_BIN - "$api_key" "$base_url" <<'PYCOX_INSTALL_MODEL_API_VALIDATION_P28A4'
 import sys
 import urllib.request
 
@@ -1387,7 +1387,7 @@ try:
         print("ok" if 200 <= int(response.status) < 300 else "bad")
 except Exception:
     print("bad")
-PYCODEEPSEEDEX_INSTALL_MODEL_API_VALIDATION_P28A4
+PYCOX_INSTALL_MODEL_API_VALIDATION_P28A4
 )"
   [ "$result" = "ok" ]
 }
@@ -1524,7 +1524,7 @@ read_menu_choice_from_tty() {
     return 0
   fi
 
-  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${CODEEPSEEDEX_NO_ARROW_MENUS:-0}" = "1" ]; then
+  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ] || [ "${COX_NO_ARROW_MENUS:-0}" = "1" ]; then
     printf '%s\n' "$default"
     return 0
   fi
@@ -1539,20 +1539,20 @@ read_menu_choice_from_tty() {
     fi
   done
 
-  local step_label="${CODEEPSEEDEX_MENU_STEP:-}"
+  local step_label="${COX_MENU_STEP:-}"
   if [ -z "$step_label" ]; then
     step_label="$(menu_step_label_for_prompt "$prompt")"
   fi
-  local detail="${CODEEPSEEDEX_NEXT_MENU_DETAIL:-}"
-  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
-  CODEEPSEEDEX_MENU_HELP_SHOWN=1
+  local detail="${COX_NEXT_MENU_DETAIL:-}"
+  COX_NEXT_MENU_DETAIL=""
+  COX_MENU_HELP_SHOWN=1
 
   local render_panel
   render_panel() {
     local width
     width="$(ui_terminal_width)"
     menu_tty_printf '\033[?25l\033[2J\033[3J\033[H'
-    ui_box_top "CoDeepSeedeX" "$width" > /dev/tty
+    ui_box_top "CodeXchange" "$width" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
     ui_box_line_styled "$prompt" "$width" "\033[1;38;5;75m" > /dev/tty
     ui_box_line "" "$width" > /dev/tty
@@ -1609,7 +1609,7 @@ read_menu_choice_from_tty() {
         ;;
       $'\x7f'|$'\b')
         menu_tty_printf '\033[?25h\n'
-        printf '%s\n' "__CODEEPSEEDEX_BACK__"
+        printf '%s\n' "__COX_BACK__"
         return 0
         ;;
       *) ;;
@@ -1637,33 +1637,33 @@ read_yes_no_menu() {
 }
 
 choose_installer_language() {
-  local existing="${CODEEPSEEDEX_INSTALL_LOCALE:-}"
+  local existing="${COX_INSTALL_LOCALE:-}"
   if [ -z "$existing" ]; then
-    existing="$(env_file_value DEEPSEEK_PROXY_LOCALE)"
+    existing="$(env_file_value COX_LOCALE)"
   fi
   case "$existing" in
     zh|zh-CN|zh_CN|cn|CN) existing="zh-CN" ;;
     *) existing="en" ;;
   esac
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    CODEEPSEEDEX_INSTALL_LOCALE="$existing"
+    COX_INSTALL_LOCALE="$existing"
     return 0
   fi
-  CODEEPSEEDEX_MENU_STEP="Step 1/5"
+  COX_MENU_STEP="Step 1/5"
   local chosen=""
   chosen="$(read_menu_choice_from_tty "Choose your language / 选择语言" "$existing" \
     "en|English|plain" \
     "zh-CN|简体中文|plain")"
-  CODEEPSEEDEX_MENU_STEP=""
+  COX_MENU_STEP=""
   case "$chosen" in
-    __CODEEPSEEDEX_BACK__|"") chosen="$existing" ;;
+    __COX_BACK__|"") chosen="$existing" ;;
   esac
-  CODEEPSEEDEX_INSTALL_LOCALE="$chosen"
+  COX_INSTALL_LOCALE="$chosen"
 }
 
 port_is_available() {
   local port="$1"
-  "$PYTHON_BIN" - "$port" <<'PYCODEEPSEEDEX_PORT_CHECK'
+  "$PYTHON_BIN" - "$port" <<'PYCOX_PORT_CHECK'
 import socket, sys
 port = int(sys.argv[1])
 ok = "0"
@@ -1677,7 +1677,7 @@ except OSError:
 finally:
     s.close()
 print(ok)
-PYCODEEPSEEDEX_PORT_CHECK
+PYCOX_PORT_CHECK
 }
 
 choose_available_port() {
@@ -1800,7 +1800,7 @@ write_model_provider_registry() {
   fi
 
   mkdir -p "$(dirname "$MODEL_PROVIDER_REGISTRY_FILE")"
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" "$base_url" "$model_name" "$api_key" <<'PYCODEEPSEEDEX_MODEL_PROVIDER_REGISTRY_P219A1'
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" "$base_url" "$model_name" "$api_key" <<'PYCOX_MODEL_PROVIDER_REGISTRY_P219A1'
 import json
 import os
 import re
@@ -1858,7 +1858,7 @@ data["version"] = 1
 data["active_provider"] = provider_id
 path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 os.chmod(path, 0o600)
-PYCODEEPSEEDEX_MODEL_PROVIDER_REGISTRY_P219A1
+PYCOX_MODEL_PROVIDER_REGISTRY_P219A1
 }
 
 model_api_key_state_label() {
@@ -1872,7 +1872,7 @@ model_api_key_state_label() {
 review_model_api_config() {
   local key_state
   key_state="$(model_api_key_state_label)"
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="Provider: ${PROMPTED_MODEL_PROVIDER:-<unset>} · Base URL: ${PROMPTED_MODEL_BASE_URL:-<empty>} · Model: ${PROMPTED_MODEL_NAME:-<empty>} · API key: ${key_state}. API key material is never displayed."
+  COX_NEXT_MENU_DETAIL="Provider: ${PROMPTED_MODEL_PROVIDER:-<unset>} · Base URL: ${PROMPTED_MODEL_BASE_URL:-<empty>} · Model: ${PROMPTED_MODEL_NAME:-<empty>} · API key: ${key_state}. API key material is never displayed."
   read_menu_choice_from_tty "Review model API configuration" "1" \
     "1|Continue with this configuration|supported" \
     "2|Edit base URL|custom" \
@@ -1885,7 +1885,7 @@ review_model_api_config() {
 
 
 custom_provider_registry_count() {
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_COUNT_P219A2'
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCOX_CUSTOM_PROVIDER_COUNT_P219A2'
 import json
 import sys
 from pathlib import Path
@@ -1898,11 +1898,11 @@ providers = data.get("providers") if isinstance(data, dict) else {}
 if not isinstance(providers, dict):
     providers = {}
 print(len(providers))
-PYCODEEPSEEDEX_CUSTOM_PROVIDER_COUNT_P219A2
+PYCOX_CUSTOM_PROVIDER_COUNT_P219A2
 }
 
 custom_provider_registry_hint() {
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_HINT_P219A2'
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" <<'PYCOX_CUSTOM_PROVIDER_HINT_P219A2'
 import json
 import sys
 from pathlib import Path
@@ -1925,7 +1925,7 @@ else:
         model = entry.get("active_model") or "<no active model>"
         parts.append(f"{marker} {name}: {model}")
     print("; ".join(parts[:6]))
-PYCODEEPSEEDEX_CUSTOM_PROVIDER_HINT_P219A2
+PYCOX_CUSTOM_PROVIDER_HINT_P219A2
 }
 
 prompt_custom_provider_mode() {
@@ -1934,19 +1934,19 @@ prompt_custom_provider_mode() {
   count="$(custom_provider_registry_count 2>/dev/null || printf '0')"
 
   if [ "${count:-0}" = "0" ]; then
-    CODEEPSEEDEX_NEXT_MENU_DETAIL="No saved custom providers yet. Add a new custom provider first."
+    COX_NEXT_MENU_DETAIL="No saved custom providers yet. Add a new custom provider first."
     choice="$(read_menu_choice_from_tty "Custom provider setup" "2" \
       "2|Add new custom provider|custom" \
       "0|Back to provider selection|skip")"
     case "$choice" in
-      __CODEEPSEEDEX_BACK__|0|back|Back) printf '%s\n' "back" ;;
+      __COX_BACK__|0|back|Back) printf '%s\n' "back" ;;
       2|new|add) printf '%s\n' "new" ;;
       *) printf '%s\n' "new" ;;
     esac
     return 0
   fi
 
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Saved custom providers are available.')"
+  COX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Saved custom providers are available.')"
   choice="$(read_menu_choice_from_tty "Custom provider setup" "1" \
     "1|Use existing custom provider|supported" \
     "2|Add new custom provider|custom" \
@@ -1954,7 +1954,7 @@ prompt_custom_provider_mode() {
     "4|Switch active model|custom" \
     "0|Back to provider selection|skip")"
   case "$choice" in
-    __CODEEPSEEDEX_BACK__) printf '%s\n' "back" ;;
+    __COX_BACK__) printf '%s\n' "back" ;;
     0|back|Back) printf '%s\n' "back" ;;
     1|use|existing) printf '%s\n' "use" ;;
     2|new|add) printf '%s\n' "new" ;;
@@ -1969,9 +1969,9 @@ prompt_existing_custom_provider_name_field() {
   local default_choice
   local choice
   local options=()
-  options_file="/tmp/codeepseedex-custom-provider-menu-options-$$.txt"
+  options_file="/tmp/codexchange-custom-provider-menu-options-$$.txt"
 
-  if ! "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" > "$options_file" <<'PYCODEEPSEEDEX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6'
+  if ! "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" > "$options_file" <<'PYCOX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6'
 import json
 import sys
 from pathlib import Path
@@ -2005,7 +2005,7 @@ for key in ordered:
     label = f"{display} · {model}{suffix}"
     label = label.replace("\n", " ").replace("|", "/")
     print(f"{key}|{label}|custom")
-PYCODEEPSEEDEX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6
+PYCOX_CUSTOM_PROVIDER_MENU_OPTIONS_P219A6
   then
     rm -f "$options_file"
     warn "No saved custom providers yet. Add a new custom provider first."
@@ -2029,13 +2029,13 @@ EOF
     return 30
   fi
 
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Select a saved custom provider.')"
+  COX_NEXT_MENU_DETAIL="$(custom_provider_registry_hint 2>/dev/null || printf 'Select a saved custom provider.')"
   choice="$(read_menu_choice_from_tty "Custom Provider · Select provider" "$default_choice" \
     "${options[@]}" \
     "0|Back to custom provider setup|skip")"
 
   case "$choice" in
-    __CODEEPSEEDEX_BACK__|0|back|Back)
+    __COX_BACK__|0|back|Back)
       return 20
       ;;
   esac
@@ -2050,14 +2050,14 @@ EOF
 
 prompt_existing_custom_provider_model_field() {
   local value=""
-  CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Active model"
-  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Leave empty to keep the provider's active model."
+  COX_INPUT_TITLE="$(model_api_provider_display_label) · Active model"
+  COX_INPUT_STEP="Step 2/5"
+  COX_INPUT_DETAIL="Model name is sent to cox/upstream and must exactly match this provider. Leave empty to keep the provider's active model."
   value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-}")"
-  CODEEPSEEDEX_INPUT_TITLE=""
-  CODEEPSEEDEX_INPUT_STEP=""
-  CODEEPSEEDEX_INPUT_DETAIL=""
-  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+  COX_INPUT_TITLE=""
+  COX_INPUT_STEP=""
+  COX_INPUT_DETAIL=""
+  if [ "$value" = "__COX_BACK__" ]; then
     return 20
   fi
   PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"
@@ -2069,8 +2069,8 @@ apply_custom_provider_from_registry() {
   local provider_name="$2"
   local model_name="${3:-}"
   local assign_file
-  assign_file="/tmp/codeepseedex-custom-provider-registry-assign-$$.sh"
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$assign_file" <<'PYCODEEPSEEDEX_APPLY_CUSTOM_PROVIDER_P219A2'
+  assign_file="/tmp/codexchange-custom-provider-registry-assign-$$.sh"
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$assign_file" <<'PYCOX_APPLY_CUSTOM_PROVIDER_P219A2'
 import json
 import os
 import re
@@ -2140,7 +2140,7 @@ if api_key:
     assignments["PROMPTED_API_KEY"] = api_key
 for key, value in assignments.items():
     print(f"{key}={shlex.quote(value)}")
-PYCODEEPSEEDEX_APPLY_CUSTOM_PROVIDER_P219A2
+PYCOX_APPLY_CUSTOM_PROVIDER_P219A2
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     rm -f "$assign_file"
@@ -2155,14 +2155,14 @@ PYCODEEPSEEDEX_APPLY_CUSTOM_PROVIDER_P219A2
 
 prompt_custom_provider_name_field() {
   local value=""
-  CODEEPSEEDEX_INPUT_TITLE="Custom Provider · Provider name"
-  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="Provider name is only for your display and switching; it is not sent upstream."
-  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME:-}}")"
-  CODEEPSEEDEX_INPUT_TITLE=""
-  CODEEPSEEDEX_INPUT_STEP=""
-  CODEEPSEEDEX_INPUT_DETAIL=""
-  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+  COX_INPUT_TITLE="Custom Provider · Provider name"
+  COX_INPUT_STEP="Step 2/5"
+  COX_INPUT_DETAIL="Provider name is only for your display and switching; it is not sent upstream."
+  value="$(read_from_tty "Provider name" "${PROMPTED_CUSTOM_PROVIDER_NAME:-${COX_CUSTOM_PROVIDER_NAME:-}}")"
+  COX_INPUT_TITLE=""
+  COX_INPUT_STEP=""
+  COX_INPUT_DETAIL=""
+  if [ "$value" = "__COX_BACK__" ]; then
     return 20
   fi
   PROMPTED_CUSTOM_PROVIDER_NAME="$(clean_tty_input_value "$value")"
@@ -2174,14 +2174,14 @@ prompt_custom_provider_name_field() {
 
 prompt_model_base_url_field() {
   local value=""
-  CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Base URL"
-  CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-  CODEEPSEEDEX_INPUT_DETAIL="Base URL is sent to dsproxy/upstream. /chat/completions is normalized to /v1."
-  value="$(read_from_tty "Base URL" "${PROMPTED_MODEL_BASE_URL:-${DEEPSEEK_BASE_URL:-}}")"
-  CODEEPSEEDEX_INPUT_TITLE=""
-  CODEEPSEEDEX_INPUT_STEP=""
-  CODEEPSEEDEX_INPUT_DETAIL=""
-  if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+  COX_INPUT_TITLE="$(model_api_provider_display_label) · Base URL"
+  COX_INPUT_STEP="Step 2/5"
+  COX_INPUT_DETAIL="Base URL is sent to cox/upstream. /chat/completions is normalized to /v1."
+  value="$(read_from_tty "Base URL" "${PROMPTED_MODEL_BASE_URL:-${COX_MODEL_BASE_URL:-}}")"
+  COX_INPUT_TITLE=""
+  COX_INPUT_STEP=""
+  COX_INPUT_DETAIL=""
+  if [ "$value" = "__COX_BACK__" ]; then
     return 20
   fi
   PROMPTED_MODEL_BASE_URL="$(normalize_openai_base_url "$value")"
@@ -2191,14 +2191,14 @@ prompt_model_base_url_field() {
 prompt_model_name_field() {
   local value=""
   while true; do
-    CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"
-    CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Model name is sent to dsproxy/upstream and must exactly match this provider. Example: your-model-id"
-    value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-${DEEPSEEK_PROXY_MODEL:-}}")"
-    CODEEPSEEDEX_INPUT_TITLE=""
-    CODEEPSEEDEX_INPUT_STEP=""
-    CODEEPSEEDEX_INPUT_DETAIL=""
-    if [ "$value" = "__CODEEPSEEDEX_BACK__" ]; then
+    COX_INPUT_TITLE="$(model_api_provider_display_label) · Model name"
+    COX_INPUT_STEP="Step 2/5"
+    COX_INPUT_DETAIL="Model name is sent to cox/upstream and must exactly match this provider. Example: your-model-id"
+    value="$(read_from_tty "Model name" "${PROMPTED_MODEL_NAME:-${COX_MODEL:-}}")"
+    COX_INPUT_TITLE=""
+    COX_INPUT_STEP=""
+    COX_INPUT_DETAIL=""
+    if [ "$value" = "__COX_BACK__" ]; then
       return 20
     fi
     PROMPTED_MODEL_NAME="$(clean_tty_input_value "$value")"
@@ -2214,25 +2214,25 @@ prompt_model_api_key_field() {
   local attempts=0
   local empty_attempts=0
   local candidate=""
-  local existing_api_key="${DEEPSEEK_API_KEY:-}"
+  local existing_api_key="${COX_MODEL_API_KEY:-}"
   local prompt_hint="optional; press Enter three times to skip"
   if [ -n "$existing_api_key" ]; then
     prompt_hint="optional, type a new key to replace the existing one"
   fi
 
   while [ "$attempts" -lt 3 ]; do
-    CODEEPSEEDEX_INPUT_TITLE="$(model_api_provider_display_label) · API key"
-    CODEEPSEEDEX_INPUT_STEP="Step 2/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Provider: $(model_api_provider_display_label) · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
+    COX_INPUT_TITLE="$(model_api_provider_display_label) · API key"
+    COX_INPUT_STEP="Step 2/5"
+    COX_INPUT_DETAIL="Provider: $(model_api_provider_display_label) · Model: ${PROMPTED_MODEL_NAME:-<unset>}"
     candidate="$(read_secret_from_tty "API key" "$existing_api_key" "$prompt_hint")"
-    CODEEPSEEDEX_INPUT_TITLE=""
-    CODEEPSEEDEX_INPUT_STEP=""
-    CODEEPSEEDEX_INPUT_DETAIL=""
+    COX_INPUT_TITLE=""
+    COX_INPUT_STEP=""
+    COX_INPUT_DETAIL=""
 
-    if [ "$candidate" = "__CODEEPSEEDEX_BACK__" ]; then
+    if [ "$candidate" = "__COX_BACK__" ]; then
       return 20
     fi
-    if [ "$candidate" = "__CODEEPSEEDEX_KEEP_EXISTING__" ]; then
+    if [ "$candidate" = "__COX_KEEP_EXISTING__" ]; then
       PROMPTED_API_KEY="$existing_api_key"
       record_model_api_validation_summary "kept_existing"
       ok "Existing model API key kept for provider: $PROMPTED_MODEL_PROVIDER"
@@ -2243,7 +2243,7 @@ prompt_model_api_key_field() {
       if [ "$empty_attempts" -ge 3 ]; then
         PROMPTED_API_KEY=""
         record_model_api_validation_summary "skipped" "empty_api_key"
-        warn "Model API key skipped after three empty submissions. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+        warn "Model API key skipped after three empty submissions. Configure later with: cox config set-model --provider $PROMPTED_MODEL_PROVIDER"
         return 0
       fi
       warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration, or Backspace on empty input to return to model."
@@ -2266,7 +2266,7 @@ prompt_model_api_key_field() {
 
   PROMPTED_API_KEY=""
   record_model_api_validation_summary "error" "validation_failed"
-  warn "Model API key was not saved because validation failed. Configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+  warn "Model API key was not saved because validation failed. Configure later with: cox config set-model --provider $PROMPTED_MODEL_PROVIDER"
   return 0
 }
 
@@ -2284,7 +2284,7 @@ choose_model_provider_family() {
     "7|Baichuan|unsupported" \
     "8|Other OpenAI-compatible server|custom" \
     "0|Skip|skip")"
-  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
+  if [ "$family" = "__COX_BACK__" ]; then
     return 20
   fi
 
@@ -2301,13 +2301,13 @@ choose_model_provider_family() {
         "1|Domestic Token API / general endpoint|experimental" \
         "2|Domestic Coding Plan API endpoint|experimental" \
         "0|Back / skip|skip")"
-      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+      if [ "$endpoint" = "__COX_BACK__" ]; then
         return 21
       fi
       case "$endpoint" in
         1|token|general|domestic) PROMPTED_MODEL_PROVIDER="zhipu" ;;
         2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zhipu-coding" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zhipu"; return 30 ;;
+        *) warn "Model API skipped. Configure later with: cox config set-model --provider zhipu"; return 30 ;;
       esac
       ;;
     4|zai|z.ai|ZAI|Z.AI)
@@ -2316,13 +2316,13 @@ choose_model_provider_family() {
         "1|International Token API / general endpoint|experimental" \
         "2|International Coding Plan API endpoint|experimental" \
         "0|Back / skip|skip")"
-      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+      if [ "$endpoint" = "__COX_BACK__" ]; then
         return 21
       fi
       case "$endpoint" in
         1|token|general|international) PROMPTED_MODEL_PROVIDER="zai" ;;
         2|coding|coding-plan|coding_plan) PROMPTED_MODEL_PROVIDER="zai-coding" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider zai"; return 30 ;;
+        *) warn "Model API skipped. Configure later with: cox config set-model --provider zai"; return 30 ;;
       esac
       ;;
     5|qwen|dashscope|aliyun|QWEN|DASHSCOPE)
@@ -2332,14 +2332,14 @@ choose_model_provider_family() {
         "2|Singapore pay-as-you-go OpenAI-compatible endpoint|experimental" \
         "3|US Virginia pay-as-you-go OpenAI-compatible endpoint|experimental" \
         "0|Back / skip|skip")"
-      if [ "$endpoint" = "__CODEEPSEEDEX_BACK__" ]; then
+      if [ "$endpoint" = "__COX_BACK__" ]; then
         return 21
       fi
       case "$endpoint" in
         1|beijing|cn) PROMPTED_MODEL_PROVIDER="qwen-beijing" ;;
         2|singapore|sg) PROMPTED_MODEL_PROVIDER="qwen-singapore" ;;
         3|us|us-virginia|virginia) PROMPTED_MODEL_PROVIDER="qwen-us" ;;
-        *) warn "Model API skipped. Configure later with: dsproxy config set-model --provider qwen-beijing"; return 30 ;;
+        *) warn "Model API skipped. Configure later with: cox config set-model --provider qwen-beijing"; return 30 ;;
       esac
       ;;
     6|mimo|Mimo|MIMO)
@@ -2354,7 +2354,7 @@ choose_model_provider_family() {
       PROMPTED_MODEL_PROVIDER="custom"
       ;;
     0|skip|Skip|SKIP)
-      warn "Model API skipped. Configure later with: dsproxy config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
+      warn "Model API skipped. Configure later with: cox config set-model --provider deepseek|kimi|zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us|custom"
       return 30
       ;;
     *)
@@ -2376,28 +2376,28 @@ prompt_deepseek_api_key() {
   if [ "$NON_INTERACTIVE" = "1" ]; then
     # Existing installer env file is the migration source of truth for non-interactive upgrades.
     # Ambient shell variables can belong to another HOME/session; use them only when no env file value exists.
-    PROMPTED_API_KEY="$(env_file_value DEEPSEEK_API_KEY)"
+    PROMPTED_API_KEY="$(env_file_value COX_MODEL_API_KEY)"
     if [ -z "$PROMPTED_API_KEY" ]; then
-      PROMPTED_API_KEY="${DEEPSEEK_API_KEY:-}"
+      PROMPTED_API_KEY="${COX_MODEL_API_KEY:-}"
     fi
-    PROMPTED_MODEL_PROVIDER="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
-    PROMPTED_CUSTOM_PROVIDER_NAME="$(env_file_value DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME)"
+    PROMPTED_MODEL_PROVIDER="$(env_file_value COX_MODEL_PROVIDER)"
+    PROMPTED_CUSTOM_PROVIDER_NAME="$(env_file_value COX_CUSTOM_PROVIDER_NAME)"
     if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
-      PROMPTED_MODEL_PROVIDER="${DEEPSEEK_PROXY_MODEL_PROVIDER:-}"
+      PROMPTED_MODEL_PROVIDER="${COX_MODEL_PROVIDER:-}"
     fi
     if [ -z "$PROMPTED_MODEL_PROVIDER" ]; then
       PROMPTED_MODEL_PROVIDER="deepseek"
     fi
-    PROMPTED_MODEL_BASE_URL="$(env_file_value DEEPSEEK_BASE_URL)"
+    PROMPTED_MODEL_BASE_URL="$(env_file_value COX_MODEL_BASE_URL)"
     if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
-      PROMPTED_MODEL_BASE_URL="${DEEPSEEK_BASE_URL:-}"
+      PROMPTED_MODEL_BASE_URL="${COX_MODEL_BASE_URL:-}"
     fi
     if [ -z "$PROMPTED_MODEL_BASE_URL" ]; then
       PROMPTED_MODEL_BASE_URL="$(model_api_base_url "$PROMPTED_MODEL_PROVIDER")"
     fi
-    PROMPTED_MODEL_NAME="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+    PROMPTED_MODEL_NAME="$(env_file_value COX_MODEL)"
     if [ -z "$PROMPTED_MODEL_NAME" ]; then
-      PROMPTED_MODEL_NAME="${DEEPSEEK_PROXY_MODEL:-}"
+      PROMPTED_MODEL_NAME="${COX_MODEL:-}"
     fi
     if [ -z "$PROMPTED_MODEL_NAME" ]; then
       PROMPTED_MODEL_NAME="$(model_api_default_model "$PROMPTED_MODEL_PROVIDER")"
@@ -2411,16 +2411,16 @@ prompt_deepseek_api_key() {
   local field_step="provider"
   local field_rc=0
 
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="Model API is required for Codex/DeepSeek requests. Choose Yes to configure a provider now, or No to skip and configure later with dsproxy config wizard."
+  COX_NEXT_MENU_DETAIL="Model API is required for Codex/DeepSeek requests. Choose Yes to configure a provider now, or No to skip and configure later with cox config wizard."
 
   configure="$(read_yes_no_menu "Configure model API now?" "Y")"
 
-  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
+  COX_NEXT_MENU_DETAIL=""
   case "$configure" in
-    __CODEEPSEEDEX_BACK__) return 20 ;;
+    __COX_BACK__) return 20 ;;
     n|N|no|NO|No)
       record_model_api_validation_summary "skipped" "user_skipped_model_api"
-      warn "Model API skipped. Configure later with: dsproxy config wizard"
+      warn "Model API skipped. Configure later with: cox config wizard"
       return 0
       ;;
   esac
@@ -2573,9 +2573,9 @@ prompt_serpapi_api_key() {
   PROMPTED_WEB_SEARCH_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_WEB_SEARCH_PROVIDER="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
+    PROMPTED_WEB_SEARCH_PROVIDER="$(env_file_value COX_WEB_SEARCH_PROVIDER)"
     if [ -z "$PROMPTED_WEB_SEARCH_PROVIDER" ]; then
-      PROMPTED_WEB_SEARCH_PROVIDER="${DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER:-serpapi}"
+      PROMPTED_WEB_SEARCH_PROVIDER="${COX_WEB_SEARCH_PROVIDER:-serpapi}"
     fi
     case "$PROMPTED_WEB_SEARCH_PROVIDER" in
       tavily) PROMPTED_SERPAPI_API_KEY="$(env_file_value TAVILY_API_KEY)" ;;
@@ -2590,14 +2590,14 @@ prompt_serpapi_api_key() {
   fi
 
   local configure=""
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="Web search is optional. Choose Yes to configure a search provider for managed tool routing, or No to skip and configure later with dsproxy config set-web-search-api-key."
+  COX_NEXT_MENU_DETAIL="Web search is optional. Choose Yes to configure a search provider for managed tool routing, or No to skip and configure later with cox config set-web-search-api-key."
   configure="$(read_yes_no_menu "Configure web search API now?" "N")"
-  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
+  COX_NEXT_MENU_DETAIL=""
   case "$configure" in
-    __CODEEPSEEDEX_BACK__) return 20 ;;
+    __COX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
     *)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: cox config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
       return 0
       ;;
   esac
@@ -2614,7 +2614,7 @@ prompt_serpapi_api_key() {
     "6|Google Programmable Search|unsupported" \
     "7|Other custom server|unsupported" \
     "0|Skip|skip")"
-  if [ "$provider" = "__CODEEPSEEDEX_BACK__" ]; then
+  if [ "$provider" = "__COX_BACK__" ]; then
     return 20
   fi
   case "$provider" in
@@ -2627,7 +2627,7 @@ prompt_serpapi_api_key() {
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Web search API skipped. Configure later with: dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
+      warn "Web search API skipped. Configure later with: cox config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl"
       return 0
       ;;
     *)
@@ -2640,18 +2640,18 @@ prompt_serpapi_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    CODEEPSEEDEX_INPUT_TITLE="Web search API key"
-    CODEEPSEEDEX_INPUT_STEP="Step 3/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_WEB_SEARCH_PROVIDER"
+    COX_INPUT_TITLE="Web search API key"
+    COX_INPUT_STEP="Step 3/5"
+    COX_INPUT_DETAIL="Provider: $PROMPTED_WEB_SEARCH_PROVIDER"
     candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
-    CODEEPSEEDEX_INPUT_TITLE=""
-    CODEEPSEEDEX_INPUT_STEP=""
-    CODEEPSEEDEX_INPUT_DETAIL=""
+    COX_INPUT_TITLE=""
+    COX_INPUT_STEP=""
+    COX_INPUT_DETAIL=""
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
         PROMPTED_SERPAPI_API_KEY=""
-        warn "Web search API skipped after three empty submissions. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
+        warn "Web search API skipped after three empty submissions. Configure later with: cox config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
         return 0
       fi
       warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
@@ -2671,7 +2671,7 @@ prompt_serpapi_api_key() {
   done
 
   PROMPTED_SERPAPI_API_KEY=""
-  warn "Web search API key was not saved because validation failed. Configure later with: dsproxy config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
+  warn "Web search API key was not saved because validation failed. Configure later with: cox config set-web-search-api-key --provider $PROMPTED_WEB_SEARCH_PROVIDER"
 }
 
 prompt_image_generation_api_key() {
@@ -2679,26 +2679,26 @@ prompt_image_generation_api_key() {
   PROMPTED_IMAGE_PROVIDER=""
 
   if [ "$NON_INTERACTIVE" = "1" ]; then
-    PROMPTED_IMAGE_PROVIDER="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"
+    PROMPTED_IMAGE_PROVIDER="$(env_file_value COX_IMAGE_PROVIDER)"
     if [ -z "$PROMPTED_IMAGE_PROVIDER" ]; then
-      PROMPTED_IMAGE_PROVIDER="${DEEPSEEK_PROXY_IMAGE_PROVIDER:-zhipu}"
+      PROMPTED_IMAGE_PROVIDER="${COX_IMAGE_PROVIDER:-zhipu}"
     fi
-    PROMPTED_IMAGE_API_KEY="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"
+    PROMPTED_IMAGE_API_KEY="$(env_file_value COX_IMAGE_API_KEY)"
     if [ -z "$PROMPTED_IMAGE_API_KEY" ]; then
-      PROMPTED_IMAGE_API_KEY="${DEEPSEEK_PROXY_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
+      PROMPTED_IMAGE_API_KEY="${COX_IMAGE_API_KEY:-${DASHSCOPE_API_KEY:-${STABILITY_API_KEY:-${FAL_KEY:-}}}}"
     fi
     return 0
   fi
 
   local configure=""
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="Image generation is optional. Choose Yes to configure an image provider for managed tool routing, or No to skip and configure later with dsproxy config set-image-api-key."
+  COX_NEXT_MENU_DETAIL="Image generation is optional. Choose Yes to configure an image provider for managed tool routing, or No to skip and configure later with cox config set-image-api-key."
   configure="$(read_yes_no_menu "Configure image generation API now?" "N")"
-  CODEEPSEEDEX_NEXT_MENU_DETAIL=""
+  COX_NEXT_MENU_DETAIL=""
   case "$configure" in
-    __CODEEPSEEDEX_BACK__) return 20 ;;
+    __COX_BACK__) return 20 ;;
     y|Y|yes|YES|Yes) ;;
     *)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
+      warn "Image generation API skipped. Configure later with: cox config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
       return 0
       ;;
   esac
@@ -2706,7 +2706,7 @@ prompt_image_generation_api_key() {
   sub_title "Image generation providers"
   local family=""
   local prompt=""
-  CODEEPSEEDEX_NEXT_MENU_DETAIL="Live image validation will generate one safe test image and may consume provider credits. Choose Skip to avoid unexpected charges. Test image path will be shown under /tmp."
+  COX_NEXT_MENU_DETAIL="Live image validation will generate one safe test image and may consume provider credits. Choose Skip to avoid unexpected charges. Test image path will be shown under /tmp."
   family="$(read_menu_choice_from_tty "Select image generation provider family" "1" \
     "1|ZhipuAI / BigModel|supported" \
     "2|Z.AI / CogView|supported" \
@@ -2718,7 +2718,7 @@ prompt_image_generation_api_key() {
     "8|Volcengine Ark|unsupported" \
     "9|Other custom server|unsupported" \
     "0|Skip|skip")"
-  if [ "$family" = "__CODEEPSEEDEX_BACK__" ]; then
+  if [ "$family" = "__COX_BACK__" ]; then
     return 20
   fi
   case "$family" in
@@ -2739,7 +2739,7 @@ prompt_image_generation_api_key() {
           warn "Selected Qwen Image region is listed for clarity, but qwen-image-2.0-pro is currently unavailable there. Choose Beijing or Singapore."
           return 0
           ;;
-        *) warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider qwen_image_beijing"; return 0 ;;
+        *) warn "Image generation API skipped. Configure later with: cox config set-image-api-key --provider qwen_image_beijing"; return 0 ;;
       esac
       ;;
     4|stability|Stability|stability_ai|stable_image) PROMPTED_IMAGE_PROVIDER="stability"; prompt="Stability AI API key" ;;
@@ -2749,7 +2749,7 @@ prompt_image_generation_api_key() {
       return 0
       ;;
     0|skip|Skip|SKIP)
-      warn "Image generation API skipped. Configure later with: dsproxy config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
+      warn "Image generation API skipped. Configure later with: cox config set-image-api-key --provider zhipu|zai|qwen_image_beijing|qwen_image_singapore|stability|fal"
       return 0
       ;;
     *)
@@ -2762,18 +2762,18 @@ prompt_image_generation_api_key() {
   local empty_attempts=0
   local candidate=""
   while [ "$attempts" -lt 3 ]; do
-    CODEEPSEEDEX_INPUT_TITLE="Image generation API key"
-    CODEEPSEEDEX_INPUT_STEP="Step 4/5"
-    CODEEPSEEDEX_INPUT_DETAIL="Provider: $PROMPTED_IMAGE_PROVIDER · Live validation may consume provider credits."
+    COX_INPUT_TITLE="Image generation API key"
+    COX_INPUT_STEP="Step 4/5"
+    COX_INPUT_DETAIL="Provider: $PROMPTED_IMAGE_PROVIDER · Live validation may consume provider credits."
     candidate="$(read_secret_from_tty "$prompt" "" "optional; press Enter three times to skip")"
-    CODEEPSEEDEX_INPUT_TITLE=""
-    CODEEPSEEDEX_INPUT_STEP=""
-    CODEEPSEEDEX_INPUT_DETAIL=""
+    COX_INPUT_TITLE=""
+    COX_INPUT_STEP=""
+    COX_INPUT_DETAIL=""
     if [ -z "$candidate" ]; then
       empty_attempts=$((empty_attempts + 1))
       if [ "$empty_attempts" -ge 3 ]; then
         PROMPTED_IMAGE_API_KEY=""
-        warn "Image generation API skipped after three empty submissions. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+        warn "Image generation API skipped after three empty submissions. Configure later with: cox config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
         return 0
       fi
       warn "No key entered (${empty_attempts}/3). Press Enter three times to skip this configuration."
@@ -2796,7 +2796,7 @@ prompt_image_generation_api_key() {
   done
 
   PROMPTED_IMAGE_API_KEY=""
-  warn "Image generation API key was not saved because live validation failed. Configure later with: dsproxy config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
+  warn "Image generation API key was not saved because live validation failed. Configure later with: cox config set-image-api-key --provider $PROMPTED_IMAGE_PROVIDER"
 }
 
 backup_local_file_before_overwrite() {
@@ -2824,7 +2824,7 @@ backup_local_file_before_overwrite() {
 }
 
 
-is_codeepseedex_managed_local_bin() {
+is_codexchange_managed_local_bin() {
   local path="$1"
   local kind="$2"
 
@@ -2837,10 +2837,10 @@ is_codeepseedex_managed_local_bin() {
 
   case "$kind" in
     codex)
-      grep -qE 'CoDeepSeedeX codex wrapper|CODEEPSEEDEX_DSPROXY|deepseek-responses-proxy|start_dsproxy_profile' "$path" 2>/dev/null
+      grep -qE 'CodeXchange codex wrapper|COX_COMMAND|codexchange|start_cox_profile' "$path" 2>/dev/null
       ;;
-    dsproxy)
-      grep -qE 'CoDeepSeedeX|deepseek-responses-proxy|\.venv/bin/dsproxy' "$path" 2>/dev/null
+    cox)
+      grep -qE 'CodeXchange|codexchange|\.venv/bin/cox' "$path" 2>/dev/null
       ;;
     *)
       return 1
@@ -2855,7 +2855,7 @@ require_safe_local_bin_overwrite() {
   local force_value="$4"
 
   if [ "$DRY_RUN" = "1" ]; then
-    if [ -e "$path" ] && ! is_codeepseedex_managed_local_bin "$path" "$kind"; then
+    if [ -e "$path" ] && ! is_codexchange_managed_local_bin "$path" "$kind"; then
       printf '+ would require confirmation before overwriting unknown %q for %s\n' "$path" "$label" >> "$INSTALL_LOG"
     fi
     return 0
@@ -2865,7 +2865,7 @@ require_safe_local_bin_overwrite() {
     return 0
   fi
 
-  if is_codeepseedex_managed_local_bin "$path" "$kind"; then
+  if is_codexchange_managed_local_bin "$path" "$kind"; then
     backup_local_file_before_overwrite "$path" "$label"
     return 0
   fi
@@ -2882,13 +2882,13 @@ require_safe_local_bin_overwrite() {
     warn "The existing file was backed up under: $LOCAL_BACKUP_DIR"
     warn "Re-run with the explicit force variable only if this file should be replaced."
     case "$kind" in
-      codex) warn "To force this replacement: DEEPSEEK_PROXY_FORCE_CODEX_WRAPPER=1" ;;
-      dsproxy) warn "To force this replacement: DEEPSEEK_PROXY_FORCE_DSPROXY_WRAPPER=1" ;;
+      codex) warn "To force this replacement: COX_FORCE_CODEX_WRAPPER=1" ;;
+      cox) warn "To force this replacement: COX_FORCE_COX_WRAPPER=1" ;;
     esac
     return 1
   fi
 
-  printf 'Existing %s at %s is not recognized as CoDeepSeedeX-managed. Overwrite after backup? [y/N] ' "$label" "$path" >&2
+  printf 'Existing %s at %s is not recognized as CodeXchange-managed. Overwrite after backup? [y/N] ' "$label" "$path" >&2
   local answer
   read -r answer
   case "$answer" in
@@ -2951,8 +2951,8 @@ PYENV
 }
 
 choose_shell_profile_file() {
-  if [ -n "${DEEPSEEK_PROXY_SHELL_PROFILE:-}" ]; then
-    printf '%s\n' "$DEEPSEEK_PROXY_SHELL_PROFILE"
+  if [ -n "${COX_SHELL_PROFILE:-}" ]; then
+    printf '%s\n' "$COX_SHELL_PROFILE"
     return 0
   fi
 
@@ -2974,14 +2974,14 @@ ensure_one_shell_profile_integration() {
   mkdir -p "$(dirname "$profile_file")"
   touch "$profile_file"
 
-  if grep -q "CoDeepSeedeX environment" "$profile_file" 2>/dev/null && grep -Fq "$BIN_DIR" "$profile_file" 2>/dev/null; then
-    ok "Shell profile already contains CoDeepSeedeX environment: $label"
+  if grep -q "CodeXchange environment" "$profile_file" 2>/dev/null && grep -Fq "$BIN_DIR" "$profile_file" 2>/dev/null; then
+    ok "Shell profile already contains CodeXchange environment: $label"
     return 0
   fi
 
   cat >> "$profile_file" <<EOF
 
-# CoDeepSeedeX environment
+# CodeXchange environment
 if [ -d "$BIN_DIR" ]; then
   case ":\$PATH:" in
     *:"$BIN_DIR":*) ;;
@@ -3029,32 +3029,32 @@ post_install_entrypoint_diagnostics() {
     return 0
   fi
 
-  local expected_dsproxy="$BIN_DIR/dsproxy"
+  local expected_cox="$BIN_DIR/cox"
   local expected_codex="$BIN_DIR/codex"
-  local actual_dsproxy=""
+  local actual_cox=""
   local actual_codex=""
 
-  actual_dsproxy="$(command -v dsproxy 2>/dev/null || true)"
+  actual_cox="$(command -v cox 2>/dev/null || true)"
   actual_codex="$(command -v codex 2>/dev/null || true)"
 
-  if [ "$actual_dsproxy" != "$expected_dsproxy" ]; then
-    warn "Current shell does not resolve dsproxy to the CoDeepSeedeX wrapper: ${actual_dsproxy:-<not found>}"
+  if [ "$actual_cox" != "$expected_cox" ]; then
+    warn "Current shell does not resolve cox to the CodeXchange wrapper: ${actual_cox:-<not found>}"
     warn "Open a new terminal, or run: export PATH=\"$BIN_DIR:\$PATH\""
   fi
 
   if [ "$INSTALL_CODEX_WRAPPER" = "1" ] && [ -x "$expected_codex" ] && [ "$actual_codex" != "$expected_codex" ]; then
-    warn "Current shell does not resolve codex to the CoDeepSeedeX wrapper: ${actual_codex:-<not found>}"
+    warn "Current shell does not resolve codex to the CodeXchange wrapper: ${actual_codex:-<not found>}"
     warn "Open a new terminal, or run: export PATH=\"$BIN_DIR:\$PATH\""
   fi
 
   if ! command -v node >/dev/null 2>&1; then
-    warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX does not install or patch Node automatically."
-    warn "Install Node.js/Codex CLI, then rerun the installer or run: dsproxy profile refresh-wrapper"
+    warn "Node.js is not on PATH. Codex CLI requires Node.js; CodeXchange does not install or patch Node automatically."
+    warn "Install Node.js/Codex CLI, then rerun the installer or run: cox profile refresh-wrapper"
   fi
 }
 
 model_catalog_json_value() {
-  local catalog_path="$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json"
+  local catalog_path="$INSTALL_DIR/experiments/model-catalog/cox-proxy-models.json"
   if [ ! -f "$catalog_path" ]; then
     printf '%s\n' ""
     return 0
@@ -3099,19 +3099,19 @@ ensure_managed_resources_git_excluded() {
 
 sync_deepseek_tokenizer_resource() {
   if [ "$DRY_RUN" = "1" ]; then
-    printf '+ DEEPSEEK_PROXY_INSTALL_DIR=%q DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q %q tokenizer sync deepseek --json --resource-dir %q\n' "$INSTALL_DIR" "$INSTALL_DIR/resources/tokenizers" "$INSTALL_DIR/.venv/bin/dsproxy" "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG"
+    printf '+ COX_INSTALL_DIR=%q COX_TOKENIZER_RESOURCE_DIR=%q %q tokenizer sync deepseek --json --resource-dir %q\n' "$INSTALL_DIR" "$INSTALL_DIR/resources/tokenizers" "$INSTALL_DIR/.venv/bin/cox" "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG"
     ok "DeepSeek tokenizer resource sync planned"
     return 0
   fi
 
   printf '  ... DeepSeek tokenizer resource synced\n'
-  if env DEEPSEEK_PROXY_INSTALL_DIR="$INSTALL_DIR" DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR="$INSTALL_DIR/resources/tokenizers" \
-    "$INSTALL_DIR/.venv/bin/dsproxy" tokenizer sync deepseek --json --resource-dir "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG" 2>&1; then
+  if env COX_INSTALL_DIR="$INSTALL_DIR" COX_TOKENIZER_RESOURCE_DIR="$INSTALL_DIR/resources/tokenizers" \
+    "$INSTALL_DIR/.venv/bin/cox" tokenizer sync deepseek --json --resource-dir "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG" 2>&1; then
     ok "DeepSeek tokenizer resource synced"
     return 0
   fi
 
-  warn "DeepSeek tokenizer resource sync failed. Run: dsproxy tokenizer sync deepseek --json"
+  warn "DeepSeek tokenizer resource sync failed. Run: cox tokenizer sync deepseek --json"
   return 1
 }
 
@@ -3133,25 +3133,25 @@ write_env_file() {
   local final_custom_provider_name="${PROMPTED_CUSTOM_PROVIDER_NAME:-}"
 
   if [ -z "$final_api_key" ]; then
-    final_api_key="$(env_file_value DEEPSEEK_API_KEY)"
+    final_api_key="$(env_file_value COX_MODEL_API_KEY)"
   fi
   if [ -z "$final_model_provider" ]; then
-    final_model_provider="$(env_file_value DEEPSEEK_PROXY_MODEL_PROVIDER)"
+    final_model_provider="$(env_file_value COX_MODEL_PROVIDER)"
   fi
   if [ -z "$final_custom_provider_name" ]; then
-    final_custom_provider_name="$(env_file_value DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME)"
+    final_custom_provider_name="$(env_file_value COX_CUSTOM_PROVIDER_NAME)"
   fi
   if [ -z "$final_model_provider" ]; then
     final_model_provider="deepseek"
   fi
   if [ -z "$final_model_base_url" ]; then
-    final_model_base_url="$(env_file_value DEEPSEEK_BASE_URL)"
+    final_model_base_url="$(env_file_value COX_MODEL_BASE_URL)"
   fi
   if [ -z "$final_model_base_url" ]; then
     final_model_base_url="$(model_api_base_url "$final_model_provider")"
   fi
   if [ -z "$final_model_name" ]; then
-    final_model_name="$(env_file_value DEEPSEEK_PROXY_MODEL)"
+    final_model_name="$(env_file_value COX_MODEL)"
   fi
   if [ -z "$final_model_name" ]; then
     final_model_name="$(model_api_default_model "$final_model_provider")"
@@ -3174,7 +3174,7 @@ write_env_file() {
   RESOLVED_MODEL_PROVIDER_TYPE="$(PROMPTED_MODEL_PROVIDER="$final_model_provider" model_api_provider_type_label)"
 
   if [ -z "$final_web_search_provider" ]; then
-    final_web_search_provider="$(env_file_value DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER)"
+    final_web_search_provider="$(env_file_value COX_WEB_SEARCH_PROVIDER)"
   fi
   if [ -z "$final_web_search_provider" ]; then
     final_web_search_provider="serpapi"
@@ -3186,13 +3186,13 @@ write_env_file() {
     esac
   fi
   if [ -z "$final_image_provider" ]; then
-    final_image_provider="$(env_file_value DEEPSEEK_PROXY_IMAGE_PROVIDER)"
+    final_image_provider="$(env_file_value COX_IMAGE_PROVIDER)"
   fi
   if [ -z "$final_image_provider" ]; then
     final_image_provider="zhipu"
   fi
   if [ -z "$final_image_api_key" ]; then
-    final_image_api_key="$(env_file_value DEEPSEEK_PROXY_IMAGE_API_KEY)"
+    final_image_api_key="$(env_file_value COX_IMAGE_API_KEY)"
   fi
 
   if [ "$DRY_RUN" = "1" ]; then
@@ -3208,64 +3208,64 @@ write_env_file() {
   backup_local_file_before_overwrite "$ENV_FILE" "local env file"
 
   {
-    printf '# deepseek-responses-proxy local environment
+    printf '# codexchange local environment
 '
     printf '# Generated by scripts/install.sh
 '
-    printf 'export DEEPSEEK_API_KEY=%q
+    printf 'export COX_MODEL_API_KEY=%q
 ' "$final_api_key"
-    printf 'export DEEPSEEK_BASE_URL=%q
+    printf 'export COX_MODEL_BASE_URL=%q
 ' "$final_model_base_url"
-    printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER=%q
+    printf 'export COX_MODEL_PROVIDER=%q
 ' "$final_model_provider"
-    printf 'export DEEPSEEK_PROXY_CUSTOM_PROVIDER_NAME=%q
+    printf 'export COX_CUSTOM_PROVIDER_NAME=%q
 ' "$final_custom_provider_name"
-    printf 'export DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY=%q
+    printf 'export COX_MODEL_PROVIDER_REGISTRY=%q
 ' "$MODEL_PROVIDER_REGISTRY_FILE"
-    printf 'export DEEPSEEK_PROXY_INSTALL_DIR=%q
+    printf 'export COX_INSTALL_DIR=%q
 ' "$INSTALL_DIR"
-    printf 'export DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR=%q
+    printf 'export COX_TOKENIZER_RESOURCE_DIR=%q
 ' "$INSTALL_DIR/resources/tokenizers"
-    printf 'export DEEPSEEK_PROXY_PORT=%q
+    printf 'export COX_PORT=%q
 ' "$stable_port"
-    printf 'export DEEPSEEK_PROXY_THINKING_PORT=%q
+    printf 'export COX_THINKING_PORT=%q
 ' "$thinking_port"
-    printf 'export DEEPSEEK_PROXY_MODEL=%q
+    printf 'export COX_MODEL=%q
 ' "$final_model_name"
-    printf 'export DEEPSEEK_REASONING_EFFORT=%q
+    printf 'export COX_REASONING_EFFORT=%q
 ' "max"
-    printf 'export DEEPSEEK_PROXY_FORCE_MODEL=%q
+    printf 'export COX_FORCE_MODEL=%q
 ' "1"
     if [ -n "${INSTALL_TARGET_INTERNAL_VERSION:-}" ]; then
-      printf 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q
+      printf 'export COX_INTERNAL_VERSION=%q
 ' "$INSTALL_TARGET_INTERNAL_VERSION"
     fi
     if [ -n "${INSTALL_TARGET_COMMIT:-}" ]; then
-      printf 'export DEEPSEEK_PROXY_PUBLIC_COMMIT=%q
+      printf 'export COX_PUBLIC_COMMIT=%q
 ' "$INSTALL_TARGET_COMMIT"
-      printf 'export DEEPSEEK_PROXY_INTERNAL_COMMIT=%q
+      printf 'export COX_INTERNAL_COMMIT=%q
 ' "$INSTALL_TARGET_COMMIT"
     fi
-    printf 'export DEEPSEEK_PROXY_TOOL_MAX_ROUNDS=%q
+    printf 'export COX_TOOL_MAX_ROUNDS=%q
 ' "6"
-    printf 'export DEEPSEEK_PROXY_COMPACT_POLICY=%q
+    printf 'export COX_COMPACT_POLICY=%q
 ' "adaptive"
-    printf 'export DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD=%q
+    printf 'export COX_AGENT_LIVENESS_GUARD=%q
 ' "1"
-    printf 'export DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED=%q
+    printf 'export COX_AGENT_LIVENESS_JUDGE_ENABLED=%q
 ' "1"
-    printf 'export DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL=%q
+    printf 'export COX_AGENT_LIVENESS_JUDGE_MODEL=%q
 ' "v4-flash-no-thinking"
-    printf 'export DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION=%q
+    printf 'export COX_CODEX_TOOL_PROTOCOL_INSTRUCTION=%q
 ' "1"
     if [ -n "$final_web_search_key" ]; then
-      printf 'export DEEPSEEK_PROXY_TOOL_BRIDGE=%q
+      printf 'export COX_TOOL_BRIDGE=%q
 ' "1"
-      printf 'export DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER=%q
+      printf 'export COX_WEB_SEARCH_PROVIDER=%q
 ' "$final_web_search_provider"
-      printf 'export DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS=%q
+      printf 'export COX_WEB_SEARCH_MAX_RESULTS=%q
 ' "6"
-      printf 'export DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS=%q
+      printf 'export COX_WEB_SEARCH_TIMEOUT_SECONDS=%q
 ' "12.5"
       case "$final_web_search_provider" in
         tavily)
@@ -3287,30 +3287,30 @@ write_env_file() {
       esac
     fi
     if [ -n "$final_image_api_key" ]; then
-      printf 'export DEEPSEEK_PROXY_TOOL_BRIDGE=%q
+      printf 'export COX_TOOL_BRIDGE=%q
 ' "1"
-      printf 'export DEEPSEEK_PROXY_IMAGE_PROVIDER=%q
+      printf 'export COX_IMAGE_PROVIDER=%q
 ' "$final_image_provider"
       if [ "$final_image_provider" = "qwen_image" ] || [ "$final_image_provider" = "qwen_image_beijing" ] || [ "$final_image_provider" = "qwen_image_singapore" ]; then
-        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+        printf 'export COX_IMAGE_MODEL=%q
 ' "qwen-image-2.0-pro"
       elif [ "$final_image_provider" = "stability" ]; then
-        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+        printf 'export COX_IMAGE_MODEL=%q
 ' "stable-image-core"
       elif [ "$final_image_provider" = "fal" ]; then
-        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+        printf 'export COX_IMAGE_MODEL=%q
 ' "fal-ai/flux/schnell"
       else
-        printf 'export DEEPSEEK_PROXY_IMAGE_MODEL=%q
+        printf 'export COX_IMAGE_MODEL=%q
 ' "cogView-4-250304"
       fi
-      printf 'export DEEPSEEK_PROXY_IMAGE_SIZE=%q
+      printf 'export COX_IMAGE_SIZE=%q
 ' "1024x1024"
-      printf 'export DEEPSEEK_PROXY_IMAGE_N=%q
+      printf 'export COX_IMAGE_N=%q
 ' "1"
-      printf 'export DEEPSEEK_PROXY_IMAGE_DOWNLOAD=%q
+      printf 'export COX_IMAGE_DOWNLOAD=%q
 ' "1"
-      printf 'export DEEPSEEK_PROXY_IMAGE_API_KEY=%q
+      printf 'export COX_IMAGE_API_KEY=%q
 ' "$final_image_api_key"
     fi
   } > "$ENV_FILE"
@@ -3325,8 +3325,8 @@ refresh_canonical_codex_wrapper_template() {
   target="$BIN_DIR/codex"
   [ -f "$target" ] || return 0
 
-  if ! grep -qE 'CoDeepSeedeX|deepseek-responses-proxy|CODEEPSEEDEX|PROFILE-AGNOSTIC RUNTIME AUTOSTART|EXECUTABLE WRAPPER DISPATCHER' "$target" 2>/dev/null; then
-    warn "Existing codex command is not a CoDeepSeedeX-managed wrapper; canonical wrapper refresh skipped"
+  if ! grep -qE 'CodeXchange|codexchange|COX|PROFILE-AGNOSTIC RUNTIME AUTOSTART|EXECUTABLE WRAPPER DISPATCHER' "$target" 2>/dev/null; then
+    warn "Existing codex command is not a CodeXchange-managed wrapper; canonical wrapper refresh skipped"
     return 0
   fi
 
@@ -3346,29 +3346,29 @@ refresh_canonical_codex_wrapper_template() {
   return 0
 }
 
-write_dsproxy_wrapper() {
+write_cox_wrapper() {
   if [ "$DRY_RUN" = "1" ]; then
     printf '+ mkdir -p %q\n' "$BIN_DIR" >> "$INSTALL_LOG"
-    printf '+ write %q\n' "$BIN_DIR/dsproxy" >> "$INSTALL_LOG"
-    ok "dsproxy command installed"
+    printf '+ write %q\n' "$BIN_DIR/cox" >> "$INSTALL_LOG"
+    ok "cox command installed"
     return 0
   fi
 
   mkdir -p "$BIN_DIR"
-  require_safe_local_bin_overwrite "$BIN_DIR/dsproxy" "dsproxy command wrapper" "dsproxy" "$FORCE_DSPROXY_WRAPPER" || return 1
+  require_safe_local_bin_overwrite "$BIN_DIR/cox" "cox command wrapper" "cox" "$FORCE_COX_WRAPPER" || return 1
 
-  cat > "$BIN_DIR/dsproxy" <<EOF
+  cat > "$BIN_DIR/cox" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
+ENV_FILE="\${COX_ENV_FILE:-$ENV_FILE}"
 if [ -f "\$ENV_FILE" ]; then
   source "\$ENV_FILE"
 fi
-exec "$INSTALL_DIR/.venv/bin/dsproxy" "\$@"
+exec "$INSTALL_DIR/.venv/bin/cox" "\$@"
 EOF
 
-  chmod +x "$BIN_DIR/dsproxy"
-  ok "dsproxy command installed"
+  chmod +x "$BIN_DIR/cox"
+  ok "cox command installed"
 }
 
 write_codex_wrapper() {
@@ -3386,19 +3386,19 @@ write_codex_wrapper() {
   real_codex="$(find_real_codex "$wrapper_path" || true)"
   if [ -z "$real_codex" ]; then
     if ! command -v node >/dev/null 2>&1; then
-      warn "Node.js is not on PATH. Codex CLI requires Node.js; CoDeepSeedeX will not install a recursive or blind codex wrapper."
-      warn "Install Node.js/Codex CLI first, then rerun the installer. CoDeepSeedeX does not install or patch Node automatically."
+      warn "Node.js is not on PATH. Codex CLI requires Node.js; CodeXchange will not install a recursive or blind codex wrapper."
+      warn "Install Node.js/Codex CLI first, then rerun the installer. CodeXchange does not install or patch Node automatically."
     else
-      warn "real codex command not found; Codex wrapper skipped. Install Codex CLI, set CODEEPSEEDEX_REAL_CODEX, or rerun without --no-codex-wrapper after Codex is available."
+      warn "real codex command not found; Codex wrapper skipped. Install Codex CLI, set COX_REAL_CODEX, or rerun without --no-codex-wrapper after Codex is available."
     fi
-    warn "CoDeepSeedeX install can continue without the optional Codex wrapper; dsproxy and managed Codex profile installation remain complete."
+    warn "CodeXchange install can continue without the optional Codex wrapper; cox and managed Codex profile installation remain complete."
     ok "Codex wrapper skipped"
     return 0
   fi
 
   local existing_wrapper_is_unknown="0"
 
-  if [ -e "$wrapper_path" ] && ! is_codeepseedex_managed_local_bin "$wrapper_path" "codex"; then
+  if [ -e "$wrapper_path" ] && ! is_codexchange_managed_local_bin "$wrapper_path" "codex"; then
     existing_wrapper_is_unknown="1"
   fi
 
@@ -3413,7 +3413,7 @@ write_codex_wrapper() {
   require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1
 
   if [ "$existing_wrapper_is_unknown" = "1" ]; then
-    backup_path="$wrapper_path.codeepseedex.bak.$(date +%Y%m%d_%H%M%S)"
+    backup_path="$wrapper_path.codexchange.bak.$(date +%Y%m%d_%H%M%S)"
     mv "$wrapper_path" "$backup_path"
     if [ -z "$real_codex" ]; then
       real_codex="$backup_path"
@@ -3422,15 +3422,15 @@ write_codex_wrapper() {
 
   cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash
-# CoDeepSeedeX codex wrapper
+# CodeXchange codex wrapper
 set -euo pipefail
 
 REAL_CODEX="$real_codex"
-DSPROXY="\${CODEEPSEEDEX_DSPROXY:-$BIN_DIR/dsproxy}"
-if [ ! -x "\$DSPROXY" ] && [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then
-  DSPROXY="$INSTALL_DIR/.venv/bin/dsproxy"
+COX="\${COX_COMMAND:-$BIN_DIR/cox}"
+if [ ! -x "\$COX" ] && [ -x "$INSTALL_DIR/.venv/bin/cox" ]; then
+  COX="$INSTALL_DIR/.venv/bin/cox"
 fi
-ENV_FILE="\${DEEPSEEK_PROXY_ENV_FILE:-$ENV_FILE}"
+ENV_FILE="\${COX_ENV_FILE:-$ENV_FILE}"
 
 if [ -f "\$ENV_FILE" ]; then
   source "\$ENV_FILE"
@@ -3450,7 +3450,7 @@ for arg in "\$@"; do
   prev="\$arg"
 done
 
-set_codeepseedex_terminal_title() {
+set_codexchange_terminal_title() {
   if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
@@ -3460,12 +3460,12 @@ set_codeepseedex_terminal_title() {
       ;;
   esac
 
-  local title="\${CODEEPSEEDEX_TERMINAL_TITLE:-}"
+  local title="\${COX_TERMINAL_TITLE:-}"
   if [ -z "\$title" ]; then
     local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")
     local idx=\$((RANDOM % \${#emojis[@]}))
-    title="\${emojis[\$idx]}CoDeepSeedeX"
-    CODEEPSEEDEX_TERMINAL_TITLE="\$title"
+    title="\${emojis[\$idx]}CodeXchange"
+    COX_TERMINAL_TITLE="\$title"
   fi
 
   if [ -w /dev/tty ]; then
@@ -3475,9 +3475,9 @@ set_codeepseedex_terminal_title() {
   fi
 }
 
-CODEEPSEEDEX_TITLE_KEEPER_PID=""
+COX_TITLE_KEEPER_PID=""
 
-schedule_codeepseedex_terminal_title_refresh() {
+schedule_codexchange_terminal_title_refresh() {
   if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
     return 0
   fi
@@ -3489,36 +3489,36 @@ schedule_codeepseedex_terminal_title_refresh() {
 
   (
     i=1
-    max_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_SECONDS:-60}"
-    interval_seconds="\${CODEEPSEEDEX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
+    max_seconds="\${COX_TITLE_KEEPER_SECONDS:-60}"
+    interval_seconds="\${COX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
     while [ "\$i" -le "\$max_seconds" ]; do
       sleep "\$interval_seconds"
-      set_codeepseedex_terminal_title
+      set_codexchange_terminal_title
       i=\$((i + interval_seconds))
     done
   ) >/dev/null 2>&1 &
-  CODEEPSEEDEX_TITLE_KEEPER_PID="\$!"
+  COX_TITLE_KEEPER_PID="\$!"
 }
 
-stop_codeepseedex_terminal_title_keeper() {
-  if [ -n "\${CODEEPSEEDEX_TITLE_KEEPER_PID:-}" ]; then
-    kill "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    wait "\$CODEEPSEEDEX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    CODEEPSEEDEX_TITLE_KEEPER_PID=""
+stop_codexchange_terminal_title_keeper() {
+  if [ -n "\${COX_TITLE_KEEPER_PID:-}" ]; then
+    kill "\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    wait "\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
+    COX_TITLE_KEEPER_PID=""
   fi
 }
 
 codex_runtime_preflight() {
   if [ ! -x "\$REAL_CODEX" ]; then
-    printf 'CoDeepSeedeX error: real Codex command is not executable: %s\n' "\$REAL_CODEX" >&2
+    printf 'CodeXchange error: real Codex command is not executable: %s\n' "\$REAL_CODEX" >&2
     return 127
   fi
 
   if ! command -v node >/dev/null 2>&1; then
     if head -n 1 "\$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "\$REAL_CODEX" 2>/dev/null; then
-      printf 'CoDeepSeedeX error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "\$REAL_CODEX" >&2
-      printf 'Install Node.js/Codex CLI first, then rerun the CoDeepSeedeX installer or: %s profile refresh-wrapper\n' "\$DSPROXY" >&2
-      printf 'Boundary: CoDeepSeedeX detects this dependency but does not install or patch Node automatically.\n' >&2
+      printf 'CodeXchange error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "\$REAL_CODEX" >&2
+      printf 'Install Node.js/Codex CLI first, then rerun the CodeXchange installer or: %s profile refresh-wrapper\n' "\$COX" >&2
+      printf 'Boundary: CodeXchange detects this dependency but does not install or patch Node automatically.\n' >&2
       return 127
     fi
   fi
@@ -3535,23 +3535,23 @@ codex_requires_legacy_profile_tables() {
   return 1
 }
 
-repair_codeepseedex_legacy_managed_profiles() {
-  local thinking_port="\${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
-  local model="\${DEEPSEEK_PROXY_THINKING_MODEL:-\${DEEPSEEK_PROXY_MODEL:-deepseek-v4-pro}}"
+repair_codexchange_legacy_managed_profiles() {
+  local thinking_port="\${COX_THINKING_PORT:-8001}"
+  local model="\${COX_THINKING_MODEL:-\${COX_MODEL:-deepseek-v4-pro}}"
   local catalog_args=()
   local catalog=""
 
-  catalog="\${DEEPSEEK_PROXY_MODEL_CATALOG_JSON:-}"
+  catalog="\${COX_MODEL_CATALOG_JSON:-}"
   if [ -z "\$catalog" ]; then
-    catalog="$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json"
+    catalog="$INSTALL_DIR/experiments/model-catalog/cox-proxy-models.json"
   fi
   if [ -n "\$catalog" ] && [ -f "\$catalog" ]; then
     catalog_args=(--model-catalog-json "\$catalog")
   fi
 
-  "\$DSPROXY" install-codex-profile \
-    --name deepseek-thinking \
-    --provider-name deepseek-thinking-proxy \
+  "\$COX" install-codex-profile \
+    --name cox \
+    --provider-name cox-proxy \
     --base-url "http://127.0.0.1:\${thinking_port}/v1" \
     --model "\$model" \
     --reasoning-effort xhigh \
@@ -3560,15 +3560,15 @@ repair_codeepseedex_legacy_managed_profiles() {
     "\${catalog_args[@]}" >/dev/null
 }
 
-repair_codeepseedex_managed_profile_contract() {
+repair_codexchange_managed_profile_contract() {
   local profile_name="\$1"
   local status_json=""
 
   case "\$profile_name" in
-    deepseek-thinking)
+    cox)
       ;;
     deepseek)
-      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
       return 2
       ;;
     *)
@@ -3576,72 +3576,72 @@ repair_codeepseedex_managed_profile_contract() {
       ;;
   esac
 
-  if [ "\${CODEEPSEEDEX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
+  if [ "\${COX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
     return 0
   fi
 
-  if [ ! -x "\$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
+  if [ ! -x "\$COX" ]; then
+    printf 'CodeXchange error: cox command is not executable: %s\n' "\$COX" >&2
     return 1
   fi
 
   if codex_requires_legacy_profile_tables; then
-    if status_json="\$("\$DSPROXY" profile status "\$profile_name" --json 2>/dev/null)"; then
+    if status_json="\$("\$COX" profile status "\$profile_name" --json 2>/dev/null)"; then
       if printf '%s' "\$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
         && ! printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
         return 0
       fi
     fi
 
-    if ! repair_codeepseedex_legacy_managed_profiles; then
-      printf 'CoDeepSeedeX error: failed to repair legacy managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "\$DSPROXY" "\$profile_name" >&2
+    if ! repair_codexchange_legacy_managed_profiles; then
+      printf 'CodeXchange error: failed to repair legacy managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "\$COX" "\$profile_name" >&2
       return 1
     fi
   else
-    if ! "\$DSPROXY" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to repair managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s profile repair --managed-only --json\n' "\$DSPROXY" >&2
+    if ! "\$COX" profile repair --managed-only --json >/dev/null 2>&1; then
+      printf 'CodeXchange error: failed to repair managed Codex profile before launch.\n' >&2
+      printf 'Run for details: %s profile repair --managed-only --json\n' "\$COX" >&2
       return 1
     fi
   fi
 
-  if ! status_json="\$("\$DSPROXY" profile status "\$profile_name" --json 2>/dev/null)"; then
-    printf 'CoDeepSeedeX error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
+  if ! status_json="\$("\$COX" profile status "\$profile_name" --json 2>/dev/null)"; then
+    printf 'CodeXchange error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
     return 1
   fi
 
   if printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-    if [ "\${CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CoDeepSeedeX warning: managed Codex profile %s still has a model conflict; continuing because CODEEPSEEDEX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
+    if [ "\${COX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
+      printf 'CodeXchange warning: managed Codex profile %s still has a model conflict; continuing because COX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
       return 0
     fi
-    printf 'CoDeepSeedeX error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$DSPROXY" "\$profile_name" >&2
+    printf 'CodeXchange error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
+    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$COX" "\$profile_name" >&2
     return 1
   fi
 }
 
-activate_codeepseedex_custom_provider_profile() {
+activate_codexchange_custom_provider_profile() {
   local profile_name="\$1"
-  if [ -z "\$profile_name" ] || [ ! -x "\$DSPROXY" ]; then
+  if [ -z "\$profile_name" ] || [ ! -x "\$COX" ]; then
     return 1
   fi
-  "\$DSPROXY" config custom-provider use --name "\$profile_name" --no-profile-sync >/dev/null 2>&1
+  "\$COX" config custom-provider use --name "\$profile_name" --no-profile-sync >/dev/null 2>&1
 }
 
-start_dsproxy_profile() {
+start_cox_profile() {
   local profile_name="\$1"
   local start_args=()
   local status_args=()
 
-  if [ ! -x "\$DSPROXY" ]; then
-    printf 'CoDeepSeedeX error: dsproxy command is not executable: %s\n' "\$DSPROXY" >&2
+  if [ ! -x "\$COX" ]; then
+    printf 'CodeXchange error: cox command is not executable: %s\n' "\$COX" >&2
     return 1
   fi
 
   case "\$profile_name" in
-    deepseek-thinking)
+    cox)
       start_args=(start thinking)
       status_args=(status thinking)
       ;;
@@ -3650,46 +3650,46 @@ start_dsproxy_profile() {
       ;;
   esac
 
-  if ! "\$DSPROXY" "\${start_args[@]}" >/dev/null 2>&1; then
-    if ! "\$DSPROXY" "\${status_args[@]}" >/dev/null 2>&1; then
-      printf 'CoDeepSeedeX error: failed to start dsproxy for profile %s.\n' "\$profile_name" >&2
-      printf 'Run for details: %s %s\n' "\$DSPROXY" "\${start_args[*]}" >&2
+  if ! "\$COX" "\${start_args[@]}" >/dev/null 2>&1; then
+    if ! "\$COX" "\${status_args[@]}" >/dev/null 2>&1; then
+      printf 'CodeXchange error: failed to start cox for profile %s.\n' "\$profile_name" >&2
+      printf 'Run for details: %s %s\n' "\$COX" "\${start_args[*]}" >&2
       return 1
     fi
     return 0
   fi
 
-  if ! "\$DSPROXY" "\${status_args[@]}" >/dev/null 2>&1; then
-    printf 'CoDeepSeedeX error: dsproxy started but status check failed for profile %s.\n' "\$profile_name" >&2
-    printf 'Run for details: %s %s\n' "\$DSPROXY" "\${status_args[*]}" >&2
+  if ! "\$COX" "\${status_args[@]}" >/dev/null 2>&1; then
+    printf 'CodeXchange error: cox started but status check failed for profile %s.\n' "\$profile_name" >&2
+    printf 'Run for details: %s %s\n' "\$COX" "\${status_args[*]}" >&2
     return 1
   fi
 }
 
-run_codeepseedex_codex() {
+run_codexchange_codex() {
   case "\$profile" in
     deepseek)
-      printf 'CoDeepSeedeX error: profile "deepseek" is deprecated. Use: codex --profile deepseek-thinking\n' >&2
+      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
       return 2
       ;;
-    deepseek-thinking)
-      repair_codeepseedex_managed_profile_contract "\$profile"
-      start_dsproxy_profile "\$profile"
-      schedule_codeepseedex_terminal_title_refresh
+    cox)
+      repair_codexchange_managed_profile_contract "\$profile"
+      start_cox_profile "\$profile"
+      schedule_codexchange_terminal_title_refresh
       ;;
     "")
       ;;
     *)
-      if activate_codeepseedex_custom_provider_profile "\$profile"; then
-        start_dsproxy_profile "deepseek-thinking"
-        schedule_codeepseedex_terminal_title_refresh
+      if activate_codexchange_custom_provider_profile "\$profile"; then
+        start_cox_profile "cox"
+        schedule_codexchange_terminal_title_refresh
       fi
       ;;
   esac
 
   if ! codex_runtime_preflight; then
     local preflight_rc=\$?
-    stop_codeepseedex_terminal_title_keeper
+    stop_codexchange_terminal_title_keeper
     return "\$preflight_rc"
   fi
 
@@ -3697,12 +3697,12 @@ run_codeepseedex_codex() {
   "\$REAL_CODEX" "\$@"
   local codex_rc=\$?
   set -e
-  stop_codeepseedex_terminal_title_keeper
+  stop_codexchange_terminal_title_keeper
   return "\$codex_rc"
 }
 
-trap 'stop_codeepseedex_terminal_title_keeper' INT TERM HUP
-run_codeepseedex_codex "\$@"
+trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP
+run_codexchange_codex "\$@"
 EOF
 
   chmod +x "$wrapper_path"
@@ -3724,7 +3724,7 @@ EOF
 
 uninstall() {
   logo
-  step "Uninstalling CoDeepSeedeX integration"
+  step "Uninstalling CodeXchange integration"
 
   local wrapper_path="$BIN_DIR/codex"
   local backup_path=""
@@ -3736,12 +3736,12 @@ uninstall() {
     backup_path="${CODEX_WRAPPER_BACKUP:-}"
   fi
 
-  if [ -x "$INSTALL_DIR/.venv/bin/dsproxy" ]; then
-    run_quiet "Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek --no-backup || true
-    run_quiet "Codex profile removed: deepseek-thinking" "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek-thinking --no-backup || true
+  if [ -x "$INSTALL_DIR/.venv/bin/cox" ]; then
+    run_quiet "Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/cox" uninstall-codex-profile --name deepseek --no-backup || true
+    run_quiet "Codex profile removed: cox" "$INSTALL_DIR/.venv/bin/cox" uninstall-codex-profile --name cox --no-backup || true
   fi
 
-  if [ -f "$wrapper_path" ] && grep -q "CoDeepSeedeX codex wrapper" "$wrapper_path" 2>/dev/null; then
+  if [ -f "$wrapper_path" ] && grep -q "CodeXchange codex wrapper" "$wrapper_path" 2>/dev/null; then
     if [ "$DRY_RUN" = "1" ]; then
       printf '+ remove %q\n' "$wrapper_path" >> "$INSTALL_LOG"
     else
@@ -3759,13 +3759,13 @@ uninstall() {
     fi
   fi
 
-  if [ -f "$BIN_DIR/dsproxy" ] && grep -q "$INSTALL_DIR/.venv/bin/dsproxy" "$BIN_DIR/dsproxy" 2>/dev/null; then
+  if [ -f "$BIN_DIR/cox" ] && grep -q "$INSTALL_DIR/.venv/bin/cox" "$BIN_DIR/cox" 2>/dev/null; then
     if [ "$DRY_RUN" = "1" ]; then
-      printf '+ remove %q\n' "$BIN_DIR/dsproxy" >> "$INSTALL_LOG"
+      printf '+ remove %q\n' "$BIN_DIR/cox" >> "$INSTALL_LOG"
     else
-      rm -f "$BIN_DIR/dsproxy"
+      rm -f "$BIN_DIR/cox"
     fi
-    ok "dsproxy wrapper removed"
+    ok "cox wrapper removed"
   fi
 
   if [ "$REMOVE_FILES" = "1" ]; then
@@ -3791,7 +3791,7 @@ while [ "$#" -gt 0 ]; do
     --repo-url) REPO_URL="$2"; shift ;;
     --install-ref) INSTALL_REF="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
-    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; MODEL_PROVIDER_REGISTRY_FILE="${DEEPSEEK_PROXY_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
+    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; MODEL_PROVIDER_REGISTRY_FILE="${COX_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
     --python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
@@ -3813,12 +3813,12 @@ if [ "$UNINSTALL" = "1" ]; then
 fi
 
 printf 'Install ref: %s\n' "${INSTALL_REF:-<GitHub Latest Release>}" >> "$INSTALL_LOG"
-printf 'Installer source: %s\n' "${DEEPSEEK_PROXY_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
+printf 'Installer source: %s\n' "${COX_INSTALLER_SOURCE:-local script or current checkout}" >> "$INSTALL_LOG"
 printf 'Repository source: %s\n' "$REPO_URL" >> "$INSTALL_LOG"
 
 intro_width="$(ui_terminal_width)"
 logo
-ui_box_top "CoDeepSeedeX" "$intro_width"
+ui_box_top "CodeXchange" "$intro_width"
 ui_box_line "" "$intro_width"
 ui_box_line_styled "Welcome" "$intro_width" "\033[1;38;5;75m"
 ui_box_line "This guided installer will configure language, model API, web search, image generation, and Codex wrapper in a single flow." "$intro_width"
@@ -3834,17 +3834,17 @@ ui_step_footer "Startup" "$intro_width"
 
 if [ "$NON_INTERACTIVE" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
   printf "\n  Press Enter to continue..." > /dev/tty
-  IFS= read -r CODEEPSEEDEX_START_SETUP < /dev/tty || true
+  IFS= read -r COX_START_SETUP < /dev/tty || true
   printf "\n" > /dev/tty
 fi
 
-CODEEPSEEDEX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, dsproxy, profile repair, and ports are handled automatically."
+COX_NEXT_MENU_DETAIL="Setup plan: Step 1 Language · Step 2 Model API · Step 3 Web search API · Step 4 Image generation API · Step 5 Codex wrapper. Repository, Python, cox, profile repair, and ports are handled automatically."
 # Select Python before any env-backed guided setup helper uses env_file_value.
-ensure_codeepseedex_python_bin
+ensure_codexchange_python_bin
 choose_installer_language
 
 setup_width="$(ui_terminal_width)"
-ui_box_top "CoDeepSeedeX" "$setup_width"
+ui_box_top "CodeXchange" "$setup_width"
 ui_box_line "" "$setup_width"
 ui_box_line_styled "Setup plan" "$setup_width" "\033[1;38;5;75m"
 ui_box_line "Step 1 Language is complete. The remaining prompts use the same guided UI." "$setup_width"
@@ -3859,7 +3859,7 @@ ui_step_footer "Step 1/5" "$setup_width"
 
 step "Checking requirements"
 
-ensure_codeepseedex_python_bin
+ensure_codexchange_python_bin
 PY_VERSION="$("$PYTHON_BIN" - <<'PY'
 import sys
 if sys.version_info < (3, 11):
@@ -3877,13 +3877,13 @@ ok "Git available"
 
 step "Guided configuration"
 
-DEFAULT_STABLE_PORT="$(env_file_value DEEPSEEK_PROXY_PORT)"
+DEFAULT_STABLE_PORT="$(env_file_value COX_PORT)"
 if [ -z "$DEFAULT_STABLE_PORT" ]; then
-  DEFAULT_STABLE_PORT="${DEEPSEEK_PROXY_PORT:-8000}"
+  DEFAULT_STABLE_PORT="${COX_PORT:-8000}"
 fi
-DEFAULT_THINKING_PORT="$(env_file_value DEEPSEEK_PROXY_THINKING_PORT)"
+DEFAULT_THINKING_PORT="$(env_file_value COX_THINKING_PORT)"
 if [ -z "$DEFAULT_THINKING_PORT" ]; then
-  DEFAULT_THINKING_PORT="${DEEPSEEK_PROXY_THINKING_PORT:-8001}"
+  DEFAULT_THINKING_PORT="${COX_THINKING_PORT:-8001}"
 fi
 STABLE_PORT="$(choose_available_port "$DEFAULT_STABLE_PORT" "")"
 THINKING_PORT="$(choose_available_port "$DEFAULT_THINKING_PORT" "$STABLE_PORT")"
@@ -3906,7 +3906,7 @@ while true; do
       if [ -n "$PROMPTED_MODEL_NAME" ] && ! is_valid_model_name_value "$PROMPTED_MODEL_NAME"; then
         warn "Invalid upstream model name detected before writing configuration. Re-enter the model id; API keys must be entered only in the API key field."
         if [ "$NON_INTERACTIVE" = "1" ]; then
-          echo "ERROR: invalid DEEPSEEK_PROXY_MODEL value; expected model id, got an API-key-like or URL/path value" >&2
+          echo "ERROR: invalid COX_MODEL value; expected model id, got an API-key-like or URL/path value" >&2
           return 1
         fi
         PROMPTED_MODEL_NAME=""
@@ -3942,9 +3942,9 @@ while true; do
       guided_step=5
       ;;
     5)
-      CODEEPSEEDEX_NEXT_MENU_DETAIL="After installing, use codex --profile deepseek-thinking. Custom providers can use codex --profile <provider-id>. The wrapper starts or refreshes the local dsproxy backend automatically."
-      WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for deepseek-thinking and provider-backed custom profiles? Recommended." "Y")"
-      if [ "$WRAPPER_CHOICE" = "__CODEEPSEEDEX_BACK__" ]; then
+      COX_NEXT_MENU_DETAIL="After installing, use codex --profile cox. Custom providers can use codex --profile <provider-id>. The wrapper starts or refreshes the local cox backend automatically."
+      WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for cox and provider-backed custom profiles? Recommended." "Y")"
+      if [ "$WRAPPER_CHOICE" = "__COX_BACK__" ]; then
         guided_step=4
         continue
       fi
@@ -3959,15 +3959,15 @@ done
 
 if [ -z "$API_KEY" ]; then
   if [ -n "$PROMPTED_MODEL_PROVIDER" ]; then
-    warn "Model API key is empty; configure later with: dsproxy config set-model --provider $PROMPTED_MODEL_PROVIDER"
+    warn "Model API key is empty; configure later with: cox config set-model --provider $PROMPTED_MODEL_PROVIDER"
   else
-    warn "Model API key is empty; configure later with: dsproxy config wizard"
+    warn "Model API key is empty; configure later with: cox config wizard"
   fi
 fi
 
 sync_install_checkout_to_ref() {
   local requested_ref="${1:-}"
-  requested_ref="${requested_ref:-${DEEPSEEK_PROXY_INSTALL_REF:-}}"
+  requested_ref="${requested_ref:-${COX_INSTALL_REF:-}}"
 
   if [ -z "$requested_ref" ]; then
     return 0
@@ -4051,8 +4051,8 @@ download_source_archive_to_install_dir() {
   local extract_dir="$tmp_root/extract"
   mkdir -p "$extract_dir"
 
-  local url1="https://codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref"
-  local url2="https://github.com/Awenforever/CoDeepSeedeX/archive/refs/tags/$ref.tar.gz"
+  local url1="https://codeload.github.com/Awenforever/CodeXchange/tar.gz/refs/tags/$ref"
+  local url2="https://github.com/Awenforever/CodeXchange/archive/refs/tags/$ref.tar.gz"
 
   printf '+ Source archive fallback for ref %s\n' "$ref" >> "$INSTALL_LOG"
   if ! curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$url1" -o "$archive" >> "$INSTALL_LOG" 2>&1; then
@@ -4117,7 +4117,7 @@ prepare_install_checkout() {
 }
 
 resolve_install_internal_version_for_metadata() {
-  local app_file="$INSTALL_DIR/deepseek_responses_proxy/app.py"
+  local app_file="$INSTALL_DIR/codexchange_proxy/app.py"
   if [ ! -f "$app_file" ]; then
     return 0
   fi
@@ -4176,7 +4176,7 @@ if [ -n "$INSTALL_TARGET_INTERNAL_VERSION" ]; then
   ok "Install internal version: $INSTALL_TARGET_INTERNAL_VERSION"
   printf '+ Install internal version: %s\n' "$INSTALL_TARGET_INTERNAL_VERSION" >> "$INSTALL_LOG"
 else
-  warn "Install internal version could not be resolved. Env metadata will omit DEEPSEEK_PROXY_INTERNAL_VERSION."
+  warn "Install internal version could not be resolved. Env metadata will omit COX_INTERNAL_VERSION."
 fi
 
 if is_existing_install_venv_python "$PYTHON_BIN"; then
@@ -4193,10 +4193,10 @@ if ! sync_deepseek_tokenizer_resource; then
 fi
 
 write_env_file "$STABLE_PORT" "$THINKING_PORT" "$API_KEY" "$SERPAPI_KEY" "$IMAGE_API_KEY"
-write_dsproxy_wrapper
+write_cox_wrapper
 ensure_shell_profile_integration
 
-run_quiet "dsproxy config initialized" "$INSTALL_DIR/.venv/bin/dsproxy" config init
+run_quiet "cox config initialized" "$INSTALL_DIR/.venv/bin/cox" config init
 
 MODEL_CATALOG_JSON="$(model_catalog_json_value)"
 MODEL_CATALOG_ARGS=()
@@ -4210,9 +4210,9 @@ if [ -n "${RESOLVED_MODEL_NAME:-}" ] && [ "${RESOLVED_MODEL_PROVIDER:-deepseek}"
 fi
 
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
-  run_quiet "Codex profile installed: deepseek-thinking" "$INSTALL_DIR/.venv/bin/dsproxy" install-codex-profile \
-    --name deepseek-thinking \
-    --provider-name deepseek-thinking-proxy \
+  run_quiet "Codex profile installed: cox" "$INSTALL_DIR/.venv/bin/cox" install-codex-profile \
+    --name cox \
+    --provider-name cox-proxy \
     --base-url "http://127.0.0.1:${THINKING_PORT}/v1" \
     --model "$PROFILE_THINKING_MODEL" \
     --reasoning-effort xhigh \
@@ -4221,7 +4221,7 @@ if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
 fi
 
 if [ "$INSTALL_CODEX_PROFILE" = "1" ]; then
-    run_quiet "Deprecated Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/dsproxy" uninstall-codex-profile --name deepseek --no-backup || true
+    run_quiet "Deprecated Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/cox" uninstall-codex-profile --name deepseek --no-backup || true
 fi
 
 write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"
@@ -4230,10 +4230,10 @@ post_install_entrypoint_diagnostics
 step "Done"
 
 
-# codeepseedex_repair_codex_model_catalog_json_v2746a1
+# codexchange_repair_codex_model_catalog_json_v2746a1
 if [ "$DRY_RUN" != "1" ]; then
   backup_local_file_before_overwrite "$HOME/.codex/config.toml" "Codex main config"
-  "$PYTHON_BIN" - "$HOME/.codex/config.toml" "$INSTALL_DIR/experiments/model-catalog/deepseek-proxy-models.json" <<'PYCODEXCAT'
+  "$PYTHON_BIN" - "$HOME/.codex/config.toml" "$INSTALL_DIR/experiments/model-catalog/cox-proxy-models.json" <<'PYCODEXCAT'
 from __future__ import annotations
 
 import sys
@@ -4245,7 +4245,7 @@ if not config.exists():
     raise SystemExit(0)
 
 lines = config.read_text(encoding="utf-8").splitlines()
-targets = {"profiles.deepseek", "profiles.deepseek-thinking"}
+targets = {"profiles.deepseek", "profiles.cox"}
 out = []
 current = None
 pending_insert = None
@@ -4285,11 +4285,11 @@ else
   ok "Codex model catalog linked"
 fi
 
-if [ "${CODEEPSEEDEX_VERBOSE_INSTALL_SUMMARY:-0}" = "1" ]; then
+if [ "${COX_VERBOSE_INSTALL_SUMMARY:-0}" = "1" ]; then
   sub_title "Detailed install paths"
   printf '%s\n' "  env file: $ENV_FILE"
   refresh_canonical_codex_wrapper_template
-  printf '%s\n' "  dsproxy: $BIN_DIR/dsproxy"
+  printf '%s\n' "  cox: $BIN_DIR/cox"
   if [ -n "$SHELL_PROFILE_FILE" ]; then
     printf '%s\n' "  shell profile: $SHELL_PROFILE_FILE"
   fi

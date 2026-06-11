@@ -28,13 +28,13 @@ def test_bootstrap_dry_run_does_not_require_apt_changes() -> None:
         timeout=20,
         env={
             "PATH": "/usr/bin:/bin",
-            "HOME": "/tmp/codeepseedex-bootstrap-dry-run-test-home",
-            "DEEPSEEK_PROXY_LATEST_RELEASE_API_URL": "https://127.0.0.1:9/should-not-be-called",
+            "HOME": "/tmp/codexchange-bootstrap-dry-run-test-home",
+            "COX_LATEST_RELEASE_API_URL": "https://127.0.0.1:9/should-not-be-called",
         },
     )
     assert result.returncode == 0
     assert "dry-run" in result.stdout
-    assert "DEEPSEEK_PROXY_PYTHON_BIN" in result.stdout
+    assert "COX_PYTHON_BIN" in result.stdout
     assert "should-not-be-called" not in result.stderr
 
 
@@ -51,22 +51,22 @@ def test_install_script_accepts_python_bin_option() -> None:
 
 def test_install_script_uses_selected_python_bin() -> None:
     text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert 'if [ -n "${DEEPSEEK_PROXY_PYTHON_BIN:-}" ]; then' in text
-    assert 'PYTHON_BIN="$DEEPSEEK_PROXY_PYTHON_BIN"' in text
+    assert 'if [ -n "${COX_PYTHON_BIN:-}" ]; then' in text
+    assert 'PYTHON_BIN="$COX_PYTHON_BIN"' in text
     assert "PYTHON_BIN_EXPLICIT=1" in text
     assert "PYTHON_BIN_EXPLICIT=0" in text
-    assert "select_codeepseedex_python_bin()" in text
-    assert "ensure_codeepseedex_python_bin" in text
+    assert "select_codexchange_python_bin()" in text
+    assert "ensure_codexchange_python_bin" in text
     assert "python3.13" in text
     assert "python3.12" in text
     assert "python3.11" in text
     assert '"$INSTALL_DIR/.venv/bin/python"' in text
     assert '--python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;' in text
-    assert "CoDeepSeedeX does not install or patch Python automatically" in text
-    assert 'if [ -n "${PYTHON_BIN:-}" ] && [ -n "${CODEEPSEEDEX_SELECTED_PYTHON_VERSION:-}" ]; then' in text
-    assert "ensure_codeepseedex_python_bin\nchoose_installer_language" in text
+    assert "CodeXchange does not install or patch Python automatically" in text
+    assert 'if [ -n "${PYTHON_BIN:-}" ] && [ -n "${COX_SELECTED_PYTHON_VERSION:-}" ]; then' in text
+    assert "ensure_codexchange_python_bin\nchoose_installer_language" in text
     assert "real codex command not found; Codex wrapper skipped" in text
-    assert "CoDeepSeedeX install can continue without the optional Codex wrapper" in text
+    assert "CodeXchange install can continue without the optional Codex wrapper" in text
     assert "--profile-layout split_profile_files" in text
     assert "uninstall-codex-profile --name deepseek --no-backup" in text
     forbidden_auto_python_install_markers = [
@@ -105,5 +105,5 @@ def test_bootstrap_hides_duplicate_ready_messages() -> None:
 def test_bootstrap_hides_top_level_log_line_and_passes_bootstrap_log() -> None:
     text = BOOTSTRAP.read_text(encoding="utf-8")
     assert 'printf \'  log: %s\\n\' "$INSTALL_LOG"' not in text
-    assert 'color "1;36" "CoDeepSeedeX bootstrap"' not in text
-    assert 'DEEPSEEK_PROXY_BOOTSTRAP_LOG="$INSTALL_LOG"' in text
+    assert 'color "1;36" "CodeXchange bootstrap"' not in text
+    assert 'COX_BOOTSTRAP_LOG="$INSTALL_LOG"' in text

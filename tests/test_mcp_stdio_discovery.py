@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from deepseek_responses_proxy.mcp_stdio import (
+from codexchange_proxy.mcp_stdio import (
     StdioMCPServerConfig,
     build_mcp_process_env,
     discover_stdio_mcp_tools,

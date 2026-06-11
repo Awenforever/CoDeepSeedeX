@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from deepseek_responses_proxy.app import DeepSeekClient, _build_chat_payload
+from codexchange_proxy.app import DeepSeekClient, _build_chat_payload
 
 
 class _FakeResponse:
@@ -29,8 +29,8 @@ class _RecordingHTTPClient:
 
 def test_custom_openai_compatible_payload_strips_deepseek_only_params(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
 
     payload = _build_chat_payload(
         model="example-chat-model",
@@ -49,8 +49,8 @@ def test_custom_openai_compatible_payload_strips_deepseek_only_params(monkeypatc
 
 def test_deepseek_official_payload_keeps_stable_cache_user_id(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "deepseek")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.deepseek.com")
 
     payload = _build_chat_payload(
         model="deepseek-v4-flash",
@@ -60,15 +60,15 @@ def test_deepseek_official_payload_keeps_stable_cache_user_id(monkeypatch, tmp_p
         request_payload={"prompt_cache_key": "sess-a"},
     )
 
-    assert payload["user_id"].startswith("codeepseedex_")
+    assert payload["user_id"].startswith("codexchange_")
     assert "thinking" in payload
     assert payload["reasoning_effort"] == "max"
 
 
 @pytest.mark.asyncio
 async def test_custom_client_sanitizes_payload_and_reports_provider_host(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
     fake_http = _RecordingHTTPClient(_FakeResponse(status_code=400, text='{"error":"unsupported user_id"}'))
     client = DeepSeekClient(api_key="sk-test", base_url="https://api.llm.exampleprovider.edu.cn/v1", http_client=fake_http)
 
@@ -77,7 +77,7 @@ async def test_custom_client_sanitizes_payload_and_reports_provider_host(monkeyp
             {
                 "model": "example-chat-model",
                 "messages": [{"role": "user", "content": "hi"}],
-                "user_id": "codeepseedex_test",
+                "user_id": "codexchange_test",
                 "thinking": {"type": "enabled"},
                 "reasoning_effort": "max",
                 "max_tokens": 8,

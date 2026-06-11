@@ -4,22 +4,22 @@ from pathlib import Path
 import pytest
 import importlib
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import create_app
+from codexchange_proxy.app import create_app
 
 
 @pytest.mark.asyncio
 async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "12345")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", "6789")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "11")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", "22222")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", "333")
-    monkeypatch.setenv("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", "7")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_COMPACT_TRIGGER_CHARS", "12345")
+    monkeypatch.setenv("COX_COMPACT_TARGET_CHARS", "6789")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "11")
+    monkeypatch.setenv("COX_MAX_CONTEXT_CHARS", "22222")
+    monkeypatch.setenv("COX_MAX_TOOL_OUTPUT_CHARS", "333")
+    monkeypatch.setenv("COX_KEEP_RECENT_MESSAGES", "7")
 
     debug_dir = Path(".debug")
     debug_dir.mkdir()

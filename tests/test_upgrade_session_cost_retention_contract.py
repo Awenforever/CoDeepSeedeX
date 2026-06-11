@@ -4,8 +4,8 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
-proxy_cli = importlib.import_module("deepseek_responses_proxy.cli")
+proxy_app = importlib.import_module("codexchange_proxy.app")
+proxy_cli = importlib.import_module("codexchange_proxy.cli")
 
 
 def test_upgrade_same_public_version_skip_helper_matches_weclaw_semantics() -> None:
@@ -84,7 +84,7 @@ def test_current_session_cost_contract_uses_tokens_session_not_profile_route(tmp
         session_id="old-session",
     )
 
-    tokens = proxy_app._weclaw_tokens_contract(store, profile="deepseek-thinking", session_id="s1")
+    tokens = proxy_app._weclaw_tokens_contract(store, profile="cox", session_id="s1")
     pricing = {"available": True, "display_currency": "CNY", "is_stale": False, "source": "test"}
     cost = proxy_app._weclaw_cost_contract(tokens, pricing, None)
 
@@ -116,7 +116,7 @@ def test_current_session_cost_unavailable_without_session_id(tmp_path: Path) -> 
         request_id="req1",
         session_id="s1",
     )
-    tokens = proxy_app._weclaw_tokens_contract(store, profile="deepseek-thinking")
+    tokens = proxy_app._weclaw_tokens_contract(store, profile="cox")
     cost = proxy_app._weclaw_cost_contract(tokens, {"available": True, "display_currency": "CNY", "is_stale": False}, None)
     assert cost["available"] is False
     assert cost["scope"] == "unavailable"
@@ -154,7 +154,7 @@ def test_prompt_segmentation_is_not_reused_across_sessions(tmp_path: Path) -> No
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=old_report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",

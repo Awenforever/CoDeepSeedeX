@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app, _build_chat_payload
+from codexchange_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app, _build_chat_payload
 
 
 class CacheUsageDeepSeekClient(DeepSeekClient):
@@ -60,7 +60,7 @@ def test_deepseek_payload_sets_stable_user_id_and_canonicalizes_tools(monkeypatc
     first = _build_chat_payload(model="deepseek-v4-flash", messages=[{"role": "user", "content": "x"}], tools=tools, request_payload=request_payload)
     second = _build_chat_payload(model="deepseek-v4-flash", messages=[{"role": "user", "content": "x"}], tools=list(reversed(tools)), request_payload=request_payload)
 
-    assert first["user_id"].startswith("codeepseedex_")
+    assert first["user_id"].startswith("codexchange_")
     assert first["user_id"] == second["user_id"]
     assert [tool["function"]["name"] for tool in first["tools"]] == ["atool", "ztool"]
     assert first["tools"] == second["tools"]

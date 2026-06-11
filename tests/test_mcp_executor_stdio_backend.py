@@ -6,7 +6,7 @@ import pytest
 
 from tests.test_mcp_executor_gated import FakeDeepSeekClient, _payloads_with_tool_messages, _response
 
-from deepseek_responses_proxy.app import _run_chat_with_tool_bridge
+from codexchange_proxy.app import _run_chat_with_tool_bridge
 
 
 def _write_fake_mcp_server(path: Path) -> None:
@@ -83,12 +83,12 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
 
     fake = FakeDeepSeekClient(
         [
@@ -182,12 +182,12 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.missing_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "fake.missing_tool")
 
     fake = FakeDeepSeekClient(
         [
@@ -263,12 +263,12 @@ args = []
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "fake.write_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "fake.write_tool")
 
     fake = FakeDeepSeekClient(
         [
@@ -401,12 +401,12 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_EXECUTOR_BACKEND", "stdio")
+    monkeypatch.setenv("COX_MCP_READONLY_ALLOWLIST", "fake.safe_tool")
 
     fake = FakeDeepSeekClient(
         [

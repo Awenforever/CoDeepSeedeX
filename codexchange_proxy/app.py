@@ -23,12 +23,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import subprocess
 
 
-DEFAULT_MODEL = os.environ.get("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.3-alpha"
-PROXY_INTERNAL_VERSION = "p2.22a16-release-v043-alpha-update-to-p222-closeout"
+DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
+PROXY_PUBLIC_VERSION = "v0.5.0-alpha"
+PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
-    "DEEPSEEK_PROXY_PUBLIC_COMMIT",
-    "DEEPSEEK_PROXY_INTERNAL_COMMIT",
+    "COX_PUBLIC_COMMIT",
+    "COX_INTERNAL_COMMIT",
 }
 
 
@@ -61,7 +61,7 @@ def _metadata_env_value(name: str, *, expected_internal_version: str | None = No
     if not value:
         return ""
     if name in _RELEASE_METADATA_COMMIT_ENV_NAMES:
-        env_internal_version = os.environ.get("DEEPSEEK_PROXY_INTERNAL_VERSION", "").strip()
+        env_internal_version = os.environ.get("COX_INTERNAL_VERSION", "").strip()
         if env_internal_version and expected_internal_version and env_internal_version != expected_internal_version:
             return ""
     return value
@@ -69,14 +69,14 @@ def _metadata_env_value(name: str, *, expected_internal_version: str | None = No
 
 PROXY_PUBLIC_COMMIT = (
     _metadata_env_value(
-        "DEEPSEEK_PROXY_PUBLIC_COMMIT",
+        "COX_PUBLIC_COMMIT",
         expected_internal_version=PROXY_INTERNAL_VERSION,
     )
     or _resolve_public_release_commit(PROXY_PUBLIC_VERSION, "54d81ab")
 )
 PROXY_INTERNAL_COMMIT = (
     _metadata_env_value(
-        "DEEPSEEK_PROXY_INTERNAL_COMMIT",
+        "COX_INTERNAL_COMMIT",
         expected_internal_version=PROXY_INTERNAL_VERSION,
     )
     or _resolve_public_release_commit(PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT)
@@ -84,7 +84,7 @@ PROXY_INTERNAL_COMMIT = (
 PROXY_VERSION = PROXY_PUBLIC_VERSION
 MANAGED_AUTO_COMPACT_RATIO = 0.90
 AUTO_COMPACT_RATIO_TOLERANCE = 0.000001
-AUTO_COMPACT_RATIO_ENV_NAMES = ("DEEPSEEK_PROXY_AUTO_COMPACT_RATIO", "CODEEPSEEDEX_AUTO_COMPACT_RATIO")
+AUTO_COMPACT_RATIO_ENV_NAMES = ("COX_AUTO_COMPACT_RATIO", "COX_AUTO_COMPACT_RATIO")
 
 # Restored pricing compatibility symbols kept for pricing config tests and CLI consumers.
 # They must remain top-level module exports.
@@ -109,10 +109,10 @@ def _normalize_auto_compact_ratio_value(value: Any, *, default: float = MANAGED_
 
 
 def _managed_auto_compact_ratio() -> float:
-    """Return the invariant managed CoDeepSeedeX auto-compact ratio.
+    """Return the invariant managed CodeXchange auto-compact ratio.
 
     p2.13a3 makes managed profile/runtime status immune to leftover
-    DEEPSEEK_PROXY_AUTO_COMPACT_RATIO or CODEEPSEEDEX_AUTO_COMPACT_RATIO
+    COX_AUTO_COMPACT_RATIO or COX_AUTO_COMPACT_RATIO
     environment values. Low-trigger experiments must use an explicit profile
     repair/install argument and must not redefine the managed runtime default.
     """
@@ -137,7 +137,7 @@ def _ignored_auto_compact_ratio_env_override_contract() -> dict[str, Any] | None
         "ignored": ignored,
         "managed_value": MANAGED_AUTO_COMPACT_RATIO,
         "reason": "environment_auto_compact_ratio_overrides_are_ignored_for_managed_profiles",
-        "action": "remove stale env overrides and run dsproxy profile repair --managed-only --json",
+        "action": "remove stale env overrides and run cox profile repair --managed-only --json",
     }
 
 def _now() -> int:
@@ -161,10 +161,10 @@ def _stringify_content(value: Any) -> str:
 
 
 def _default_db_path() -> Path:
-    configured = os.environ.get("DEEPSEEK_PROXY_DB_PATH")
+    configured = os.environ.get("COX_DB_PATH")
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".local" / "state" / "deepseek-responses-proxy" / "responses.sqlite3"
+    return Path.home() / ".local" / "state" / "codexchange" / "responses.sqlite3"
 
 
 def _store_info(store: Any) -> dict[str, Any]:
@@ -232,20 +232,20 @@ def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> 
             return request_effort
 
     env_effort = _normalize_deepseek_reasoning_effort(
-        os.environ.get("DEEPSEEK_REASONING_EFFORT", "high")
+        os.environ.get("COX_REASONING_EFFORT", "high")
     )
     if env_effort is not None:
         return env_effort
 
     print(
-        "[deepseek-responses-proxy] invalid DEEPSEEK_REASONING_EFFORT="
-        f"{os.environ.get('DEEPSEEK_REASONING_EFFORT')!r}; falling back to 'high'"
+        "[codexchange] invalid COX_REASONING_EFFORT="
+        f"{os.environ.get('COX_REASONING_EFFORT')!r}; falling back to 'high'"
     )
     return "high"
 
 
 def _force_proxy_model_enabled() -> bool:
-    return os.environ.get("DEEPSEEK_PROXY_FORCE_MODEL", "").strip().lower() in {
+    return os.environ.get("COX_FORCE_MODEL", "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -254,7 +254,7 @@ def _force_proxy_model_enabled() -> bool:
 
 
 def _select_upstream_model(request_model: str | None) -> str:
-    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+    env_model = os.environ.get("COX_MODEL", "").strip()
 
     if _force_proxy_model_enabled() and env_model:
         return env_model
@@ -319,14 +319,14 @@ def _pricing_project_config_path() -> Path:
 
 
 def _pricing_cache_path() -> Path:
-    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_CACHE_PATH", "").strip()
+    configured = os.environ.get("COX_PRICING_CACHE_PATH", "").strip()
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".cache" / "deepseek-responses-proxy" / "pricing.json"
+    return Path.home() / ".cache" / "codexchange" / "pricing.json"
 
 
 def _pricing_config_path() -> Path:
-    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    configured = os.environ.get("COX_PRICING_PATH", "").strip()
     if configured:
         return Path(configured).expanduser()
 
@@ -339,13 +339,13 @@ def _pricing_config_path() -> Path:
 
 def _pricing_source_info(path: Path | None = None) -> dict[str, Any]:
     pricing_path = path or _pricing_config_path()
-    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    configured = os.environ.get("COX_PRICING_PATH", "").strip()
     cache_path = _pricing_cache_path()
     project_path = _pricing_project_config_path()
 
     if configured:
         return {
-            "source": "DEEPSEEK_PROXY_PRICING_PATH",
+            "source": "COX_PRICING_PATH",
             "source_kind": "external_config",
             "path": pricing_path,
             "fallback_used": False,
@@ -354,7 +354,7 @@ def _pricing_source_info(path: Path | None = None) -> dict[str, Any]:
     try:
         if pricing_path.resolve() == cache_path.resolve():
             return {
-                "source": "DEEPSEEK_PROXY_PRICING_CACHE_PATH",
+                "source": "COX_PRICING_CACHE_PATH",
                 "source_kind": "official_docs_html_cache",
                 "path": pricing_path,
                 "fallback_used": False,
@@ -416,7 +416,7 @@ def _pricing_iso_from_timestamp(value: float) -> str:
 
 def _pricing_ttl_seconds() -> int:
     try:
-        value = int(os.environ.get("DEEPSEEK_PROXY_PRICING_TTL_SECONDS", "86400"))
+        value = int(os.environ.get("COX_PRICING_TTL_SECONDS", "86400"))
     except ValueError:
         value = 86400
     return max(60, value)
@@ -432,7 +432,7 @@ def _pricing_is_stale(metadata: dict[str, Any]) -> bool | None:
 
 
 def _pricing_auto_refresh_enabled() -> bool:
-    raw = os.environ.get("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH")
+    raw = os.environ.get("COX_PRICING_AUTO_REFRESH")
     if raw is not None:
         return raw.strip().lower() not in {"0", "false", "no", "off"}
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -494,7 +494,7 @@ def _pricing_refresh_result_summary(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
-    configured = os.environ.get("DEEPSEEK_PROXY_PRICING_PATH", "").strip()
+    configured = os.environ.get("COX_PRICING_PATH", "").strip()
     active_path = _pricing_config_path()
     source_info = _pricing_source_info(active_path)
     metadata = _pricing_metadata_from_path(active_path) if active_path.exists() else {}
@@ -518,7 +518,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
         "refresh_target_path": str(refresh_target_path),
         "official_source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
         "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
-        "configured_pricing_path_managed_by_dsproxy": bool(configured),
+        "configured_pricing_path_managed_by_cox": bool(configured),
         "external_config_user_managed": False,
         "checked_at": _pricing_now_iso(),
     }
@@ -545,7 +545,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
                 "reason": "pricing_source_older_than_current_local_day",
                 "refresh_recommended": False,
                 "refreshed": False,
-                "action": "enable DEEPSEEK_PROXY_PRICING_AUTO_REFRESH=1 or run dsproxy pricing refresh --write-cache --json against the managed pricing path, then re-check dsproxy status --weclaw-json",
+                "action": "enable COX_PRICING_AUTO_REFRESH=1 or run cox pricing refresh --write-cache --json against the managed pricing path, then re-check cox status --weclaw-json",
             }
         )
         return base
@@ -554,7 +554,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
         model=model,
         write_cache=True,
         cache_path=refresh_target_path,
-        timeout=float(os.environ.get("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
+        timeout=float(os.environ.get("COX_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
     )
     summary = _pricing_refresh_result_summary(result)
     base["refresh_result"] = summary
@@ -582,7 +582,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
             "refresh_recommended": False,
             "refreshed": False,
             "old_cache_preserved": True,
-            "action": "retry dsproxy pricing refresh --write-cache --json; previous pricing file or bundled snapshot was preserved",
+            "action": "retry cox pricing refresh --write-cache --json; previous pricing file or bundled snapshot was preserved",
         }
     )
     return base
@@ -627,7 +627,7 @@ def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
     except FileNotFoundError:
         return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to load pricing config {path}: {exc}")
+        print(f"[codexchange] failed to load pricing config {path}: {exc}")
         return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
 
 
@@ -635,7 +635,7 @@ def _fetch_text_url(url: str, *, timeout: float = 20.0) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "CoDeepSeedeX-pricing-refresh/1.0",
+            "User-Agent": "CodeXchange-pricing-refresh/1.0",
             "Accept": "text/html,text/plain,*/*",
         },
     )
@@ -1028,26 +1028,26 @@ def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
 
 
 def _debug_trace_enabled() -> bool:
-    return _env_bool("DEEPSEEK_PROXY_DEBUG_TRACE", False)
+    return _env_bool("COX_DEBUG_TRACE", False)
 
 
 def _debug_trace_dir() -> Path:
-    return Path(os.environ.get("DEEPSEEK_PROXY_DEBUG_DIR", ".debug/traces")).expanduser()
+    return Path(os.environ.get("COX_DEBUG_DIR", ".debug/traces")).expanduser()
 
 
 def _debug_trace_content_mode() -> str:
-    value = os.environ.get("DEEPSEEK_PROXY_DEBUG_CONTENT", "preview").strip().lower()
+    value = os.environ.get("COX_DEBUG_CONTENT", "preview").strip().lower()
     if value not in {"none", "preview", "full"}:
         return "preview"
     return value
 
 
 def _debug_trace_preview_chars() -> int:
-    return max(0, _env_int("DEEPSEEK_PROXY_DEBUG_PREVIEW_CHARS", 1200))
+    return max(0, _env_int("COX_DEBUG_PREVIEW_CHARS", 1200))
 
 
 def _debug_trace_max_event_chars() -> int:
-    return max(1000, _env_int("DEEPSEEK_PROXY_DEBUG_MAX_EVENT_CHARS", 8000))
+    return max(1000, _env_int("COX_DEBUG_MAX_EVENT_CHARS", 8000))
 
 
 def _debug_trace_safe_response_id(response_id: str | None) -> str:
@@ -1249,7 +1249,7 @@ def _debug_trace_event(response_id: str | None, event: str, **fields: Any) -> No
             encoding="utf-8",
         )
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write debug trace event: {exc}")
+        print(f"[codexchange] failed to write debug trace event: {exc}")
 
 
 def _debug_trace_status() -> dict[str, Any]:
@@ -1592,20 +1592,20 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
     policy_report = _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages)
 
     payload_env = {
-        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES": "1",
-        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS": "100",
-        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS": "900",
-        "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
+        "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES": "1",
+        "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS": "100",
+        "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS": "900",
+        "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
     }
 
     def _dry_run_call() -> tuple[Any, dict[str, Any]]:
-        os.environ["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "dry_run"
+        os.environ["COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "dry_run"
         return _apply_flattened_tool_transcript_semantic_payload_compaction(messages)
 
     dry_run_messages, dry_run_report = _with_semantic_payload_env(payload_env, _dry_run_call)
 
     def _enabled_call() -> tuple[Any, dict[str, Any]]:
-        os.environ["DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "enabled"
+        os.environ["COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE"] = "enabled"
         return _apply_flattened_tool_transcript_semantic_payload_compaction(messages)
 
     enabled_messages, enabled_report = _with_semantic_payload_env(payload_env, _enabled_call)
@@ -1615,7 +1615,7 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
     low_risk_compacted = bool(
         enabled_is_list
         and isinstance(enabled_messages[1], dict)
-        and "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in str(enabled_messages[1].get("content") or "")
+        and "[semantic flattened tool transcript compacted by CodeXchange]" in str(enabled_messages[1].get("content") or "")
     )
     medium_preserved = bool(enabled_is_list and enabled_messages[2] == original_messages[2])
     high_preserved = bool(enabled_is_list and enabled_messages[3] == original_messages[3])
@@ -1635,12 +1635,12 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
     synthetic_config = {
         "semantic_audit": {
             "enabled": True,
-            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
+            "targets": max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
         },
         "semantic_policy_dry_run": {
             "enabled": True,
-            "summary_chars": max(128, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700)),
-            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12)),
+            "summary_chars": max(128, _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700)),
+            "targets": max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12)),
         },
         "semantic_payload_compaction": {
             "mode": "dry_run",
@@ -1648,7 +1648,7 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
             "preserve_recent_messages": 1,
             "min_message_chars": 100,
             "summary_chars": 900,
-            "trace_targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_TRACE_TARGETS", 8)),
+            "trace_targets": max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_TRACE_TARGETS", 8)),
         },
     }
 
@@ -1730,16 +1730,16 @@ def _semantic_compaction_selftest_report() -> dict[str, Any]:
 
 
 def _semantic_payload_canary_env_config() -> dict[str, Any]:
-    guard_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", "1").strip().lower()
-    allow_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "0").strip().lower()
-    invariant_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", "1").strip().lower()
+    guard_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_GUARD", "1").strip().lower()
+    allow_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "0").strip().lower()
+    invariant_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_REQUIRE_LOCAL_INVARIANTS", "1").strip().lower()
 
     return {
         "guard_enabled": guard_env not in {"0", "false", "off", "no"},
         "allow_enabled": allow_env in {"1", "true", "on", "yes"},
         "require_local_invariants": invariant_env not in {"0", "false", "off", "no"},
-        "allow_env_var": "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED",
-        "mode_env_var": "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE",
+        "allow_env_var": "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED",
+        "mode_env_var": "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE",
     }
 
 
@@ -1860,8 +1860,8 @@ def _semantic_compaction_canary_check_report() -> dict[str, Any]:
         "ready_for_limited_enabled_session": ready,
         "current_payload_mode": payload_config.get("mode"),
         "required_enable_env": {
-            "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
-            "DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE": "enabled",
+            "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED": "1",
+            "COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE": "enabled",
         },
         "blockers": blockers,
         "warnings": warnings,
@@ -2007,18 +2007,18 @@ def _semantic_payload_compaction_display_contract(status: Any) -> dict[str, Any]
 
 
 def _semantic_compaction_runtime_status(runtime_events: Any | None = None) -> dict[str, Any]:
-    audit_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
-    policy_enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
+    audit_enabled_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
+    policy_enabled_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
     audit_enabled = audit_enabled_env not in {"0", "false", "off", "no"}
     policy_enabled = policy_enabled_env not in {"0", "false", "off", "no"}
 
     policy_summary_chars = max(
         128,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700),
+        _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700),
     )
     policy_targets = max(
         1,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12),
+        _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12),
     )
     payload_config = _flattened_tool_semantic_payload_compaction_env_config()
 
@@ -2030,7 +2030,7 @@ def _semantic_compaction_runtime_status(runtime_events: Any | None = None) -> di
     config = {
         "semantic_audit": {
             "enabled": audit_enabled,
-            "targets": max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
+            "targets": max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12)),
         },
         "semantic_policy_dry_run": {
             "enabled": policy_enabled,
@@ -2152,7 +2152,7 @@ def _debug_runtime_payload_file_summary(filename: str) -> dict[str, Any]:
 
 
 def _debug_runtime_trim_marker_summary(value: Any) -> dict[str, Any]:
-    marker = "[tool output trimmed by CoDeepSeedeX]"
+    marker = "[tool output trimmed by CodeXchange]"
     records: list[dict[str, Any]] = []
 
     def walk(item: Any) -> None:
@@ -2709,24 +2709,24 @@ def _context_budget_breakdown(
 
 def _tool_output_budget_env_config() -> dict[str, int]:
     return {
-        "largest_items": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", 12)),
-        "warn_item_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_ITEM_CHARS", 12000)),
-        "warn_total_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_WARN_TOTAL_CHARS", 80000)),
+        "largest_items": max(1, _env_int("COX_TOOL_OUTPUT_BUDGET_LARGEST_ITEMS", 12)),
+        "warn_item_chars": max(1, _env_int("COX_TOOL_OUTPUT_WARN_ITEM_CHARS", 12000)),
+        "warn_total_chars": max(1, _env_int("COX_TOOL_OUTPUT_WARN_TOTAL_CHARS", 80000)),
     }
 
 
 def _tool_output_trim_dry_run_env_config() -> dict[str, Any]:
-    mode = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "dry_run").strip().lower()
+    mode = os.environ.get("COX_TOOL_OUTPUT_TRIM_MODE", "dry_run").strip().lower()
     if mode not in {"off", "dry_run", "enabled"}:
         mode = "dry_run"
     return {
         "mode": mode,
-        "max_item_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_ITEM_CHARS", 12000)),
-        "max_total_chars": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_MAX_TOTAL_CHARS", 80000)),
-        "keep_head_chars": max(0, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_HEAD_CHARS", 3000)),
-        "keep_tail_chars": max(0, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_KEEP_TAIL_CHARS", 3000)),
-        "max_targets": max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MAX_TARGETS", 12)),
-        "notice_chars": max(128, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_NOTICE_CHARS", 512)),
+        "max_item_chars": max(1, _env_int("COX_TOOL_OUTPUT_MAX_ITEM_CHARS", 12000)),
+        "max_total_chars": max(1, _env_int("COX_TOOL_OUTPUT_MAX_TOTAL_CHARS", 80000)),
+        "keep_head_chars": max(0, _env_int("COX_TOOL_OUTPUT_KEEP_HEAD_CHARS", 3000)),
+        "keep_tail_chars": max(0, _env_int("COX_TOOL_OUTPUT_KEEP_TAIL_CHARS", 3000)),
+        "max_targets": max(1, _env_int("COX_TOOL_OUTPUT_TRIM_MAX_TARGETS", 12)),
+        "notice_chars": max(128, _env_int("COX_TOOL_OUTPUT_TRIM_NOTICE_CHARS", 512)),
     }
 
 
@@ -2825,7 +2825,7 @@ def _tool_output_category_policy(category: str) -> dict[str, Any]:
         },
     }
     base = dict(defaults.get(category, defaults["unknown"]))
-    prefix = "DEEPSEEK_PROXY_TOOL_OUTPUT_" + category.upper() + "_"
+    prefix = "COX_TOOL_OUTPUT_" + category.upper() + "_"
     base["max_item_chars"] = max(1, _env_int(prefix + "MAX_ITEM_CHARS", int(base["max_item_chars"])))
     base["keep_head_chars"] = max(0, _env_int(prefix + "KEEP_HEAD_CHARS", int(base["keep_head_chars"])))
     base["keep_tail_chars"] = max(0, _env_int(prefix + "KEEP_TAIL_CHARS", int(base["keep_tail_chars"])))
@@ -2844,10 +2844,10 @@ def _tool_output_policy_dry_run(
     *,
     total_output_chars: int,
 ) -> dict[str, Any]:
-    mode = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_DRY_RUN", "1").strip().lower()
+    mode = os.environ.get("COX_TOOL_OUTPUT_POLICY_DRY_RUN", "1").strip().lower()
     enabled = mode not in {"0", "false", "off", "no"}
-    max_total_chars = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", 80000))
-    max_targets = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_MAX_TARGETS", 20))
+    max_total_chars = max(1, _env_int("COX_TOOL_OUTPUT_POLICY_MAX_TOTAL_CHARS", 80000))
+    max_targets = max(1, _env_int("COX_TOOL_OUTPUT_POLICY_MAX_TARGETS", 20))
 
     category_counts: dict[str, int] = {}
     category_chars: dict[str, int] = {}
@@ -2963,7 +2963,7 @@ def _tool_output_policy_dry_run(
 
     trace_target_limit = min(
         max_targets,
-        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_POLICY_TRACE_TARGETS", 5)),
+        max(1, _env_int("COX_TOOL_OUTPUT_POLICY_TRACE_TARGETS", 5)),
     )
 
     return {
@@ -3120,7 +3120,7 @@ def _tool_output_trim_dry_run(
 
     trace_target_limit = min(
         max_targets,
-        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_TRACE_TARGETS", 5)),
+        max(1, _env_int("COX_TOOL_OUTPUT_TRIM_TRACE_TARGETS", 5)),
     )
 
     return {
@@ -3163,7 +3163,7 @@ def _format_trimmed_tool_output_text(
     omitted_chars = max(0, len(original_text) - len(head) - len(tail))
 
     return (
-        "[tool output trimmed by CoDeepSeedeX]\n"
+        "[tool output trimmed by CodeXchange]\n"
         f"call_id: {call_id or 'unknown'}\n"
         f"tool_name: {tool_name or 'unknown'}\n"
         f"category: {category or 'unknown'}\n"
@@ -3182,12 +3182,12 @@ def _format_trimmed_tool_output_text(
 
 
 def _tool_output_artifact_dir() -> Path:
-    raw = os.environ.get("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR") or ".generated/tool-output-artifacts"
+    raw = os.environ.get("COX_TOOL_OUTPUT_ARTIFACT_DIR") or ".generated/tool-output-artifacts"
     return Path(raw)
 
 
 def _tool_output_artifact_max_files() -> int:
-    return _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_MAX_FILES", 100)
+    return _env_int("COX_TOOL_OUTPUT_ARTIFACT_MAX_FILES", 100)
 
 
 def _safe_tool_output_artifact_component(value: str | None) -> str:
@@ -3215,7 +3215,7 @@ def _prune_tool_output_artifacts(output_dir: Path | None = None) -> None:
         try:
             path.unlink()
         except OSError as exc:
-            print(f"[deepseek-responses-proxy] failed to prune tool output artifact {path}: {exc}")
+            print(f"[codexchange] failed to prune tool output artifact {path}: {exc}")
 
 
 def _write_tool_output_image_payload_artifact(
@@ -3234,7 +3234,7 @@ def _write_tool_output_image_payload_artifact(
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to create tool output artifact dir {output_dir}: {exc}")
+        print(f"[codexchange] failed to create tool output artifact dir {output_dir}: {exc}")
         return None
 
     safe_call_id = _safe_tool_output_artifact_component(call_id)
@@ -3261,7 +3261,7 @@ def _write_tool_output_image_payload_artifact(
     try:
         path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str), encoding="utf-8")
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write tool output artifact {path}: {exc}")
+        print(f"[codexchange] failed to write tool output artifact {path}: {exc}")
         return None
 
     _prune_tool_output_artifacts(output_dir)
@@ -3340,7 +3340,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
 
         targets: list[dict[str, Any]] = []
         skipped_outputs: list[dict[str, Any]] = []
-        skip_trace_limit = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_SKIP_TRACE_TARGETS", 8))
+        skip_trace_limit = max(1, _env_int("COX_TOOL_OUTPUT_SKIP_TRACE_TARGETS", 8))
         chars_before = _debug_trace_json_chars(trimmed_input)
 
         for index, item in enumerate(trimmed_input):
@@ -3569,7 +3569,7 @@ def _apply_tool_output_safe_trimming(input_value: Any) -> tuple[Any, dict[str, A
             report["skipped_outputs"] = skipped_outputs
             return input_value, report
 
-        trace_target_limit = max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_APPLIED_TRACE_TARGETS", 5))
+        trace_target_limit = max(1, _env_int("COX_TOOL_OUTPUT_APPLIED_TRACE_TARGETS", 5))
         report.update(
             {
                 "applied": True,
@@ -3694,7 +3694,7 @@ def _tool_output_budget_breakdown(input_value: Any) -> dict[str, Any]:
     largest_outputs.sort(key=lambda item: int(item.get("item_chars") or 0), reverse=True)
     largest_limit = min(
         int(config["largest_items"]),
-        max(1, _env_int("DEEPSEEK_PROXY_TOOL_OUTPUT_LARGEST_TRACE_ITEMS", 5)),
+        max(1, _env_int("COX_TOOL_OUTPUT_LARGEST_TRACE_ITEMS", 5)),
     )
     summary["largest_outputs"] = _compact_tool_output_targets_for_trace(
         largest_outputs,
@@ -3973,9 +3973,9 @@ def _semantic_payload_safety_core_allows_compaction(decision: dict[str, Any]) ->
 
 
 def _flattened_tool_transcript_semantic_audit(messages: Any) -> dict[str, Any]:
-    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
+    enabled_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_AUDIT", "1").strip().lower()
     enabled = enabled_env not in {"0", "false", "off", "no"}
-    max_targets = max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12))
+    max_targets = max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_AUDIT_TARGETS", 12))
 
     report: dict[str, Any] = {
         "enabled": enabled,
@@ -4145,7 +4145,7 @@ def _history_growth_breakdown(
         )
 
     largest_messages.sort(key=lambda item: int(item.get("chars") or 0), reverse=True)
-    limit = max(1, _env_int("DEEPSEEK_PROXY_HISTORY_GROWTH_LARGEST_MESSAGES", 8))
+    limit = max(1, _env_int("COX_HISTORY_GROWTH_LARGEST_MESSAGES", 8))
     summary["largest_messages"] = largest_messages[:limit]
     return summary
 
@@ -4271,10 +4271,10 @@ def _semantic_compaction_policy_for_flattened_tool_target(
 
 
 def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any) -> dict[str, Any]:
-    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
+    enabled_env = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_POLICY_DRY_RUN", "1").strip().lower()
     enabled = enabled_env not in {"0", "false", "off", "no"}
-    max_targets = max(1, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12))
-    summary_chars = max(128, _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700))
+    max_targets = max(1, _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_TARGETS", 12))
+    summary_chars = max(128, _env_int("COX_FLATTENED_TOOL_SEMANTIC_POLICY_SUMMARY_CHARS", 700))
     before_tokens = _semantic_payload_token_estimate({"messages": messages})[0] if isinstance(messages, list) else 0
     safety_core = _semantic_payload_safety_core_contract()
 
@@ -4380,24 +4380,24 @@ def _flattened_tool_transcript_semantic_compaction_policy_dry_run(messages: Any)
 
 
 def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, Any]:
-    enabled_env = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_DRY_RUN", "1").strip().lower()
+    enabled_env = os.environ.get("COX_FLATTENED_TOOL_COMPACTION_DRY_RUN", "1").strip().lower()
     enabled = enabled_env not in {"0", "false", "off", "no"}
 
     preserve_recent_messages = max(
         0,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
+        _env_int("COX_FLATTENED_TOOL_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
     )
     min_message_chars = max(
         1,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", 2000),
+        _env_int("COX_FLATTENED_TOOL_COMPACTION_MIN_MESSAGE_CHARS", 2000),
     )
     summary_chars = max(
         128,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", 1200),
+        _env_int("COX_FLATTENED_TOOL_COMPACTION_SUMMARY_CHARS", 1200),
     )
     max_targets = max(
         1,
-        _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_COMPACTION_TARGETS", 8),
+        _env_int("COX_FLATTENED_TOOL_COMPACTION_TARGETS", 8),
     )
 
     report: dict[str, Any] = {
@@ -4488,7 +4488,7 @@ def _flattened_tool_transcript_compaction_dry_run(messages: Any) -> dict[str, An
 
 
 def _flattened_tool_payload_compaction_env_config() -> dict[str, Any]:
-    mode = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run").strip().lower()
+    mode = os.environ.get("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MODE", "dry_run").strip().lower()
     if mode not in {"off", "dry_run", "enabled"}:
         mode = "dry_run"
 
@@ -4496,19 +4496,19 @@ def _flattened_tool_payload_compaction_env_config() -> dict[str, Any]:
         "mode": mode,
         "preserve_recent_messages": max(
             0,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
+            _env_int("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
         ),
         "min_message_chars": max(
             1,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", 2000),
+            _env_int("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", 2000),
         ),
         "summary_chars": max(
             512,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", 1200),
+            _env_int("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_SUMMARY_CHARS", 1200),
         ),
         "trace_targets": max(
             1,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_PAYLOAD_COMPACTION_TRACE_TARGETS", 8),
+            _env_int("COX_FLATTENED_TOOL_PAYLOAD_COMPACTION_TRACE_TARGETS", 8),
         ),
     }
 
@@ -4521,7 +4521,7 @@ def _build_flattened_tool_payload_compaction_text(
     summary_chars: int,
 ) -> str:
     header = (
-        "[flattened tool transcript compacted by CoDeepSeedeX]\n"
+        "[flattened tool transcript compacted by CodeXchange]\n"
         f"message_index: {message_index}\n"
         f"original_chars: {original_chars}\n"
         "reason: old flattened tool transcript summarized for this upstream payload only\n"
@@ -4563,7 +4563,7 @@ def _build_flattened_tool_payload_compaction_text(
 
 
 def _flattened_tool_semantic_payload_compaction_env_config() -> dict[str, Any]:
-    mode = os.environ.get("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run").strip().lower()
+    mode = os.environ.get("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "dry_run").strip().lower()
     if mode not in {"off", "dry_run", "enabled"}:
         mode = "dry_run"
 
@@ -4571,19 +4571,19 @@ def _flattened_tool_semantic_payload_compaction_env_config() -> dict[str, Any]:
         "mode": mode,
         "preserve_recent_messages": max(
             0,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
+            _env_int("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", 20),
         ),
         "min_message_chars": max(
             1,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", 2000),
+            _env_int("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", 2000),
         ),
         "summary_chars": max(
             512,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", 900),
+            _env_int("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", 900),
         ),
         "trace_targets": max(
             1,
-            _env_int("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_TRACE_TARGETS", 8),
+            _env_int("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_TRACE_TARGETS", 8),
         ),
     }
 
@@ -4634,7 +4634,7 @@ def _build_semantic_test_output_payload_compaction_text(
         retention_markers = []
 
     header = (
-        "[semantic flattened tool transcript compacted by CoDeepSeedeX]\n"
+        "[semantic flattened tool transcript compacted by CodeXchange]\n"
         f"message_index: {message_index}\n"
         f"original_chars: {original_chars}\n"
         f"semantic_type: {semantic_type}\n"
@@ -5053,10 +5053,10 @@ def _deepseek_thinking_config() -> dict[str, str]:
     """Return DeepSeek thinking config.
 
     Default is disabled because the stable v0.4 path depends on avoiding
-    reasoning_content replay requirements. Set DEEPSEEK_THINKING=enabled
+    reasoning_content replay requirements. Set COX_REASONING=enabled
     only for experimental thinking-mode runs.
     """
-    value = os.environ.get("DEEPSEEK_THINKING", "disabled").strip().lower()
+    value = os.environ.get("COX_REASONING", "disabled").strip().lower()
     if value in {"1", "true", "yes", "on", "enabled"}:
         return {"type": "enabled"}
     return {"type": "disabled"}
@@ -5092,7 +5092,7 @@ def _normalize_deepseek_role(role: Any) -> str:
     if role_str in {"system", "user", "assistant", "tool", "latest_reminder"}:
         return role_str
 
-    print(f"[deepseek-responses-proxy] mapped unsupported DeepSeek message role {role_str!r} to 'user'")
+    print(f"[codexchange] mapped unsupported DeepSeek message role {role_str!r} to 'user'")
     return "user"
 
 
@@ -6082,11 +6082,11 @@ def _env_float(name: str, default: float) -> float:
     try:
         value = float(raw)
     except ValueError:
-        print(f"[deepseek-responses-proxy] invalid {name}={raw!r}; using {default}")
+        print(f"[codexchange] invalid {name}={raw!r}; using {default}")
         return default
 
     if value <= 0:
-        print(f"[deepseek-responses-proxy] non-positive {name}={raw!r}; using {default}")
+        print(f"[codexchange] non-positive {name}={raw!r}; using {default}")
         return default
 
     return value
@@ -6115,7 +6115,7 @@ def _truncate_middle_text(text: str, limit: int) -> tuple[str, bool]:
     if limit == 0:
         return "", True
 
-    marker = f"\n...[deepseek-proxy context trimmed: original_chars={len(text)}]...\n"
+    marker = f"\n...[cox-proxy context trimmed: original_chars={len(text)}]...\n"
     if limit <= len(marker) + 2:
         return text[:limit], True
 
@@ -6126,24 +6126,24 @@ def _truncate_middle_text(text: str, limit: int) -> tuple[str, bool]:
 
 
 def _context_trim_env_config() -> dict[str, int]:
-    max_tool_output_chars = _env_int("DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS", 60_000)
+    max_tool_output_chars = _env_int("COX_MAX_TOOL_OUTPUT_CHARS", 60_000)
     return {
-        "max_context_chars": _env_int("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", 1_500_000),
+        "max_context_chars": _env_int("COX_MAX_CONTEXT_CHARS", 1_500_000),
         "max_tool_output_chars": max_tool_output_chars,
-        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_KEEP_RECENT_MESSAGES", 24),
-        "type_aware_trim_enabled": 1 if _env_bool("DEEPSEEK_PROXY_TYPE_AWARE_TRIM", True) else 0,
-        "image_semantic_envelope_enabled": 1 if _env_bool("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE", True) else 0,
-        "image_semantic_envelope_transform_enabled": 1 if _env_bool("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM", True) else 0,
-        "image_semantic_envelope_max_items": _env_int("DEEPSEEK_PROXY_IMAGE_SEMANTIC_ENVELOPE_MAX_ITEMS", 24),
-        "trim_tool_result_chars": _env_int("DEEPSEEK_PROXY_TRIM_TOOL_RESULT_CHARS", max_tool_output_chars),
-        "trim_log_chars": _env_int("DEEPSEEK_PROXY_TRIM_LOG_CHARS", min(max_tool_output_chars, 8_000)),
-        "trim_pytest_chars": _env_int("DEEPSEEK_PROXY_TRIM_PYTEST_CHARS", min(max_tool_output_chars, 6_000)),
-        "trim_traceback_chars": _env_int("DEEPSEEK_PROXY_TRIM_TRACEBACK_CHARS", min(max_tool_output_chars, 8_000)),
-        "trim_diff_chars": _env_int("DEEPSEEK_PROXY_TRIM_DIFF_CHARS", min(max_tool_output_chars, 12_000)),
-        "trim_json_chars": _env_int("DEEPSEEK_PROXY_TRIM_JSON_CHARS", min(max_tool_output_chars, 12_000)),
-        "trim_tool_call_arguments_chars": _env_int("DEEPSEEK_PROXY_TRIM_TOOL_CALL_ARGUMENTS_CHARS", min(max_tool_output_chars, 8_000)),
-        "trim_reasoning_chars": _env_int("DEEPSEEK_PROXY_TRIM_REASONING_CHARS", min(max_tool_output_chars, 12_000)),
-        "trim_old_text_chars": _env_int("DEEPSEEK_PROXY_TRIM_OLD_TEXT_CHARS", max_tool_output_chars),
+        "keep_recent_messages": _env_int("COX_KEEP_RECENT_MESSAGES", 24),
+        "type_aware_trim_enabled": 1 if _env_bool("COX_TYPE_AWARE_TRIM", True) else 0,
+        "image_semantic_envelope_enabled": 1 if _env_bool("COX_IMAGE_SEMANTIC_ENVELOPE", True) else 0,
+        "image_semantic_envelope_transform_enabled": 1 if _env_bool("COX_IMAGE_SEMANTIC_ENVELOPE_TRANSFORM", True) else 0,
+        "image_semantic_envelope_max_items": _env_int("COX_IMAGE_SEMANTIC_ENVELOPE_MAX_ITEMS", 24),
+        "trim_tool_result_chars": _env_int("COX_TRIM_TOOL_RESULT_CHARS", max_tool_output_chars),
+        "trim_log_chars": _env_int("COX_TRIM_LOG_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_pytest_chars": _env_int("COX_TRIM_PYTEST_CHARS", min(max_tool_output_chars, 6_000)),
+        "trim_traceback_chars": _env_int("COX_TRIM_TRACEBACK_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_diff_chars": _env_int("COX_TRIM_DIFF_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_json_chars": _env_int("COX_TRIM_JSON_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_tool_call_arguments_chars": _env_int("COX_TRIM_TOOL_CALL_ARGUMENTS_CHARS", min(max_tool_output_chars, 8_000)),
+        "trim_reasoning_chars": _env_int("COX_TRIM_REASONING_CHARS", min(max_tool_output_chars, 12_000)),
+        "trim_old_text_chars": _env_int("COX_TRIM_OLD_TEXT_CHARS", max_tool_output_chars),
     }
 
 
@@ -6295,7 +6295,7 @@ def _context_trim_first_image_index(messages: list[dict[str, Any]]) -> int | Non
 
 def _context_trim_tokenizer_for_payload(payload: dict[str, Any]) -> tuple[Any | None, dict[str, Any]]:
     model = str(payload.get("model") or DEFAULT_MODEL)
-    provider = str(os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    provider = str(os.environ.get("COX_MODEL_PROVIDER") or "deepseek")
     try:
         contract = _profile_tokenizer_contract(model, provider)
     except Exception as exc:
@@ -6334,13 +6334,13 @@ def _context_trim_count_tokens(value: Any, tokenizer: Any | None) -> tuple[int, 
 
 def _runtime_token_first_profile_name_for_payload(payload: dict[str, Any] | None = None) -> str:
     explicit = (
-        os.environ.get("DEEPSEEK_PROXY_CODEX_PROFILE")
-        or os.environ.get("DEEPSEEK_PROXY_ACTIVE_PROFILE")
-        or os.environ.get("CODEEPSEEDEX_ACTIVE_PROFILE")
+        os.environ.get("COX_CODEX_PROFILE")
+        or os.environ.get("COX_ACTIVE_PROFILE")
+        or os.environ.get("COX_ACTIVE_PROFILE")
     )
     if explicit and explicit.strip():
         return explicit.strip()
-    return "deepseek-thinking" if _thinking_enabled() else "deepseek"
+    return "cox" if _thinking_enabled() else "deepseek"
 
 
 
@@ -6356,14 +6356,14 @@ def _runtime_token_first_context_contract_for_payload(
     if not isinstance(profile_section, dict):
         profile_section = {}
 
-    env_model_context = _env_int("DEEPSEEK_PROXY_MODEL_CONTEXT_WINDOW_TOKENS", 0)
+    env_model_context = _env_int("COX_MODEL_CONTEXT_WINDOW_TOKENS", 0)
     ratio = _managed_auto_compact_ratio()
 
     profile_model_context = _runtime_int_or_zero(profile_section.get("model_context_window"))
     legacy_profile_auto_threshold = _runtime_int_or_zero(profile_section.get("model_auto_compact_token_limit"))
     ignored_env_auto_threshold = (
-        _env_int("DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS", 0)
-        or _env_int("DEEPSEEK_PROXY_MODEL_AUTO_COMPACT_TOKEN_LIMIT", 0)
+        _env_int("COX_AUTO_COMPACT_THRESHOLD_TOKENS", 0)
+        or _env_int("COX_MODEL_AUTO_COMPACT_TOKEN_LIMIT", 0)
     )
 
     model_context_window_tokens = env_model_context or profile_model_context or 1_000_000
@@ -6375,7 +6375,7 @@ def _runtime_token_first_context_contract_for_payload(
     )
 
     context_source = (
-        "env.DEEPSEEK_PROXY_MODEL_CONTEXT_WINDOW_TOKENS"
+        "env.COX_MODEL_CONTEXT_WINDOW_TOKENS"
         if env_model_context > 0
         else "codex_profile.model_context_window"
         if profile_model_context > 0
@@ -6394,13 +6394,13 @@ def _runtime_token_first_context_contract_for_payload(
             "available": True,
             "ignored_value": ignored_value,
             "ignored_value_source": (
-                "env.DEEPSEEK_PROXY_AUTO_COMPACT_THRESHOLD_TOKENS_or_MODEL_AUTO_COMPACT_TOKEN_LIMIT"
+                "env.COX_AUTO_COMPACT_THRESHOLD_TOKENS_or_MODEL_AUTO_COMPACT_TOKEN_LIMIT"
                 if ignored_env_auto_threshold
                 else "codex_profile.model_auto_compact_token_limit"
             ),
             "derived_value": auto_compact_threshold_tokens,
             "reason": "managed_profiles_derive_auto_compact_threshold_from_ratio_only",
-            "action": "run dsproxy profile repair --managed-only --json to rewrite generated Codex profile values",
+            "action": "run cox profile repair --managed-only --json to rewrite generated Codex profile values",
         }
 
     return {
@@ -6661,28 +6661,28 @@ def _context_trim_type_aware_limit(
     max_tool_output_chars = max(128, int(config.get("max_tool_output_chars") or 60_000))
 
     if field == "reasoning_content":
-        return limits["reasoning_content"], "reasoning_content", "DEEPSEEK_PROXY_TRIM_REASONING_CHARS"
+        return limits["reasoning_content"], "reasoning_content", "COX_TRIM_REASONING_CHARS"
 
     if field == "tool_call_arguments":
-        return limits["tool_call_arguments"], "tool_call_arguments", "DEEPSEEK_PROXY_TRIM_TOOL_CALL_ARGUMENTS_CHARS"
+        return limits["tool_call_arguments"], "tool_call_arguments", "COX_TRIM_TOOL_CALL_ARGUMENTS_CHARS"
 
     if item_type == "tool_result":
-        return limits["tool_result"], "tool_result", "DEEPSEEK_PROXY_TRIM_TOOL_RESULT_CHARS"
+        return limits["tool_result"], "tool_result", "COX_TRIM_TOOL_RESULT_CHARS"
 
     if item_type in {"log", "pytest", "traceback", "diff", "json"}:
         env_key = {
-            "log": "DEEPSEEK_PROXY_TRIM_LOG_CHARS",
-            "pytest": "DEEPSEEK_PROXY_TRIM_PYTEST_CHARS",
-            "traceback": "DEEPSEEK_PROXY_TRIM_TRACEBACK_CHARS",
-            "diff": "DEEPSEEK_PROXY_TRIM_DIFF_CHARS",
-            "json": "DEEPSEEK_PROXY_TRIM_JSON_CHARS",
+            "log": "COX_TRIM_LOG_CHARS",
+            "pytest": "COX_TRIM_PYTEST_CHARS",
+            "traceback": "COX_TRIM_TRACEBACK_CHARS",
+            "diff": "COX_TRIM_DIFF_CHARS",
+            "json": "COX_TRIM_JSON_CHARS",
         }[item_type]
         return limits[item_type], item_type, env_key
 
     if not is_recent:
-        return limits["old_text"], "old_text", "DEEPSEEK_PROXY_TRIM_OLD_TEXT_CHARS"
+        return limits["old_text"], "old_text", "COX_TRIM_OLD_TEXT_CHARS"
 
-    return max_tool_output_chars, "default_recent_text", "DEEPSEEK_PROXY_MAX_TOOL_OUTPUT_CHARS"
+    return max_tool_output_chars, "default_recent_text", "COX_MAX_TOOL_OUTPUT_CHARS"
 
 
 def _context_trim_type_aware_report(config: dict[str, int]) -> dict[str, Any]:
@@ -6820,7 +6820,7 @@ def _context_image_semantic_envelope_text(item: dict[str, Any]) -> str:
     source_shapes = item.get("source_shapes") if isinstance(item.get("source_shapes"), list) else []
     return "\n".join(
         [
-            "[deepseek-proxy image semantic envelope]",
+            "[cox-proxy image semantic envelope]",
             f"original_message_index: {item.get('index')}",
             f"role: {item.get('role')}",
             f"image_count: {item.get('image_count')}",
@@ -6919,7 +6919,7 @@ def _context_image_semantic_envelope_report(
         "notes": [
             "This report exposes display-safe image metadata only.",
             "All observed image payloads are preserved verbatim and excluded from compact/trim transforms.",
-            "If image payloads make an upstream request too large, dsproxy must surface diagnostics instead of mutating the payload.",
+            "If image payloads make an upstream request too large, cox must surface diagnostics instead of mutating the payload.",
             "semantic_summary_unavailable=true means no OCR, caption, external vision summary, semantic envelope, artifact-ref replacement, compact, or trim is applied to image payloads.",
         ],
     }
@@ -7029,11 +7029,11 @@ def _context_trim_token_first_dry_run(
     messages_tokens = sum(int(item.get("estimated_tokens") or 0) for item in items)
 
     context_contract = _runtime_token_first_context_contract_for_payload(payload, active_profile=active_profile)
-    env_target = _env_int("DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS", 0)
+    env_target = _env_int("COX_TRIM_MAX_CONTEXT_TOKENS", 0)
     contract_target = int(context_contract.get("auto_compact_threshold_tokens") or 0)
     max_context_tokens = env_target or contract_target
     max_context_tokens_source = (
-        "env.DEEPSEEK_PROXY_TRIM_MAX_CONTEXT_TOKENS"
+        "env.COX_TRIM_MAX_CONTEXT_TOKENS"
         if env_target > 0
         else context_contract.get("auto_compact_threshold_source")
     )
@@ -7054,7 +7054,7 @@ def _context_trim_token_first_dry_run(
         }
         for item in sorted(items, key=lambda value: int(value.get("estimated_tokens") or 0), reverse=True)
         if not bool(item.get("protected"))
-    ][: max(1, _env_int("DEEPSEEK_PROXY_TRIM_DRY_RUN_MAX_TARGETS", 12))]
+    ][: max(1, _env_int("COX_TRIM_DRY_RUN_MAX_TARGETS", 12))]
 
     return {
         "available": True,
@@ -7350,7 +7350,7 @@ def _compact_old_message_prefix(
         role_counts[role] = role_counts.get(role, 0) + 1
 
     summary_text = (
-        "[deepseek-proxy context compacted]\n"
+        "[cox-proxy context compacted]\n"
         f"compacted_message_count: {len(compacted)}\n"
         f"compacted_chars: {compacted_chars}\n"
         f"role_counts: {json.dumps(role_counts, ensure_ascii=False, sort_keys=True)}\n"
@@ -7776,31 +7776,31 @@ def _compact_deepseek_payload_context(payload: dict[str, Any], *, active_profile
 
 
 def _context_compaction_env_config() -> dict[str, Any]:
-    policy = os.environ.get("DEEPSEEK_PROXY_COMPACT_POLICY", "adaptive").strip().lower()
+    policy = os.environ.get("COX_COMPACT_POLICY", "adaptive").strip().lower()
     if policy not in {"adaptive", "fixed"}:
-        print(f"[deepseek-responses-proxy] invalid DEEPSEEK_PROXY_COMPACT_POLICY={policy!r}; using adaptive")
+        print(f"[codexchange] invalid COX_COMPACT_POLICY={policy!r}; using adaptive")
         policy = "adaptive"
 
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_COMPACT_ENABLED", True),
+        "enabled": _env_bool("COX_COMPACT_ENABLED", True),
         "policy": policy,
-        "max_context_chars": _env_int("DEEPSEEK_PROXY_MAX_CONTEXT_CHARS", 1_500_000),
-        "trigger_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", 900_000),
-        "target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_TARGET_CHARS", 280_000),
-        "keep_recent_messages": _env_int("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", 24),
-        "material_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", 260_000),
-        "max_summary_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_SUMMARY_CHARS", 60_000),
-        "min_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TARGET_CHARS", 350_000),
-        "max_target_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MAX_TARGET_CHARS", 900_000),
-        "min_new_chars": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_NEW_CHARS", 250_000),
-        "min_turns": _env_int("DEEPSEEK_PROXY_COMPACT_MIN_TURNS", 4),
-        "emergency_ratio": _env_float("DEEPSEEK_PROXY_COMPACT_EMERGENCY_RATIO", 0.92),
-        "recent_growth_messages": _env_int("DEEPSEEK_PROXY_COMPACT_RECENT_GROWTH_MESSAGES", 8),
-        "expected_growth_turns": _env_int("DEEPSEEK_PROXY_COMPACT_EXPECTED_GROWTH_TURNS", 6),
-        "reserve_before_min_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MIN_CHARS", 250_000),
-        "reserve_before_max_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_BEFORE_MAX_CHARS", 600_000),
-        "reserve_after_min_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MIN_CHARS", 350_000),
-        "reserve_after_max_chars": _env_int("DEEPSEEK_PROXY_COMPACT_RESERVE_AFTER_MAX_CHARS", 750_000),
+        "max_context_chars": _env_int("COX_MAX_CONTEXT_CHARS", 1_500_000),
+        "trigger_chars": _env_int("COX_COMPACT_TRIGGER_CHARS", 900_000),
+        "target_chars": _env_int("COX_COMPACT_TARGET_CHARS", 280_000),
+        "keep_recent_messages": _env_int("COX_COMPACT_KEEP_RECENT_MESSAGES", 24),
+        "material_chars": _env_int("COX_COMPACT_MATERIAL_CHARS", 260_000),
+        "max_summary_chars": _env_int("COX_COMPACT_MAX_SUMMARY_CHARS", 60_000),
+        "min_target_chars": _env_int("COX_COMPACT_MIN_TARGET_CHARS", 350_000),
+        "max_target_chars": _env_int("COX_COMPACT_MAX_TARGET_CHARS", 900_000),
+        "min_new_chars": _env_int("COX_COMPACT_MIN_NEW_CHARS", 250_000),
+        "min_turns": _env_int("COX_COMPACT_MIN_TURNS", 4),
+        "emergency_ratio": _env_float("COX_COMPACT_EMERGENCY_RATIO", 0.92),
+        "recent_growth_messages": _env_int("COX_COMPACT_RECENT_GROWTH_MESSAGES", 8),
+        "expected_growth_turns": _env_int("COX_COMPACT_EXPECTED_GROWTH_TURNS", 6),
+        "reserve_before_min_chars": _env_int("COX_COMPACT_RESERVE_BEFORE_MIN_CHARS", 250_000),
+        "reserve_before_max_chars": _env_int("COX_COMPACT_RESERVE_BEFORE_MAX_CHARS", 600_000),
+        "reserve_after_min_chars": _env_int("COX_COMPACT_RESERVE_AFTER_MIN_CHARS", 350_000),
+        "reserve_after_max_chars": _env_int("COX_COMPACT_RESERVE_AFTER_MAX_CHARS", 750_000),
     }
 
 
@@ -7907,7 +7907,7 @@ def _resolve_compaction_budget_policy(
         )
 
         adaptive_trigger = max(1, max_context_chars - reserve_before_send)
-        if "DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS" in os.environ:
+        if "COX_COMPACT_TRIGGER_CHARS" in os.environ:
             adaptive_trigger = min(adaptive_trigger, fixed_trigger)
 
         adaptive_target = _clamp_int(
@@ -7915,7 +7915,7 @@ def _resolve_compaction_budget_policy(
             min_target_chars,
             max_target_chars,
         )
-        if "DEEPSEEK_PROXY_COMPACT_TARGET_CHARS" in os.environ:
+        if "COX_COMPACT_TARGET_CHARS" in os.environ:
             adaptive_target = _clamp_int(
                 min(adaptive_target, fixed_target),
                 1,
@@ -8251,7 +8251,7 @@ def _retained_recent_turns_policy(
         "redacted": True,
         "notes": [
             "The retained recent tail stays verbatim after the compacted summary.",
-            "If the nominal boundary lands on a tool result, dsproxy rewinds to keep the assistant tool_call with its tool output.",
+            "If the nominal boundary lands on a tool result, cox rewinds to keep the assistant tool_call with its tool output.",
             "latest_incoming_user_preserved and active_tool_chain_preserved are explicit audit booleans; raw recent message content is not exposed.",
         ],
     }
@@ -8301,10 +8301,10 @@ CODEX_NATIVE_COMPACT_PROMPT_SHA256 = "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9
 CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256 = "e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e"
 CODEX_NATIVE_COMPACT_SOURCE_COMMIT = "main"
 
-DSPROXY_PERSISTENT_COMPACTION_SUMMARY_MARKER = "[deepseek-proxy persistent compaction summary]"
-DSPROXY_SEMANTIC_COMPACTION_SUMMARY_MARKERS = (
-    "[semantic flattened tool transcript compacted by CoDeepSeedeX]",
-    "[flattened tool transcript compacted by CoDeepSeedeX]",
+COX_PERSISTENT_COMPACTION_SUMMARY_MARKER = "[cox-proxy persistent compaction summary]"
+COX_SEMANTIC_COMPACTION_SUMMARY_MARKERS = (
+    "[semantic flattened tool transcript compacted by CodeXchange]",
+    "[flattened tool transcript compacted by CodeXchange]",
 )
 
 
@@ -8312,10 +8312,10 @@ def _is_codex_native_compaction_summary_text(text: str) -> bool:
     return str(text or "").lstrip().startswith(CODEX_NATIVE_COMPACT_SUMMARY_PREFIX)
 
 
-def _is_dsproxy_compaction_summary_text(text: str) -> bool:
+def _is_cox_compaction_summary_text(text: str) -> bool:
     value = str(text or "")
-    return DSPROXY_PERSISTENT_COMPACTION_SUMMARY_MARKER in value or any(
-        marker in value for marker in DSPROXY_SEMANTIC_COMPACTION_SUMMARY_MARKERS
+    return COX_PERSISTENT_COMPACTION_SUMMARY_MARKER in value or any(
+        marker in value for marker in COX_SEMANTIC_COMPACTION_SUMMARY_MARKERS
     )
 
 
@@ -8329,7 +8329,7 @@ def _is_protected_compaction_summary_message(message: dict[str, Any]) -> bool:
     if not isinstance(message, dict):
         return False
     text = _plain_text_from_content(message.get("content", ""))
-    return _is_codex_native_compaction_summary_text(text) or _is_dsproxy_compaction_summary_text(text)
+    return _is_codex_native_compaction_summary_text(text) or _is_cox_compaction_summary_text(text)
 
 
 def _protected_compaction_summary_observation(
@@ -8340,20 +8340,20 @@ def _protected_compaction_summary_observation(
     recent_start = _safe_recent_message_start(messages, keep_recent_messages)
     summary_indexes: list[int] = []
     codex_indexes: list[int] = []
-    dsproxy_indexes: list[int] = []
+    cox_indexes: list[int] = []
 
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             continue
         text = _plain_text_from_content(message.get("content", ""))
         is_codex = _is_codex_native_compaction_summary_text(text)
-        is_dsproxy = _is_dsproxy_compaction_summary_text(text)
-        if is_codex or is_dsproxy:
+        is_cox = _is_cox_compaction_summary_text(text)
+        if is_codex or is_cox:
             summary_indexes.append(index)
             if is_codex:
                 codex_indexes.append(index)
-            if is_dsproxy:
-                dsproxy_indexes.append(index)
+            if is_cox:
+                cox_indexes.append(index)
 
     compactable_message_count = recent_start
     protected_compactable_indexes = [index for index in summary_indexes if index < recent_start]
@@ -8367,20 +8367,20 @@ def _protected_compaction_summary_observation(
 
     return {
         "available": True,
-        "observation_model": "dsproxy_observed_http_payload_and_managed_profile_contract",
+        "observation_model": "cox_observed_http_payload_and_managed_profile_contract",
         "truth_scope": "observed_or_inferred_not_codex_internal_session_truth",
         "summary_detected": bool(summary_indexes),
         "codex_native_summary_detected": bool(codex_indexes),
-        "dsproxy_summary_detected": bool(dsproxy_indexes),
+        "cox_summary_detected": bool(cox_indexes),
         "summary_count": len(summary_indexes),
         "codex_native_summary_count": len(codex_indexes),
-        "dsproxy_summary_count": len(dsproxy_indexes),
+        "cox_summary_count": len(cox_indexes),
         "latest_codex_native_summary_index": latest_codex_index,
         "latest_codex_native_summary_sha256": latest_codex_sha256,
         "compactable_message_count": compactable_message_count,
         "protected_compactable_message_count": len(protected_compactable_indexes),
         "raw_compactable_message_count": raw_compactable_message_count,
-        "protected_from_dsproxy_recompact": bool(summary_indexes),
+        "protected_from_cox_recompact": bool(summary_indexes),
         "llm_recompact_native_summary_allowed": False,
         "emergency_summary_shrink_allowed": True,
         "raw_summary_exposed": False,
@@ -8399,8 +8399,8 @@ def _codex_native_compact_observation(
         messages,
         keep_recent_messages=max(1, _context_compaction_env_config().get("keep_recent_messages", 24)),
     )
-    provider_id = os.environ.get("DEEPSEEK_PROXY_CODEX_PROVIDER_ID") or (
-        "deepseek-thinking-proxy" if _thinking_enabled() else "deepseek-proxy"
+    provider_id = os.environ.get("COX_CODEX_PROVIDER_ID") or (
+        "cox-proxy" if _thinking_enabled() else "cox-proxy"
     )
     context_contract = _runtime_token_first_context_contract_for_payload(request_payload or {})
     return {
@@ -8409,7 +8409,7 @@ def _codex_native_compact_observation(
         "truth_scope": protected["truth_scope"],
         "profile_contract": {
             "provider_id": provider_id,
-            "managed_by_dsproxy": True,
+            "managed_by_cox": True,
             "remote_compaction_expected": False,
             "expected_compact_path": "ordinary_responses_inline_compact",
             "forbidden_or_unexpected_path": "responses/compact",
@@ -8420,7 +8420,7 @@ def _codex_native_compact_observation(
         "latest_request_observation": {
             "compact_request_observed": False,
             "path": path,
-            "evidence": ["ordinary_responses_path_observed_by_dsproxy"],
+            "evidence": ["ordinary_responses_path_observed_by_cox"],
             "confidence": "path_only",
         },
         "latest_summary_observation": {
@@ -8429,7 +8429,7 @@ def _codex_native_compact_observation(
             "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
             "latest_summary_message_index": protected["latest_codex_native_summary_index"],
             "latest_summary_sha256": protected["latest_codex_native_summary_sha256"],
-            "protected_from_dsproxy_recompact": protected["protected_from_dsproxy_recompact"],
+            "protected_from_cox_recompact": protected["protected_from_cox_recompact"],
             "raw_summary_exposed": False,
         },
         "remote_compact_guard": {
@@ -8440,8 +8440,8 @@ def _codex_native_compact_observation(
             "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
         },
         "fallback_policy": {
-            "dsproxy_runtime_compact_role": "fallback_only",
-            "native_summary_protected": protected["protected_from_dsproxy_recompact"],
+            "cox_runtime_compact_role": "fallback_only",
+            "native_summary_protected": protected["protected_from_cox_recompact"],
             "llm_recompact_native_summary_allowed": False,
             "emergency_summary_shrink_allowed": True,
             "emergency_summary_shrink_method": "deterministic_truncate_middle",
@@ -8457,18 +8457,18 @@ def _codex_native_compact_status_from_report(
     observed = report.get("codex_native_compact") if isinstance(report, dict) else None
     if isinstance(observed, dict):
         return observed
-    provider_id = "deepseek-thinking-proxy" if str(profile or "").endswith("thinking") else "deepseek-proxy"
+    provider_id = "cox-proxy" if str(profile or "").endswith("thinking") else "cox-proxy"
     context_contract = _runtime_token_first_context_contract_for_payload(
         {},
         active_profile=str(profile or "").strip() or None,
     )
     return {
         "available": True,
-        "observation_model": "dsproxy_observed_http_payload_and_managed_profile_contract",
+        "observation_model": "cox_observed_http_payload_and_managed_profile_contract",
         "truth_scope": "observed_or_inferred_not_codex_internal_session_truth",
         "profile_contract": {
             "provider_id": provider_id,
-            "managed_by_dsproxy": True,
+            "managed_by_cox": True,
             "remote_compaction_expected": False,
             "expected_compact_path": "ordinary_responses_inline_compact",
             "forbidden_or_unexpected_path": "responses/compact",
@@ -8488,7 +8488,7 @@ def _codex_native_compact_status_from_report(
             "summary_prefix_sha256": CODEX_NATIVE_COMPACT_SUMMARY_PREFIX_SHA256,
             "latest_summary_message_index": None,
             "latest_summary_sha256": None,
-            "protected_from_dsproxy_recompact": True,
+            "protected_from_cox_recompact": True,
             "raw_summary_exposed": False,
         },
         "remote_compact_guard": {
@@ -8499,7 +8499,7 @@ def _codex_native_compact_status_from_report(
             "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
         },
         "fallback_policy": {
-            "dsproxy_runtime_compact_role": "fallback_only",
+            "cox_runtime_compact_role": "fallback_only",
             "native_summary_protected": True,
             "llm_recompact_native_summary_allowed": False,
             "emergency_summary_shrink_allowed": True,
@@ -8536,14 +8536,14 @@ def _codex_native_compact_source_evidence_contract() -> dict[str, Any]:
         "local_prompt_text_visible": True,
         "local_prompt_alignment": "exact_prompt_md_text",
         "summary_prefix_alignment": "exact_summary_prefix_md_text",
-        "remote_compaction_claimed_for_dsproxy_provider": False,
-        "remote_compaction_claim_reason": "Codex remote compaction is provider-gated by supports_remote_compaction(); dsproxy third-party DeepSeek route must not claim native remote compaction.",
+        "remote_compaction_claimed_for_cox_provider": False,
+        "remote_compaction_claim_reason": "Codex remote compaction is provider-gated by supports_remote_compaction(); cox third-party DeepSeek route must not claim native remote compaction.",
         "raw_prompt_exposed": False,
         "raw_material_exposed": False,
         "redacted": True,
         "notes": [
             "Codex native local compact prompt text is visible in GitHub source templates.",
-            "dsproxy includes the exact prompt.md text in its local compact request.",
+            "cox includes the exact prompt.md text in its local compact request.",
             "Codex remote compact endpoint exists as responses/compact but is provider-gated.",
         ],
     }
@@ -8604,7 +8604,7 @@ def _compaction_prompt_fingerprint(
         "raw_material_exposed": False,
         "notes": [
             "The digest identifies the compact prompt and material boundary without exposing raw conversation content.",
-            "The local compact request includes Codex prompt.md text exactly; role layout remains dsproxy-local and is not claimed to be Codex-native.",
+            "The local compact request includes Codex prompt.md text exactly; role layout remains cox-local and is not claimed to be Codex-native.",
             "Remote responses/compact is provider-gated and is not claimed for the third-party DeepSeek route.",
         ],
     }
@@ -8634,7 +8634,7 @@ def _compaction_prompt_messages(
     )
 
     system_prompt = (
-        "You are the local dsproxy Compact executor. Follow the Codex Compact prompt text "
+        "You are the local cox Compact executor. Follow the Codex Compact prompt text "
         "provided by the user message. Preserve exact technical facts and do not invent."
     )
     material_prompt = (
@@ -8761,7 +8761,7 @@ def _build_persistent_compacted_history(
     summary_message = {
         "role": "user",
         "content": (
-            "[deepseek-proxy persistent compaction summary]\n"
+            "[cox-proxy persistent compaction summary]\n"
             "The older conversation history was compacted to keep the Codex-like "
             "agent loop within the DeepSeek context budget. Treat this summary as "
             "authoritative for earlier work, and treat the following recent messages "
@@ -9065,14 +9065,14 @@ def _write_context_compaction_report(report: dict[str, Any]) -> None:
             encoding="utf-8",
         )
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write context compaction report: {exc}")
+        print(f"[codexchange] failed to write context compaction report: {exc}")
 
 
 _PAYLOAD_TRACE_SENSITIVE_KEY_RE = re.compile(r"(api[_-]?key|authorization|token|secret|password)", re.IGNORECASE)
 
 
 def _payload_trace_dir() -> Path | None:
-    raw = os.environ.get("DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR", "").strip()
+    raw = os.environ.get("COX_PAYLOAD_TRACE_DIR", "").strip()
     if not raw:
         return None
 
@@ -9080,11 +9080,11 @@ def _payload_trace_dir() -> Path | None:
         trace_dir = Path(raw).expanduser().resolve()
         tmp_root = Path("/tmp").resolve()
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] invalid DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR={raw!r}: {exc}")
+        print(f"[codexchange] invalid COX_PAYLOAD_TRACE_DIR={raw!r}: {exc}")
         return None
 
     if trace_dir != tmp_root and tmp_root not in trace_dir.parents:
-        print("[deepseek-responses-proxy] ignoring DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR outside /tmp")
+        print("[codexchange] ignoring COX_PAYLOAD_TRACE_DIR outside /tmp")
         return None
 
     return trace_dir
@@ -9261,7 +9261,7 @@ def _write_upstream_payload_trace(
         tmp_path.write_text(json.dumps(event, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp_path.replace(final_path)
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write upstream payload trace: {exc}")
+        print(f"[codexchange] failed to write upstream payload trace: {exc}")
 
 
 class DeepSeekClient:
@@ -9272,9 +9272,9 @@ class DeepSeekClient:
         base_url: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
-        self.base_url = (base_url or os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
-        timeout_seconds = _env_float("DEEPSEEK_PROXY_UPSTREAM_TIMEOUT_SECONDS", 180.0)
+        self.api_key = api_key or os.environ.get("COX_MODEL_API_KEY", "")
+        self.base_url = (base_url or os.environ.get("COX_MODEL_BASE_URL", "https://api.deepseek.com")).rstrip("/")
+        timeout_seconds = _env_float("COX_UPSTREAM_TIMEOUT_SECONDS", 180.0)
         self.last_context_trimming_report: dict[str, Any] | None = None
         self._client = http_client or httpx.AsyncClient(timeout=timeout_seconds)
 
@@ -9290,9 +9290,9 @@ class DeepSeekClient:
 
         if response.status_code >= 400:
             body = response.text
-            print("[deepseek-responses-proxy] DeepSeek balance upstream error")
-            print(f"[deepseek-responses-proxy] status={response.status_code}")
-            print(f"[deepseek-responses-proxy] body={body}")
+            print("[codexchange] DeepSeek balance upstream error")
+            print(f"[codexchange] status={response.status_code}")
+            print(f"[codexchange] body={body}")
             raise HTTPException(
                 status_code=502 if response.status_code != 429 else 429,
                 detail={
@@ -9323,7 +9323,7 @@ class DeepSeekClient:
         if isinstance(trace_metadata, dict):
             active_profile = trace_metadata.get("active_profile")
             if not active_profile and trace_metadata.get("thinking_enabled") is not None:
-                active_profile = ("deepseek-thinking" if bool(trace_metadata.get("thinking_enabled")) else "deepseek")
+                active_profile = ("cox" if bool(trace_metadata.get("thinking_enabled")) else "deepseek")
         payload, context_trimming_report = _compact_deepseek_payload_context(payload, active_profile=str(active_profile) if active_profile else None)
         context_trimming_report["observed_at"] = _runtime_payload_guard_observed_at()
         context_trimming_report["source"] = "live_request_payload"
@@ -9349,7 +9349,7 @@ class DeepSeekClient:
                 encoding="utf-8",
             )
         except Exception as exc:
-            print(f"[deepseek-responses-proxy] failed to write debug payload: {exc}")
+            print(f"[codexchange] failed to write debug payload: {exc}")
 
         _write_upstream_payload_trace(
             payload,
@@ -9365,9 +9365,9 @@ class DeepSeekClient:
 
         if response.status_code >= 400:
             body = response.text
-            print("[deepseek-responses-proxy] DeepSeek upstream error")
-            print(f"[deepseek-responses-proxy] status={response.status_code}")
-            print(f"[deepseek-responses-proxy] body={body}")
+            print("[codexchange] DeepSeek upstream error")
+            print(f"[codexchange] status={response.status_code}")
+            print(f"[codexchange] body={body}")
             raise HTTPException(
                 status_code=502,
                 detail=_upstream_error_detail(status_code=response.status_code, body=body),
@@ -9441,7 +9441,7 @@ async def _chat_completions_with_usage(
             "requested_model": requested_model,
             "effective_model": effective_model,
             "thinking_enabled": thinking_enabled,
-            "active_profile": "deepseek-thinking" if thinking_enabled else "deepseek",
+            "active_profile": "cox" if thinking_enabled else "deepseek",
             "session_id": session_id,
         }
         chat_completions = deepseek_client.chat_completions
@@ -9499,13 +9499,13 @@ async def _chat_completions_with_usage(
             store.save_runtime_payload_report(
                 trimming_report,
                 kind="trimming",
-                profile="deepseek-thinking" if thinking_enabled else "deepseek",
+                profile="cox" if thinking_enabled else "deepseek",
                 session_id=session_id,
                 request_id=request_id,
                 response_id=response_id,
             )
         except Exception as exc:
-            print(f"[deepseek-responses-proxy] failed to persist runtime trimming report: {exc}")
+            print(f"[codexchange] failed to persist runtime trimming report: {exc}")
 
     _debug_trace_event(
         response_id,
@@ -9621,7 +9621,7 @@ def _parse_mcp_proxy_tool_name(function_name: Any) -> dict[str, str] | None:
 
 
 def _mcp_executor_policy_mode() -> str:
-    mode = os.environ.get("DEEPSEEK_PROXY_MCP_POLICY", "codex").strip().lower()
+    mode = os.environ.get("COX_MCP_POLICY", "codex").strip().lower()
     if mode in {"codex", "allowlist", "off"}:
         return mode
     return "codex"
@@ -9630,7 +9630,7 @@ def _mcp_executor_policy_mode() -> str:
 def _mcp_executor_enabled() -> bool:
     if _mcp_executor_policy_mode() == "off":
         return False
-    return _env_bool("DEEPSEEK_PROXY_MCP_EXECUTOR", True)
+    return _env_bool("COX_MCP_EXECUTOR", True)
 
 
 def _split_env_csv(name: str) -> set[str]:
@@ -9644,15 +9644,15 @@ def _split_env_csv(name: str) -> set[str]:
 
 
 def _mcp_executor_readonly_allowlist() -> set[str]:
-    return _split_env_csv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST")
+    return _split_env_csv("COX_MCP_READONLY_ALLOWLIST")
 
 
 def _mcp_executor_write_allowlist() -> set[str]:
-    return _split_env_csv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST")
+    return _split_env_csv("COX_MCP_WRITE_ALLOWLIST")
 
 
 def _mcp_config_path() -> Path:
-    configured = os.environ.get("DEEPSEEK_PROXY_MCP_CONFIG_PATH")
+    configured = os.environ.get("COX_MCP_CONFIG_PATH")
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".codex" / "config.toml"
@@ -9735,7 +9735,7 @@ def _codex_mcp_config_snapshot(
 
 
 def _mcp_executor_backend_type() -> str:
-    backend_type = os.environ.get("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", "stdio").strip().lower()
+    backend_type = os.environ.get("COX_MCP_EXECUTOR_BACKEND", "stdio").strip().lower()
     if backend_type in {"none", "injected", "stdio"}:
         return backend_type
     return "stdio"
@@ -9919,7 +9919,7 @@ async def _execute_mcp_stdio_backend(
             },
         }
 
-    from deepseek_responses_proxy.mcp_stdio import (
+    from codexchange_proxy.mcp_stdio import (
         call_stdio_mcp_tool,
         discover_stdio_mcp_tools,
         mcp_server_config_from_snapshot,
@@ -10103,7 +10103,7 @@ async def _execute_mcp_proxy_tool_call(tool_call: dict[str, Any]) -> dict[str, A
 
 
 def _mcp_diagnostic_call_enabled() -> bool:
-    return _env_bool("DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL", False)
+    return _env_bool("COX_MCP_DIAGNOSTIC_CALL", False)
 
 
 def _mcp_diagnostic_function_name(payload: dict[str, Any]) -> str:
@@ -10147,7 +10147,7 @@ async def _mcp_diagnostic_call(payload: dict[str, Any]) -> dict[str, Any]:
             **base,
             "ok": False,
             "error": "mcp_diagnostic_call_disabled",
-            "message": "Set DEEPSEEK_PROXY_MCP_DIAGNOSTIC_CALL=1 to enable this diagnostic endpoint.",
+            "message": "Set COX_MCP_DIAGNOSTIC_CALL=1 to enable this diagnostic endpoint.",
         }
 
     if parsed is None:
@@ -10163,7 +10163,7 @@ async def _mcp_diagnostic_call(payload: dict[str, Any]) -> dict[str, Any]:
             **base,
             "ok": False,
             "error": "mcp_executor_disabled",
-            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR=1 before using diagnostic MCP calls.",
+            "message": "Set COX_MCP_EXECUTOR=1 before using diagnostic MCP calls.",
         }
 
     if not _mcp_stdio_backend_enabled():
@@ -10171,7 +10171,7 @@ async def _mcp_diagnostic_call(payload: dict[str, Any]) -> dict[str, Any]:
             **base,
             "ok": False,
             "error": "mcp_stdio_backend_disabled",
-            "message": "Set DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND=stdio for diagnostic MCP calls.",
+            "message": "Set COX_MCP_EXECUTOR_BACKEND=stdio for diagnostic MCP calls.",
         }
 
     decision = _mcp_executor_policy_decision(function_name)
@@ -10217,11 +10217,11 @@ def _normalize_mcp_nested_tool(
 
     forwarding_class = _mcp_tool_forwarding_class(name)
     if forwarding_class == "readonly":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", True)
+        enabled = _env_bool("COX_FORWARD_MCP_READONLY_TOOLS", True)
     elif forwarding_class == "write":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", True)
+        enabled = _env_bool("COX_FORWARD_MCP_WRITE_TOOLS", True)
     elif forwarding_class == "tutorial":
-        enabled = _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", True)
+        enabled = _env_bool("COX_FORWARD_MCP_TUTORIAL_TOOLS", True)
     else:
         enabled = False
 
@@ -10273,7 +10273,7 @@ def _normalize_mcp_nested_tool(
 
 _MANAGED_TOOL_ROUTING_KINDS = ("web_search", "image_generation")
 _MANAGED_TOOL_ROUTING_POLICIES = {"auto", "managed_only", "native_only", "disabled"}
-_MANAGED_TOOL_ROUTING_MARKER = "[codeepseedex managed tool routing]"
+_MANAGED_TOOL_ROUTING_MARKER = "[codexchange managed tool routing]"
 
 _NATIVE_TOOL_ALIASES = {
     "web_search": {
@@ -10289,8 +10289,8 @@ _NATIVE_TOOL_ALIASES = {
 }
 
 _MANAGED_TOOL_FUNCTION_NAMES = {
-    "web_search": "codeepseedex_web_search",
-    "image_generation": "codeepseedex_generate_image",
+    "web_search": "codexchange_web_search",
+    "image_generation": "codexchange_generate_image",
 }
 
 
@@ -10310,16 +10310,16 @@ def _normalize_tool_routing_policy_value(value: Any, *, default: str = "auto") -
 def _managed_tool_routing_env_names(kind: str) -> list[str]:
     if kind == "web_search":
         return [
-            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING",
-            "DEEPSEEK_PROXY_WEB_SEARCH_ROUTING_POLICY",
-            "CODEEPSEEDEX_WEB_SEARCH_ROUTING",
+            "COX_WEB_SEARCH_ROUTING",
+            "COX_WEB_SEARCH_ROUTING_POLICY",
+            "COX_WEB_SEARCH_ROUTING",
         ]
     if kind == "image_generation":
         return [
-            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING",
-            "DEEPSEEK_PROXY_IMAGE_ROUTING",
-            "DEEPSEEK_PROXY_IMAGE_GENERATION_ROUTING_POLICY",
-            "CODEEPSEEDEX_IMAGE_GENERATION_ROUTING",
+            "COX_IMAGE_GENERATION_ROUTING",
+            "COX_IMAGE_ROUTING",
+            "COX_IMAGE_GENERATION_ROUTING_POLICY",
+            "COX_IMAGE_GENERATION_ROUTING",
         ]
     return []
 
@@ -10360,13 +10360,13 @@ def _managed_tool_schema(kind: str) -> dict[str, Any]:
     schema["function"]["name"] = _managed_tool_function_name(kind)
     if kind == "web_search":
         schema["function"]["description"] = (
-            "Managed CoDeepSeedeX web search. Use this instead of native Responses "
+            "Managed CodeXchange web search. Use this instead of native Responses "
             "web_search when the DeepSeek/Codex third-party profile cannot execute "
             "native hosted web tools."
         )
     elif kind == "image_generation":
         schema["function"]["description"] = (
-            "Managed CoDeepSeedeX image generation. Use this instead of native "
+            "Managed CodeXchange image generation. Use this instead of native "
             "Responses image_generation when the DeepSeek/Codex third-party profile "
             "cannot execute native hosted image tools."
         )
@@ -10427,9 +10427,9 @@ def _managed_tool_recommended_action(kind: str, provider_status: dict[str, Any])
     if provider_status.get("configured"):
         return None
     if kind == "web_search":
-        return "Run dsproxy config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl."
+        return "Run cox config set-web-search-api-key --provider serpapi|tavily|exa|firecrawl."
     if kind == "image_generation":
-        return "Run dsproxy config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal."
+        return "Run cox config set-image-api-key --provider zhipu|zai|qwen_image|stability|fal."
     return None
 
 
@@ -10478,8 +10478,8 @@ def _new_managed_tool_routing_report(tools: Any) -> dict[str, Any]:
                         }
                     )
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True),
-        "source": "dsproxy_managed_tool_routing",
+        "enabled": _env_bool("COX_MANAGED_TOOL_ROUTING", True),
+        "source": "cox_managed_tool_routing",
         "capabilities": registry,
         "native_tools_detected": native_tools,
         "managed_tools_injected": [],
@@ -10526,7 +10526,7 @@ def _normalize_managed_native_tool(
     managed_name = str(capability.get("managed_function_name") or _managed_tool_function_name(kind))
     provider = capability.get("configured_provider")
 
-    if not _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True):
+    if not _env_bool("COX_MANAGED_TOOL_ROUTING", True):
         decision = {
             "kind": kind,
             "tool_type": tool_type,
@@ -10554,7 +10554,7 @@ def _normalize_managed_native_tool(
             "provider": provider,
             "recommended_action": (
                 capability.get("recommended_action")
-                or f"Set managed tool routing policy for {kind} to auto or managed_only to enable dsproxy fallback."
+                or f"Set managed tool routing policy for {kind} to auto or managed_only to enable cox fallback."
             ),
         }
         if compat_warnings is not None:
@@ -10613,7 +10613,7 @@ def _normalize_managed_native_tool(
 
 
 def _managed_tool_routing_instruction_message(tools: list[dict[str, Any]] | None) -> dict[str, str] | None:
-    if not tools or not _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING_INSTRUCTION", True):
+    if not tools or not _env_bool("COX_MANAGED_TOOL_ROUTING_INSTRUCTION", True):
         return None
 
     available_names = {
@@ -10632,15 +10632,15 @@ def _managed_tool_routing_instruction_message(tools: list[dict[str, Any]] | None
     instructions = [
         _MANAGED_TOOL_ROUTING_MARKER,
         "Native hosted Responses tools are not available on this DeepSeek/Codex third-party profile.",
-        "Use the managed CoDeepSeedeX function tools below when the user asks for the corresponding capability.",
+        "Use the managed CodeXchange function tools below when the user asks for the corresponding capability.",
     ]
     if _MANAGED_TOOL_FUNCTION_NAMES["web_search"] in managed_names:
         instructions.append(
-            "- For web/current-information search, call codeepseedex_web_search with query and optional max_results."
+            "- For web/current-information search, call codexchange_web_search with query and optional max_results."
         )
     if _MANAGED_TOOL_FUNCTION_NAMES["image_generation"] in managed_names:
         instructions.append(
-            "- For image generation, call codeepseedex_generate_image with prompt and optional size/n."
+            "- For image generation, call codexchange_generate_image with prompt and optional size/n."
         )
     instructions.append("Do not merely describe that a native hosted tool would be used; emit the managed function tool call.")
 
@@ -10694,9 +10694,9 @@ def _managed_tool_routing_last_decision_for_kind(
 
 def _managed_tool_kind_from_function_name(function_name: Any) -> str | None:
     name = str(function_name or "").strip()
-    if name in {"codeepseedex_web_search", "proxy_web_search"}:
+    if name in {"codexchange_web_search", "proxy_web_search"}:
         return "web_search"
-    if name in {"codeepseedex_generate_image", "proxy_image_generate"}:
+    if name in {"codexchange_generate_image", "proxy_image_generate"}:
         return "image_generation"
     return None
 
@@ -10880,7 +10880,7 @@ def _managed_tool_routing_diagnostic_for_kind(
     if no_native_tool_observed:
         reason = f"codex_did_not_send_native_{kind}_tool"
         action = (
-            f"The latest Codex request did not expose a native {kind} Responses tool to dsproxy. "
+            f"The latest Codex request did not expose a native {kind} Responses tool to cox. "
             f"If this capability was expected, run real Codex entry validation and check Codex tool availability/flags."
         )
         status = "no_native_tool_observed"
@@ -10986,9 +10986,9 @@ def _normalize_response_tool(
         nested_tools = tool.get("tools") or []
         if namespace.startswith("mcp__"):
             if (
-                _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", True)
-                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", True)
-                or _env_bool("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", True)
+                _env_bool("COX_FORWARD_MCP_READONLY_TOOLS", True)
+                or _env_bool("COX_FORWARD_MCP_WRITE_TOOLS", True)
+                or _env_bool("COX_FORWARD_MCP_TUTORIAL_TOOLS", True)
             ):
                 mapped_tools = [
                     mapped
@@ -11010,7 +11010,7 @@ def _normalize_response_tool(
                     }
                     if compat_warnings is not None:
                         compat_warnings.append(warning)
-                    print(f"[deepseek-responses-proxy] mapped MCP namespace tool: {namespace}")
+                    print(f"[codexchange] mapped MCP namespace tool: {namespace}")
                     return mapped_tools
 
             warning = {
@@ -11027,7 +11027,7 @@ def _normalize_response_tool(
             }
             if compat_warnings is not None:
                 compat_warnings.append(warning)
-            print(f"[deepseek-responses-proxy] ignored MCP namespace tool: {namespace}")
+            print(f"[codexchange] ignored MCP namespace tool: {namespace}")
             return None
 
         warning = {
@@ -11038,14 +11038,14 @@ def _normalize_response_tool(
         }
         if compat_warnings is not None:
             compat_warnings.append(warning)
-        print(f"[deepseek-responses-proxy] ignored unsupported namespace tool: {namespace}")
+        print(f"[codexchange] ignored unsupported namespace tool: {namespace}")
         return None
 
     if tool_type == "custom":
         name = str(tool.get("name") or "").strip()
         custom_format = tool.get("format") or {}
 
-        if name == "apply_patch" and _env_bool("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", True):
+        if name == "apply_patch" and _env_bool("COX_FORWARD_CUSTOM_APPLY_PATCH", True):
             warning = {
                 "kind": "mapped_custom_tool",
                 "tool_type": tool_type,
@@ -11060,7 +11060,7 @@ def _normalize_response_tool(
             }
             if compat_warnings is not None:
                 compat_warnings.append(warning)
-            print("[deepseek-responses-proxy] mapped custom apply_patch tool experimentally")
+            print("[codexchange] mapped custom apply_patch tool experimentally")
             return {
                 "type": "function",
                 "function": {
@@ -11108,7 +11108,7 @@ def _normalize_response_tool(
         }
         if compat_warnings is not None:
             compat_warnings.append(warning)
-        print(f"[deepseek-responses-proxy] ignored custom tool: {name or 'unknown'}")
+        print(f"[codexchange] ignored custom tool: {name or 'unknown'}")
         return None
 
     if tool_type != "function":
@@ -11119,7 +11119,7 @@ def _normalize_response_tool(
         }
         if compat_warnings is not None:
             compat_warnings.append(warning)
-        print(f"[deepseek-responses-proxy] ignored unsupported tool type: {tool_type}")
+        print(f"[codexchange] ignored unsupported tool type: {tool_type}")
         return None
 
     if "function" in tool:
@@ -11140,7 +11140,7 @@ def _normalize_response_tool(
         }
         if compat_warnings is not None:
             compat_warnings.append(warning)
-        print("[deepseek-responses-proxy] ignored function tool with missing name")
+        print("[codexchange] ignored function tool with missing name")
         return None
 
     return {
@@ -11271,7 +11271,7 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
                 arguments = call_item.get("arguments", "")
 
                 if not name:
-                    print("[deepseek-responses-proxy] ignored function_call input with missing name")
+                    print("[codexchange] ignored function_call input with missing name")
                     i += 1
                     continue
 
@@ -11313,7 +11313,7 @@ def _input_items_to_messages(input_value: Any) -> list[dict[str, Any]]:
             continue
 
         if item_type in {"reasoning", "summary_text"}:
-            print(f"[deepseek-responses-proxy] ignored unsupported input item type: {item_type}")
+            print(f"[codexchange] ignored unsupported input item type: {item_type}")
             i += 1
             continue
 
@@ -11335,10 +11335,10 @@ def _env_int(name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError:
-        print(f"[deepseek-responses-proxy] invalid {name}={raw!r}; using {default}")
+        print(f"[codexchange] invalid {name}={raw!r}; using {default}")
         return default
     if value < 0:
-        print(f"[deepseek-responses-proxy] negative {name}={raw!r}; using {default}")
+        print(f"[codexchange] negative {name}={raw!r}; using {default}")
         return default
     return value
 
@@ -11367,7 +11367,7 @@ def _image_generation_tool_schema() -> dict[str, Any]:
 
 def _image_provider() -> str:
     provider = (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_PROVIDER")
+        os.environ.get("COX_IMAGE_PROVIDER")
         or os.environ.get("IMAGE_PROVIDER")
         or "mock"
     )
@@ -11380,23 +11380,23 @@ def _image_api_key() -> str:
         return (
             os.environ.get("ZAI_API_KEY")
             or os.environ.get("GLM_API_KEY")
-            or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+            or os.environ.get("COX_IMAGE_API_KEY")
             or ""
         )
     return (
         os.environ.get("ZHIPUAI_API_KEY")
         or os.environ.get("ZHIPU_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("COX_IMAGE_API_KEY")
         or ""
     )
 
 
 def _dashscope_api_key() -> str:
     return (
-        os.environ.get("DEEPSEEK_PROXY_DASHSCOPE_API_KEY")
+        os.environ.get("COX_DASHSCOPE_API_KEY")
         or os.environ.get("DASHSCOPE_API_KEY")
         or os.environ.get("ALIBABA_DASHSCOPE_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("COX_IMAGE_API_KEY")
         or ""
     )
 
@@ -11404,8 +11404,8 @@ def _dashscope_api_key() -> str:
 def _stability_api_key() -> str:
     return (
         os.environ.get("STABILITY_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_STABILITY_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("COX_STABILITY_API_KEY")
+        or os.environ.get("COX_IMAGE_API_KEY")
         or ""
     )
 
@@ -11414,8 +11414,8 @@ def _fal_api_key() -> str:
     return (
         os.environ.get("FAL_KEY")
         or os.environ.get("FAL_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_FAL_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_IMAGE_API_KEY")
+        or os.environ.get("COX_FAL_API_KEY")
+        or os.environ.get("COX_IMAGE_API_KEY")
         or ""
     )
 
@@ -11509,30 +11509,30 @@ def _image_model() -> str:
     provider = _image_provider()
     if _is_qwen_image_provider(provider):
         return (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            os.environ.get("COX_IMAGE_MODEL")
             or os.environ.get("DASHSCOPE_IMAGE_MODEL")
             or "qwen-image-2.0-pro"
         )
     if provider in {"stability", "stability_ai", "stable_image"}:
         return (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            os.environ.get("COX_IMAGE_MODEL")
             or os.environ.get("STABILITY_IMAGE_MODEL")
             or "stable-image-core"
         )
     if provider in {"fal", "fal_ai", "fal.ai"}:
         return (
-            os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+            os.environ.get("COX_IMAGE_MODEL")
             or os.environ.get("FAL_IMAGE_MODEL")
             or "fal-ai/flux/schnell"
         )
     return (
-        os.environ.get("DEEPSEEK_PROXY_IMAGE_MODEL")
+        os.environ.get("COX_IMAGE_MODEL")
         or os.environ.get("ZAI_IMAGE_MODEL")
         or "cogView-4-250304"
     )
 
 def _image_size(value: Any = None) -> str:
-    raw = str(value or os.environ.get("DEEPSEEK_PROXY_IMAGE_SIZE", "1024x1024")).strip()
+    raw = str(value or os.environ.get("COX_IMAGE_SIZE", "1024x1024")).strip()
     if not raw:
         return "1024x1024"
     return raw.replace("*", "x")
@@ -11540,7 +11540,7 @@ def _image_size(value: Any = None) -> str:
 
 def _image_n(value: Any = None) -> int:
     if value is None:
-        value = os.environ.get("DEEPSEEK_PROXY_IMAGE_N", "1")
+        value = os.environ.get("COX_IMAGE_N", "1")
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -11549,16 +11549,16 @@ def _image_n(value: Any = None) -> int:
 
 
 def _image_output_dir() -> Path:
-    raw = os.environ.get("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR") or ".generated/images"
+    raw = os.environ.get("COX_IMAGE_OUTPUT_DIR") or ".generated/images"
     return Path(raw)
 
 
 def _image_download_enabled() -> bool:
-    return _env_bool("DEEPSEEK_PROXY_IMAGE_DOWNLOAD", False)
+    return _env_bool("COX_IMAGE_DOWNLOAD", False)
 
 
 def _image_max_artifacts() -> int:
-    return _env_int("DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS", 100)
+    return _env_int("COX_IMAGE_MAX_ARTIFACTS", 100)
 
 
 def _image_artifact_patterns() -> list[str]:
@@ -11611,7 +11611,7 @@ def _prune_image_artifacts(output_dir: Path | None = None) -> None:
         try:
             path.unlink()
         except OSError as exc:
-            print(f"[deepseek-responses-proxy] failed to prune generated image artifact {path}: {exc}")
+            print(f"[codexchange] failed to prune generated image artifact {path}: {exc}")
 
 
 def _image_file_uri(file_path: str | None) -> str | None:
@@ -11650,7 +11650,7 @@ def _write_mock_image_artifact(*, provider: str) -> str | None:
     try:
         path.write_bytes(png_bytes)
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write mock generated image: {exc}")
+        print(f"[codexchange] failed to write mock generated image: {exc}")
         return None
 
     _prune_image_artifacts(output_dir)
@@ -11667,12 +11667,12 @@ async def _download_image_url(url: str, *, provider: str) -> str | None:
     path = output_dir / filename
 
     try:
-        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_DOWNLOAD_TIMEOUT_SECONDS", 60.0)) as client:
+        async with httpx.AsyncClient(timeout=_env_float("COX_IMAGE_DOWNLOAD_TIMEOUT_SECONDS", 60.0)) as client:
             response = await client.get(url)
             response.raise_for_status()
             path.write_bytes(response.content)
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to download generated image: {exc}")
+        print(f"[codexchange] failed to download generated image: {exc}")
         return None
 
     _prune_image_artifacts(output_dir)
@@ -11721,7 +11721,7 @@ async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
             "model": _image_model(),
             "prompt": prompt,
             "error": "missing_api_key",
-            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, ZAI_API_KEY, ZHIPUAI_API_KEY, ZHIPU_API_KEY, or GLM_API_KEY.",
+            "message": "Set COX_IMAGE_API_KEY, ZAI_API_KEY, ZHIPUAI_API_KEY, ZHIPU_API_KEY, or GLM_API_KEY.",
             "images": [],
         }
 
@@ -11733,10 +11733,10 @@ async def _zai_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if n != 1:
         body["n"] = n
 
-    endpoint = os.environ.get("DEEPSEEK_PROXY_IMAGE_BASE_URL") or _zai_compatible_image_endpoint(provider)
+    endpoint = os.environ.get("COX_IMAGE_BASE_URL") or _zai_compatible_image_endpoint(provider)
 
     try:
-        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+        async with httpx.AsyncClient(timeout=_env_float("COX_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
             response = await client.post(
                 endpoint,
                 headers={
@@ -11800,7 +11800,7 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
             "model": _image_model(),
             "prompt": prompt,
             "error": "missing_api_key",
-            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, DEEPSEEK_PROXY_DASHSCOPE_API_KEY, DASHSCOPE_API_KEY, or ALIBABA_DASHSCOPE_API_KEY.",
+            "message": "Set COX_IMAGE_API_KEY, COX_DASHSCOPE_API_KEY, DASHSCOPE_API_KEY, or ALIBABA_DASHSCOPE_API_KEY.",
             "images": [],
         }
 
@@ -11829,12 +11829,12 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
             "prompt": prompt,
             "error": "qwen_image_region_model_unavailable",
             "region": region_status.get("region"),
-            "message": f"Qwen Image is currently not available for {region_status.get('region')} in CoDeepSeedeX. Choose qwen_image_beijing or qwen_image_singapore, or set a verified custom DashScope image endpoint.",
+            "message": f"Qwen Image is currently not available for {region_status.get('region')} in CodeXchange. Choose qwen_image_beijing or qwen_image_singapore, or set a verified custom DashScope image endpoint.",
             "images": [],
         }
 
     endpoint = os.environ.get(
-        "DEEPSEEK_PROXY_IMAGE_BASE_URL",
+        "COX_IMAGE_BASE_URL",
         os.environ.get(
             "DASHSCOPE_IMAGE_ENDPOINT",
             str(region_status.get("endpoint") or "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"),
@@ -11842,7 +11842,7 @@ async def _dashscope_qwen_image_generate(arguments: dict[str, Any]) -> dict[str,
     )
 
     try:
-        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+        async with httpx.AsyncClient(timeout=_env_float("COX_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
             response = await client.post(
                 endpoint,
                 headers={
@@ -11922,25 +11922,25 @@ async def _stability_image_generate(arguments: dict[str, Any]) -> dict[str, Any]
             "model": _image_model(),
             "prompt": prompt,
             "error": "missing_api_key",
-            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, STABILITY_API_KEY, or DEEPSEEK_PROXY_STABILITY_API_KEY.",
+            "message": "Set COX_IMAGE_API_KEY, STABILITY_API_KEY, or COX_STABILITY_API_KEY.",
             "images": [],
         }
 
     files = {
         "prompt": (None, prompt),
-        "output_format": (None, os.environ.get("DEEPSEEK_PROXY_STABILITY_OUTPUT_FORMAT", "png")),
+        "output_format": (None, os.environ.get("COX_STABILITY_OUTPUT_FORMAT", "png")),
     }
-    aspect_ratio = os.environ.get("DEEPSEEK_PROXY_STABILITY_ASPECT_RATIO")
+    aspect_ratio = os.environ.get("COX_STABILITY_ASPECT_RATIO")
     if aspect_ratio:
         files["aspect_ratio"] = (None, aspect_ratio)
 
     endpoint = os.environ.get(
-        "DEEPSEEK_PROXY_STABILITY_IMAGE_URL",
+        "COX_STABILITY_IMAGE_URL",
         "https://api.stability.ai/v2beta/stable-image/generate/core",
     )
 
     try:
-        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+        async with httpx.AsyncClient(timeout=_env_float("COX_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
             response = await client.post(
                 endpoint,
                 headers={
@@ -12013,7 +12013,7 @@ async def _fal_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
             "model": model,
             "prompt": prompt,
             "error": "missing_api_key",
-            "message": "Set DEEPSEEK_PROXY_IMAGE_API_KEY, FAL_KEY, FAL_API_KEY, or DEEPSEEK_PROXY_FAL_API_KEY.",
+            "message": "Set COX_IMAGE_API_KEY, FAL_KEY, FAL_API_KEY, or COX_FAL_API_KEY.",
             "images": [],
         }
 
@@ -12024,10 +12024,10 @@ async def _fal_image_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if size:
         body["image_size"] = size
 
-    endpoint = os.environ.get("DEEPSEEK_PROXY_FAL_IMAGE_URL") or f"https://fal.run/{model}"
+    endpoint = os.environ.get("COX_FAL_IMAGE_URL") or f"https://fal.run/{model}"
 
     try:
-        async with httpx.AsyncClient(timeout=_env_float("DEEPSEEK_PROXY_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
+        async with httpx.AsyncClient(timeout=_env_float("COX_IMAGE_TIMEOUT_SECONDS", 120.0)) as client:
             response = await client.post(
                 endpoint,
                 headers={
@@ -12148,7 +12148,7 @@ def _web_search_tool_schema() -> dict[str, Any]:
 
 def _web_search_provider() -> str:
     provider = (
-        os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_PROVIDER")
+        os.environ.get("COX_WEB_SEARCH_PROVIDER")
         or os.environ.get("SEARCH_PROVIDER")
         or "mock"
     )
@@ -12157,7 +12157,7 @@ def _web_search_provider() -> str:
 
 def _web_search_max_results(value: Any = None) -> int:
     if value is None:
-        value = os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_MAX_RESULTS", "5")
+        value = os.environ.get("COX_WEB_SEARCH_MAX_RESULTS", "5")
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -12166,12 +12166,12 @@ def _web_search_max_results(value: Any = None) -> int:
 
 
 def _web_search_timeout_seconds() -> float:
-    return _env_float("DEEPSEEK_PROXY_WEB_SEARCH_TIMEOUT_SECONDS", 20.0)
+    return _env_float("COX_WEB_SEARCH_TIMEOUT_SECONDS", 20.0)
 
 
 def _serpapi_api_key() -> str:
     return (
-        os.environ.get("DEEPSEEK_PROXY_SERPAPI_API_KEY")
+        os.environ.get("COX_SERPAPI_API_KEY")
         or os.environ.get("SERPAPI_API_KEY")
         or ""
     )
@@ -12205,7 +12205,7 @@ async def _mock_web_search(query: str, max_results: int) -> dict[str, Any]:
 def _tavily_api_key() -> str:
     return (
         os.environ.get("TAVILY_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_TAVILY_API_KEY")
+        or os.environ.get("COX_TAVILY_API_KEY")
         or ""
     )
 
@@ -12214,7 +12214,7 @@ def _brave_search_api_key() -> str:
     return (
         os.environ.get("BRAVE_SEARCH_API_KEY")
         or os.environ.get("BRAVE_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY")
+        or os.environ.get("COX_BRAVE_SEARCH_API_KEY")
         or ""
     )
 
@@ -12222,7 +12222,7 @@ def _brave_search_api_key() -> str:
 def _exa_api_key() -> str:
     return (
         os.environ.get("EXA_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_EXA_API_KEY")
+        or os.environ.get("COX_EXA_API_KEY")
         or ""
     )
 
@@ -12230,7 +12230,7 @@ def _exa_api_key() -> str:
 def _firecrawl_api_key() -> str:
     return (
         os.environ.get("FIRECRAWL_API_KEY")
-        or os.environ.get("DEEPSEEK_PROXY_FIRECRAWL_API_KEY")
+        or os.environ.get("COX_FIRECRAWL_API_KEY")
         or ""
     )
 
@@ -12258,21 +12258,21 @@ async def _serpapi_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "serpapi",
             "query": query,
             "error": "missing_api_key",
-            "message": "SERPAPI_API_KEY or DEEPSEEK_PROXY_SERPAPI_API_KEY is required.",
+            "message": "SERPAPI_API_KEY or COX_SERPAPI_API_KEY is required.",
             "results": [],
         }
 
     params: dict[str, Any] = {
-        "engine": os.environ.get("DEEPSEEK_PROXY_WEB_SEARCH_ENGINE", "google"),
+        "engine": os.environ.get("COX_WEB_SEARCH_ENGINE", "google"),
         "q": query,
         "api_key": api_key,
         "num": max_results,
     }
 
     for env_name, param_name in [
-        ("DEEPSEEK_PROXY_WEB_SEARCH_GL", "gl"),
-        ("DEEPSEEK_PROXY_WEB_SEARCH_HL", "hl"),
-        ("DEEPSEEK_PROXY_WEB_SEARCH_LOCATION", "location"),
+        ("COX_WEB_SEARCH_GL", "gl"),
+        ("COX_WEB_SEARCH_HL", "hl"),
+        ("COX_WEB_SEARCH_LOCATION", "location"),
     ]:
         value = os.environ.get(env_name)
         if value:
@@ -12316,7 +12316,7 @@ async def _tavily_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "tavily",
             "query": query,
             "error": "missing_api_key",
-            "message": "TAVILY_API_KEY or DEEPSEEK_PROXY_TAVILY_API_KEY is required.",
+            "message": "TAVILY_API_KEY or COX_TAVILY_API_KEY is required.",
             "results": [],
         }
 
@@ -12324,14 +12324,14 @@ async def _tavily_web_search(query: str, max_results: int) -> dict[str, Any]:
         "query": query,
         "max_results": max_results,
     }
-    search_depth = os.environ.get("DEEPSEEK_PROXY_TAVILY_SEARCH_DEPTH")
+    search_depth = os.environ.get("COX_TAVILY_SEARCH_DEPTH")
     if search_depth:
         body["search_depth"] = search_depth
 
     try:
         async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
             response = await client.post(
-                os.environ.get("DEEPSEEK_PROXY_TAVILY_SEARCH_URL", "https://api.tavily.com/search"),
+                os.environ.get("COX_TAVILY_SEARCH_URL", "https://api.tavily.com/search"),
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -12378,7 +12378,7 @@ async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "brave",
             "query": query,
             "error": "missing_api_key",
-            "message": "Deprecated Brave compatibility provider requires BRAVE_SEARCH_API_KEY, BRAVE_API_KEY, or DEEPSEEK_PROXY_BRAVE_SEARCH_API_KEY. Prefer serpapi, tavily, exa, or firecrawl for new configurations.",
+            "message": "Deprecated Brave compatibility provider requires BRAVE_SEARCH_API_KEY, BRAVE_API_KEY, or COX_BRAVE_SEARCH_API_KEY. Prefer serpapi, tavily, exa, or firecrawl for new configurations.",
             "results": [],
         }
 
@@ -12386,8 +12386,8 @@ async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
         "q": query,
         "count": max_results,
     }
-    country = os.environ.get("DEEPSEEK_PROXY_BRAVE_COUNTRY")
-    search_lang = os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_LANG")
+    country = os.environ.get("COX_BRAVE_COUNTRY")
+    search_lang = os.environ.get("COX_BRAVE_SEARCH_LANG")
     if country:
         params["country"] = country
     if search_lang:
@@ -12396,7 +12396,7 @@ async def _brave_web_search(query: str, max_results: int) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
             response = await client.get(
-                os.environ.get("DEEPSEEK_PROXY_BRAVE_SEARCH_URL", "https://api.search.brave.com/res/v1/web/search"),
+                os.environ.get("COX_BRAVE_SEARCH_URL", "https://api.search.brave.com/res/v1/web/search"),
                 headers={
                     "Accept": "application/json",
                     "X-Subscription-Token": api_key,
@@ -12443,7 +12443,7 @@ async def _exa_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "exa",
             "query": query,
             "error": "missing_api_key",
-            "message": "EXA_API_KEY or DEEPSEEK_PROXY_EXA_API_KEY is required.",
+            "message": "EXA_API_KEY or COX_EXA_API_KEY is required.",
             "results": [],
         }
 
@@ -12451,14 +12451,14 @@ async def _exa_web_search(query: str, max_results: int) -> dict[str, Any]:
         "query": query,
         "numResults": max_results,
     }
-    search_type = os.environ.get("DEEPSEEK_PROXY_EXA_SEARCH_TYPE")
+    search_type = os.environ.get("COX_EXA_SEARCH_TYPE")
     if search_type:
         body["type"] = search_type
 
     try:
         async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
             response = await client.post(
-                os.environ.get("DEEPSEEK_PROXY_EXA_SEARCH_URL", "https://api.exa.ai/search"),
+                os.environ.get("COX_EXA_SEARCH_URL", "https://api.exa.ai/search"),
                 headers={
                     "x-api-key": api_key,
                     "Content-Type": "application/json",
@@ -12511,7 +12511,7 @@ async def _firecrawl_web_search(query: str, max_results: int) -> dict[str, Any]:
             "provider": "firecrawl",
             "query": query,
             "error": "missing_api_key",
-            "message": "FIRECRAWL_API_KEY or DEEPSEEK_PROXY_FIRECRAWL_API_KEY is required.",
+            "message": "FIRECRAWL_API_KEY or COX_FIRECRAWL_API_KEY is required.",
             "results": [],
         }
 
@@ -12523,7 +12523,7 @@ async def _firecrawl_web_search(query: str, max_results: int) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=_web_search_timeout_seconds()) as client:
             response = await client.post(
-                os.environ.get("DEEPSEEK_PROXY_FIRECRAWL_SEARCH_URL", "https://api.firecrawl.dev/v2/search"),
+                os.environ.get("COX_FIRECRAWL_SEARCH_URL", "https://api.firecrawl.dev/v2/search"),
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -12904,10 +12904,10 @@ async def _execute_proxy_tool_call(
             "unix_time": _now(),
         }
 
-    if name in {"proxy_web_search", "codeepseedex_web_search"}:
+    if name in {"proxy_web_search", "codexchange_web_search"}:
         return await _proxy_web_search(arguments)
 
-    if name in {"proxy_image_generate", "codeepseedex_generate_image"}:
+    if name in {"proxy_image_generate", "codexchange_generate_image"}:
         return await _proxy_image_generate(arguments)
 
     return {
@@ -12940,13 +12940,13 @@ def _tool_result_message(tool_call: dict[str, Any], result: dict[str, Any]) -> d
     }
 
 
-_CODEX_TOOL_PROTOCOL_MARKER = "[deepseek-proxy codex tool protocol]"
+_CODEX_TOOL_PROTOCOL_MARKER = "[cox-proxy codex tool protocol]"
 
 
 def _codex_tool_protocol_env_config() -> dict[str, Any]:
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", True),
-        "role": os.environ.get("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_ROLE", "system").strip() or "system",
+        "enabled": _env_bool("COX_CODEX_TOOL_PROTOCOL_INSTRUCTION", True),
+        "role": os.environ.get("COX_CODEX_TOOL_PROTOCOL_ROLE", "system").strip() or "system",
     }
 
 
@@ -13003,21 +13003,21 @@ def _messages_with_codex_tool_protocol_instruction(
 
 def _agent_liveness_env_config() -> dict[str, Any]:
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", True),
-        "max_retries": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", 1),
-        "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_PREVIEW_CHARS", 600),
+        "enabled": _env_bool("COX_AGENT_LIVENESS_GUARD", True),
+        "max_retries": _env_int("COX_AGENT_LIVENESS_MAX_RETRIES", 1),
+        "content_preview_chars": _env_int("COX_AGENT_LIVENESS_PREVIEW_CHARS", 600),
     }
 
 
 def _user_tool_control_policy_env_config() -> dict[str, Any]:
-    raw_mode = os.environ.get("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
+    raw_mode = os.environ.get("COX_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
     mode = str(raw_mode or "dry_run").strip().lower()
     if mode not in {"off", "dry_run", "enabled"}:
         mode = "dry_run"
     return {
         "mode": mode,
         "enabled": mode != "off",
-        "preview_chars": max(128, _env_int("DEEPSEEK_PROXY_USER_TOOL_CONTROL_PREVIEW_CHARS", 1200)),
+        "preview_chars": max(128, _env_int("COX_USER_TOOL_CONTROL_PREVIEW_CHARS", 1200)),
     }
 
 
@@ -13550,7 +13550,7 @@ def _write_user_tool_control_policy_report(report: dict[str, Any]) -> None:
             encoding="utf-8",
         )
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write user tool control policy report: {exc}")
+        print(f"[codexchange] failed to write user tool control policy report: {exc}")
 
 
 def _user_tool_control_turn_control_decisions() -> set[str]:
@@ -13623,14 +13623,14 @@ def _user_tool_control_should_suppress_post_upstream_tool_calls(
 
 
 def _user_tool_command_risk_env_config() -> dict[str, Any]:
-    raw_mode = os.environ.get("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "dry_run")
+    raw_mode = os.environ.get("COX_COMMAND_RISK_POLICY_MODE", "dry_run")
     mode = raw_mode.strip().lower()
     if mode not in {"off", "dry_run", "enabled"}:
         mode = "dry_run"
     return {
         "mode": mode,
         "enabled": mode == "enabled",
-        "preview_chars": _env_int("DEEPSEEK_PROXY_COMMAND_RISK_PREVIEW_CHARS", 700),
+        "preview_chars": _env_int("COX_COMMAND_RISK_PREVIEW_CHARS", 700),
     }
 
 
@@ -13643,7 +13643,7 @@ def _command_risk_policy_status() -> dict[str, Any]:
         "enabled": enabled,
         "active_when_enabled": enabled,
         "policy_is_dry_run_only": mode == "dry_run",
-        "env_var": "DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE",
+        "env_var": "COX_COMMAND_RISK_POLICY_MODE",
         "preview_chars": int(config.get("preview_chars") or 700),
         "supported_modes": ["off", "dry_run", "enabled"],
         "gate_scope": "C4_only_future_gate",
@@ -13769,7 +13769,7 @@ def _write_user_tool_command_risk_report(report: dict[str, Any]) -> None:
             encoding="utf-8",
         )
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write command risk report: {exc}")
+        print(f"[codexchange] failed to write command risk report: {exc}")
 
 
 def _command_risk_tool_call_name(tool_call: dict[str, Any]) -> str:
@@ -14465,7 +14465,7 @@ def _agent_liveness_guard_prompt(
 
 def _agent_liveness_judge_env_config() -> dict[str, Any]:
     raw_model = os.environ.get(
-        "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL",
+        "COX_AGENT_LIVENESS_JUDGE_MODEL",
         "v4-flash-no-thinking",
     ).strip() or "v4-flash-no-thinking"
 
@@ -14473,22 +14473,22 @@ def _agent_liveness_judge_env_config() -> dict[str, Any]:
     forced_model = _forced_proxy_upstream_model_for_auxiliary_calls()
 
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", True),
+        "enabled": _env_bool("COX_AGENT_LIVENESS_JUDGE_ENABLED", True),
         "model": raw_model,
         "upstream_model": upstream_model,
-        "upstream_model_source": "DEEPSEEK_PROXY_MODEL_forced" if forced_model and upstream_model == forced_model else "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL",
+        "upstream_model_source": "COX_MODEL_forced" if forced_model and upstream_model == forced_model else "COX_AGENT_LIVENESS_JUDGE_MODEL",
         "thinking": {"type": "disabled"},
-        "max_recent_messages": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_RECENT_MESSAGES", 4),
-        "content_preview_chars": _env_int("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_PREVIEW_CHARS", 1200),
+        "max_recent_messages": _env_int("COX_AGENT_LIVENESS_JUDGE_RECENT_MESSAGES", 4),
+        "content_preview_chars": _env_int("COX_AGENT_LIVENESS_JUDGE_PREVIEW_CHARS", 1200),
         "trigger_on_ambiguous": _env_bool(
-            "DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_TRIGGER_ON_AMBIGUOUS",
+            "COX_AGENT_LIVENESS_JUDGE_TRIGGER_ON_AMBIGUOUS",
             False,
         ),
     }
 
 
 def _forced_proxy_upstream_model_for_auxiliary_calls() -> str | None:
-    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+    env_model = os.environ.get("COX_MODEL", "").strip()
     if _force_proxy_model_enabled() and env_model:
         return env_model
     return None
@@ -14513,7 +14513,7 @@ def _normalize_agent_liveness_judge_model(model: str) -> str:
     if value in {"deepseek-v4-flash", "deepseek-v4-pro"}:
         return value
 
-    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL", "").strip()
+    env_model = os.environ.get("COX_MODEL", "").strip()
     if env_model:
         return env_model
     return "deepseek-v4-flash"
@@ -14714,7 +14714,7 @@ def _write_agent_liveness_guard_report(report: dict[str, Any]) -> None:
             encoding="utf-8",
         )
     except Exception as exc:
-        print(f"[deepseek-responses-proxy] failed to write agent liveness guard report: {exc}")
+        print(f"[codexchange] failed to write agent liveness guard report: {exc}")
 
 
 def _proxy_agent_liveness_status() -> dict[str, Any]:
@@ -14762,10 +14762,10 @@ async def _run_chat_with_tool_bridge(
         session_id=session_id,
     )
 
-    if not _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True):
+    if not _env_bool("COX_TOOL_BRIDGE", True):
         return deepseek_response, history_messages
 
-    max_rounds = _env_int("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", 3)
+    max_rounds = _env_int("COX_TOOL_MAX_ROUNDS", 3)
     if max_rounds <= 0:
         return deepseek_response, history_messages
 
@@ -15099,7 +15099,7 @@ async def _run_chat_with_tool_bridge(
                 encoding="utf-8",
             )
         except Exception as exc:
-            print(f"[deepseek-responses-proxy] failed to write tool bridge trace: {exc}")
+            print(f"[codexchange] failed to write tool bridge trace: {exc}")
 
         chat_payload = _build_chat_payload(
             model=model,
@@ -15412,7 +15412,7 @@ def _ensure_completed_response_output_contract(
             {
                 "error_type": "invalid_responses_output_contract",
                 "reason": "completed_response_without_assistant_output",
-                "message": "Upstream reported completion tokens but dsproxy could not map any assistant text, reasoning_content, or tool call into Responses output.",
+                "message": "Upstream reported completion tokens but cox could not map any assistant text, reasoning_content, or tool call into Responses output.",
                 "completion_tokens": completion_tokens,
                 "assistant_content_available": bool(assistant_content.strip()),
                 "assistant_reasoning_content_available": bool(assistant_reasoning_content.strip()),
@@ -15583,14 +15583,14 @@ def _stable_deepseek_tools(tools: list[dict[str, Any]] | None) -> list[dict[str,
 
 
 def _deepseek_cache_user_id(request_payload: dict[str, Any] | None, *, model: str) -> str | None:
-    if os.environ.get("DEEPSEEK_PROXY_DISABLE_STABLE_USER_ID", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if os.environ.get("COX_DISABLE_STABLE_USER_ID", "").strip().lower() in {"1", "true", "yes", "on"}:
         return None
-    configured = os.environ.get("DEEPSEEK_PROXY_USER_ID", "").strip()
+    configured = os.environ.get("COX_USER_ID", "").strip()
     if configured:
         return configured[:128]
     session_id = _session_id_from_request_payload(request_payload)
     route = "thinking" if _thinking_enabled() else "non_thinking"
-    provider = os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
+    provider = os.environ.get("COX_MODEL_PROVIDER", "deepseek")
     try:
         project_hash = hashlib.sha256(str(Path.cwd().resolve()).encode("utf-8", errors="replace")).hexdigest()[:16]
     except Exception:
@@ -15603,7 +15603,7 @@ def _deepseek_cache_user_id(request_payload: dict[str, Any] | None, *, model: st
         f"session={session_id or 'profile_route'}",
     ])
     digest = hashlib.sha256(material.encode("utf-8", errors="replace")).hexdigest()[:32]
-    return f"codeepseedex_{route}_{digest}"[:128]
+    return f"codexchange_{route}_{digest}"[:128]
 
 
 def _env_flag_value(name: str) -> bool | None:
@@ -15619,11 +15619,11 @@ def _env_flag_value(name: str) -> bool | None:
 
 
 def _configured_model_provider() -> str:
-    return str(os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek").strip().lower() or "deepseek"
+    return str(os.environ.get("COX_MODEL_PROVIDER") or "deepseek").strip().lower() or "deepseek"
 
 
 def _configured_base_url() -> str:
-    return str(os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
+    return str(os.environ.get("COX_MODEL_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
 
 
 def _configured_base_url_host(base_url: str | None = None) -> str | None:
@@ -15641,7 +15641,7 @@ def _configured_base_url_host(base_url: str | None = None) -> str | None:
 
 
 def _chat_payload_compat_mode() -> str:
-    explicit = str(os.environ.get("DEEPSEEK_PROXY_CHAT_COMPAT_MODE") or "").strip().lower().replace("-", "_")
+    explicit = str(os.environ.get("COX_CHAT_COMPAT_MODE") or "").strip().lower().replace("-", "_")
     if explicit in {"deepseek", "openai_compatible"}:
         return explicit
 
@@ -15682,9 +15682,9 @@ def _split_chat_param_list(raw: str | None) -> set[str]:
 
 
 def _chat_extra_params_from_env() -> dict[str, Any]:
-    raw = os.environ.get("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON")
+    raw = os.environ.get("COX_CHAT_EXTRA_PARAMS_JSON")
     if raw is None:
-        raw = os.environ.get("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS")
+        raw = os.environ.get("COX_CHAT_EXTRA_PARAMS")
     if not raw or not raw.strip():
         return {}
     try:
@@ -15702,7 +15702,7 @@ def _chat_extra_params_from_env() -> dict[str, Any]:
 
 
 def _chat_payload_supports_deepseek_extensions() -> bool:
-    override = _env_flag_value("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
+    override = _env_flag_value("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
     if override is not None:
         return override
     return _chat_payload_compat_mode() == "deepseek"
@@ -15719,8 +15719,8 @@ def _chat_capability_profile() -> dict[str, Any]:
     provider = _configured_model_provider()
     compat_mode = _chat_payload_compat_mode()
     supports_deepseek_extensions = _chat_payload_supports_deepseek_extensions()
-    explicit_allow = _split_chat_param_list(os.environ.get("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS"))
-    explicit_drop = _split_chat_param_list(os.environ.get("DEEPSEEK_PROXY_CHAT_DROP_PARAMS"))
+    explicit_allow = _split_chat_param_list(os.environ.get("COX_CHAT_ALLOW_PARAMS"))
+    explicit_drop = _split_chat_param_list(os.environ.get("COX_CHAT_DROP_PARAMS"))
     extra_params = _chat_extra_params_from_env()
     extra_keys = set(extra_params)
 
@@ -16192,7 +16192,7 @@ def _runtime_token_first_compaction_contract_raw(report: Any) -> dict[str, Any]:
             "char_control_scope": "fallback_debug_safety_only",
             "status": "unavailable",
             "reason": "no_runtime_compaction_report_observed",
-            "action": "send a model request through this dsproxy route, then re-check status",
+            "action": "send a model request through this cox route, then re-check status",
             "source": "runtime_context_builder",
             "before_tokens": None,
             "after_tokens": None,
@@ -16253,7 +16253,7 @@ def _runtime_token_first_compaction_contract_raw(report: Any) -> dict[str, Any]:
         action = None
     elif before_tokens is None:
         status = "unavailable"
-        action = "send a model request through this dsproxy route, then re-check status"
+        action = "send a model request through this cox route, then re-check status"
     elif threshold_exceeded:
         status = "skipped"
         action = "Compact threshold was exceeded, but runtime did not compact because the reported reason prevented mutation"
@@ -16281,7 +16281,7 @@ def _runtime_token_first_compaction_contract_raw(report: Any) -> dict[str, Any]:
         "threshold_exceeded": threshold_exceeded,
         "reason": reason,
         "action": action,
-        "source": "dsproxy_runtime_token_first_compaction_report",
+        "source": "cox_runtime_token_first_compaction_report",
         "observed_at": report.get("observed_at"),
         "runtime_trigger_source": report.get("runtime_trigger_source"),
         "profile": report.get("profile"),
@@ -16297,7 +16297,7 @@ def _runtime_token_first_compaction_contract_raw(report: Any) -> dict[str, Any]:
         "target_available": target_available,
         "target_source": report.get("target_source"),
         "target_reason": None if target_available else "explicit_token_compact_target_not_configured",
-        "target_action": None if target_available else "do not display a Compact target; display trigger and retention until dsproxy exposes an explicit token target",
+        "target_action": None if target_available else "do not display a Compact target; display trigger and retention until cox exposes an explicit token target",
         "before_tokens": before_tokens,
         "after_tokens": after_tokens,
         "estimated_context_tokens": before_tokens,
@@ -16346,7 +16346,7 @@ def _route_scoped_trimming_report(report: Any, *, profile: str) -> Any:
             "observed_profile": observed_profile,
             "source": "profile_scoped_runtime_status_guard",
             "observed_at": report.get("observed_at"),
-            "action": "send a primary model request through the requested route/profile, then re-check dsproxy status --weclaw-json",
+            "action": "send a primary model request through the requested route/profile, then re-check cox status --weclaw-json",
             "token_first_trim_dry_run": {
                 "available": False,
                 "unit": "tokens",
@@ -16502,7 +16502,7 @@ def _profile_scoped_token_first_trim_not_triggered_report(
             "session_id": session_id,
             "observed_at": _runtime_payload_guard_observed_at(),
             "profile_mismatch_diagnostic": diagnostic_report if isinstance(diagnostic_report, dict) else None,
-            "action": "send a primary request through this profile so dsproxy can generate a live token-first runtime TRIM report",
+            "action": "send a primary request through this profile so cox can generate a live token-first runtime TRIM report",
             "raw_content_exposed": False,
             "redacted": True,
         }
@@ -16725,7 +16725,7 @@ def _runtime_payload_guard_report_snapshot(
     return {
         "exists": False,
         "reason": "no_runtime_payload_guard_observation_yet",
-        "action": "send a model request through this dsproxy route, then re-check dsproxy status --weclaw-json",
+        "action": "send a model request through this cox route, then re-check cox status --weclaw-json",
     }
 
 def _runtime_payload_guard_contract_raw(
@@ -16803,7 +16803,7 @@ def _runtime_payload_guard_contract_raw(
             "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
             "status": "unavailable",
             "reason": "no_runtime_trimming_report_observed",
-            "action": "send a model request through this dsproxy route, then re-check status",
+            "action": "send a model request through this cox route, then re-check status",
             "source": "token_first_runtime_trim_unavailable",
             "before_tokens": None,
             "after_tokens": None,
@@ -16919,7 +16919,7 @@ def _runtime_payload_guard_contract_raw(
         "policy": compaction_config.get("policy"),
         "status": token_compaction_contract.get("status"),
         "reason": token_compaction_contract.get("reason") if compaction_available else "runtime_compaction_tokens_unavailable",
-        "action": None if compaction_available else "send a model request through this dsproxy route, then re-check status",
+        "action": None if compaction_available else "send a model request through this cox route, then re-check status",
         "current_tokens": compaction_after_tokens,
         "current_tokens_available": compaction_after_tokens is not None,
         "current_tokens_source": "token_first_runtime_compaction" if compaction_after_tokens is not None else "unavailable",
@@ -16962,7 +16962,7 @@ def _runtime_payload_guard_contract_raw(
         "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
         "status": token_first_runtime_trim.get("status") or ("trimmed" if token_first_runtime_trim.get("applied") else "not_triggered" if trimming_available else "unavailable"),
         "reason": token_first_runtime_trim.get("reason") if trimming_available else "runtime_trimming_tokens_unavailable",
-        "action": None if trimming_available else "send a model request through this dsproxy route, then re-check status",
+        "action": None if trimming_available else "send a model request through this cox route, then re-check status",
         "current_tokens": trim_after_tokens,
         "current_tokens_available": trim_after_tokens is not None,
         "current_tokens_source": "token_first_runtime_trim" if trim_after_tokens is not None else "unavailable",
@@ -17004,7 +17004,7 @@ def _runtime_payload_guard_contract_raw(
         "primary_control_unit": "tokens",
         "char_control_scope": "diagnostic_only_not_a_runtime_trigger",
         "reason": None if available else "no_live_runtime_token_first_payload_guard_observation_yet",
-        "action": None if available else "send a model request through this dsproxy route, then re-check status",
+        "action": None if available else "send a model request through this cox route, then re-check status",
         "compaction": compaction_section,
         "trimming": trimming_section,
         "token_first_compaction": token_compaction_contract,
@@ -17044,11 +17044,11 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
     image_capability = registry["image_generation"]
 
     return {
-        "enabled": _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True),
-        "max_rounds": _env_int("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", 3),
+        "enabled": _env_bool("COX_TOOL_BRIDGE", True),
+        "max_rounds": _env_int("COX_TOOL_MAX_ROUNDS", 3),
         "managed_tool_routing": {
-            "enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING", True),
-            "instruction_enabled": _env_bool("DEEPSEEK_PROXY_MANAGED_TOOL_ROUTING_INSTRUCTION", True),
+            "enabled": _env_bool("COX_MANAGED_TOOL_ROUTING", True),
+            "instruction_enabled": _env_bool("COX_MANAGED_TOOL_ROUTING_INSTRUCTION", True),
             "capabilities": registry,
             "last_route_decision": deepcopy(last_managed_tool_routing_report) if isinstance(last_managed_tool_routing_report, dict) else None,
             "last_execution": deepcopy(last_managed_tool_routing_report.get("execution")) if isinstance(last_managed_tool_routing_report, dict) else None,
@@ -17102,11 +17102,11 @@ def _tool_bridge_status(last_managed_tool_routing_report: dict[str, Any] | None 
 
 
 def _mcp_discovery_enabled() -> bool:
-    return _env_bool("DEEPSEEK_PROXY_MCP_DISCOVERY", False)
+    return _env_bool("COX_MCP_DISCOVERY", False)
 
 
 def _mcp_discovery_server_filter() -> set[str]:
-    return _split_env_csv("DEEPSEEK_PROXY_MCP_DISCOVERY_SERVERS")
+    return _split_env_csv("COX_MCP_DISCOVERY_SERVERS")
 
 
 def _mcp_discovery_config_status() -> dict[str, Any]:
@@ -17150,7 +17150,7 @@ async def _mcp_discovery_status() -> dict[str, Any]:
         result["reason"] = "config_error"
         return result
 
-    from deepseek_responses_proxy.mcp_stdio import (
+    from codexchange_proxy.mcp_stdio import (
         discover_stdio_mcp_tools,
         mcp_server_config_from_snapshot,
     )
@@ -17281,7 +17281,7 @@ def _profile_tokenizer_requested_categories() -> list[str]:
 
 
 def _profile_tokenizer_kind_for_model(model: str | None, provider: str | None = None) -> str | None:
-    provider_key = str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek").strip().lower()
+    provider_key = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek").strip().lower()
     model_key = str(model or "").strip().lower()
     if provider_key == "deepseek" or model_key.startswith("deepseek-"):
         return "deepseek_official_current"
@@ -17289,20 +17289,20 @@ def _profile_tokenizer_kind_for_model(model: str | None, provider: str | None = 
 
 
 def _profile_tokenizer_resource_root() -> Path:
-    raw = os.environ.get("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", "").strip()
+    raw = os.environ.get("COX_TOKENIZER_RESOURCE_DIR", "").strip()
     if raw:
         return Path(raw).expanduser()
 
-    install_root_raw = os.environ.get("DEEPSEEK_PROXY_INSTALL_DIR", "").strip()
+    install_root_raw = os.environ.get("COX_INSTALL_DIR", "").strip()
     if install_root_raw:
         return Path(install_root_raw).expanduser() / "resources" / "tokenizers"
 
-    return Path.home() / ".local" / "share" / "deepseek-responses-proxy" / "resources" / "tokenizers"
+    return Path.home() / ".local" / "share" / "codexchange" / "resources" / "tokenizers"
 
 
 def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
     candidates: list[tuple[Path, str]] = []
-    for name in ["DEEPSEEK_PROXY_PROFILE_TOKENIZER_JSON", "DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON"]:
+    for name in ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"]:
         raw = os.environ.get(name)
         if raw:
             candidates.append((Path(raw).expanduser(), f"env.{name}"))
@@ -17322,7 +17322,7 @@ def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
 
 
 def _profile_tokenizer_contract(model: str | None, provider: str | None = None) -> dict[str, Any]:
-    provider_value = str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek")
+    provider_value = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek")
     kind = _profile_tokenizer_kind_for_model(model, provider_value)
     if kind is None:
         return {
@@ -17356,7 +17356,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
             "source": None,
             "source_kind": None,
             "reason": "profile_tokenizer_json_not_found",
-            "action": "run dsproxy tokenizer sync deepseek --json or set DEEPSEEK_PROXY_DEEPSEEK_TOKENIZER_JSON",
+            "action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
             "checked": checked,
         }
 
@@ -17432,7 +17432,7 @@ def _profile_tokenizer_segment_source_and_category(
     stripped = content.lstrip()
     lowered_head = stripped[:600].lower()
 
-    if "[deepseek-proxy persistent compaction summary]" in content:
+    if "[cox-proxy persistent compaction summary]" in content:
         return "compaction", "compaction_summary"
 
     if role == "system":
@@ -17520,7 +17520,7 @@ def _runtime_token_first_status_context(
     return {
         "available": True,
         "unit": "tokens",
-        "source": "dsproxy_runtime.token_first_contracts",
+        "source": "cox_runtime.token_first_contracts",
         "compaction": {
             "available": bool(compaction.get("available")) if isinstance(compaction, dict) else False,
             "unit": "tokens",
@@ -17580,7 +17580,7 @@ def _profile_tokenizer_unavailable_report(
         "unit": "tokens",
         "profile": profile,
         "model": str(model or "") or None,
-        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "provider": str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek"),
         "tokenizer": contract,
         "precision": "local_profile_tokenizer_estimate" if tokenizer_available else "unavailable",
         "source": str(contract.get("source") or "unavailable") if tokenizer_available else "unavailable",
@@ -17592,9 +17592,9 @@ def _profile_tokenizer_unavailable_report(
             "unit": "tokens",
             "reason": summary_reason,
             "action": (
-                "send one model request through this route, then re-check dsproxy status --weclaw-json"
+                "send one model request through this route, then re-check cox status --weclaw-json"
                 if tokenizer_available
-                else str(contract.get("action") or "run dsproxy tokenizer sync deepseek --json")
+                else str(contract.get("action") or "run cox tokenizer sync deepseek --json")
             ),
             "total_content_tokens": None,
             "message_count": 0,
@@ -17733,7 +17733,7 @@ def _profile_tokenizer_observable_payload_report(
         "available": True,
         "unit": "tokens",
         "precision": "local_profile_tokenizer_json_serialized_estimate",
-        "source": "deepseek_chat_payload_after_dsproxy_build_chat_payload",
+        "source": "deepseek_chat_payload_after_cox_build_chat_payload",
         "components": components,
         "semantic_prompt_component_names": semantic_prompt_component_names,
         "semantic_prompt_candidate_tokens": semantic_prompt_candidate_tokens,
@@ -17782,7 +17782,7 @@ def _profile_tokenizer_report_for_messages(
             "session_id": session_id,
             "scope": "current_session" if session_id else "route_latest_observed_prompt",
             "model": str(model or "") or None,
-            "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+            "provider": str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek"),
             "tokenizer": contract,
             "summary": {"available": False, "total_content_tokens": None, "message_count": len(messages)},
             "prompt_subcategory_split": _weclaw_prompt_subcategory_split_contract(),
@@ -17794,7 +17794,7 @@ def _profile_tokenizer_report_for_messages(
             latest_plain_user_index = index
 
     categories = {
-        category: {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"}
+        category: {"tokens": 0, "message_count": 0, "source": "cox_deepseek_messages_after_payload_assembly"}
         for category in _profile_tokenizer_requested_categories()
     }
     message_reports: list[dict[str, Any]] = []
@@ -17811,7 +17811,7 @@ def _profile_tokenizer_report_for_messages(
         )
         text = _profile_tokenizer_message_text(message)
         token_count = _profile_tokenizer_count_text(tokenizer, text)
-        categories.setdefault(category, {"tokens": 0, "message_count": 0, "source": "dsproxy_deepseek_messages_after_payload_assembly"})
+        categories.setdefault(category, {"tokens": 0, "message_count": 0, "source": "cox_deepseek_messages_after_payload_assembly"})
         categories[category]["tokens"] += token_count
         categories[category]["message_count"] += 1
         total_tokens += token_count
@@ -17852,12 +17852,12 @@ def _profile_tokenizer_report_for_messages(
         "available": True,
         "unit": "tokens",
         "precision": "local_profile_tokenizer_estimate",
-        "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
         "scope": scope,
         "session_id": session_id,
         "profile": profile,
         "model": str(model or "") or None,
-        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "provider": str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek"),
         "tokenizer_kind": contract.get("tokenizer_kind"),
         "tokenizer_source": contract.get("source"),
         "message_count": len(message_reports),
@@ -17868,9 +17868,9 @@ def _profile_tokenizer_report_for_messages(
         "segments_tail": segment_ledger[-30:],
         "observable_payload": observable_payload,
         "notes": [
-            "The user category is the latest ordinary user-role segment after dsproxy excludes Codex-injected environment/memory instructions and tool transcripts.",
+            "The user category is the latest ordinary user-role segment after cox excludes Codex-injected environment/memory instructions and tool transcripts.",
             "The user_history category contains earlier ordinary user-role segments in the assembled prompt.",
-            "Codex may encode tool transcripts, memory, environment, and historical context as role=user; dsproxy classifies these by content markers before computing Details.",
+            "Codex may encode tool transcripts, memory, environment, and historical context as role=user; cox classifies these by content markers before computing Details.",
         ],
     }
 
@@ -17879,8 +17879,8 @@ def _profile_tokenizer_report_for_messages(
         "unit": "tokens",
         "is_estimated": True,
         "precision": "local_profile_tokenizer_estimate",
-        "source": f"dsproxy_profile_tokenizer.{contract.get('tokenizer_kind')}.tokenizer_json",
-        "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+        "source": f"cox_profile_tokenizer.{contract.get('tokenizer_kind')}.tokenizer_json",
+        "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
         "scope": scope,
         "session_id": session_id,
         "tokenizer_kind": contract.get("tokenizer_kind"),
@@ -17893,8 +17893,8 @@ def _profile_tokenizer_report_for_messages(
         "missing": [],
         "notes": [
             "Provider usage totals remain authoritative for billing and aggregate prompt/completion/cache/reasoning fields.",
-            "This split uses the active profile tokenizer and dsproxy message boundaries, but it is a local estimate because providers do not report prompt subcategory usage.",
-            "The split counts message text, reasoning_content, and tool-call names/arguments after dsproxy payload assembly. Chat-template overhead is not assigned to a subcategory.",
+            "This split uses the active profile tokenizer and cox message boundaries, but it is a local estimate because providers do not report prompt subcategory usage.",
+            "The split counts message text, reasoning_content, and tool-call names/arguments after cox payload assembly. Chat-template overhead is not assigned to a subcategory.",
             "The user bucket is the latest ordinary user segment, not all role=user segments.",
         ],
     }
@@ -17906,7 +17906,7 @@ def _profile_tokenizer_report_for_messages(
         "session_id": session_id,
         "scope": scope,
         "model": str(model or "") or None,
-        "provider": str(provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER") or "deepseek"),
+        "provider": str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek"),
         "tokenizer": contract,
         "observable_payload": observable_payload,
         "summary": {
@@ -17976,7 +17976,7 @@ def _auto_compact_policy_contract(
     else:
         status = "legacy_or_custom_profile_needs_migration"
         reason = "observed_auto_compact_ratio_differs_from_managed_ratio"
-        action = f"run dsproxy profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
+        action = f"run cox profile repair --managed-only --json or reinstall the managed Codex profile to derive model_auto_compact_token_limit from auto_compact_ratio={expected_ratio:.6g}"
         needs_migration = True
         display_label = (
             f"legacy {observed_percent}%→{expected_percent}%"
@@ -18003,7 +18003,7 @@ def _auto_compact_policy_contract(
         "notes": [
             "The context denominator remains model_context_window_tokens.",
             "The auto-compact threshold is a trigger threshold, not the context denominator.",
-            f"Managed CoDeepSeedeX profiles derive the threshold from auto_compact_ratio={expected_ratio:.6g}; absolute token thresholds are generated output, not configuration input.",
+            f"Managed CodeXchange profiles derive the threshold from auto_compact_ratio={expected_ratio:.6g}; absolute token thresholds are generated output, not configuration input.",
         ],
     }
 
@@ -18084,7 +18084,7 @@ def _weclaw_context_limit_explanation(
             "model_context_window_tokens": "The declared model context window in the managed Codex profile.",
             "auto_compact_token_limit": auto_limit_explanation,
             "auto_compact_ratio": auto_ratio_explanation,
-            "model_catalog_context_window_tokens": "The dsproxy model-catalog context-window declaration, used for consistency diagnostics and not as a replacement for the active profile declaration.",
+            "model_catalog_context_window_tokens": "The cox model-catalog context-window declaration, used for consistency diagnostics and not as a replacement for the active profile declaration.",
         },
         "notes": [
             "WeClaw should display the full model context window as the context denominator.",
@@ -18344,7 +18344,7 @@ def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
                         f"tokens.{key}",
                         section,
                         default_reason="usage_unavailable",
-                        default_action="send a model request through this dsproxy route, then re-check status",
+                        default_action="send a model request through this cox route, then re-check status",
                     )
                 )
 
@@ -18356,7 +18356,7 @@ def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
                     "pricing",
                     pricing,
                     default_reason="pricing_unavailable",
-                    default_action="check the dsproxy pricing cache with dsproxy pricing show --json",
+                    default_action="check the cox pricing cache with cox pricing show --json",
                 )
             )
         refresh = pricing.get("refresh")
@@ -18366,7 +18366,7 @@ def _weclaw_diagnostics_contract(payload: dict[str, Any]) -> dict[str, Any]:
                     "pricing.refresh",
                     refresh,
                     default_reason="official_live_pricing_refresh_not_implemented",
-                    default_action="use the static dsproxy pricing cache until official live refresh is implemented",
+                    default_action="use the static cox pricing cache until official live refresh is implemented",
                 )
             )
 
@@ -18432,7 +18432,7 @@ def _runtime_codex_config_health(sections: dict[str, dict[str, str]]) -> dict[st
         for section in sections
         if section.startswith("profiles.")
     )
-    for profile in ("deepseek", "deepseek-thinking"):
+    for profile in ("deepseek", "cox"):
         values, source, profile_path = _runtime_codex_profile_section(profile, sections)
         effort = values.get("model_reasoning_effort")
         if effort is not None and effort not in allowed:
@@ -18494,7 +18494,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "derived_managed_value": auto_compact_token_limit,
                 "expected_auto_compact_ratio": auto_compact_ratio_config,
                 "resolution": "managed_runtime_uses_ratio_derived_threshold_and_profile_repair_rewrites_generated_value",
-                "action": "run dsproxy profile repair --managed-only --json",
+                "action": "run cox profile repair --managed-only --json",
                 "user_visible": True,
             }
         )
@@ -18517,7 +18517,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
                 "ignored_value": legacy_auto_compact_token_limit,
                 "derived_value": auto_compact_token_limit,
                 "reason": "managed_profiles_derive_auto_compact_threshold_from_ratio_only",
-                "action": "run dsproxy profile repair --managed-only --json",
+                "action": "run cox profile repair --managed-only --json",
             }
             if legacy_auto_compact_token_limit and legacy_auto_compact_token_limit != auto_compact_token_limit
             else None
@@ -18546,7 +18546,7 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
         "notes": [
             "Codex profile values are token-level declarations.",
             "The displayed context denominator is model_context_window_tokens, while model_auto_compact_token_limit is the ratio-derived auto-compact trigger threshold.",
-            "Managed CoDeepSeedeX profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
+            "Managed CodeXchange profiles use auto_compact_ratio as the only configuration source for auto-compact threshold.",
             "Runtime Compact and Trim status must remain token-only in external status contracts.",
         ],
         "conflicts": conflicts,
@@ -18554,17 +18554,17 @@ def _runtime_profile_context_contract(profile_section: dict[str, str], *, effect
 
 def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str, Any]:
     codex_model = profile_section.get("model")
-    env_model = os.environ.get("DEEPSEEK_PROXY_MODEL") or os.environ.get("DEEPSEEK_MODEL")
+    env_model = os.environ.get("COX_MODEL") or os.environ.get("COX_MODEL")
     force_model_enabled = _force_proxy_model_enabled()
     effective_model = _select_upstream_model(codex_model)
     model_conflict = bool(codex_model and effective_model and codex_model != effective_model)
     diagnostic_hint = (
-        "Codex profile model differs from forced upstream model; dsproxy effective_model is authoritative."
+        "Codex profile model differs from forced upstream model; cox effective_model is authoritative."
         if model_conflict
         else None
     )
     return {
-        "provider": os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+        "provider": os.environ.get("COX_MODEL_PROVIDER", "deepseek"),
         "model": effective_model,
         "display_model": effective_model,
         "weclaw_display_model": effective_model,
@@ -18578,7 +18578,7 @@ def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str
         "display_hint": None,
         "diagnostic_hint": diagnostic_hint,
         "user_visible": False,
-        "source": "dsproxy_runtime._select_upstream_model",
+        "source": "cox_runtime._select_upstream_model",
         "notes": (
             [
                 "Codex profile model differs from the effective upstream model. WeClaw should display effective_model and may show codex_model as a conflict detail."
@@ -18591,7 +18591,7 @@ def _runtime_profile_model_contract(profile_section: dict[str, str]) -> dict[str
 
 def _runtime_effort_contract(profile_section: dict[str, str]) -> dict[str, Any]:
     codex_effort = profile_section.get("model_reasoning_effort")
-    raw_effort = os.environ.get("DEEPSEEK_REASONING_EFFORT") or codex_effort or "high"
+    raw_effort = os.environ.get("COX_REASONING_EFFORT") or codex_effort or "high"
     normalized = str(raw_effort or "").strip().lower()
     if normalized in {"xhigh", "max"}:
         deepseek_effort = "max"
@@ -18604,7 +18604,7 @@ def _runtime_effort_contract(profile_section: dict[str, str]) -> dict[str, Any]:
         "deepseek_reasoning_effort": deepseek_effort,
         "codex_model_reasoning_effort": codex_effort,
         "expected_codex_model_reasoning_effort": expected_codex_effort,
-        "source": "dsproxy_runtime_env_and_codex_profile",
+        "source": "cox_runtime_env_and_codex_profile",
         "codex_profile_valid": codex_effort in {"none", "minimal", "low", "medium", "high", "xhigh"} if codex_effort else False,
         "normalized": codex_effort == expected_codex_effort,
     }
@@ -18842,10 +18842,10 @@ def _weclaw_context_window_with_usage_estimate(context_window: dict[str, Any], t
         enriched["used_tokens_available"] = False
         enriched["used_tokens_reason"] = "latest_primary_turn_not_available"
         enriched["used_tokens_action"] = "send a primary model request through this route, then re-check status"
-        enriched["used_tokens_source"] = "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
+        enriched["used_tokens_source"] = "cox_usage_ledger.latest_primary_turn.summary.prompt_tokens"
         return enriched
 
-    source = "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
+    source = "cox_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     request_id = latest_primary.get("request_id") if isinstance(latest_primary, dict) else None
     enriched.update(
         {
@@ -18856,7 +18856,7 @@ def _weclaw_context_window_with_usage_estimate(context_window: dict[str, Any], t
             "used_tokens_action": None,
             "used_tokens_precision": "estimated_current_context_from_latest_primary_upstream_prompt_tokens",
             "used_tokens_is_estimated": True,
-            "used_tokens_semantic_scope": "latest_primary_upstream_prompt_tokens_after_dsproxy_payload_assembly",
+            "used_tokens_semantic_scope": "latest_primary_upstream_prompt_tokens_after_cox_payload_assembly",
             "latest_upstream_prompt_tokens": {
                 "available": True,
                 "value": latest_prompt_tokens,
@@ -18866,7 +18866,7 @@ def _weclaw_context_window_with_usage_estimate(context_window: dict[str, Any], t
                 "purpose": "primary",
                 "precision": "provider_reported_prompt_tokens_for_latest_primary_upstream_model_call",
                 "is_estimated_for_context_window": True,
-                "semantic_scope": "latest_primary_upstream_prompt_tokens_after_dsproxy_payload_assembly",
+                "semantic_scope": "latest_primary_upstream_prompt_tokens_after_cox_payload_assembly",
                 "notes": [
                     "This is the latest primary upstream prompt_tokens value recorded by the provider usage ledger.",
                     "Auxiliary calls such as liveness_judge, liveness_retry, tool_bridge, and compaction must not replace this numerator.",
@@ -18950,12 +18950,12 @@ def _weclaw_prompt_subcategory_split_contract(
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "source": "dsproxy_profile_tokenizer.available_without_observed_prompt",
+            "source": "cox_profile_tokenizer.available_without_observed_prompt",
             "source_kind": tokenizer_contract.get("source_kind"),
             "tokenizer_kind": tokenizer_contract.get("tokenizer_kind"),
             "tokenizer_source": tokenizer_contract.get("source"),
             "reason": "profile_tokenizer_available_but_no_observed_prompt",
-            "action": "send one model request through this route, then re-check dsproxy status --weclaw-json",
+            "action": "send one model request through this route, then re-check cox status --weclaw-json",
             "categories": {},
             "requested_categories": _profile_tokenizer_requested_categories(),
             "missing": [
@@ -18977,7 +18977,7 @@ def _weclaw_prompt_subcategory_split_contract(
             "source": "profile_tokenizer_contract",
             "source_kind": tokenizer_contract.get("source_kind"),
             "reason": str(tokenizer_contract.get("reason") or "profile_tokenizer_resource_unavailable"),
-            "action": str(tokenizer_contract.get("action") or "run dsproxy tokenizer sync deepseek --json"),
+            "action": str(tokenizer_contract.get("action") or "run cox tokenizer sync deepseek --json"),
             "categories": {},
             "requested_categories": _profile_tokenizer_requested_categories(),
             "missing": [
@@ -18996,7 +18996,7 @@ def _weclaw_prompt_subcategory_split_contract(
         "precision": "unavailable",
         "source": "profile_tokenizer_contract_missing",
         "reason": "profile_tokenizer_contract_unavailable",
-        "action": "run dsproxy tokenizer status deepseek --json and verify the running route exposes tokenizer_contract",
+        "action": "run cox tokenizer status deepseek --json and verify the running route exposes tokenizer_contract",
         "categories": {},
         "requested_categories": _profile_tokenizer_requested_categories(),
         "missing": [
@@ -19031,7 +19031,7 @@ def _weclaw_token_attribution_contract(
             "available": True,
             "unit": "tokens",
             "precision": "exact_provider_reported",
-            "source": "provider_usage_fields_persisted_in_dsproxy_usage_ledger",
+            "source": "provider_usage_fields_persisted_in_cox_usage_ledger",
             "fields": [
                 "prompt_tokens",
                 "completion_tokens",
@@ -19043,8 +19043,8 @@ def _weclaw_token_attribution_contract(
         "purpose_attribution": {
             "available": True,
             "unit": "tokens",
-            "precision": "exact_dsproxy_call_purpose",
-            "source": "dsproxy_usage_ledger.purpose_and_call_index",
+            "precision": "exact_cox_call_purpose",
+            "source": "cox_usage_ledger.purpose_and_call_index",
             "fields": [
                 "purpose",
                 "call_index",
@@ -19069,7 +19069,7 @@ def _weclaw_token_attribution_contract(
             "unit": "tokens",
             "precision": "local_profile_tokenizer_estimate" if tokenizer_available else "unavailable",
             "source": (
-                str((tokenizer_contract or {}).get("source") or "dsproxy_profile_tokenizer")
+                str((tokenizer_contract or {}).get("source") or "cox_profile_tokenizer")
                 if tokenizer_available
                 else "unavailable"
             ),
@@ -19356,7 +19356,7 @@ def _weclaw_prompt_split_with_provider_coverage(
     coverage_scope = "local_profile_tokenizer_message_content_only"
     coverage_basis = str(
         normalized.get("semantic_scope")
-        or "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly"
+        or "message_content_and_tool_call_arguments_after_cox_payload_assembly"
     )
 
     dominant_candidates = {
@@ -19640,21 +19640,21 @@ def _weclaw_tokens_contract(
             profile_tokenizer_section = _profile_tokenizer_unavailable_report(
                 profile=profile,
                 model=profile_model or DEFAULT_MODEL,
-                provider=provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+                provider=provider or os.environ.get("COX_MODEL_PROVIDER", "deepseek"),
                 reason="session_scoped_prompt_segmentation_not_observed",
             )
             profile_tokenizer_section["session_id"] = session_id
             profile_tokenizer_section["observed_session_id"] = report_session_id
             profile_tokenizer_section["scope"] = "current_session"
             profile_tokenizer_section["summary"]["reason"] = "session_scoped_prompt_segmentation_not_observed"
-            profile_tokenizer_section["summary"]["action"] = "send one primary model request through this session, then re-check dsproxy status --weclaw-json --session-id"
+            profile_tokenizer_section["summary"]["action"] = "send one primary model request through this session, then re-check cox status --weclaw-json --session-id"
             split = _weclaw_prompt_subcategory_split_contract(None, tokenizer_contract=tokenizer_contract, no_observed_prompt=True)
             split = dict(split)
             split["reason"] = "session_scoped_prompt_segmentation_not_observed"
             split["scope"] = "current_session"
             split["session_id"] = session_id
             split["observed_session_id"] = report_session_id
-            split["action"] = "send one primary model request through this session, then re-check dsproxy status --weclaw-json --session-id"
+            split["action"] = "send one primary model request through this session, then re-check cox status --weclaw-json --session-id"
             profile_tokenizer_section["prompt_subcategory_split"] = split
         else:
             profile_tokenizer_section = dict(profile_tokenizer_report)
@@ -19665,7 +19665,7 @@ def _weclaw_tokens_contract(
         profile_tokenizer_section = _profile_tokenizer_unavailable_report(
             profile=profile,
             model=profile_model or DEFAULT_MODEL,
-            provider=provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+            provider=provider or os.environ.get("COX_MODEL_PROVIDER", "deepseek"),
             reason="no_profile_tokenizer_report_observed_for_route",
         )
         if session_id:
@@ -19674,7 +19674,7 @@ def _weclaw_tokens_contract(
 
     tokenizer_contract = profile_tokenizer_section.get("tokenizer") if isinstance(profile_tokenizer_section, dict) else None
     if not isinstance(tokenizer_contract, dict):
-        tokenizer_contract = _profile_tokenizer_contract(profile_model or DEFAULT_MODEL, provider or os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"))
+        tokenizer_contract = _profile_tokenizer_contract(profile_model or DEFAULT_MODEL, provider or os.environ.get("COX_MODEL_PROVIDER", "deepseek"))
 
     embedded_prompt_split = profile_tokenizer_section.get("prompt_subcategory_split") if isinstance(profile_tokenizer_section, dict) else None
     if (
@@ -19703,7 +19703,7 @@ def _weclaw_tokens_contract(
     taxonomy = {
         "version": 11,
         "unit": "tokens",
-        "source": "dsproxy_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
+        "source": "cox_usage_ledger.provider_reported_usage_and_profile_tokenizer_estimate",
         "categories": [
             "input", "cached_input", "output", "reasoning",
             "primary_model_call", "auxiliary_model_call",
@@ -19713,7 +19713,7 @@ def _weclaw_tokens_contract(
         ],
         "precision": {
             "provider_usage_totals": "exact_provider_reported",
-            "purpose_attribution": "exact_dsproxy_call_purpose",
+            "purpose_attribution": "exact_cox_call_purpose",
             "prompt_subcategory_split": prompt_split_precision,
             "context_window_used_tokens": "latest_primary_provider_prompt_tokens_estimate",
             "session_scope": "exact_current_session_when_session_id_available",
@@ -19723,7 +19723,7 @@ def _weclaw_tokens_contract(
         "attribution_schema": {
             "version": 6,
             "provider_usage_totals": "exact aggregate provider fields",
-            "purpose_attribution": "exact dsproxy model-call purpose fields",
+            "purpose_attribution": "exact cox model-call purpose fields",
             "session_scope": "usage_events.session_id derived from Codex Responses prompt_cache_key/client_metadata when available",
             "latest_primary_turn": "latest request group whose purpose is primary/final",
             "latest_any_model_call": "latest request group regardless of purpose",
@@ -19768,7 +19768,7 @@ def _weclaw_tokens_contract(
             "reason": reason,
             "status": reason,
             "action": "send a primary model request through this scope, then re-check status",
-            "source": "dsproxy_usage_ledger",
+            "source": "cox_usage_ledger",
         }
 
     def _section(section_events: list[dict[str, Any]], *, request_id: str | None, source: str, scope: str, included_in_session_total: bool | None = None) -> dict[str, Any]:
@@ -19807,23 +19807,23 @@ def _weclaw_tokens_contract(
     session_scope = "current_session" if current_session_available else "profile_route_history"
 
     current_session_section = (
-        _section(events, request_id=None, source="dsproxy_usage_ledger.current_session", scope="current_session", included_in_session_total=True)
+        _section(events, request_id=None, source="cox_usage_ledger.current_session", scope="current_session", included_in_session_total=True)
         if current_session_available
-        else {**_unavailable("session_id_not_available", scope="current_session"), "current_session_available": False, "action": "pass active Codex prompt_cache_key/session id to dsproxy status --weclaw-json --session-id"}
+        else {**_unavailable("session_id_not_available", scope="current_session"), "current_session_available": False, "action": "pass active Codex prompt_cache_key/session id to cox status --weclaw-json --session-id"}
     )
     if current_session_available:
         current_session_section["session_id"] = session_id
         current_session_section["current_session_available"] = True
 
-    latest_primary_section = _section(latest_primary_events, request_id=latest_primary_request_id, source="dsproxy_usage_ledger.latest_primary_turn.grouped_by_request_id", scope=session_scope)
-    latest_any_section = _section(latest_any_events, request_id=latest_any_request_id, source="dsproxy_usage_ledger.latest_any_model_call.grouped_by_request_id", scope=session_scope)
-    latest_aux_section = _section(latest_aux_events, request_id=latest_aux_request_id, source="dsproxy_usage_ledger.latest_auxiliary_call.grouped_by_request_id", scope=session_scope, included_in_session_total=True)
+    latest_primary_section = _section(latest_primary_events, request_id=latest_primary_request_id, source="cox_usage_ledger.latest_primary_turn.grouped_by_request_id", scope=session_scope)
+    latest_any_section = _section(latest_any_events, request_id=latest_any_request_id, source="cox_usage_ledger.latest_any_model_call.grouped_by_request_id", scope=session_scope)
+    latest_aux_section = _section(latest_aux_events, request_id=latest_aux_request_id, source="cox_usage_ledger.latest_auxiliary_call.grouped_by_request_id", scope=session_scope, included_in_session_total=True)
     prompt_subcategory_split = _weclaw_prompt_split_with_provider_coverage(
         prompt_subcategory_split,
         latest_primary_section,
         session_id=session_id,
     )
-    session_total_section = _section(events, request_id=None, source="dsproxy_usage_ledger.current_session" if current_session_available else "dsproxy_usage_ledger.profile_route_history", scope=session_scope, included_in_session_total=True)
+    session_total_section = _section(events, request_id=None, source="cox_usage_ledger.current_session" if current_session_available else "cox_usage_ledger.profile_route_history", scope=session_scope, included_in_session_total=True)
     if current_session_available:
         session_total_section["session_id"] = session_id
     else:
@@ -19831,12 +19831,12 @@ def _weclaw_tokens_contract(
         session_total_section["reason"] = "session_id_not_available"
         session_total_section["action"] = "pass active session id for current_session scope. This legacy section is profile_route_history."
 
-    profile_route_total = _section(route_events, request_id=None, source="dsproxy_usage_ledger.profile_route_history", scope="profile_route_history", included_in_session_total=False) if route_events else _unavailable(route_unavailable_reason or "usage_ledger_events", scope="profile_route_history")
+    profile_route_total = _section(route_events, request_id=None, source="cox_usage_ledger.profile_route_history", scope="profile_route_history", included_in_session_total=False) if route_events else _unavailable(route_unavailable_reason or "usage_ledger_events", scope="profile_route_history")
     if auxiliary_events:
         auxiliary_section = _section(
             auxiliary_events,
             request_id=None,
-            source="dsproxy_usage_ledger.non_primary_purposes",
+            source="cox_usage_ledger.non_primary_purposes",
             scope=session_scope,
             included_in_session_total=True,
         )
@@ -19848,7 +19848,7 @@ def _weclaw_tokens_contract(
             "scope": "current_session",
             "ledger_scope": "current_session",
             "is_estimated": False,
-            "source": "dsproxy_usage_ledger.non_primary_purposes",
+            "source": "cox_usage_ledger.non_primary_purposes",
             "request_id": None,
             "model_call_count": 0,
             "prompt_tokens": 0,
@@ -19858,7 +19858,7 @@ def _weclaw_tokens_contract(
             "prompt_cache_hit_tokens": 0,
             "prompt_cache_miss_tokens": 0,
             "cache_hit_ratio": None,
-            "cache": _weclaw_cache_summary_from_summary(auxiliary_summary, scope="current_session", source="dsproxy_usage_ledger.non_primary_purposes.summary.provider_cache_fields"),
+            "cache": _weclaw_cache_summary_from_summary(auxiliary_summary, scope="current_session", source="cox_usage_ledger.non_primary_purposes.summary.provider_cache_fields"),
             "reasoning_tokens": 0,
             "summary": auxiliary_summary,
             "by_purpose": {},
@@ -19870,7 +19870,7 @@ def _weclaw_tokens_contract(
         }
     else:
         auxiliary_section = _unavailable("auxiliary_usage_events_not_available", scope=session_scope)
-    route_auxiliary_section = _section(route_auxiliary_events, request_id=None, source="dsproxy_usage_ledger.profile_route_history.non_primary_purposes", scope="profile_route_history", included_in_session_total=False) if route_auxiliary_events else _unavailable("auxiliary_usage_events_not_available", scope="profile_route_history")
+    route_auxiliary_section = _section(route_auxiliary_events, request_id=None, source="cox_usage_ledger.profile_route_history.non_primary_purposes", scope="profile_route_history", included_in_session_total=False) if route_auxiliary_events else _unavailable("auxiliary_usage_events_not_available", scope="profile_route_history")
 
     latest_prompt_segmentation = prompt_subcategory_split.get("latest_prompt_segmentation") if isinstance(prompt_subcategory_split, dict) else None
     if isinstance(latest_prompt_segmentation, dict):
@@ -19910,7 +19910,7 @@ def _weclaw_tokens_contract(
         "cache": {
             "available": True,
             "unit": "tokens",
-            "source": "deepseek_usage.prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_via_dsproxy_usage_ledger",
+            "source": "deepseek_usage.prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_via_cox_usage_ledger",
             "provider_authoritative": True,
             "session": current_session_section.get("cache") if isinstance(current_session_section, dict) else None,
             "last_turn": latest_primary_section.get("cache") if isinstance(latest_primary_section, dict) else None,
@@ -19934,7 +19934,7 @@ def _weclaw_tokens_contract(
 
 
 def _pricing_display_currency(balance: dict[str, Any] | None = None) -> str:
-    configured = os.environ.get("DEEPSEEK_PROXY_DISPLAY_CURRENCY", "").strip().upper()
+    configured = os.environ.get("COX_DISPLAY_CURRENCY", "").strip().upper()
     if configured:
         return configured
     if isinstance(balance, dict):
@@ -19945,9 +19945,9 @@ def _pricing_display_currency(balance: dict[str, Any] | None = None) -> str:
 
 
 def _usd_cny_fx_contract() -> dict[str, Any]:
-    raw_rate = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_RATE", "").strip()
-    source = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_SOURCE", "").strip()
-    updated_at = os.environ.get("DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT", "").strip()
+    raw_rate = os.environ.get("COX_USD_CNY_FX_RATE", "").strip()
+    source = os.environ.get("COX_USD_CNY_FX_SOURCE", "").strip()
+    updated_at = os.environ.get("COX_USD_CNY_FX_UPDATED_AT", "").strip()
     try:
         rate = float(raw_rate) if raw_rate else 7.20
     except ValueError:
@@ -19958,10 +19958,10 @@ def _usd_cny_fx_contract() -> dict[str, Any]:
         "base_currency": "USD",
         "quote_currency": "CNY",
         "rate": rate,
-        "source": source or ("env.DEEPSEEK_PROXY_USD_CNY_FX_RATE" if raw_rate else "bundled_static_fx_snapshot"),
+        "source": source or ("env.COX_USD_CNY_FX_RATE" if raw_rate else "bundled_static_fx_snapshot"),
         "updated_at": updated_at or "2026-05-18T00:00:00Z",
         "is_estimated": True,
-        "action": "set DEEPSEEK_PROXY_USD_CNY_FX_RATE and DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT to override the bundled static display-rate snapshot",
+        "action": "set COX_USD_CNY_FX_RATE and COX_USD_CNY_FX_UPDATED_AT to override the bundled static display-rate snapshot",
     }
 
 
@@ -20132,14 +20132,14 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
     refresh_required_action = (
         str(daily_refresh.get("action"))
         if daily_requires_refresh and daily_refresh.get("action")
-        else "run dsproxy pricing refresh --write-cache --json, then re-check dsproxy status --weclaw-json"
+        else "run cox pricing refresh --write-cache --json, then re-check cox status --weclaw-json"
         if requires_refresh
         else None
     )
     refresh_recommended_action = (
         str(daily_refresh.get("action"))
         if daily_refresh_recommended and daily_refresh.get("action")
-        else "optional: run dsproxy pricing refresh --write-cache --json to replace the bundled snapshot with a live official-docs cache"
+        else "optional: run cox pricing refresh --write-cache --json to replace the bundled snapshot with a live official-docs cache"
         if refresh_recommended
         else None
     )
@@ -20157,7 +20157,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         pricing_lifecycle_status = "bundled_official_snapshot_active"
         pricing_lifecycle_reason = "official_live_cache_not_present_using_bundled_official_snapshot"
     elif externally_configured:
-        pricing_lifecycle_status = "configured_pricing_path_managed_by_dsproxy"
+        pricing_lifecycle_status = "configured_pricing_path_managed_by_cox"
         pricing_lifecycle_reason = "configured_pricing_path_active_managed_refresh_contract"
     else:
         pricing_lifecycle_status = "project_default_pricing_config"
@@ -20303,7 +20303,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "refresh": {
             "available": True,
             "reason": None,
-            "action": "run dsproxy pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
+            "action": "run cox pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
             "source_kind": "official_docs_html",
             "source_url": official_reference_url,
             "requires_live_network": True,
@@ -20480,8 +20480,8 @@ def _weclaw_cost_contract(tokens: dict[str, Any], pricing: dict[str, Any], balan
         "turn_ledger": turn_ledger,
         "notes": [
             "Token counts are provider-reported exact usage totals.",
-            "Current-session cost is available only from tokens.session when dsproxy status is called with an active session id.",
-            "Cost is estimated from per-turn dsproxy usage ledger entries, not by multiplying historical session tokens by the current active model price.",
+            "Current-session cost is available only from tokens.session when cox status is called with an active session id.",
+            "Cost is estimated from per-turn cox usage ledger entries, not by multiplying historical session tokens by the current active model price.",
             "Prompt input cost uses provider prompt_cache_hit_tokens and prompt_cache_miss_tokens when available; it does not treat all prompt tokens as miss or all as hit.",
         ],
     }
@@ -20620,7 +20620,7 @@ def _runtime_weclaw_status(
     profile_status = _runtime_weclaw_profile_status(profile)
     model_contract = profile_status.get("model", {})
     effective_model = None
-    provider = os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
+    provider = os.environ.get("COX_MODEL_PROVIDER", "deepseek")
     if isinstance(model_contract, dict):
         effective_model = (
             model_contract.get("effective_model")
@@ -20714,7 +20714,7 @@ def _runtime_weclaw_status(
     context_window["runtime"] = {
         "available": True,
         "unit": "tokens",
-        "source": "dsproxy_runtime.token_first_contracts",
+        "source": "cox_runtime.token_first_contracts",
         "context": runtime_token_context,
         "payload_guard": runtime_payload_guard,
         "semantic_compaction": semantic_status,
@@ -20736,7 +20736,7 @@ def _runtime_weclaw_status(
             "ledger_scope": "current_session" if session_id else "profile_route_history",
             "current_session_available": bool(session_id),
             "reason": None if session_id else "session_id_not_available",
-            "action": None if session_id else "pass active Codex prompt_cache_key/session id to dsproxy status --weclaw-json --session-id",
+            "action": None if session_id else "pass active Codex prompt_cache_key/session id to cox status --weclaw-json --session-id",
         },
         "model": model_contract,
         "effort": profile_status.get("effort", {}),
@@ -20751,7 +20751,7 @@ def _runtime_weclaw_status(
         "compaction": {
             "available": True,
             "is_estimated": True,
-            "source": "dsproxy_runtime.token_first_compaction_contract",
+            "source": "cox_runtime.token_first_compaction_contract",
             "unit": "tokens",
             "runtime_context": runtime_token_context,
             "runtime_payload_guard": runtime_payload_guard,
@@ -20818,12 +20818,12 @@ def create_app(
         }
 
     @app.get("/v1/proxy/weclaw/profile-status")
-    async def proxy_weclaw_profile_status(profile: str = "deepseek-thinking") -> dict[str, Any]:
+    async def proxy_weclaw_profile_status(profile: str = "cox") -> dict[str, Any]:
         return _runtime_weclaw_profile_status(profile)
 
 
     @app.get("/v1/proxy/weclaw/status")
-    async def proxy_weclaw_status(profile: str = "deepseek-thinking", include_balance: bool = True, session_id: str | None = None) -> dict[str, Any]:
+    async def proxy_weclaw_status(profile: str = "cox", include_balance: bool = True, session_id: str | None = None) -> dict[str, Any]:
         balance = await _weclaw_balance_contract(
             deepseek_client=app.state.deepseek_client,
             include_balance=include_balance,
@@ -21048,7 +21048,7 @@ def create_app(
                 encoding="utf-8",
             )
         except Exception as exc:
-            print(f"[deepseek-responses-proxy] failed to write responses debug payload: {exc}")
+            print(f"[codexchange] failed to write responses debug payload: {exc}")
 
         model = _select_upstream_model(payload.get("model"))
         previous_response_id = payload.get("previous_response_id")
@@ -21069,7 +21069,7 @@ def create_app(
                 deepseek_tools_list.extend(normalized_tool)
             elif normalized_tool is not None:
                 deepseek_tools_list.append(normalized_tool)
-        if _env_bool("DEEPSEEK_PROXY_TOOL_BRIDGE", True) and deepseek_tools_list:
+        if _env_bool("COX_TOOL_BRIDGE", True) and deepseek_tools_list:
             existing_tool_names = {
                 ((tool.get("function") or {}).get("name"))
                 for tool in deepseek_tools_list
@@ -21108,7 +21108,7 @@ def create_app(
                 encoding="utf-8",
             )
         except Exception as exc:
-            print(f"[deepseek-responses-proxy] failed to write compat warnings: {exc}")
+            print(f"[codexchange] failed to write compat warnings: {exc}")
 
         if previous_response_id:
             stored = app.state.store.get(previous_response_id)
@@ -21124,7 +21124,7 @@ def create_app(
                 app.state.store.save(stored.response, messages)
                 app.state.repair_count += 1
                 print(
-                    f"[deepseek-responses-proxy] repaired missing reasoning_content "
+                    f"[codexchange] repaired missing reasoning_content "
                     f"for previous_response_id={previous_response_id}"
                 )
         else:
@@ -21182,7 +21182,7 @@ def create_app(
         if repaired_tool_history:
             app.state.repair_count += 1
             print(
-                f"[deepseek-responses-proxy] repaired tool_call message order "
+                f"[codexchange] repaired tool_call message order "
                 f"for previous_response_id={previous_response_id}"
             )
 
@@ -21196,12 +21196,12 @@ def create_app(
                 app.state.repair_count += 1
                 if _thinking_enabled():
                     print(
-                        "[deepseek-responses-proxy] flattened tool messages "
+                        "[codexchange] flattened tool messages "
                         "for thinking-mode compatibility"
                     )
                 else:
                     print(
-                        "[deepseek-responses-proxy] flattened self-contained "
+                        "[codexchange] flattened self-contained "
                         "tool messages because no DeepSeek tools were available"
                     )
 
@@ -21252,13 +21252,13 @@ def create_app(
                 app.state.store.save_runtime_payload_report(
                     context_compaction_report,
                     kind="compaction",
-                    profile="deepseek-thinking" if _thinking_enabled() else "deepseek",
+                    profile="cox" if _thinking_enabled() else "deepseek",
                     session_id=_session_id_from_request_payload(payload),
                     request_id=response_id,
                     response_id=response_id,
                 )
             except Exception as exc:
-                print(f"[deepseek-responses-proxy] failed to persist runtime compaction report: {exc}")
+                print(f"[codexchange] failed to persist runtime compaction report: {exc}")
         _write_context_compaction_report(context_compaction_report)
         _debug_trace_event(
             response_id,
@@ -21320,13 +21320,13 @@ def create_app(
             reasoning_effort=reasoning_effort,
             request_payload=payload,
         )
-        profile_name = "deepseek-thinking" if _thinking_enabled() else "deepseek"
+        profile_name = "cox" if _thinking_enabled() else "deepseek"
         session_id_for_report = _session_id_from_request_payload(payload)
         profile_tokenizer_report = _profile_tokenizer_report_for_messages(
             messages_for_deepseek,
             profile=profile_name,
             model=model,
-            provider=os.environ.get("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek"),
+            provider=os.environ.get("COX_MODEL_PROVIDER", "deepseek"),
             session_id=session_id_for_report,
             payload=chat_payload,
         )

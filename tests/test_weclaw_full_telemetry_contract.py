@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app
-from deepseek_responses_proxy import cli
+from codexchange_proxy.app import DeepSeekClient, SQLiteResponseStore, create_app
+from codexchange_proxy import cli
 
 
 class WeClawBalanceClient(DeepSeekClient):
@@ -27,11 +27,11 @@ class WeClawBalanceClient(DeepSeekClient):
 
 def _write_codex_config(path: Path) -> None:
     path.write_text(
-        "[model_providers.deepseek-thinking-proxy]\n"
+        "[model_providers.cox-proxy]\n"
         "base_url = \"http://127.0.0.1:8001/v1\"\n\n"
-        "[profiles.deepseek-thinking]\n"
+        "[profiles.cox]\n"
         "model = \"deepseek-v4-flash\"\n"
-        "model_provider = \"deepseek-thinking-proxy\"\n"
+        "model_provider = \"cox-proxy\"\n"
         "model_context_window = 1000000\n"
         "model_auto_compact_token_limit = 900000\n"
         "model_reasoning_effort = \"xhigh\"\n"
@@ -87,8 +87,8 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     _record_usage(
@@ -236,7 +236,7 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
             "would_trim": False,
             "raw_content_exposed": False,
             "runtime_context": {
-                "profile": "deepseek-thinking",
+                "profile": "cox",
                 "model": "deepseek-v4-flash",
                 "model_context_window_tokens": 1000000,
                 "auto_compact_threshold_tokens": 900000,
@@ -287,19 +287,19 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox")
 
     assert response.status_code == 200
     data = response.json()
 
     assert data["status"] == "ok"
-    assert data["profile"] == "deepseek-thinking"
+    assert data["profile"] == "cox"
 
     context_window = data["context_window"]
     assert context_window["used_tokens_available"] is True
     assert context_window["used_tokens"] == 1000
     assert context_window["used_tokens_is_estimated"] is True
-    assert context_window["used_tokens_source"] == "dsproxy_usage_ledger.latest_primary_turn.summary.prompt_tokens"
+    assert context_window["used_tokens_source"] == "cox_usage_ledger.latest_primary_turn.summary.prompt_tokens"
     assert context_window["latest_upstream_prompt_tokens"]["value"] == 1000
     assert context_window["latest_upstream_prompt_tokens"]["is_estimated_for_context_window"] is True
     assert context_window["remaining_tokens_estimate"] == 999000
@@ -362,7 +362,7 @@ async def test_weclaw_http_status_exposes_usage_pricing_cost_auxiliary_and_balan
     assert runtime_trim["estimated_tokens_before_trim"] == runtime_trim["before_tokens"]
     assert runtime_trim["estimated_tokens_after_trim"] == runtime_trim["after_tokens"]
     assert runtime_trim["estimated_tokens_removed_by_trim"] == runtime_trim["tokens_removed"]
-    assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["runtime_context"]["profile"] == "deepseek-thinking"
+    assert guard["trimming"]["last_report"]["token_first_trim_dry_run"]["runtime_context"]["profile"] == "cox"
     assert guard["trimming"]["last_report"]["item_type_summary"]["type_counts"]["tool_result"] == 1
     assert guard["trimming"]["last_report"]["protected_static_blocks"]["raw_content_exposed"] is False
     assert guard["trimming"]["last_report"]["image_semantic_envelope"]["enabled"] is True
@@ -465,9 +465,9 @@ async def test_weclaw_http_status_uses_app_state_store_and_client_for_runtime_co
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DB_PATH", str(tmp_path / "runtime.sqlite3"))
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_DB_PATH", str(tmp_path / "runtime.sqlite3"))
 
     app = create_app(deepseek_client=WeClawBalanceClient())
     _record_usage(
@@ -486,7 +486,7 @@ async def test_weclaw_http_status_uses_app_state_store_and_client_for_runtime_co
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox")
 
     assert response.status_code == 200
     data = response.json()
@@ -510,13 +510,13 @@ async def test_weclaw_http_status_balance_unavailable_is_actionable(tmp_path, mo
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     app = create_app(deepseek_client=NoBalanceClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox")
 
     assert response.status_code == 200
     data = response.json()
@@ -532,16 +532,16 @@ def test_cli_status_weclaw_json_prefers_runtime_weclaw_status(monkeypatch, tmp_p
     env_file = tmp_path / "env"
     _write_codex_config(codex_config)
     env_file.write_text(
-        "export DEEPSEEK_REASONING_EFFORT=max\n"
-        "export DEEPSEEK_PROXY_MODEL=deepseek-v4-flash\n",
+        "export COX_REASONING_EFFORT=max\n"
+        "export COX_MODEL=deepseek-v4-flash\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_ENV_FILE", str(env_file))
+    monkeypatch.setenv("COX_ENV_FILE", str(env_file))
 
     runtime_payload = {
         "status": "ok",
-        "profile": "deepseek-thinking",
+        "profile": "cox",
         "tokens": {
             "last_turn": {"available": True, "summary": {"total_tokens": 1485}},
             "session_total": {"available": True, "summary": {"total_tokens": 1595}},
@@ -594,10 +594,10 @@ async def test_weclaw_status_converts_cost_to_cny_when_balance_is_cny(tmp_path, 
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_RATE", "7.25")
-    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT", "2026-05-18T00:00:00Z")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_USD_CNY_FX_RATE", "7.25")
+    monkeypatch.setenv("COX_USD_CNY_FX_UPDATED_AT", "2026-05-18T00:00:00Z")
 
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     _record_usage(
@@ -617,7 +617,7 @@ async def test_weclaw_status_converts_cost_to_cny_when_balance_is_cny(tmp_path, 
 
     app = create_app(deepseek_client=WeClawCnyBalanceClient(), store=store)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox")
 
     assert response.status_code == 200
     data = response.json()
@@ -664,9 +664,9 @@ async def test_weclaw_status_uses_cny_primary_pricing_without_fx(tmp_path, monke
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     store.record_usage(
@@ -702,7 +702,7 @@ async def test_weclaw_status_uses_cny_primary_pricing_without_fx(tmp_path, monke
 
     app = create_app(deepseek_client=WeClawCnyBalanceClient(), store=store)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox")
 
     assert response.status_code == 200
     data = response.json()
@@ -755,14 +755,14 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_POLICY", "fixed")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_TRIGGER_CHARS", "1000000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_KEEP_RECENT_MESSAGES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMPACT_MATERIAL_CHARS", "12000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_COMPACT_ENABLED", "1")
+    monkeypatch.setenv("COX_COMPACT_POLICY", "fixed")
+    monkeypatch.setenv("COX_COMPACT_TRIGGER_CHARS", "1000000")
+    monkeypatch.setenv("COX_COMPACT_KEEP_RECENT_MESSAGES", "2")
+    monkeypatch.setenv("COX_COMPACT_MATERIAL_CHARS", "12000")
+    monkeypatch.setenv("COX_TOKENIZER_RESOURCE_DIR", str(tmp_path / "missing-tokenizer-resources"))
     monkeypatch.chdir(tmp_path)
 
     upstream = WeClawNoNetworkPrimaryClient()
@@ -782,7 +782,7 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
         assert response.status_code == 200
 
         status_response = await client.get(
-            "/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false"
+            "/v1/proxy/weclaw/status?profile=cox&include_balance=false"
         )
         proxy_status_response = await client.get("/v1/proxy/status")
 
@@ -845,7 +845,7 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
         assert audit["retained_recent_policy"]["available"] is True
         assert audit["codex_native_source_evidence"]["prompt_md_sha256"] == "ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07"
         assert audit["codex_native_source_evidence"]["remote_compact_endpoint"] == "responses/compact"
-        assert audit["codex_native_source_evidence"]["remote_compaction_claimed_for_dsproxy_provider"] is False
+        assert audit["codex_native_source_evidence"]["remote_compaction_claimed_for_cox_provider"] is False
         assert audit["compact_prompt_alignment"]["alignment"] == "github_source_backed_codex_native_local_prompt"
         assert audit["compact_prompt_alignment"]["exact_native_codex_local_prompt_text"] is True
         assert audit["compact_prompt_alignment"]["remote_native_compaction_claimed"] is False
@@ -868,7 +868,7 @@ async def test_weclaw_http_status_exposes_compact_audit_after_real_skipped_compa
 def test_weclaw_semantic_payload_display_contract_exposes_mode_savings_and_safety_metadata():
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
     status = {
         "latest": {
             "semantic_audit": {"present": True, "source": "in_memory_runtime_semantic_payload_snapshot"},
@@ -967,9 +967,9 @@ def test_weclaw_semantic_payload_display_contract_exposes_mode_savings_and_safet
 def test_semantic_payload_runtime_status_exposes_display_contract(monkeypatch):
     import importlib
 
-    proxy_app = importlib.import_module("deepseek_responses_proxy.app")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    proxy_app = importlib.import_module("codexchange_proxy.app")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
 
     payload_event = {
         "event": "flattened_tool_transcript_semantic_payload_compaction_applied",
@@ -1035,8 +1035,8 @@ async def test_weclaw_status_marks_mismatched_trim_report_unavailable(tmp_path, 
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     app = create_app(deepseek_client=WeClawBalanceClient(), store=SQLiteResponseStore(tmp_path / "usage.sqlite3"))
     app.state.deepseek_client.last_context_trimming_report = {
@@ -1058,13 +1058,13 @@ async def test_weclaw_status_marks_mismatched_trim_report_unavailable(tmp_path, 
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox&include_balance=false")
 
     assert response.status_code == 200
     trimming = response.json()["runtime_payload_guard"]["trimming"]
     assert trimming["available"] is False
     assert trimming["last_report"]["reason"] == "runtime_trimming_report_profile_mismatch"
-    assert trimming["last_report"]["requested_profile"] == "deepseek-thinking"
+    assert trimming["last_report"]["requested_profile"] == "cox"
     assert trimming["last_report"]["observed_profile"] == "deepseek"
     assert trimming["last_report"]["token_first_trim_dry_run"]["available"] is False
 
@@ -1074,8 +1074,8 @@ async def test_weclaw_status_restores_profile_tokenizer_report_from_sqlite_for_r
     codex_config = tmp_path / "codex.toml"
     _write_codex_config(codex_config)
     monkeypatch.setenv("CODEX_CONFIG_FILE", str(codex_config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     store = SQLiteResponseStore(tmp_path / "usage.sqlite3")
     store.record_usage(
@@ -1102,7 +1102,7 @@ async def test_weclaw_status_restores_profile_tokenizer_report_from_sqlite_for_r
     store.save_profile_tokenizer_report(
         {
             "available": True,
-            "profile": "deepseek-thinking",
+            "profile": "cox",
             "session_id": "sess-resume",
             "request_id": "resp_restore",
             "response_id": "resp_restore",
@@ -1122,7 +1122,7 @@ async def test_weclaw_status_restores_profile_tokenizer_report_from_sqlite_for_r
                 "unit": "tokens",
                 "is_estimated": True,
                 "precision": "local_profile_tokenizer_estimate",
-                "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+                "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
                 "categories": {
                     "user": {"tokens": 4},
                     "system": {"tokens": 6},
@@ -1153,7 +1153,7 @@ async def test_weclaw_status_restores_profile_tokenizer_report_from_sqlite_for_r
     app.state.last_profile_tokenizer_report_by_profile = {}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&session_id=sess-resume&include_balance=false")
+        response = await client.get("/v1/proxy/weclaw/status?profile=cox&session_id=sess-resume&include_balance=false")
 
     assert response.status_code == 200
     data = response.json()

@@ -16,10 +16,10 @@ def test_docs_do_not_describe_model_api_as_deepseek_only() -> None:
     assert "Qwen/DashScope" in zh
 
 
-def test_operations_uses_current_dsproxy_config_command_name() -> None:
+def test_operations_uses_current_cox_config_command_name() -> None:
     ops = _read("docs/developer-handbook.zh-CN.md")
-    assert "dsproxy-config" not in ops
-    assert "dsproxy config set-model deepseek-v4-pro" in ops
+    assert "cox-config" not in ops
+    assert "cox config set-model deepseek-v4-pro" in ops
 
 
 def test_developer_handbook_current_release_state_is_synced_to_latest_release_note_node() -> None:

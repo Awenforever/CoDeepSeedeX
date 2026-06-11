@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     PROXY_INTERNAL_COMMIT,
     PROXY_INTERNAL_VERSION,
     PROXY_PUBLIC_COMMIT,
     PROXY_PUBLIC_VERSION,
     PROXY_VERSION,
 )
-from deepseek_responses_proxy.cli import _format_version_metadata, _version_metadata
+from codexchange_proxy.cli import _format_version_metadata, _version_metadata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,36 +36,36 @@ def _expected_public_commit() -> str:
     return PROXY_PUBLIC_COMMIT
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
-    assert PROXY_PUBLIC_VERSION == "v0.4.3-alpha"
+    assert PROXY_PUBLIC_VERSION == "v0.5.0-alpha"
     assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p2.22a16-release-v043-alpha-update-to-p222-closeout"
+    assert PROXY_INTERNAL_VERSION == "p3.0a1-codexchange-hardcut-generalized-router"
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p2.22a16-release-v043-alpha-update-to-p222-closeout"
+    assert PROXY_INTERNAL_VERSION == "p3.0a1-codexchange-hardcut-generalized-router"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["version"] == "0.4.1a0"
+    assert data["project"]["version"] == "0.5.0a0"
 
 
 def test_cli_version_output_includes_public_and_internal_versions() -> None:
     result = subprocess.run(
-        [".venv/bin/python", "-m", "deepseek_responses_proxy.cli", "--version"],
+        [sys.executable, "-m", "codexchange_proxy.cli", "--version"],
         cwd=ROOT,
         text=True,
         capture_output=True,
         check=True,
     )
     output = result.stdout.strip()
-    assert "public version: v0.4.3-alpha |" in output
+    assert "public version: v0.5.0-alpha |" in output
     assert "internal version: p" in output
 
 
@@ -85,7 +86,7 @@ def test_version_metadata_formatter_shape() -> None:
 
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
-    assert data["public_version"] == "v0.4.3-alpha"
+    assert data["public_version"] == "v0.5.0-alpha"
     assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7
@@ -93,7 +94,7 @@ def test_version_metadata_reports_public_release_and_head_commit() -> None:
 
 def test_cli_version_output_uses_declared_internal_version() -> None:
     result = subprocess.run(
-        [".venv/bin/python", "-m", "deepseek_responses_proxy.cli", "--version"],
+        [sys.executable, "-m", "codexchange_proxy.cli", "--version"],
         cwd=ROOT,
         text=True,
         capture_output=True,

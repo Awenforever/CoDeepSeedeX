@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from deepseek_responses_proxy.app import PROXY_VERSION, create_app
+from codexchange_proxy.app import PROXY_VERSION, create_app
 
 
 def deepseek_text_response(content: str = "ok") -> dict:
@@ -129,7 +129,7 @@ def test_deepseek_proxy_account_namespace_expands_to_proxy_tools(monkeypatch, tm
 
 def test_proxy_status_namespace_tool_executes_in_tool_bridge(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
 
     fake_client = RecordingDeepSeekClient(
         [

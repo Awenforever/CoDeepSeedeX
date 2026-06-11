@@ -5,7 +5,7 @@ import json
 import importlib
 from pathlib import Path
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def test_deepseek_zh_pricing_parser_exposes_pro_discount_metadata() -> None:
@@ -63,8 +63,8 @@ def test_bundled_pricing_snapshot_uses_effective_cny_prices_and_discount_metadat
 
 def test_weclaw_pricing_contract_exposes_bundled_current_and_original_prices(monkeypatch) -> None:
     pricing_path = Path("config/pricing.json").resolve()
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
     contract = proxy_app._weclaw_pricing_contract("deepseek-v4-pro", display_currency="CNY")
 
     assert contract["source_currency"] == "CNY"

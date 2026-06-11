@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-proxy_app = importlib.import_module("deepseek_responses_proxy.app")
+proxy_app = importlib.import_module("codexchange_proxy.app")
 
 
 def test_current_session_auxiliary_model_calls_returns_zero_object_when_absent(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ def test_current_session_auxiliary_model_calls_returns_zero_object_when_absent(t
         session_id="s1",
     )
 
-    tokens = proxy_app._weclaw_tokens_contract(store, profile="deepseek-thinking", session_id="s1")
+    tokens = proxy_app._weclaw_tokens_contract(store, profile="cox", session_id="s1")
     aux = tokens["auxiliary_model_calls"]
 
     assert aux["available"] is True
@@ -79,7 +79,7 @@ def test_prompt_subcategory_split_exposes_provider_coverage_and_delta(tmp_path: 
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {
                 "user": {"tokens": 3},
                 "assistant_history": {"tokens": 0},
@@ -98,7 +98,7 @@ def test_prompt_subcategory_split_exposes_provider_coverage_and_delta(tmp_path: 
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-pro",
         provider="deepseek",
@@ -115,7 +115,7 @@ def test_prompt_subcategory_split_exposes_provider_coverage_and_delta(tmp_path: 
     assert split["delta_tokens"] == 8047
     assert split["coverage_complete"] is False
     assert split["coverage_scope"] == "local_profile_tokenizer_message_content_only"
-    assert split["coverage_basis"] == "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly"
+    assert split["coverage_basis"] == "message_content_and_tool_call_arguments_after_cox_payload_assembly"
     assert split["delta_reason"] == "provider_prompt_tokens_exceed_local_observable_prompt_payload_tokens"
 
 
@@ -145,7 +145,7 @@ def test_prompt_subcategory_split_marks_complete_when_local_sum_matches_provider
             "unit": "tokens",
             "is_estimated": True,
             "precision": "local_profile_tokenizer_estimate",
-            "semantic_scope": "message_content_and_tool_call_arguments_after_dsproxy_payload_assembly",
+            "semantic_scope": "message_content_and_tool_call_arguments_after_cox_payload_assembly",
             "categories": {"user": {"tokens": 3}, "system": {"tokens": 8}},
             "total_tokens": 11,
         },
@@ -153,7 +153,7 @@ def test_prompt_subcategory_split_marks_complete_when_local_sum_matches_provider
 
     tokens = proxy_app._weclaw_tokens_contract(
         store,
-        profile="deepseek-thinking",
+        profile="cox",
         profile_tokenizer_report=report,
         profile_model="deepseek-v4-flash",
         provider="deepseek",

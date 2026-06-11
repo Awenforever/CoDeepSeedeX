@@ -2,12 +2,12 @@ param(
   [switch]$DryRun
 )
 
-Write-Host "DeepSeek Responses Proxy Windows installer bootstrap"
+Write-Host "CodeXchange Windows installer bootstrap"
 Write-Host "Recommended path: install inside WSL/Linux first."
 Write-Host ""
 Write-Host "Run in WSL:"
-Write-Host "  git clone <repo-url> ~/deepseek-responses-proxy"
-Write-Host "  cd ~/deepseek-responses-proxy"
+Write-Host "  git clone <repo-url> ~/codexchange"
+Write-Host "  cd ~/codexchange"
 Write-Host "  bash scripts/install.sh"
 Write-Host ""
 if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {

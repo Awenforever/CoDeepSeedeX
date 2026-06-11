@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import _normalize_response_tool
+from codexchange_proxy.app import _normalize_response_tool
 
 
 def test_mcp_namespace_warning_is_compressed_without_full_schema():

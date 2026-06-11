@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     CODEX_NATIVE_COMPACT_SUMMARY_PREFIX,
     DeepSeekClient,
     InMemoryResponseStore,
@@ -211,12 +211,12 @@ async def test_previous_response_with_function_call_output_preserves_assistant_t
 
 @pytest.mark.asyncio
 async def test_semantic_payload_enabled_compacts_real_responses_route_payload_and_status(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     client, transport = await client_factory(
         [
@@ -295,7 +295,7 @@ async def test_semantic_payload_enabled_compacts_real_responses_route_payload_an
     second_upstream_serialized = json.dumps(second_upstream_messages, ensure_ascii=False)
 
     assert transport.requests[1]["thinking"] == {"type": "enabled"}
-    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in second_upstream_serialized
+    assert "[semantic flattened tool transcript compacted by CodeXchange]" in second_upstream_serialized
     assert "semantic_type: test_output" in second_upstream_serialized
     assert "semantic_risk: low" in second_upstream_serialized
     assert "123 passed in 0.42s" in second_upstream_serialized
@@ -341,12 +341,12 @@ async def test_semantic_payload_enabled_compacts_real_responses_route_payload_an
 
 @pytest.mark.asyncio
 async def test_semantic_payload_enabled_real_route_surfaces_weclaw_display_contract(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "0")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     client, transport = await client_factory(
         [
@@ -422,11 +422,11 @@ async def test_semantic_payload_enabled_real_route_surfaces_weclaw_display_contr
 
     assert len(transport.requests) == 2
     second_upstream_serialized = json.dumps(transport.requests[1]["messages"], ensure_ascii=False)
-    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in second_upstream_serialized
+    assert "[semantic flattened tool transcript compacted by CodeXchange]" in second_upstream_serialized
     assert "321 passed in 0.73s" in second_upstream_serialized
     assert "Y" * 2000 not in second_upstream_serialized
 
-    weclaw_response = await client.get("/v1/proxy/weclaw/status?profile=deepseek-thinking&include_balance=false")
+    weclaw_response = await client.get("/v1/proxy/weclaw/status?profile=cox&include_balance=false")
     assert weclaw_response.status_code == 200
     weclaw = weclaw_response.json()
 
@@ -478,7 +478,7 @@ async def test_semantic_payload_enabled_real_route_surfaces_weclaw_display_contr
 
 @pytest.mark.asyncio
 async def test_request_model_overrides_env_proxy_model_by_default(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-pro")
 
     client, transport = await client_factory(
         [
@@ -505,8 +505,8 @@ async def test_request_model_overrides_env_proxy_model_by_default(monkeypatch, c
 
 @pytest.mark.asyncio
 async def test_env_proxy_model_can_force_override_request_model(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL", "deepseek-v4-pro")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORCE_MODEL", "1")
+    monkeypatch.setenv("COX_MODEL", "deepseek-v4-pro")
+    monkeypatch.setenv("COX_FORCE_MODEL", "1")
 
     client, transport = await client_factory(
         [
@@ -595,8 +595,8 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
         (tool.get("function") or {}).get("name")
         for tool in transport.requests[0].get("tools", [])
     ]
-    assert "codeepseedex_web_search" in tool_names
-    assert "codeepseedex_generate_image" in tool_names
+    assert "codexchange_web_search" in tool_names
+    assert "codexchange_generate_image" in tool_names
 
     warnings_path = tmp_path / ".debug" / "last_compat_warnings.json"
     warnings = json.loads(warnings_path.read_text(encoding="utf-8"))
@@ -604,14 +604,14 @@ async def test_unsupported_tools_are_recorded_to_debug_file(tmp_path, monkeypatc
     assert any(
         item.get("kind") == "mapped_tool_type"
         and item.get("tool_type") == "web_search"
-        and item.get("mapped_to") == "codeepseedex_web_search"
+        and item.get("mapped_to") == "codexchange_web_search"
         for item in warnings
     )
 
     assert any(
         item.get("kind") == "mapped_tool_type"
         and item.get("tool_type") == "image_generation"
-        and item.get("mapped_to") == "codeepseedex_generate_image"
+        and item.get("mapped_to") == "codexchange_generate_image"
         for item in warnings
     )
 
@@ -672,8 +672,8 @@ async def test_non_stream_response_rejects_completed_empty_output_with_completio
 
 @pytest.mark.asyncio
 async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.example.com/v1")
 
     client, transport = await client_factory(
         [
@@ -713,8 +713,8 @@ async def test_non_stream_response_maps_reasoning_only_content(monkeypatch, clie
 
 @pytest.mark.asyncio
 async def test_empty_output_contract_reports_custom_provider_diagnostics(monkeypatch, client_factory):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.example.com/v1")
 
     client, _transport = await client_factory(
         [
@@ -771,7 +771,7 @@ async def test_stream_response_rejects_completed_empty_output_before_sse(client_
     assert response.json()["detail"]["error_type"] == "invalid_responses_output_contract"
 
 
-def test_codex_native_summary_is_protected_from_dsproxy_compaction_material():
+def test_codex_native_summary_is_protected_from_cox_compaction_material():
     summary = CODEX_NATIVE_COMPACT_SUMMARY_PREFIX + "\nImportant state."
     messages = [
         {"role": "user", "content": summary},
@@ -795,22 +795,22 @@ def test_codex_native_summary_is_protected_from_dsproxy_compaction_material():
 
 
 def test_codex_native_compact_status_reports_inline_expected_path():
-    status = _codex_native_compact_status_from_report(None, profile="deepseek-thinking")
+    status = _codex_native_compact_status_from_report(None, profile="cox")
 
     assert status["profile_contract"]["remote_compaction_expected"] is False
     assert status["profile_contract"]["expected_compact_path"] == "ordinary_responses_inline_compact"
     assert status["remote_compact_guard"]["unexpected_remote_compact_call_seen"] is False
-    assert status["fallback_policy"]["dsproxy_runtime_compact_role"] == "fallback_only"
+    assert status["fallback_policy"]["cox_runtime_compact_role"] == "fallback_only"
 
 
 def test_custom_chat_capability_profile_filters_to_openai_common_params(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_COMPAT_MODE", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", raising=False)
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
+    monkeypatch.delenv("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
+    monkeypatch.delenv("COX_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("COX_CHAT_ALLOW_PARAMS", raising=False)
+    monkeypatch.delenv("COX_CHAT_DROP_PARAMS", raising=False)
+    monkeypatch.delenv("COX_CHAT_EXTRA_PARAMS_JSON", raising=False)
 
     payload = _build_chat_payload(
         model="example-chat-model",
@@ -832,10 +832,10 @@ def test_custom_chat_capability_profile_filters_to_openai_common_params(monkeypa
 
 
 def test_chat_capability_profile_allows_custom_vendor_extensions(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", "vendor_trace_id user_id")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_CHAT_ALLOW_PARAMS", "vendor_trace_id user_id")
+    monkeypatch.setenv("COX_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
+    monkeypatch.delenv("COX_CHAT_DROP_PARAMS", raising=False)
 
     payload = _build_chat_payload(
         model="custom-model",
@@ -851,10 +851,10 @@ def test_chat_capability_profile_allows_custom_vendor_extensions(monkeypatch):
 
 
 def test_chat_capability_profile_drop_params_overrides_extra_params(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_ALLOW_PARAMS", "vendor_trace_id")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", "vendor_trace_id")
-    monkeypatch.setenv("DEEPSEEK_PROXY_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_CHAT_ALLOW_PARAMS", "vendor_trace_id")
+    monkeypatch.setenv("COX_CHAT_DROP_PARAMS", "vendor_trace_id")
+    monkeypatch.setenv("COX_CHAT_EXTRA_PARAMS_JSON", '{"vendor_trace_id":"trace-1"}')
 
     payload = _build_chat_payload(
         model="custom-model",
@@ -868,10 +868,10 @@ def test_chat_capability_profile_drop_params_overrides_extra_params(monkeypatch)
 
 
 def test_deepseek_chat_capability_profile_keeps_deepseek_extensions(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "deepseek")
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_COMPAT_MODE", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_CHAT_DROP_PARAMS", raising=False)
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "deepseek")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.delenv("COX_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("COX_CHAT_DROP_PARAMS", raising=False)
 
     payload = _build_chat_payload(
         model="deepseek-v4-pro",
@@ -890,10 +890,10 @@ def test_deepseek_chat_capability_profile_keeps_deepseek_extensions(monkeypatch)
 
 
 def test_upstream_error_detail_reports_custom_provider_capability(monkeypatch):
-    from deepseek_responses_proxy.app import _upstream_error_detail
+    from codexchange_proxy.app import _upstream_error_detail
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MODEL_PROVIDER", "custom")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
+    monkeypatch.setenv("COX_MODEL_PROVIDER", "custom")
+    monkeypatch.setenv("COX_MODEL_BASE_URL", "https://api.llm.exampleprovider.edu.cn/v1")
 
     detail = _upstream_error_detail(
         status_code=400,

@@ -1,6 +1,6 @@
 import json
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     DEFAULT_MODEL_PRICING_USD_PER_1M,
     _estimate_cost_usd,
     _load_model_pricing_usd_per_1m,
@@ -22,7 +22,7 @@ def test_load_pricing_from_config_file(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     pricing = _load_model_pricing_usd_per_1m()
 
@@ -36,7 +36,7 @@ def test_load_pricing_from_config_file(monkeypatch, tmp_path):
 
 
 def test_missing_pricing_config_falls_back_to_default(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("COX_PRICING_PATH", str(tmp_path / "missing.json"))
 
     pricing = _load_model_pricing_usd_per_1m()
 
@@ -47,7 +47,7 @@ def test_invalid_pricing_config_falls_back_to_default(monkeypatch, tmp_path):
     pricing_path = tmp_path / "pricing.json"
     pricing_path.write_text("not valid json", encoding="utf-8")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     pricing = _load_model_pricing_usd_per_1m()
 
@@ -69,7 +69,7 @@ def test_estimate_cost_uses_external_pricing_config(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     cost = _estimate_cost_usd(
         "deepseek-v4-flash",
@@ -86,7 +86,7 @@ def test_estimate_cost_uses_external_pricing_config(monkeypatch, tmp_path):
     assert abs(cost - expected) < 1e-12
 
 def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_path):
-    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+    from codexchange_proxy.app import _weclaw_pricing_contract
 
     pricing_path = tmp_path / "pricing.json"
     pricing_path.write_text(
@@ -101,7 +101,7 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     pricing = _weclaw_pricing_contract("deepseek-v4-flash")
 
@@ -114,7 +114,7 @@ def test_weclaw_pricing_contract_exposes_round3_refresh_fields(monkeypatch, tmp_
     assert pricing["pricing_source_state"]["requires_refresh"] is True
     assert pricing["daily_refresh"]["status"] == "official_daily_refresh_required"
     assert pricing["daily_refresh"]["external_config_user_managed"] is False
-    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_dsproxy"] is True
+    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_cox"] is True
     assert pricing["daily_refresh"]["refresh_target_path"] == str(pricing_path)
     assert pricing["pricing_source_state"]["refresh_recommended"] is False
     assert pricing["refresh"]["available"] is True
@@ -136,7 +136,7 @@ OFFICIAL_PRICING_HTML_SAMPLE = """
 
 
 def test_parse_deepseek_official_pricing_html_v4_models():
-    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+    from codexchange_proxy.app import _parse_deepseek_official_pricing_html
 
     parsed = _parse_deepseek_official_pricing_html(OFFICIAL_PRICING_HTML_SAMPLE)
 
@@ -157,7 +157,7 @@ def test_parse_deepseek_official_pricing_html_v4_models():
 def test_refresh_deepseek_pricing_validates_without_writing(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     cache_path = tmp_path / "pricing-cache.json"
     monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
 
@@ -178,7 +178,7 @@ def test_refresh_deepseek_pricing_validates_without_writing(monkeypatch, tmp_pat
 def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     cache_path = tmp_path / "pricing-cache.json"
     monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
 
@@ -195,7 +195,7 @@ def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path)
     assert saved["__metadata__"]["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert saved["deepseek-v4-pro"]["output"] == 0.87
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(cache_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(cache_path))
     pricing = app_module._weclaw_pricing_contract("deepseek-v4-pro")
     assert pricing["source_url"] == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert pricing["requires_refresh"] is False
@@ -208,7 +208,7 @@ def test_refresh_deepseek_pricing_writes_cache_atomically(monkeypatch, tmp_path)
 def test_refresh_deepseek_pricing_parse_failure_preserves_existing_cache(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     cache_path = tmp_path / "pricing-cache.json"
     original = {"deepseek-v4-flash": {"input_cache_hit": 1.0, "input_cache_miss": 2.0, "output": 3.0}}
     cache_path.write_text(json.dumps(original), encoding="utf-8")
@@ -228,7 +228,7 @@ def test_refresh_deepseek_pricing_parse_failure_preserves_existing_cache(monkeyp
 
 
 def test_weclaw_pricing_contract_converts_usd_to_cny_for_display(monkeypatch, tmp_path):
-    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+    from codexchange_proxy.app import _weclaw_pricing_contract
 
     pricing_path = tmp_path / "pricing.json"
     pricing_path.write_text(
@@ -249,9 +249,9 @@ def test_weclaw_pricing_contract_converts_usd_to_cny_for_display(monkeypatch, tm
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_RATE", "7.25")
-    monkeypatch.setenv("DEEPSEEK_PROXY_USD_CNY_FX_UPDATED_AT", "2026-05-18T00:00:00Z")
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_USD_CNY_FX_RATE", "7.25")
+    monkeypatch.setenv("COX_USD_CNY_FX_UPDATED_AT", "2026-05-18T00:00:00Z")
 
     pricing = _weclaw_pricing_contract("deepseek-v4-flash", display_currency="CNY")
 
@@ -268,7 +268,7 @@ def test_weclaw_pricing_contract_converts_usd_to_cny_for_display(monkeypatch, tm
 
 
 def test_parse_deepseek_official_pricing_html_handles_pricing_row_header():
-    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+    from codexchange_proxy.app import _parse_deepseek_official_pricing_html
 
     html = """
     <table>
@@ -286,7 +286,7 @@ def test_parse_deepseek_official_pricing_html_handles_pricing_row_header():
 
 
 def test_weclaw_pricing_contract_uses_cny_primary_snapshot_without_fx(monkeypatch, tmp_path):
-    from deepseek_responses_proxy.app import _weclaw_pricing_contract
+    from codexchange_proxy.app import _weclaw_pricing_contract
 
     pricing_path = tmp_path / "pricing.json"
     pricing_path.write_text(
@@ -308,7 +308,7 @@ def test_weclaw_pricing_contract_uses_cny_primary_snapshot_without_fx(monkeypatc
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(pricing_path))
+    monkeypatch.setenv("COX_PRICING_PATH", str(pricing_path))
 
     pricing = _weclaw_pricing_contract("deepseek-v4-flash", display_currency="CNY")
 
@@ -325,7 +325,7 @@ def test_weclaw_pricing_contract_uses_cny_primary_snapshot_without_fx(monkeypatc
 
 
 def test_parse_deepseek_official_pricing_html_zh_cny_models():
-    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+    from codexchange_proxy.app import _parse_deepseek_official_pricing_html
 
     html = """
     <table>
@@ -346,7 +346,7 @@ def test_parse_deepseek_official_pricing_html_zh_cny_models():
 
 
 def test_parse_deepseek_official_pricing_html_skips_output_length_capability_row():
-    from deepseek_responses_proxy.app import _parse_deepseek_official_pricing_html
+    from codexchange_proxy.app import _parse_deepseek_official_pricing_html
 
     html = """
     <table>
@@ -366,7 +366,7 @@ def test_parse_deepseek_official_pricing_html_skips_output_length_capability_row
 def test_pricing_daily_refresh_writes_official_cache_after_calendar_rollover(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     project_path = tmp_path / "project-pricing.json"
     cache_path = tmp_path / "pricing-cache.json"
     project_path.write_text(
@@ -397,8 +397,8 @@ def test_pricing_daily_refresh_writes_official_cache_after_calendar_rollover(mon
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setenv("COX_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("COX_PRICING_AUTO_REFRESH", "1")
     monkeypatch.setattr(app_module, "_pricing_project_config_path", lambda: project_path)
     monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
 
@@ -418,7 +418,7 @@ def test_pricing_daily_refresh_writes_official_cache_after_calendar_rollover(mon
 def test_pricing_daily_refresh_skips_when_official_cache_is_current(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     cache_path = tmp_path / "pricing-cache.json"
     app_module._write_pricing_cache_atomic(
         {
@@ -433,8 +433,8 @@ def test_pricing_daily_refresh_skips_when_official_cache_is_current(monkeypatch,
         fetched_at=app_module._pricing_now_iso(),
         ttl_seconds=86400,
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setenv("COX_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("COX_PRICING_AUTO_REFRESH", "1")
 
     def fail_fetch(url, timeout=20.0):
         raise AssertionError("fresh same-day pricing cache must not fetch")
@@ -452,7 +452,7 @@ def test_pricing_daily_refresh_skips_when_official_cache_is_current(monkeypatch,
 def test_pricing_daily_refresh_failure_preserves_previous_prices_and_requires_action(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     project_path = tmp_path / "project-pricing.json"
     cache_path = tmp_path / "pricing-cache.json"
     project_path.write_text(
@@ -473,8 +473,8 @@ def test_pricing_daily_refresh_failure_preserves_previous_prices_and_requires_ac
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_CACHE_PATH", str(cache_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setenv("COX_PRICING_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("COX_PRICING_AUTO_REFRESH", "1")
     monkeypatch.setattr(app_module, "_pricing_project_config_path", lambda: project_path)
 
     def fail_fetch(url, timeout=20.0):
@@ -495,10 +495,10 @@ def test_pricing_daily_refresh_failure_preserves_previous_prices_and_requires_ac
     assert "pricing refresh --write-cache --json" in pricing["refresh_required_action"]
 
 
-def test_pricing_daily_refresh_updates_configured_pricing_path_owned_by_dsproxy(monkeypatch, tmp_path):
+def test_pricing_daily_refresh_updates_configured_pricing_path_owned_by_cox(monkeypatch, tmp_path):
     import importlib
 
-    app_module = importlib.import_module("deepseek_responses_proxy.app")
+    app_module = importlib.import_module("codexchange_proxy.app")
     configured_path = tmp_path / "configured-pricing.json"
     configured_path.write_text(
         json.dumps(
@@ -518,8 +518,8 @@ def test_pricing_daily_refresh_updates_configured_pricing_path_owned_by_dsproxy(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_PATH", str(configured_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_PRICING_AUTO_REFRESH", "1")
+    monkeypatch.setenv("COX_PRICING_PATH", str(configured_path))
+    monkeypatch.setenv("COX_PRICING_AUTO_REFRESH", "1")
     monkeypatch.setattr(app_module, "_fetch_text_url", lambda url, timeout=20.0: OFFICIAL_PRICING_HTML_SAMPLE)
 
     pricing = app_module._weclaw_pricing_contract("deepseek-v4-flash")
@@ -527,7 +527,7 @@ def test_pricing_daily_refresh_updates_configured_pricing_path_owned_by_dsproxy(
 
     assert stored["__metadata__"]["source_kind"] == "official_docs_html"
     assert stored["__metadata__"]["fetched_at"]
-    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_dsproxy"] is True
+    assert pricing["daily_refresh"]["configured_pricing_path_managed_by_cox"] is True
     assert pricing["daily_refresh"]["external_config_user_managed"] is False
     assert pricing["daily_refresh"]["status"] == "official_daily_refresh_succeeded"
     assert pricing["daily_refresh"]["refresh_target_path"] == str(configured_path)

@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import _normalize_response_tool
+from codexchange_proxy.app import _normalize_response_tool
 
 
 def _tutorial_namespace_tool():
@@ -20,7 +20,7 @@ def _tutorial_namespace_tool():
 
 
 def test_tutorial_tools_are_not_forwarded_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", "0")
 
     warnings = []
     mapping = {}
@@ -32,7 +32,7 @@ def test_tutorial_tools_are_not_forwarded_by_default(monkeypatch):
 
 
 def test_tutorial_tools_are_forwarded_with_flag(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_TUTORIAL_TOOLS", "1")
+    monkeypatch.setenv("COX_FORWARD_MCP_TUTORIAL_TOOLS", "1")
 
     warnings = []
     mapping = {}

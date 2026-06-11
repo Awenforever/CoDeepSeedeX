@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _build_chat_payload,
     _assistant_message_needs_liveness_guard,
     _run_chat_with_tool_bridge,
@@ -80,8 +80,8 @@ def test_liveness_intent_detector_only_matches_unfinished_tool_intent():
 @pytest.mark.asyncio
 async def test_liveness_guard_reasks_and_surfaces_local_codex_tool_call(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_MAX_RETRIES", "1")
 
     fake = FakeDeepSeekClient(
         [
@@ -142,8 +142,8 @@ async def test_liveness_guard_reasks_and_surfaces_local_codex_tool_call(tmp_path
 @pytest.mark.asyncio
 async def test_liveness_retry_without_tool_call_returns_pre_retry_response(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_MAX_RETRIES", "1")
 
     pre_retry_text = (
         "uiautomator2 connected successfully. Now let me try more — "
@@ -190,7 +190,7 @@ async def test_liveness_retry_without_tool_call_returns_pre_retry_response(tmp_p
 @pytest.mark.asyncio
 async def test_liveness_guard_does_not_reask_final_answer(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
 
     fake = FakeDeepSeekClient(
         [
@@ -225,8 +225,8 @@ async def test_liveness_guard_does_not_reask_final_answer(tmp_path, monkeypatch)
 @pytest.mark.asyncio
 async def test_proxy_status_reports_agent_liveness(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "2")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_MAX_RETRIES", "2")
 
     debug_dir = Path(".debug")
     debug_dir.mkdir()
@@ -271,7 +271,7 @@ async def test_proxy_status_reports_agent_liveness(tmp_path, monkeypatch):
 
 
 def test_codex_tool_protocol_instruction_is_injected_for_tool_requests(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+    monkeypatch.setenv("COX_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
 
     payload = _build_chat_payload(
         model="deepseek-v4-pro",
@@ -282,17 +282,17 @@ def test_codex_tool_protocol_instruction_is_injected_for_tool_requests(monkeypat
     )
 
     serialized = json.dumps(payload, ensure_ascii=False)
-    assert "[deepseek-proxy codex tool protocol]" in serialized
+    assert "[cox-proxy codex tool protocol]" in serialized
     assert "emit a tool_call" in serialized
 
 
 def test_codex_tool_protocol_instruction_is_not_duplicated(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+    monkeypatch.setenv("COX_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
 
     messages = [
         {
             "role": "system",
-            "content": "[deepseek-proxy codex tool protocol]\nexisting",
+            "content": "[cox-proxy codex tool protocol]\nexisting",
         },
         {"role": "user", "content": "check device"},
     ]
@@ -305,16 +305,16 @@ def test_codex_tool_protocol_instruction_is_not_duplicated(monkeypatch):
     )
 
     serialized = json.dumps(payload, ensure_ascii=False)
-    assert serialized.count("[deepseek-proxy codex tool protocol]") == 1
+    assert serialized.count("[cox-proxy codex tool protocol]") == 1
 
 
 @pytest.mark.asyncio
 async def test_liveness_judge_triggers_retry_when_heuristic_misses(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_MAX_RETRIES", "2")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_JUDGE_ENABLED", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
 
     fake = FakeDeepSeekClient(
         [
@@ -395,11 +395,11 @@ async def test_liveness_judge_triggers_retry_when_heuristic_misses(tmp_path, mon
 @pytest.mark.asyncio
 async def test_liveness_retry_without_tool_call_does_not_retry_again(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_MAX_RETRIES", "2")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_TRACE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_DIR", str(tmp_path / "traces"))
-    monkeypatch.setenv("DEEPSEEK_PROXY_DEBUG_CONTENT", "none")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_MAX_RETRIES", "2")
+    monkeypatch.setenv("COX_DEBUG_TRACE", "1")
+    monkeypatch.setenv("COX_DEBUG_DIR", str(tmp_path / "traces"))
+    monkeypatch.setenv("COX_DEBUG_CONTENT", "none")
 
     pre_retry_text = (
         "I found the device. Now let me inspect the UI and run the next shell command."
@@ -453,7 +453,7 @@ async def test_liveness_retry_without_tool_call_does_not_retry_again(tmp_path, m
 
 
 def test_user_tool_control_policy_taxonomy_counterexamples():
-    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+    from codexchange_proxy.app import _build_user_tool_control_policy_report
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
     status_tool = [{"type": "function", "function": {"name": "proxy_status", "parameters": {}}}]
@@ -520,7 +520,7 @@ def test_user_tool_control_policy_taxonomy_counterexamples():
 
 
 def test_liveness_guard_does_not_treat_pause_and_explain_as_tool_intent():
-    from deepseek_responses_proxy.app import _assistant_message_needs_liveness_guard
+    from codexchange_proxy.app import _assistant_message_needs_liveness_guard
 
     assert not _assistant_message_needs_liveness_guard(
         {
@@ -556,7 +556,7 @@ def test_liveness_guard_does_not_treat_pause_and_explain_as_tool_intent():
 
 
 def test_user_tool_control_policy_answer_first_sequencing():
-    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+    from codexchange_proxy.app import _build_user_tool_control_policy_report
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
 
@@ -590,7 +590,7 @@ def test_user_tool_control_policy_answer_first_sequencing():
 
 
 def test_user_tool_control_policy_combination_regressions():
-    from deepseek_responses_proxy.app import _build_user_tool_control_policy_report
+    from codexchange_proxy.app import _build_user_tool_control_policy_report
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
 
@@ -624,14 +624,14 @@ def test_user_tool_control_policy_combination_regressions():
 
 
 def test_user_tool_control_enabled_turn_control_removes_tools(monkeypatch):
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _apply_user_tool_control_policy_to_tools,
         _build_user_tool_control_policy_report,
     )
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
     report = _build_user_tool_control_policy_report(
         [{"type": "message", "role": "user", "content": "不要继续执行命令，先解释原因。"}],
         shell_tool,
@@ -647,14 +647,14 @@ def test_user_tool_control_enabled_turn_control_removes_tools(monkeypatch):
 
 
 def test_user_tool_control_dry_run_does_not_remove_tools(monkeypatch):
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _apply_user_tool_control_policy_to_tools,
         _build_user_tool_control_policy_report,
     )
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
+    monkeypatch.setenv("COX_USER_TOOL_CONTROL_POLICY_MODE", "dry_run")
     report = _build_user_tool_control_policy_report(
         [{"type": "message", "role": "user", "content": "不要继续执行命令，先解释原因。"}],
         shell_tool,
@@ -669,14 +669,14 @@ def test_user_tool_control_dry_run_does_not_remove_tools(monkeypatch):
 
 
 def test_user_tool_control_enabled_split_turn_removes_tools(monkeypatch):
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _apply_user_tool_control_policy_to_tools,
         _build_user_tool_control_policy_report,
     )
 
     shell_tool = [{"type": "function", "function": {"name": "shell", "parameters": {}}}]
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
     report = _build_user_tool_control_policy_report(
         [{"type": "message", "role": "user", "content": "先解释原因，然后继续执行测试。"}],
         shell_tool,
@@ -691,14 +691,14 @@ def test_user_tool_control_enabled_split_turn_removes_tools(monkeypatch):
 
 
 def test_user_tool_control_enabled_ambiguous_stop_does_not_remove_tools(monkeypatch):
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _apply_user_tool_control_policy_to_tools,
         _build_user_tool_control_policy_report,
     )
 
     proxy_status_tool = [{"type": "function", "function": {"name": "proxy_status", "parameters": {}}}]
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
     report = _build_user_tool_control_policy_report(
         [{"type": "message", "role": "user", "content": "停一下。"}],
         proxy_status_tool,
@@ -713,7 +713,7 @@ def test_user_tool_control_enabled_ambiguous_stop_does_not_remove_tools(monkeypa
 
 
 def test_user_tool_control_suppressed_response_replaces_tool_call():
-    from deepseek_responses_proxy.app import _user_tool_control_suppressed_deepseek_response
+    from codexchange_proxy.app import _user_tool_control_suppressed_deepseek_response
 
     response = {
         "choices": [
@@ -753,7 +753,7 @@ def test_user_tool_control_suppressed_response_replaces_tool_call():
 
 
 def test_user_tool_control_enabled_removes_auto_injected_tools_too(monkeypatch):
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _apply_user_tool_control_policy_to_tools,
         _build_user_tool_control_policy_report,
     )
@@ -764,7 +764,7 @@ def test_user_tool_control_enabled_removes_auto_injected_tools_too(monkeypatch):
         {"type": "function", "function": {"name": "proxy_time", "parameters": {}}},
     ]
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_USER_TOOL_CONTROL_POLICY_MODE", "enabled")
     report = _build_user_tool_control_policy_report(
         [
             {
@@ -787,7 +787,7 @@ def test_user_tool_control_enabled_removes_auto_injected_tools_too(monkeypatch):
 
 def test_user_tool_command_risk_report_classifies_shell_destructive_dry_run():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     report = _build_user_tool_command_risk_report(
         [
@@ -817,9 +817,9 @@ def test_user_tool_command_risk_report_classifies_shell_destructive_dry_run():
 
 def test_user_tool_command_risk_report_classifies_apply_patch_update_dry_run():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
-    patch = "*** Begin Patch\\n*** Update File: deepseek_responses_proxy/app.py\\n@@\\n-old\\n+new\\n*** End Patch"
+    patch = "*** Begin Patch\\n*** Update File: codexchange_proxy/app.py\\n@@\\n-old\\n+new\\n*** End Patch"
     report = _build_user_tool_command_risk_report(
         [
             {
@@ -842,7 +842,7 @@ def test_user_tool_command_risk_report_classifies_apply_patch_update_dry_run():
 
 def test_user_tool_command_risk_report_observes_readonly_shell_command():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     report = _build_user_tool_command_risk_report(
         [
@@ -864,7 +864,7 @@ def test_user_tool_command_risk_report_observes_readonly_shell_command():
 
 
 def test_tool_name_policy_marks_shell_aliases_and_apply_patch_as_command_audit():
-    from deepseek_responses_proxy.app import _classify_tool_name_risk_for_policy
+    from codexchange_proxy.app import _classify_tool_name_risk_for_policy
 
     assert _classify_tool_name_risk_for_policy("run_shell") == "R3_capable_requires_command_audit"
     assert _classify_tool_name_risk_for_policy("execute_command") == "R3_capable_requires_command_audit"
@@ -873,7 +873,7 @@ def test_tool_name_policy_marks_shell_aliases_and_apply_patch_as_command_audit()
 
 def test_user_tool_command_risk_report_classifies_c4_catastrophic_rm_drive():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     report = _build_user_tool_command_risk_report(
         [
@@ -897,7 +897,7 @@ def test_user_tool_command_risk_report_classifies_c4_catastrophic_rm_drive():
 
 def test_user_tool_command_risk_report_classifies_write_file_as_codex_governed_not_proxy_blocked():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     report = _build_user_tool_command_risk_report(
         [
@@ -921,7 +921,7 @@ def test_user_tool_command_risk_report_classifies_write_file_as_codex_governed_n
 
 def test_user_tool_command_risk_report_c4_gate_fields_trigger_only_for_c4():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     safe_report = _build_user_tool_command_risk_report(
         [
@@ -940,7 +940,7 @@ def test_user_tool_command_risk_report_c4_gate_fields_trigger_only_for_c4():
                     "name": "apply_patch",
                     "arguments": json.dumps(
                         {
-                            "input": "*** Begin Patch\n*** Update File: deepseek_responses_proxy/app.py\n*** End Patch"
+                            "input": "*** Begin Patch\n*** Update File: codexchange_proxy/app.py\n*** End Patch"
                         }
                     ),
                 },
@@ -988,7 +988,7 @@ def test_user_tool_command_risk_report_c4_gate_fields_trigger_only_for_c4():
 
 def test_user_tool_command_risk_report_c3_remains_codex_governed_not_c4_gate():
     import json
-    from deepseek_responses_proxy.app import _build_user_tool_command_risk_report
+    from codexchange_proxy.app import _build_user_tool_command_risk_report
 
     report = _build_user_tool_command_risk_report(
         [
@@ -1014,13 +1014,13 @@ def test_user_tool_command_risk_report_c3_remains_codex_governed_not_c4_gate():
 
 def test_user_tool_command_risk_enabled_c4_suppresses_deepseek_response(monkeypatch):
     import json
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _build_user_tool_command_risk_report,
         _user_tool_command_risk_should_suppress_tool_calls,
         _user_tool_command_risk_suppressed_deepseek_response,
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_COMMAND_RISK_POLICY_MODE", "enabled")
     report = _build_user_tool_command_risk_report(
         [
             {
@@ -1076,12 +1076,12 @@ def test_user_tool_command_risk_enabled_c4_suppresses_deepseek_response(monkeypa
 
 def test_user_tool_command_risk_dry_run_c4_does_not_suppress(monkeypatch):
     import json
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _build_user_tool_command_risk_report,
         _user_tool_command_risk_should_suppress_tool_calls,
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "dry_run")
+    monkeypatch.setenv("COX_COMMAND_RISK_POLICY_MODE", "dry_run")
     report = _build_user_tool_command_risk_report(
         [
             {
@@ -1104,12 +1104,12 @@ def test_user_tool_command_risk_dry_run_c4_does_not_suppress(monkeypatch):
 
 def test_user_tool_command_risk_enabled_c3_does_not_suppress(monkeypatch):
     import json
-    from deepseek_responses_proxy.app import (
+    from codexchange_proxy.app import (
         _build_user_tool_command_risk_report,
         _user_tool_command_risk_should_suppress_tool_calls,
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_COMMAND_RISK_POLICY_MODE", "enabled")
     report = _build_user_tool_command_risk_report(
         [
             {
@@ -1134,12 +1134,12 @@ async def test_run_chat_with_tool_bridge_enabled_c4_suppresses_before_tool_execu
     import importlib
     import json
 
-    app = importlib.import_module("deepseek_responses_proxy.app")
+    app = importlib.import_module("codexchange_proxy.app")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DEEPSEEK_PROXY_COMMAND_RISK_POLICY_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_MAX_ROUNDS", "1")
+    monkeypatch.setenv("COX_COMMAND_RISK_POLICY_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_TOOL_MAX_ROUNDS", "1")
 
     async def fake_chat_completions_with_usage(**kwargs):
         return {

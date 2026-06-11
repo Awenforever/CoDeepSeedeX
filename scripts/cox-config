@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="${DEEPSEEK_PROXY_ENV_FILE:-$HOME/.config/deepseek-responses-proxy/env}"
+ENV_FILE="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-$HOME/.codex/config.toml}"
 CODEX_DIR="$(dirname "$CODEX_CONFIG")"
 
@@ -10,9 +10,9 @@ mkdir -p "$(dirname "$ENV_FILE")"
 ensure_env_file() {
   if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<'ENVEOF'
-export DEEPSEEK_API_KEY=""
-export DEEPSEEK_PROXY_MODEL="deepseek-v4-pro"
-export DEEPSEEK_REASONING_EFFORT="high"
+export COX_MODEL_API_KEY=""
+export COX_MODEL="deepseek-v4-pro"
+export COX_REASONING_EFFORT="high"
 ENVEOF
   fi
 }
@@ -71,7 +71,7 @@ patch_profile_file_key() {
 
   [ -f "$profile_file" ] || return 0
 
-  python3 - "$profile_file" "$key" "$value" <<'PYCODEEPSEEDEX_DSPROXY_CONFIG_SPLIT_PROFILE_PATCH'
+  python3 - "$profile_file" "$key" "$value" <<'PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH'
 from pathlib import Path
 import sys
 
@@ -92,13 +92,13 @@ for line in lines:
 if not found:
     out.append(f'{key} = "{value}"')
 path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
-PYCODEEPSEEDEX_DSPROXY_CONFIG_SPLIT_PROFILE_PATCH
+PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH
 }
 
 patch_codex_model() {
   local model="$1"
   patch_profile_file_key "deepseek" "model" "$model"
-  patch_profile_file_key "deepseek-thinking" "model" "$model"
+  patch_profile_file_key "cox" "model" "$model"
 }
 
 patch_codex_effort() {
@@ -106,8 +106,8 @@ patch_codex_effort() {
   local codex_effort
   codex_effort="$(codex_effort_for_deepseek_effort "$deepseek_effort")"
 
-  patch_profile_file_key "deepseek-thinking" "model_reasoning_effort" "$codex_effort"
-  patch_profile_file_key "deepseek-thinking" "plan_mode_reasoning_effort" "high"
+  patch_profile_file_key "cox" "model_reasoning_effort" "$codex_effort"
+  patch_profile_file_key "cox" "plan_mode_reasoning_effort" "high"
 }
 
 show_config() {
@@ -117,11 +117,11 @@ show_config() {
   echo
   echo "CODEX_MAIN_CONFIG=$CODEX_CONFIG"
   if [ -f "$CODEX_CONFIG" ]; then
-    grep -nA8 -E '^\[model_providers\.deepseek|^\[model_providers\.deepseek-thinking' "$CODEX_CONFIG" || true
+    grep -nA8 -E '^\[model_providers\.deepseek|^\[model_providers\.cox' "$CODEX_CONFIG" || true
   else
     echo "missing"
   fi
-  for profile in deepseek deepseek-thinking; do
+  for profile in deepseek cox; do
     profile_file="$(codex_profile_path "$profile")"
     echo
     echo "CODEX_PROFILE_FILE=$profile_file"
@@ -134,8 +134,8 @@ show_config() {
 }
 
 restart_thinking_proxy() {
-  if [ "${DEEPSEEK_PROXY_CONFIG_RESTART_THINKING:-1}" = "0" ]; then
-    echo "thinking proxy restart skipped because DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0"
+  if [ "${COX_CONFIG_RESTART_THINKING:-1}" = "0" ]; then
+    echo "thinking proxy restart skipped because COX_CONFIG_RESTART_THINKING=0"
     return 0
   fi
 
@@ -144,20 +144,20 @@ restart_thinking_proxy() {
 
   echo "restarting DeepSeek thinking proxy..."
 
-  if command -v dsproxy-stop-thinking >/dev/null 2>&1; then
-    dsproxy-stop-thinking || true
-  elif [ -x "$script_dir/dsproxy-stop-thinking" ]; then
-    "$script_dir/dsproxy-stop-thinking" || true
+  if command -v cox-stop-thinking >/dev/null 2>&1; then
+    cox-stop-thinking || true
+  elif [ -x "$script_dir/cox-stop-thinking" ]; then
+    "$script_dir/cox-stop-thinking" || true
   else
-    echo "WARNING: dsproxy-stop-thinking not found; skipping stop step" >&2
+    echo "WARNING: cox-stop-thinking not found; skipping stop step" >&2
   fi
 
-  if command -v dsproxy-start-thinking >/dev/null 2>&1; then
-    dsproxy-start-thinking
-  elif [ -x "$script_dir/dsproxy-start-thinking" ]; then
-    "$script_dir/dsproxy-start-thinking"
+  if command -v cox-start-thinking >/dev/null 2>&1; then
+    cox-start-thinking
+  elif [ -x "$script_dir/cox-start-thinking" ]; then
+    "$script_dir/cox-start-thinking"
   else
-    echo "ERROR: dsproxy-start-thinking not found" >&2
+    echo "ERROR: cox-start-thinking not found" >&2
     exit 1
   fi
 }
@@ -165,15 +165,15 @@ restart_thinking_proxy() {
 usage() {
   cat <<'USAGE'
 Usage:
-  dsproxy-config show
-  dsproxy-config set-model deepseek-v4-pro
-  dsproxy-config set-model deepseek-v4-flash
-  dsproxy-config set-effort max
-  dsproxy-config set-effort high
-  dsproxy-config set model <model> effort <high|max>
+  cox-config show
+  cox-config set-model deepseek-v4-pro
+  cox-config set-model deepseek-v4-flash
+  cox-config set-effort max
+  cox-config set-effort high
+  cox-config set model <model> effort <high|max>
 
 Configuration-changing commands automatically restart the thinking proxy.
-Set DEEPSEEK_PROXY_CONFIG_RESTART_THINKING=0 to skip the restart.
+Set COX_CONFIG_RESTART_THINKING=0 to skip the restart.
 USAGE
 }
 
@@ -187,7 +187,7 @@ case "$cmd" in
   set-model)
     model="${2:-}"
     [ -n "$model" ] || { usage >&2; exit 2; }
-    set_export_var "DEEPSEEK_PROXY_MODEL" "$model"
+    set_export_var "COX_MODEL" "$model"
     patch_codex_model "$model"
     echo "model set to $model"
     restart_thinking_proxy
@@ -196,7 +196,7 @@ case "$cmd" in
     effort="${2:-}"
     [ -n "$effort" ] || { usage >&2; exit 2; }
     case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
-    set_export_var "DEEPSEEK_REASONING_EFFORT" "$effort"
+    set_export_var "COX_REASONING_EFFORT" "$effort"
     patch_codex_effort "$effort"
     echo "reasoning effort set to $effort"
     restart_thinking_proxy
@@ -209,7 +209,7 @@ case "$cmd" in
           shift
           model="${1:-}"
           [ -n "$model" ] || { usage >&2; exit 2; }
-          set_export_var "DEEPSEEK_PROXY_MODEL" "$model"
+          set_export_var "COX_MODEL" "$model"
           patch_codex_model "$model"
           ;;
         effort)
@@ -217,7 +217,7 @@ case "$cmd" in
           effort="${1:-}"
           [ -n "$effort" ] || { usage >&2; exit 2; }
           case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
-          set_export_var "DEEPSEEK_REASONING_EFFORT" "$effort"
+          set_export_var "COX_REASONING_EFFORT" "$effort"
           patch_codex_effort "$effort"
           ;;
         *)

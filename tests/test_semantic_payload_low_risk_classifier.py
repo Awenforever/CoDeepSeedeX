@@ -1,6 +1,6 @@
 import importlib
 
-app = importlib.import_module("deepseek_responses_proxy.app")
+app = importlib.import_module("codexchange_proxy.app")
 
 
 def _pytest_success_with_negated_failure_words(extra_chars: int = 5000) -> str:
@@ -60,11 +60,11 @@ def test_negated_failure_words_do_not_turn_pytest_success_into_failure() -> None
 
 
 def test_semantic_payload_compacts_old_low_risk_pytest_success(monkeypatch) -> None:
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "20")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_CANARY_ALLOW_ENABLED", "1")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MODE", "enabled")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_PRESERVE_RECENT_MESSAGES", "20")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_MIN_MESSAGE_CHARS", "100")
+    monkeypatch.setenv("COX_FLATTENED_TOOL_SEMANTIC_PAYLOAD_COMPACTION_SUMMARY_CHARS", "900")
 
     old_low_risk = {
         "role": "user",
@@ -87,5 +87,5 @@ def test_semantic_payload_compacts_old_low_risk_pytest_success(monkeypatch) -> N
     assert report["tokens_removed"] > 0
     assert report["semantic_plan_types"] == {"pytest_success": 1}
     assert report["risk_counts"] == {"low": 1}
-    assert "[semantic flattened tool transcript compacted by CoDeepSeedeX]" in compacted_messages[1]["content"]
+    assert "[semantic flattened tool transcript compacted by CodeXchange]" in compacted_messages[1]["content"]
     assert "semantic_risk: low" in compacted_messages[1]["content"]

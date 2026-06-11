@@ -6,7 +6,7 @@ import pytest
 
 from tests.test_mcp_executor_gated import FakeDeepSeekClient, _payloads_with_tool_messages, _response
 
-from deepseek_responses_proxy.app import (
+from codexchange_proxy.app import (
     _mcp_executor_policy_decision,
     _mcp_executor_status,
     _run_chat_with_tool_bridge,
@@ -68,15 +68,15 @@ for line in sys.stdin:
 
 
 def test_codex_policy_is_default_and_allows_mcp_tool(monkeypatch, tmp_path):
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_POLICY", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", raising=False)
+    monkeypatch.delenv("COX_MCP_POLICY", raising=False)
+    monkeypatch.delenv("COX_MCP_EXECUTOR", raising=False)
+    monkeypatch.delenv("COX_MCP_EXECUTOR_BACKEND", raising=False)
+    monkeypatch.delenv("COX_MCP_READONLY_ALLOWLIST", raising=False)
+    monkeypatch.delenv("COX_MCP_WRITE_ALLOWLIST", raising=False)
 
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
 
     decision = _mcp_executor_policy_decision("mcp__fake__write_tool")
     status = _mcp_executor_status()
@@ -95,8 +95,8 @@ def test_codex_policy_is_default_and_allows_mcp_tool(monkeypatch, tmp_path):
 def test_off_policy_disables_mcp_executor(monkeypatch, tmp_path):
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "off")
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_MCP_POLICY", "off")
 
     decision = _mcp_executor_policy_decision("mcp__fake__safe_tool")
     status = _mcp_executor_status()
@@ -109,9 +109,9 @@ def test_off_policy_disables_mcp_executor(monkeypatch, tmp_path):
 
 
 def test_allowlist_policy_allows_write_allowlisted_tool(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_POLICY", "allowlist")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_EXECUTOR", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", "fake.write_tool")
+    monkeypatch.setenv("COX_MCP_POLICY", "allowlist")
+    monkeypatch.setenv("COX_MCP_EXECUTOR", "1")
+    monkeypatch.setenv("COX_MCP_WRITE_ALLOWLIST", "fake.write_tool")
 
     decision = _mcp_executor_policy_decision("mcp__fake__write_tool")
 
@@ -141,14 +141,14 @@ approval_mode = "approve"
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_MCP_CONFIG_PATH", str(config))
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_BRIDGE", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_AGENT_LIVENESS_GUARD", "0")
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_POLICY", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_EXECUTOR_BACKEND", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_READONLY_ALLOWLIST", raising=False)
-    monkeypatch.delenv("DEEPSEEK_PROXY_MCP_WRITE_ALLOWLIST", raising=False)
+    monkeypatch.setenv("COX_MCP_CONFIG_PATH", str(config))
+    monkeypatch.setenv("COX_TOOL_BRIDGE", "1")
+    monkeypatch.setenv("COX_AGENT_LIVENESS_GUARD", "0")
+    monkeypatch.delenv("COX_MCP_POLICY", raising=False)
+    monkeypatch.delenv("COX_MCP_EXECUTOR", raising=False)
+    monkeypatch.delenv("COX_MCP_EXECUTOR_BACKEND", raising=False)
+    monkeypatch.delenv("COX_MCP_READONLY_ALLOWLIST", raising=False)
+    monkeypatch.delenv("COX_MCP_WRITE_ALLOWLIST", raising=False)
 
     fake = FakeDeepSeekClient(
         [

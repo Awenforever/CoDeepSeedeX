@@ -1,8 +1,8 @@
-from deepseek_responses_proxy.app import _normalize_response_tool
+from codexchange_proxy.app import _normalize_response_tool
 
 
 def test_custom_apply_patch_is_ignored_without_large_grammar_payload(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", "0")
+    monkeypatch.setenv("COX_FORWARD_CUSTOM_APPLY_PATCH", "0")
     warnings = []
     tool = {
         "type": "custom",

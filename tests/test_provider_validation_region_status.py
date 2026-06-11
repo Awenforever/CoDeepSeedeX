@@ -5,9 +5,9 @@ import json
 
 import importlib
 
-from deepseek_responses_proxy import cli
+from codexchange_proxy import cli
 
-app_module = importlib.import_module("deepseek_responses_proxy.app")
+app_module = importlib.import_module("codexchange_proxy.app")
 
 
 class _FakeResponse:
@@ -79,7 +79,7 @@ def test_qwen_image_region_aliases_and_endpoints():
 
 
 def test_runtime_qwen_image_unavailable_region_short_circuits(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_PROVIDER", "qwen_image_us")
+    monkeypatch.setenv("COX_IMAGE_PROVIDER", "qwen_image_us")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "fake-key")
 
     result = asyncio.run(app_module._dashscope_qwen_image_generate({"prompt": "tiny smoke test"}))

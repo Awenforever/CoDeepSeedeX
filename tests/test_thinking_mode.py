@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
+from codexchange_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
 
 
 class RecordingDeepSeekClient(DeepSeekClient):
@@ -31,7 +31,7 @@ def deepseek_response_with_reasoning():
 
 @pytest.mark.asyncio
 async def test_thinking_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_THINKING", raising=False)
+    monkeypatch.delenv("COX_REASONING", raising=False)
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -51,7 +51,7 @@ async def test_thinking_disabled_by_default(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_by_env(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -71,7 +71,7 @@ async def test_thinking_enabled_by_env(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reasoning_content_is_saved_in_assistant_history(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     store = InMemoryResponseStore()
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
@@ -97,7 +97,7 @@ async def test_reasoning_content_is_saved_in_assistant_history(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_adds_empty_reasoning_content_when_missing(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     response_without_reasoning = {
         "choices": [
@@ -135,7 +135,7 @@ async def test_thinking_enabled_adds_empty_reasoning_content_when_missing(monkey
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_adds_reasoning_content_to_request_assistant_messages(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     response = {
         "choices": [
@@ -197,7 +197,7 @@ async def test_thinking_enabled_adds_reasoning_content_to_request_assistant_mess
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_repairs_legacy_disabled_history_and_persists_it(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     legacy_response = {
         "id": "resp_legacy",
@@ -286,8 +286,8 @@ async def test_thinking_enabled_repairs_legacy_disabled_history_and_persists_it(
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_defaults_deepseek_reasoning_effort_to_high(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.delenv("COX_REASONING_EFFORT", raising=False)
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -308,8 +308,8 @@ async def test_thinking_enabled_defaults_deepseek_reasoning_effort_to_high(monke
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_allows_high_reasoning_effort_override(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "high")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_REASONING_EFFORT", "high")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -330,8 +330,8 @@ async def test_thinking_enabled_allows_high_reasoning_effort_override(monkeypatc
 
 @pytest.mark.asyncio
 async def test_thinking_enabled_xhigh_reasoning_effort_maps_to_max(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "xhigh")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_REASONING_EFFORT", "xhigh")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -352,8 +352,8 @@ async def test_thinking_enabled_xhigh_reasoning_effort_maps_to_max(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_thinking_disabled_does_not_send_reasoning_effort(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_THINKING", raising=False)
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "max")
+    monkeypatch.delenv("COX_REASONING", raising=False)
+    monkeypatch.setenv("COX_REASONING_EFFORT", "max")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -375,8 +375,8 @@ async def test_thinking_disabled_does_not_send_reasoning_effort(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_request_reasoning_effort_overrides_env_reasoning_effort(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "high")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_REASONING_EFFORT", "high")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())
@@ -397,8 +397,8 @@ async def test_request_reasoning_effort_overrides_env_reasoning_effort(monkeypat
 
 @pytest.mark.asyncio
 async def test_request_reasoning_dict_effort_is_supported(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "max")
+    monkeypatch.setenv("COX_REASONING", "enabled")
+    monkeypatch.setenv("COX_REASONING_EFFORT", "max")
 
     fake = RecordingDeepSeekClient(deepseek_response_with_reasoning())
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())

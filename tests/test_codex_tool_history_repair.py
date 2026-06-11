@@ -1,6 +1,6 @@
 import json
 
-from deepseek_responses_proxy.app import _repair_tool_call_message_order
+from codexchange_proxy.app import _repair_tool_call_message_order
 
 
 def test_repair_moves_later_tool_output_next_to_matching_assistant_call():

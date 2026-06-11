@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import _normalize_response_tool
+from codexchange_proxy.app import _normalize_response_tool
 
 
 def _mixed_namespace_tool():
@@ -33,8 +33,8 @@ def _mixed_namespace_tool():
 
 
 def test_mcp_write_tools_are_not_forwarded_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "0")
+    monkeypatch.setenv("COX_FORWARD_MCP_READONLY_TOOLS", "1")
+    monkeypatch.setenv("COX_FORWARD_MCP_WRITE_TOOLS", "0")
 
     warnings = []
     mapping = {}
@@ -47,8 +47,8 @@ def test_mcp_write_tools_are_not_forwarded_by_default(monkeypatch):
 
 
 def test_mcp_write_tools_are_forwarded_only_with_write_flag(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_READONLY_TOOLS", "1")
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_MCP_WRITE_TOOLS", "1")
+    monkeypatch.setenv("COX_FORWARD_MCP_READONLY_TOOLS", "1")
+    monkeypatch.setenv("COX_FORWARD_MCP_WRITE_TOOLS", "1")
 
     warnings = []
     mapping = {}

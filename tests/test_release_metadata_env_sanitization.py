@@ -8,12 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_cli_version_ignores_stale_release_metadata_env() -> None:
     env = os.environ.copy()
-    env["DEEPSEEK_PROXY_PUBLIC_COMMIT"] = "72e0f77"
-    env["DEEPSEEK_PROXY_INTERNAL_COMMIT"] = "72e0f77"
-    env["DEEPSEEK_PROXY_INTERNAL_VERSION"] = "p2.10a26-wrapper-start-plan-mode-hardening"
+    env["COX_PUBLIC_COMMIT"] = "72e0f77"
+    env["COX_INTERNAL_COMMIT"] = "72e0f77"
+    env["COX_INTERNAL_VERSION"] = "p2.10a26-wrapper-start-plan-mode-hardening"
 
     result = subprocess.run(
-        [sys.executable, "-m", "deepseek_responses_proxy.cli", "--version"],
+        [sys.executable, "-m", "codexchange_proxy.cli", "--version"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -23,7 +23,7 @@ def test_cli_version_ignores_stale_release_metadata_env() -> None:
 
     output = result.stdout.strip()
     assert "72e0f77" not in output
-    assert "p2.22a16-release-v043-alpha-update-to-p222-closeout" in output
+    assert "p3.0a1-codexchange-hardcut-generalized-router" in output
 
 
 def test_install_script_writes_current_release_metadata_env() -> None:
@@ -31,25 +31,25 @@ def test_install_script_writes_current_release_metadata_env() -> None:
     assert "p2.10a26-wrapper-start-plan-mode-hardening" not in text
     assert "resolve_install_internal_version_for_metadata()" in text
     assert 'INSTALL_TARGET_INTERNAL_VERSION="$(resolve_install_internal_version_for_metadata)"' in text
-    assert 'export DEEPSEEK_PROXY_INTERNAL_VERSION=%q' in text
+    assert 'export COX_INTERNAL_VERSION=%q' in text
     assert '"$INSTALL_TARGET_INTERNAL_VERSION"' in text
-    assert 'export DEEPSEEK_PROXY_PUBLIC_COMMIT=%q' in text
-    assert 'export DEEPSEEK_PROXY_INTERNAL_COMMIT=%q' in text
+    assert 'export COX_PUBLIC_COMMIT=%q' in text
+    assert 'export COX_INTERNAL_COMMIT=%q' in text
 
 
 def test_bootstrap_unsets_stale_release_metadata_before_installer() -> None:
     text = (ROOT / "bootstrap.sh").read_text(encoding="utf-8")
-    assert "unset DEEPSEEK_PROXY_PUBLIC_COMMIT" in text
-    assert "unset DEEPSEEK_PROXY_INTERNAL_COMMIT" in text
-    assert "unset DEEPSEEK_PROXY_INTERNAL_VERSION" in text
-    assert text.index("unset DEEPSEEK_PROXY_PUBLIC_COMMIT") < text.index('bash "$INSTALLER_PATH"')
+    assert "unset COX_PUBLIC_COMMIT" in text
+    assert "unset COX_INTERNAL_COMMIT" in text
+    assert "unset COX_INTERNAL_VERSION" in text
+    assert text.index("unset COX_PUBLIC_COMMIT") < text.index('bash "$INSTALLER_PATH"')
 
 
 def test_cli_non_git_upgrade_scrubs_release_metadata_env() -> None:
-    text = (ROOT / "deepseek_responses_proxy" / "cli.py").read_text(encoding="utf-8")
-    assert '"DEEPSEEK_PROXY_PUBLIC_COMMIT"' in text
-    assert '"DEEPSEEK_PROXY_INTERNAL_COMMIT"' in text
-    assert '"DEEPSEEK_PROXY_INTERNAL_VERSION"' in text
+    text = (ROOT / "codexchange_proxy" / "cli.py").read_text(encoding="utf-8")
+    assert '"COX_PUBLIC_COMMIT"' in text
+    assert '"COX_INTERNAL_COMMIT"' in text
+    assert '"COX_INTERNAL_VERSION"' in text
     assert "env.pop(metadata_key, None)" in text
     assert 'step["metadata_env_sanitized"] = True' in text
-    assert text.index("env.pop(metadata_key, None)") < text.index('env["DEEPSEEK_PROXY_INSTALL_REF"] = target_ref')
+    assert text.index("env.pop(metadata_key, None)") < text.index('env["COX_INSTALL_REF"] = target_ref')

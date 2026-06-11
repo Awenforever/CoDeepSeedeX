@@ -1,4 +1,4 @@
-from deepseek_responses_proxy.app import _normalize_response_tool
+from codexchange_proxy.app import _normalize_response_tool
 
 
 def _apply_patch_tool():
@@ -15,7 +15,7 @@ def _apply_patch_tool():
 
 
 def test_apply_patch_custom_tool_is_ignored_by_default(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", "0")
+    monkeypatch.setenv("COX_FORWARD_CUSTOM_APPLY_PATCH", "0")
 
     warnings = []
     normalized = _normalize_response_tool(_apply_patch_tool(), warnings)
@@ -27,7 +27,7 @@ def test_apply_patch_custom_tool_is_ignored_by_default(monkeypatch):
 
 
 def test_apply_patch_custom_tool_can_be_experimentally_mapped(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_PROXY_FORWARD_CUSTOM_APPLY_PATCH", "1")
+    monkeypatch.setenv("COX_FORWARD_CUSTOM_APPLY_PATCH", "1")
 
     warnings = []
     normalized = _normalize_response_tool(_apply_patch_tool(), warnings)

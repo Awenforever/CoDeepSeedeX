@@ -3,7 +3,7 @@ import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from deepseek_responses_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
+from codexchange_proxy.app import DeepSeekClient, InMemoryResponseStore, create_app
 
 
 class FakeDeepSeekClient(DeepSeekClient):
@@ -541,7 +541,7 @@ async def test_self_contained_tool_fragments_keep_protocol_when_tools_are_availa
 
 @pytest.mark.asyncio
 async def test_thinking_mode_flattens_completed_tool_fragments_even_when_tools_are_available(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    monkeypatch.setenv("COX_REASONING", "enabled")
 
     fake = FakeDeepSeekClient([deepseek_text_response("weather summarized")])
     app = create_app(deepseek_client=fake, store=InMemoryResponseStore())

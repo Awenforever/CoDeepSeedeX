@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-app_module = importlib.import_module("deepseek_responses_proxy.app")
+app_module = importlib.import_module("codexchange_proxy.app")
 
 
 class _FakeDeepSeekResponse:
@@ -31,7 +31,7 @@ class _FakeAsyncClient:
 
 @pytest.mark.asyncio
 async def test_append_only_payload_trace_records_each_upstream_call(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR", str(tmp_path))
+    monkeypatch.setenv("COX_PAYLOAD_TRACE_DIR", str(tmp_path))
     fake_http = _FakeAsyncClient()
     client = app_module.DeepSeekClient(
         api_key="secret-test-key",
@@ -75,7 +75,7 @@ async def test_payload_trace_ignores_non_tmp_directory(tmp_path, monkeypatch) ->
     if str(forbidden).startswith("/tmp"):
         pytest.skip("test requires a non-/tmp path")
 
-    monkeypatch.setenv("DEEPSEEK_PROXY_PAYLOAD_TRACE_DIR", str(forbidden))
+    monkeypatch.setenv("COX_PAYLOAD_TRACE_DIR", str(forbidden))
     fake_http = _FakeAsyncClient()
     client = app_module.DeepSeekClient(
         api_key="secret-test-key",

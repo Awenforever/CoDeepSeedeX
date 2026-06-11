@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
 
-from deepseek_responses_proxy.app import _apply_tool_output_safe_trimming, _write_mock_image_artifact
+from codexchange_proxy.app import _apply_tool_output_safe_trimming, _write_mock_image_artifact
 
 
 def test_generated_image_artifact_retention_prunes_known_prefixes_only(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS", "2")
+    monkeypatch.setenv("COX_IMAGE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("COX_IMAGE_MAX_ARTIFACTS", "2")
 
     manual_file = tmp_path / "manual-user-image.png"
     manual_file.write_bytes(b"do-not-delete")
@@ -25,8 +25,8 @@ def test_generated_image_artifact_retention_prunes_known_prefixes_only(monkeypat
 
 
 def test_generated_image_artifact_retention_can_be_disabled(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_OUTPUT_DIR", str(tmp_path))
-    monkeypatch.setenv("DEEPSEEK_PROXY_IMAGE_MAX_ARTIFACTS", "0")
+    monkeypatch.setenv("COX_IMAGE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("COX_IMAGE_MAX_ARTIFACTS", "0")
 
     for _ in range(4):
         file_path = _write_mock_image_artifact(provider="mock")
@@ -37,9 +37,9 @@ def test_generated_image_artifact_retention_can_be_disabled(monkeypatch, tmp_pat
 
 
 def test_tool_output_image_payload_is_preserved_verbatim_without_artifact_ref(monkeypatch, tmp_path):
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_TRIM_MODE", "enabled")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
-    monkeypatch.setenv("DEEPSEEK_PROXY_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
+    monkeypatch.setenv("COX_TOOL_OUTPUT_TRIM_MODE", "enabled")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS", "2000")
+    monkeypatch.setenv("COX_TOOL_OUTPUT_ARTIFACT_DIR", str(tmp_path / "tool-output-artifacts"))
 
     original_payload = [{"mime_type": "image/png", "b64_json": "A" * 5000}]
     input_items = [

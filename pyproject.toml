@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "deepseek-responses-proxy"
-version = "0.4.1a0"
-description = "Minimal FastAPI OpenAI Responses-compatible proxy for DeepSeek ChatCompletions"
+name = "codexchange"
+version = "0.5.0a0"
+description = "CodeXchange (CoX): local OpenAI Responses-compatible provider exchange for Codex"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
@@ -22,11 +22,11 @@ test = [
 ]
 
 [project.scripts]
-dsproxy = "deepseek_responses_proxy.cli:main"
+cox = "codexchange_proxy.cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-include = ["deepseek_responses_proxy*"]
+include = ["codexchange_proxy*"]

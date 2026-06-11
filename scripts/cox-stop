@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT="${DEEPSEEK_PROXY_PROJECT:-$HOME/projects/deepseek-responses-proxy}"
+PROJECT="${COX_PROJECT:-$HOME/projects/codexchange}"
 PID_FILE="$PROJECT/proxy.pid"
 
 if [ ! -f "$PID_FILE" ]; then
