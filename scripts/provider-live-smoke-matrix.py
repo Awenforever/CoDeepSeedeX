@@ -295,6 +295,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--output", default="")
     parser.add_argument("--insecure-tls", action="store_true")
+    parser.add_argument(
+        "--allow-provider-failures",
+        action="store_true",
+        help="Return success when evidence is written even if one or more configured providers fail.",
+    )
     args = parser.parse_args(argv)
 
     results = [
@@ -319,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.output).write_text(text + "\n", encoding="utf-8")
     print(text)
     failed = payload["summary"]["validation_failed"] + payload["summary"]["chat_failed"]
+    if failed and args.allow_provider_failures:
+        return 0
     return 1 if failed else 0
 
 

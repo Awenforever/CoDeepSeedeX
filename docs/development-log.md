@@ -1,3 +1,9 @@
+## p3.0a7-provider-smoke-evidence-ux
+
+- Added `--allow-provider-failures` to the provider live smoke matrix for evidence collection runs.
+- Documented p3.0a6 provider evidence interpretation rules.
+- Recorded Qwen region evidence, Kimi 401 evidence, Z.AI 429 evidence, and custom base URL root guidance.
+
 ## p3.0a5-provider-live-smoke-matrix
 
 - Added a reproducible provider live smoke matrix script.

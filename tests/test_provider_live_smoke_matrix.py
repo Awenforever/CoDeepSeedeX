@@ -107,3 +107,36 @@ def test_smoke_matrix_summary_counts_skips_and_successes() -> None:
         "chat_skipped": 1,
         "chat_failed": 1,
     }
+
+def test_smoke_matrix_allow_provider_failures_returns_success(monkeypatch, tmp_path) -> None:
+    module = load_module()
+
+    def fake_run_provider(provider, *, include_chat, timeout_seconds, insecure_tls):
+        return {
+            "provider": provider,
+            "validation": {"ok": False},
+            "chat": {"ok": False},
+        }
+
+    output = tmp_path / "result.json"
+    monkeypatch.setattr(module, "run_provider", fake_run_provider)
+
+    assert module.main(["--providers", "kimi", "--chat", "--output", str(output), "--allow-provider-failures"]) == 0
+    assert output.exists()
+
+
+def test_smoke_matrix_provider_failures_return_nonzero_by_default(monkeypatch, tmp_path) -> None:
+    module = load_module()
+
+    def fake_run_provider(provider, *, include_chat, timeout_seconds, insecure_tls):
+        return {
+            "provider": provider,
+            "validation": {"ok": False},
+            "chat": {"ok": False},
+        }
+
+    output = tmp_path / "result.json"
+    monkeypatch.setattr(module, "run_provider", fake_run_provider)
+
+    assert module.main(["--providers", "kimi", "--chat", "--output", str(output)]) == 1
+    assert output.exists()

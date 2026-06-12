@@ -68,3 +68,7 @@ Provider-specific live key variables:
 - `COX_LIVE_ZHIPU_API_KEY`
 - `COX_LIVE_ZAI_API_KEY`
 - `COX_LIVE_CUSTOM_API_KEY`
+
+### Evidence-mode live smoke
+
+Use `--allow-provider-failures` during evidence collection when failed provider responses are expected and should be captured as data rather than treated as command failure. Keep the default non-zero exit behavior for CI or release checks.
