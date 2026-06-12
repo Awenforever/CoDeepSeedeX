@@ -52,7 +52,7 @@ def test_deepseek_adapter_normalizes_reasoning_and_preserves_provider_capabiliti
     assert status["capabilities"]["tokenizer"] is True
 
 
-def test_deepseek_adapter_builds_chat_payload_and_strips_response_artifacts() -> None:
+def test_deepseek_adapter_builds_chat_payload_and_preserves_reasoning_history() -> None:
     adapter = DeepSeekProviderAdapter()
     route = ProviderRoute(
         provider_id="deepseek",
@@ -71,7 +71,7 @@ def test_deepseek_adapter_builds_chat_payload_and_strips_response_artifacts() ->
     assert payload["model"] == "deepseek-v4-flash"
     assert payload["stream"] is True
     assert payload["reasoning_effort"] == "max"
-    assert "reasoning_content" not in payload["messages"][0]
+    assert payload["messages"][0]["reasoning_content"] == "hidden"
 
 
 def test_openai_compatible_adapter_removes_provider_specific_extensions() -> None:
@@ -114,6 +114,8 @@ def test_provider_adapters_parse_usage_contract() -> None:
         "completion_tokens": 3,
         "total_tokens": 13,
         "cached_tokens": 4,
+        "prompt_cache_hit_tokens": 4,
+        "prompt_cache_miss_tokens": 6,
         "reasoning_tokens": 2,
     }
     assert OpenAICompatibleProviderAdapter().parse_usage(payload) == {
@@ -121,6 +123,8 @@ def test_provider_adapters_parse_usage_contract() -> None:
         "completion_tokens": 3,
         "total_tokens": 13,
         "cached_tokens": 4,
+        "prompt_cache_hit_tokens": 4,
+        "prompt_cache_miss_tokens": 6,
         "reasoning_tokens": 2,
     }
 

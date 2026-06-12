@@ -22,6 +22,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import subprocess
 
+from .providers import ProviderAdapter, get_provider_adapter
+
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.5.0-alpha"
@@ -181,21 +183,11 @@ def _thinking_enabled() -> bool:
     return _deepseek_thinking_config().get("type") == "enabled"
 
 
+
+
 def _normalize_deepseek_reasoning_effort(value: Any) -> str | None:
-    if value is None:
-        return None
-
-    normalized = str(value).strip().lower()
-    if not normalized:
-        return None
-
-    if normalized in {"max", "xhigh"}:
-        return "max"
-
-    if normalized in {"minimal", "low", "medium", "high"}:
-        return "high"
-
-    return None
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    return get_provider_adapter("deepseek").normalize_reasoning_effort(value)
 
 
 def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
@@ -267,20 +259,20 @@ def _select_upstream_model(request_model: str | None) -> str:
 
     return DEFAULT_MODEL
 
+
+
 def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
-    usage = deepseek_response.get("usage") or {}
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    numbers = dict(get_provider_adapter("deepseek").parse_usage(deepseek_response))
 
-    prompt_tokens = int(usage.get("prompt_tokens") or 0)
-    completion_tokens = int(usage.get("completion_tokens") or 0)
-    total_tokens = int(usage.get("total_tokens") or prompt_tokens + completion_tokens)
-
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    completion_details = usage.get("completion_tokens_details") or {}
+    prompt_tokens = int(numbers.get("prompt_tokens") or 0)
+    completion_tokens = int(numbers.get("completion_tokens") or 0)
+    total_tokens = int(numbers.get("total_tokens") or prompt_tokens + completion_tokens)
 
     prompt_cache_hit_tokens = int(
-        usage.get("prompt_cache_hit_tokens")
-        if usage.get("prompt_cache_hit_tokens") is not None
-        else prompt_details.get("cached_tokens")
+        numbers.get("prompt_cache_hit_tokens")
+        if numbers.get("prompt_cache_hit_tokens") is not None
+        else numbers.get("cached_tokens")
         or 0
     )
     if prompt_cache_hit_tokens < 0:
@@ -288,8 +280,8 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     if prompt_cache_hit_tokens > prompt_tokens:
         prompt_cache_hit_tokens = prompt_tokens
 
-    if usage.get("prompt_cache_miss_tokens") is not None:
-        prompt_cache_miss_tokens = int(usage.get("prompt_cache_miss_tokens") or 0)
+    if numbers.get("prompt_cache_miss_tokens") is not None:
+        prompt_cache_miss_tokens = int(numbers.get("prompt_cache_miss_tokens") or 0)
     else:
         prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
     if prompt_cache_miss_tokens < 0:
@@ -297,7 +289,7 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     if prompt_cache_hit_tokens + prompt_cache_miss_tokens > prompt_tokens:
         prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
 
-    reasoning_tokens = int(completion_details.get("reasoning_tokens") or 0)
+    reasoning_tokens = int(numbers.get("reasoning_tokens") or 0)
 
     return {
         "prompt_tokens": prompt_tokens,
@@ -15127,8 +15119,16 @@ async def _run_chat_with_tool_bridge(
 
 
 
+
+
 def _deepseek_message_reasoning_text(message: dict[str, Any]) -> str:
-    reasoning_content = message.get("reasoning_content")
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    adapter = get_provider_adapter("deepseek")
+    extractor = getattr(adapter, "message_reasoning_text", None)
+    if callable(extractor):
+        reasoning_content = extractor(message)
+    else:
+        reasoning_content = message.get("reasoning_content")
     return _plain_text_from_content(reasoning_content if reasoning_content is not None else "")
 
 
@@ -15622,6 +15622,15 @@ def _configured_model_provider() -> str:
     return str(os.environ.get("COX_MODEL_PROVIDER") or "deepseek").strip().lower() or "deepseek"
 
 
+def _configured_provider_adapter(provider: str | None = None) -> ProviderAdapter:
+    """Return the provider adapter for the current model route.
+
+    p3.0a3 keeps legacy function names for compatibility while routing the first
+    runtime provider-specific decisions through the adapter contract.
+    """
+    return get_provider_adapter(provider or _configured_model_provider())
+
+
 def _configured_base_url() -> str:
     return str(os.environ.get("COX_MODEL_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
 
@@ -15701,11 +15710,28 @@ def _chat_extra_params_from_env() -> dict[str, Any]:
     return cleaned
 
 
+
+
 def _chat_payload_supports_deepseek_extensions() -> bool:
     override = _env_flag_value("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
     if override is not None:
         return override
-    return _chat_payload_compat_mode() == "deepseek"
+
+    compat_mode_enabled = _chat_payload_compat_mode() == "deepseek"
+    if not compat_mode_enabled:
+        return False
+
+    try:
+        adapter = _configured_provider_adapter()
+    except ValueError:
+        return compat_mode_enabled
+
+    capabilities = getattr(adapter, "capabilities", None)
+    adapter_supports_deepseek_reasoning = (
+        getattr(capabilities, "response_reasoning_field", None) == "reasoning_content"
+        or bool(getattr(capabilities, "reasoning", False))
+    )
+    return bool(adapter_supports_deepseek_reasoning or compat_mode_enabled)
 
 
 def _chat_capability_profile() -> dict[str, Any]:
@@ -15832,8 +15858,14 @@ def _apply_chat_capability_profile(payload: dict[str, Any]) -> tuple[dict[str, A
     return cleaned, diagnostics
 
 
+
+
 def _sanitize_chat_payload_for_upstream(payload: dict[str, Any]) -> dict[str, Any]:
-    cleaned, _diagnostics = _apply_chat_capability_profile(payload)
+    try:
+        adapter_cleaned = _configured_provider_adapter().sanitize_chat_payload(payload)
+    except ValueError:
+        adapter_cleaned = payload
+    cleaned, _diagnostics = _apply_chat_capability_profile(adapter_cleaned)
     return cleaned
 
 

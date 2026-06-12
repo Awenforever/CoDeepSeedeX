@@ -66,14 +66,16 @@ class DeepSeekProviderAdapter:
             payload["reasoning_effort"] = effort
         return self.sanitize_chat_payload(payload)
 
+
     def sanitize_chat_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         cleaned = dict(payload)
         messages = []
         for message in list(cleaned.get("messages") or []):
             if isinstance(message, Mapping):
-                item = dict(message)
-                item.pop("reasoning_content", None)
-                messages.append(item)
+                # DeepSeek reasoning mode requires preserving assistant
+                # reasoning_content in request history. Generic/OpenAI-compatible
+                # adapters strip this provider-specific extension instead.
+                messages.append(dict(message))
             else:
                 messages.append(message)
         cleaned["messages"] = messages
@@ -84,21 +86,51 @@ class DeepSeekProviderAdapter:
             cleaned.pop("reasoning_effort", None)
         return cleaned
 
+
     def parse_usage(self, upstream_payload: Mapping[str, Any]) -> dict[str, int]:
         usage = upstream_payload.get("usage")
         if not isinstance(usage, Mapping):
             usage = {}
-        completion_details = usage.get("completion_tokens_details")
-        if not isinstance(completion_details, Mapping):
-            completion_details = {}
+
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(usage.get("total_tokens") or prompt_tokens + completion_tokens)
+
         prompt_details = usage.get("prompt_tokens_details")
         if not isinstance(prompt_details, Mapping):
             prompt_details = {}
+        completion_details = usage.get("completion_tokens_details")
+        if not isinstance(completion_details, Mapping):
+            completion_details = {}
+
+        prompt_cache_hit_tokens = int(
+            usage.get("prompt_cache_hit_tokens")
+            if usage.get("prompt_cache_hit_tokens") is not None
+            else prompt_details.get("cached_tokens")
+            or usage.get("cached_tokens")
+            or 0
+        )
+        if prompt_cache_hit_tokens < 0:
+            prompt_cache_hit_tokens = 0
+        if prompt_cache_hit_tokens > prompt_tokens:
+            prompt_cache_hit_tokens = prompt_tokens
+
+        if usage.get("prompt_cache_miss_tokens") is not None:
+            prompt_cache_miss_tokens = int(usage.get("prompt_cache_miss_tokens") or 0)
+        else:
+            prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
+        if prompt_cache_miss_tokens < 0:
+            prompt_cache_miss_tokens = 0
+        if prompt_cache_hit_tokens + prompt_cache_miss_tokens > prompt_tokens:
+            prompt_cache_miss_tokens = max(0, prompt_tokens - prompt_cache_hit_tokens)
+
         return {
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-            "total_tokens": int(usage.get("total_tokens") or 0),
-            "cached_tokens": int(prompt_details.get("cached_tokens") or usage.get("cached_tokens") or 0),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cached_tokens": prompt_cache_hit_tokens,
+            "prompt_cache_hit_tokens": prompt_cache_hit_tokens,
+            "prompt_cache_miss_tokens": prompt_cache_miss_tokens,
             "reasoning_tokens": int(
                 completion_details.get("reasoning_tokens")
                 or usage.get("reasoning_tokens")

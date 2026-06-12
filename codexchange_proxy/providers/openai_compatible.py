@@ -57,21 +57,36 @@ class OpenAICompatibleProviderAdapter:
         cleaned["messages"] = messages
         return cleaned
 
+
     def parse_usage(self, upstream_payload: Mapping[str, Any]) -> dict[str, int]:
         usage = upstream_payload.get("usage")
         if not isinstance(usage, Mapping):
             usage = {}
+
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(usage.get("total_tokens") or prompt_tokens + completion_tokens)
+
         prompt_details = usage.get("prompt_tokens_details")
         if not isinstance(prompt_details, Mapping):
             prompt_details = {}
         completion_details = usage.get("completion_tokens_details")
         if not isinstance(completion_details, Mapping):
             completion_details = {}
+
+        cached_tokens = int(prompt_details.get("cached_tokens") or usage.get("cached_tokens") or 0)
+        if cached_tokens < 0:
+            cached_tokens = 0
+        if cached_tokens > prompt_tokens:
+            cached_tokens = prompt_tokens
+
         return {
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-            "total_tokens": int(usage.get("total_tokens") or 0),
-            "cached_tokens": int(prompt_details.get("cached_tokens") or usage.get("cached_tokens") or 0),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cached_tokens": cached_tokens,
+            "prompt_cache_hit_tokens": cached_tokens,
+            "prompt_cache_miss_tokens": max(0, prompt_tokens - cached_tokens),
             "reasoning_tokens": int(completion_details.get("reasoning_tokens") or usage.get("reasoning_tokens") or 0),
         }
 

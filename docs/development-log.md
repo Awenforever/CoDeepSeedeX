@@ -1,3 +1,11 @@
+## p3.0a3-adapter-wire-first-runtime
+
+- Fixed p3.0a3 DeepSeek adapter sanitization to preserve assistant reasoning history while keeping generic OpenAI-compatible stripping behavior.
+- Wired the first runtime compatibility wrappers through provider adapters.
+- Kept existing public/internal function names stable while delegating reasoning-effort normalization, usage parsing, reasoning text extraction, and chat payload sanitization to adapters.
+- Expanded provider adapter usage parsing contracts to expose cache-hit and cache-miss token fields.
+- Left pricing, balance, and tokenizer extraction for later provider-specific patches.
+
 ## p3.0a2-provider-adapter-contract
 
 - Added the first CodeXchange provider adapter contract under `codexchange_proxy/providers`.

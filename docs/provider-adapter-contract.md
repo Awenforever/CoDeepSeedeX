@@ -24,3 +24,16 @@ Generic runtime code should depend on `ProviderAdapter` methods instead of hard-
 2. Move usage parsing and response reasoning extraction behind the adapter.
 3. Move pricing, balance, and tokenizer resource handling into provider-specific modules.
 4. Add native Anthropic Messages adapter after the OpenAI-compatible path is stable.
+
+
+## p3.0a3 runtime wiring
+
+The first runtime wiring patch keeps legacy function names for compatibility but routes the following decisions through provider adapters:
+
+- DeepSeek reasoning-effort normalization.
+- DeepSeek usage parsing.
+- DeepSeek reasoning text extraction.
+- Chat payload sanitization before the existing capability-profile filter.
+- DeepSeek adapter preserves assistant `reasoning_content` in request history; generic OpenAI-compatible adapters strip it.
+
+Pricing, balance, and tokenizer handling remain in their existing modules until later provider-specific extraction patches.
