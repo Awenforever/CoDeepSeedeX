@@ -1,3 +1,10 @@
+## p3.0a5-provider-live-smoke-matrix
+
+- Added a reproducible provider live smoke matrix script.
+- The smoke matrix uses adapter-backed validation metadata and skips providers without live API keys.
+- The script redacts API keys by reporting only the environment variable name used.
+- Added unit coverage for skipped providers, adapter-backed validation paths, chat smoke request construction, and result summary counts.
+
 ## p3.0a4-provider-validation-cli-wire
 
 - Fixed concrete CLI provider ids such as `qwen_singapore` and `zhipu_coding` to resolve to the generic OpenAI-compatible adapter validation contract.

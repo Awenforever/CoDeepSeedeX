@@ -54,3 +54,17 @@ CLI model-provider configuration now exposes adapter-backed validation metadata:
 
 DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
 - CLI-specific concrete provider ids such as `qwen_singapore` and `zhipu_coding` map to the generic `openai_compatible` adapter until native adapters are added.
+
+
+## p3.0a5 provider live smoke matrix
+
+`scripts/provider-live-smoke-matrix.py` runs a reproducible provider smoke matrix without printing API keys. Providers without live keys are reported as skipped. When keys are present, the script uses adapter-backed validation metadata from CLI provider configuration and can optionally run a minimal chat completion smoke.
+
+Provider-specific live key variables:
+
+- `COX_LIVE_DS_KEY`
+- `COX_LIVE_QWEN_API_KEY`
+- `COX_LIVE_KIMI_API_KEY`
+- `COX_LIVE_ZHIPU_API_KEY`
+- `COX_LIVE_ZAI_API_KEY`
+- `COX_LIVE_CUSTOM_API_KEY`
