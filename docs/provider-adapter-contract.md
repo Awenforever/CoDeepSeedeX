@@ -53,7 +53,7 @@ CLI model-provider configuration now exposes adapter-backed validation metadata:
 - `adapter_capabilities`
 
 DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
-- CLI-specific concrete provider ids such as `qwen_singapore` and `zhipu_coding` map to the generic `openai_compatible` adapter until native adapters are added.
+- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, Zhipu/BigModel, Z.AI, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
 
 
 ## p3.0a5 provider live smoke matrix
@@ -82,4 +82,4 @@ Concrete Qwen/DashScope model API regions use native adapter ids:
 - `qwen_singapore`
 - `qwen_us`
 
-These adapters intentionally keep OpenAI-compatible Chat Completions payload behavior while carrying region-specific defaults, validation metadata, and diagnostics. The ambiguous compatibility aliases `qwen` and `dashscope` remain non-region-specific compatibility aliases; user-facing configuration should prefer explicit region provider ids.
+These adapters intentionally keep OpenAI-compatible Chat Completions payload behavior while carrying region-specific defaults, validation metadata, and diagnostics. The ambiguous compatibility aliases `qwen` and `dashscope` remain non-region-specific compatibility aliases that resolve through the generic `openai_compatible` adapter path with a selection warning; user-facing configuration should prefer explicit region provider ids.

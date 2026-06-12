@@ -403,6 +403,7 @@ bash ~/.local/share/codexchange/scripts/install.sh --uninstall --remove-files
 ### Provider alias边界
 
 - `qwen-us`是当前显式地域模型provider，应继续保留在README/CLI模型provider指引中。
+- Qwen模型provider的公开CLI ID使用连字符（`qwen-beijing`、`qwen-singapore`、`qwen-us`）；native adapter ID使用下划线（`qwen_beijing`、`qwen_singapore`、`qwen_us`）。
 - `glm`、`qwen_us`、`qwen_us_virginia`、`dashscope_us`和Brave WebSearch只作为隐藏/向后兼容alias保留，除非后续验证线明确重新提升为公开入口。
 - `cox config set-api-key`保留为deprecated兼容命令；用户可见指引应优先使用`cox config set-model`。
 

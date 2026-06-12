@@ -1,3 +1,10 @@
+## p3.0a11-qwen-native-doc-consistency
+
+- Updated provider adapter contract wording after p3.0a10: explicit Qwen region ids now use native `qwen` adapters.
+- Clarified that ambiguous `qwen`/`dashscope` compatibility aliases still resolve through the generic `openai_compatible` adapter path with selection warnings.
+- Clarified public Qwen CLI provider ids versus native adapter ids in English and Chinese developer handbooks.
+- Added documentation consistency tests for the Qwen native adapter contract.
+
 ## p3.0a10-qwen-native-adapter-skeleton
 
 - Added Qwen/DashScope native adapter skeletons for `qwen_beijing`, `qwen_singapore`, and `qwen_us`.

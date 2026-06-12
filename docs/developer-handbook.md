@@ -424,6 +424,7 @@ Checklist maintenance rules:
 ### Provider alias boundary
 
 - `qwen-us` is a current explicit regional model provider and should remain visible in README/CLI model-provider guidance.
+- Public Qwen model-provider ids use hyphens (`qwen-beijing`, `qwen-singapore`, `qwen-us`); native adapter ids use underscores (`qwen_beijing`, `qwen_singapore`, `qwen_us`).
 - `glm`, `qwen_us`, `qwen_us_virginia`, `dashscope_us`, and Brave web search are hidden/backward-compatible aliases unless a future validation line promotes them explicitly.
 - `cox config set-api-key` remains a deprecated compatibility command; user-facing guidance should prefer `cox config set-model`.
 
