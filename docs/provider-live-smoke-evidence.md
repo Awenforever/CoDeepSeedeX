@@ -37,3 +37,14 @@ COX_LIVE_CUSTOM_BASE_URL=https://api.llm.ustc.edu.cn/v1/chat/completions
 ```
 
 The smoke matrix appends `/models` and `/chat/completions` automatically.
+
+
+## Region selection UX contract
+
+Qwen/DashScope model API regions are explicit user choices. CodeXchange must not silently force all users to one region. The public region provider ids are:
+
+- `qwen-beijing`
+- `qwen-singapore`
+- `qwen-us`
+
+Compatibility aliases such as `qwen` or `dashscope` may resolve through legacy paths, but user-facing diagnostics should point users to explicit region provider ids. A 401 from one Qwen region while another region works should be treated first as a key/region/account mismatch, not as an adapter bug.

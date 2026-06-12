@@ -1,3 +1,10 @@
+## p3.0a8-provider-region-selection-ux
+
+- Keep Qwen/DashScope model API regions as explicit user choices: `qwen-beijing`, `qwen-singapore`, and `qwen-us`.
+- Add region metadata and diagnostic hints to model provider configuration/status.
+- Add 401/429/404 validation hints so provider failures are interpreted as key/region/quota/base-URL issues before adapter changes.
+- Reject custom OpenAI-compatible base URLs that point directly at `/chat/completions`; users must provide the API root.
+
 ## p3.0a7-provider-smoke-evidence-ux
 
 - Added `--allow-provider-failures` to the provider live smoke matrix for evidence collection runs.

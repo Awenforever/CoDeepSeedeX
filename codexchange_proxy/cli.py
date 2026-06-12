@@ -383,6 +383,70 @@ MODEL_API_PROVIDERS = {
 }
 
 
+QWEN_MODEL_API_REGIONS: dict[str, dict[str, str]] = {
+    "qwen_beijing": {
+        "region": "Beijing",
+        "region_code": "cn-beijing",
+        "endpoint_scope": "domestic DashScope",
+    },
+    "qwen_singapore": {
+        "region": "Singapore",
+        "region_code": "ap-southeast-1",
+        "endpoint_scope": "international DashScope",
+    },
+    "qwen_us": {
+        "region": "US Virginia",
+        "region_code": "us-east-1",
+        "endpoint_scope": "US DashScope",
+    },
+}
+
+AMBIGUOUS_QWEN_MODEL_API_ALIASES = {"qwen", "dashscope", "aliyun"}
+
+
+def _model_api_provider_region_metadata(provider: str | None) -> dict[str, str]:
+    canonical = _canonical_model_api_provider(provider)
+    metadata = dict(QWEN_MODEL_API_REGIONS.get(canonical, {}))
+    requested = (provider or "").strip().lower().replace("-", "_")
+    if requested in AMBIGUOUS_QWEN_MODEL_API_ALIASES:
+        metadata["selection_warning"] = (
+            "Ambiguous Qwen/DashScope alias resolved through a compatibility path. "
+            "Use an explicit provider region: qwen-beijing, qwen-singapore, or qwen-us."
+        )
+    return metadata
+
+
+def _model_api_provider_diagnostic_hints(provider: str | None, http_status: int | None = None) -> list[str]:
+    canonical = _canonical_model_api_provider(provider)
+    hints: list[str] = []
+    if canonical in QWEN_MODEL_API_REGIONS:
+        hints.append("Qwen/DashScope keys are region-scoped; choose qwen-beijing, qwen-singapore, or qwen-us to match your account region.")
+    if http_status == 401:
+        hints.append("HTTP 401 usually means the API key, account permission, or selected provider region does not match.")
+    elif http_status == 429:
+        hints.append("HTTP 429 usually means quota, rate limit, or account entitlement needs to be checked.")
+    elif http_status == 404:
+        hints.append("HTTP 404 often means the base URL contains an endpoint path; OpenAI-compatible base URLs should be API roots.")
+    return hints
+
+
+def _custom_model_api_base_url_problem(base_url: str) -> dict[str, str] | None:
+    normalized = (base_url or "").strip().rstrip("/")
+    if not normalized:
+        return None
+    lowered = normalized.lower()
+    if lowered.endswith("/chat/completions"):
+        return {
+            "error": "custom_model_base_url_must_be_api_root",
+            "message": "Custom OpenAI-compatible base URL must be the API root, not the chat completions endpoint.",
+            "provided_base_url": normalized,
+            "suggested_base_url": normalized.rsplit("/chat/completions", 1)[0],
+            "example": "https://api.example.com/v1",
+        }
+    return None
+
+
+
 def _canonical_model_api_provider(provider: str | None) -> str:
     selected = str(provider or "deepseek").strip().lower().replace(" ", "_").replace("-", "_")
     return MODEL_API_PROVIDER_ALIASES.get(selected, selected)
@@ -452,6 +516,16 @@ def _model_api_provider_config(provider: str | None) -> dict[str, Any]:
     config["validation_http_method"] = validation["validation_http_method"]
     config["validation_expected_status"] = validation["validation_expected_status"]
     config["adapter_capabilities"] = validation["capabilities"]
+    region_metadata = _model_api_provider_region_metadata(provider)
+    if region_metadata:
+        config["region"] = region_metadata.get("region")
+        config["region_code"] = region_metadata.get("region_code")
+        config["endpoint_scope"] = region_metadata.get("endpoint_scope")
+        if region_metadata.get("selection_warning"):
+            config["selection_warning"] = region_metadata["selection_warning"]
+    hints = _model_api_provider_diagnostic_hints(canonical)
+    if hints:
+        config["diagnostic_hints"] = hints
     return config
 
 
@@ -4722,6 +4796,7 @@ def _validate_model_api_key(
                 "base_url": resolved_base_url,
                 "url": validation_url,
                 "http_status": int(response.status),
+                "diagnostic_hints": _model_api_provider_diagnostic_hints(canonical, int(response.status)),
                 "body_preview": raw[:500] if raw else "",
             }
     except urllib.error.HTTPError as exc:
@@ -4735,6 +4810,7 @@ def _validate_model_api_key(
             "url": validation_url,
             "error": "http_error",
             "http_status": exc.code,
+            "diagnostic_hints": _model_api_provider_diagnostic_hints(canonical, int(exc.code)),
             "body_preview": raw[:1000],
         }
     except Exception as exc:
@@ -5296,6 +5372,11 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "validation_command": "cox config test-api-key",
         "validation_url": validation_url,
         "validation_method": _model_api_provider_validation_contract(provider).get("validation_method"),
+        "region": provider_config.get("region"),
+        "region_code": provider_config.get("region_code"),
+        "endpoint_scope": provider_config.get("endpoint_scope"),
+        "selection_warning": provider_config.get("selection_warning"),
+        "diagnostic_hints": provider_config.get("diagnostic_hints", []),
         "may_consume_quota": False,
     }
 
@@ -5816,6 +5897,10 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
         if action == "add":
             display_name = name
             base_url = _normalize_openai_base_url_value(getattr(args, "base_url", "") or "")
+            base_url_problem = _custom_model_api_base_url_problem(base_url)
+            if base_url_problem:
+                print(json.dumps({"status": "error", **base_url_problem}, ensure_ascii=False, indent=2))
+                return 1
             model = _clean_wizard_input_value(getattr(args, "model", "") or "")
             if not display_name or not base_url or not model:
                 print(json.dumps({"status": "error", "error": "missing_custom_provider_details", "required": ["--name", "--base-url", "--model"]}, ensure_ascii=False, indent=2))
@@ -5826,6 +5911,10 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
                 return 1
             display_name = (getattr(args, "display_name", None) or entry.get("display_name") or name).strip()
             base_url = _normalize_openai_base_url_value(getattr(args, "base_url", "") or entry.get("base_url") or "")
+            base_url_problem = _custom_model_api_base_url_problem(base_url)
+            if base_url_problem:
+                print(json.dumps({"status": "error", **base_url_problem}, ensure_ascii=False, indent=2))
+                return 1
             model = _clean_wizard_input_value(getattr(args, "model", "") or entry.get("active_model") or "")
         if not _is_valid_model_name_value(model):
             print(json.dumps({"status": "error", "error": "invalid_model_name", "message": "Model name is sent upstream and must be an exact model id, not a URL/path/API key.", "model": model}, ensure_ascii=False, indent=2))
@@ -6732,6 +6821,11 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
 
     model_value = str(getattr(args, "model", "") or "").strip()
     base_url_value = str(getattr(args, "base_url", "") or provider_config.get("base_url") or "").strip().rstrip("/")
+    if provider == "custom":
+        base_url_problem = _custom_model_api_base_url_problem(base_url_value)
+        if base_url_problem:
+            print(json.dumps({"status": "error", **base_url_problem}, ensure_ascii=False, indent=2))
+            return 1
     api_key_value = str(getattr(args, "value", "") or "")
     provider_was_explicit = provider_arg is not None and str(provider_arg).strip() != ""
     api_setup_requested = bool(
