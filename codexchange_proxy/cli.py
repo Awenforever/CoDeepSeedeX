@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
+from .providers import canonical_provider_id as _adapter_canonical_provider_id, get_provider_adapter as _get_provider_adapter, provider_registry_status as _provider_adapter_registry_status
 
 
 APP_NAME = "codexchange"
@@ -387,18 +388,71 @@ def _canonical_model_api_provider(provider: str | None) -> str:
     return MODEL_API_PROVIDER_ALIASES.get(selected, selected)
 
 
-def _model_api_provider_config(provider: str | None) -> dict[str, str]:
+
+def _model_api_provider_config_legacy(provider: str | None) -> dict[str, str]:
     canonical = _canonical_model_api_provider(provider)
     if canonical == "custom":
         return {
+            "provider": "custom",
             "display_name": "Other OpenAI-compatible server",
             "base_url": "",
             "model": "",
             "validation_path": "/models",
         }
-    if canonical not in MODEL_API_PROVIDERS:
+
+    entry = MODEL_API_PROVIDERS.get(canonical)
+    if entry is None:
+        entry = MODEL_API_PROVIDERS.get(canonical.replace("_", "-"))
+    if entry is None:
         raise ValueError(f"unsupported_model_api_provider:{canonical}")
-    return dict(MODEL_API_PROVIDERS[canonical])
+
+    config = dict(entry)
+    config["provider"] = canonical
+    return config
+
+
+
+def _model_api_provider_adapter_id(provider: str | None) -> str:
+    canonical = _canonical_model_api_provider(provider)
+    if canonical == "deepseek":
+        return "deepseek"
+    return "openai_compatible"
+
+
+def _model_api_provider_validation_contract(provider: str | None) -> dict[str, Any]:
+    canonical = _canonical_model_api_provider(provider)
+    adapter = _get_provider_adapter(_model_api_provider_adapter_id(canonical))
+    request = adapter.validation_request()
+    status = adapter.status_capabilities()
+    capabilities = status.get("capabilities") if isinstance(status, dict) else {}
+    return {
+        "provider": canonical,
+        "adapter_provider_id": status.get("provider_id") if isinstance(status, dict) else adapter.provider_id,
+        "adapter_family": status.get("family") if isinstance(status, dict) else adapter.family,
+        "wire_protocol": status.get("wire_protocol") if isinstance(status, dict) else adapter.wire_protocol,
+        "validation_http_method": request.method,
+        "validation_path": request.path,
+        "validation_method": request.validation_method,
+        "validation_expected_status": list(request.expected_status),
+        "capabilities": dict(capabilities) if isinstance(capabilities, dict) else {},
+    }
+
+
+def _model_api_provider_config(provider: str | None) -> dict[str, Any]:
+    config = dict(_model_api_provider_config_legacy(provider))
+    canonical = str(config.get("provider") or _canonical_model_api_provider(provider))
+    validation = _model_api_provider_validation_contract(canonical)
+
+    config["provider"] = canonical
+    config["adapter_provider_id"] = validation["adapter_provider_id"]
+    config["adapter_family"] = validation["adapter_family"]
+    config["wire_protocol"] = validation["wire_protocol"]
+    config["validation_method"] = validation["validation_method"]
+    config["validation_path"] = validation["validation_path"]
+    config["validation_http_method"] = validation["validation_http_method"]
+    config["validation_expected_status"] = validation["validation_expected_status"]
+    config["adapter_capabilities"] = validation["capabilities"]
+    return config
 
 
 def _supported_model_api_providers() -> list[str]:
@@ -5241,7 +5295,7 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "api_key_preview": _mask_api_key(api_key),
         "validation_command": "cox config test-api-key",
         "validation_url": validation_url,
-        "validation_method": "deepseek_balance" if provider == "deepseek" else "openai_compatible_models",
+        "validation_method": _model_api_provider_validation_contract(provider).get("validation_method"),
         "may_consume_quota": False,
     }
 
@@ -6933,7 +6987,7 @@ def _config(args: argparse.Namespace) -> int:
         result["base_url"] = base_url
         result["model"] = model
         result["validation_url"] = validation_url
-        result["validation_method"] = "deepseek_balance" if provider == "deepseek" else "openai_compatible_models"
+        result["validation_method"] = _model_api_provider_validation_contract(provider).get("validation_method")
         result["may_consume_quota"] = False
         if provider == "deepseek":
             result["deepseek_api_key_configured"] = bool(api_key)

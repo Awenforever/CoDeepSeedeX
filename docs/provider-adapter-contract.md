@@ -37,3 +37,20 @@ The first runtime wiring patch keeps legacy function names for compatibility but
 - DeepSeek adapter preserves assistant `reasoning_content` in request history; generic OpenAI-compatible adapters strip it.
 
 Pricing, balance, and tokenizer handling remain in their existing modules until later provider-specific extraction patches.
+
+
+## p3.0a4 CLI validation wiring
+
+CLI model-provider configuration now exposes adapter-backed validation metadata:
+
+- `validation_method`
+- `validation_path`
+- `validation_http_method`
+- `validation_expected_status`
+- `adapter_provider_id`
+- `adapter_family`
+- `wire_protocol`
+- `adapter_capabilities`
+
+DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
+- CLI-specific concrete provider ids such as `qwen_singapore` and `zhipu_coding` map to the generic `openai_compatible` adapter until native adapters are added.

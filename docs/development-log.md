@@ -1,3 +1,10 @@
+## p3.0a4-provider-validation-cli-wire
+
+- Fixed concrete CLI provider ids such as `qwen_singapore` and `zhipu_coding` to resolve to the generic OpenAI-compatible adapter validation contract.
+- Wired CLI model-provider configuration to provider adapter validation metadata.
+- Preserved DeepSeek account-balance validation while routing generic/custom providers through OpenAI-compatible `/models` validation metadata.
+- Added provider validation CLI contract tests without performing live provider calls.
+
 ## p3.0a3-adapter-wire-first-runtime
 
 - Fixed p3.0a3 DeepSeek adapter sanitization to preserve assistant reasoning history while keeping generic OpenAI-compatible stripping behavior.
