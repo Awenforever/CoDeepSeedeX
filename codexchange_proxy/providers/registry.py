@@ -3,9 +3,34 @@ from __future__ import annotations
 from .base import ProviderAdapter
 from .deepseek import DeepSeekProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
+from .qwen import QwenProviderAdapter
 
 _DEEPSEEK = DeepSeekProviderAdapter()
 _OPENAI_COMPATIBLE = OpenAICompatibleProviderAdapter()
+_QWEN_BEIJING = QwenProviderAdapter(
+    provider_id="qwen_beijing",
+    region="Beijing",
+    region_code="cn-beijing",
+    endpoint_scope="domestic DashScope",
+    default_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    default_model="qwen-plus",
+)
+_QWEN_SINGAPORE = QwenProviderAdapter(
+    provider_id="qwen_singapore",
+    region="Singapore",
+    region_code="ap-southeast-1",
+    endpoint_scope="international DashScope",
+    default_base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    default_model="qwen-plus",
+)
+_QWEN_US = QwenProviderAdapter(
+    provider_id="qwen_us",
+    region="US Virginia",
+    region_code="us-east-1",
+    endpoint_scope="US DashScope",
+    default_base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+    default_model="qwen-plus-us",
+)
 
 _ALIAS_TO_CANONICAL = {
     "deepseek": "deepseek",
@@ -22,6 +47,22 @@ _ALIAS_TO_CANONICAL = {
     "z_ai": "openai_compatible",
     "qwen": "openai_compatible",
     "dashscope": "openai_compatible",
+    "qwen_beijing": "qwen_beijing",
+    "qwen-beijing": "qwen_beijing",
+    "dashscope_beijing": "qwen_beijing",
+    "dashscope-beijing": "qwen_beijing",
+    "qwen_singapore": "qwen_singapore",
+    "qwen-singapore": "qwen_singapore",
+    "qwen_intl": "qwen_singapore",
+    "qwen-intl": "qwen_singapore",
+    "dashscope_singapore": "qwen_singapore",
+    "dashscope-singapore": "qwen_singapore",
+    "qwen_us": "qwen_us",
+    "qwen-us": "qwen_us",
+    "qwen_us_virginia": "qwen_us",
+    "qwen-us-virginia": "qwen_us",
+    "dashscope_us": "qwen_us",
+    "dashscope-us": "qwen_us",
     "xai": "openai_compatible",
     "grok": "openai_compatible",
 }
@@ -29,6 +70,9 @@ _ALIAS_TO_CANONICAL = {
 _ADAPTERS: dict[str, ProviderAdapter] = {
     "deepseek": _DEEPSEEK,
     "openai_compatible": _OPENAI_COMPATIBLE,
+    "qwen_beijing": _QWEN_BEIJING,
+    "qwen_singapore": _QWEN_SINGAPORE,
+    "qwen_us": _QWEN_US,
 }
 
 

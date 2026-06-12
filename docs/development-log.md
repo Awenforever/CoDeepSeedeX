@@ -1,3 +1,10 @@
+## p3.0a10-qwen-native-adapter-skeleton
+
+- Added Qwen/DashScope native adapter skeletons for `qwen_beijing`, `qwen_singapore`, and `qwen_us`.
+- Kept Qwen chat payload behavior OpenAI-compatible while moving region defaults and validation metadata into provider adapters.
+- Preserved explicit user region selection; no default region is forced.
+- Kept ambiguous `qwen`/`dashscope` aliases as compatibility paths while concrete region providers report native adapter ids.
+
 ## p3.0a8-provider-region-selection-ux
 
 - Keep Qwen/DashScope model API regions as explicit user choices: `qwen-beijing`, `qwen-singapore`, and `qwen-us`.

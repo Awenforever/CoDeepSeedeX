@@ -89,3 +89,8 @@ def test_set_model_rejects_custom_chat_completions_base_url(tmp_path, capsys) ->
     output = json.loads(capsys.readouterr().out)
     assert output["error"] == "custom_model_base_url_must_be_api_root"
     assert output["suggested_base_url"] == "https://api.example.com/v1"
+
+def test_qwen_region_provider_config_uses_native_adapter_ids() -> None:
+    assert cli._model_api_provider_config("qwen-beijing")["adapter_provider_id"] == "qwen_beijing"
+    assert cli._model_api_provider_config("qwen-singapore")["adapter_provider_id"] == "qwen_singapore"
+    assert cli._model_api_provider_config("qwen-us")["adapter_provider_id"] == "qwen_us"

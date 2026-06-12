@@ -477,15 +477,20 @@ def _model_api_provider_config_legacy(provider: str | None) -> dict[str, str]:
 
 
 def _model_api_provider_adapter_id(provider: str | None) -> str:
+    requested = (provider or "").strip().lower().replace("-", "_")
     canonical = _canonical_model_api_provider(provider)
     if canonical == "deepseek":
         return "deepseek"
+    if requested in AMBIGUOUS_QWEN_MODEL_API_ALIASES:
+        return "openai_compatible"
+    if canonical in QWEN_MODEL_API_REGIONS:
+        return canonical
     return "openai_compatible"
 
 
 def _model_api_provider_validation_contract(provider: str | None) -> dict[str, Any]:
     canonical = _canonical_model_api_provider(provider)
-    adapter = _get_provider_adapter(_model_api_provider_adapter_id(canonical))
+    adapter = _get_provider_adapter(_model_api_provider_adapter_id(provider))
     request = adapter.validation_request()
     status = adapter.status_capabilities()
     capabilities = status.get("capabilities") if isinstance(status, dict) else {}
@@ -505,7 +510,7 @@ def _model_api_provider_validation_contract(provider: str | None) -> dict[str, A
 def _model_api_provider_config(provider: str | None) -> dict[str, Any]:
     config = dict(_model_api_provider_config_legacy(provider))
     canonical = str(config.get("provider") or _canonical_model_api_provider(provider))
-    validation = _model_api_provider_validation_contract(canonical)
+    validation = _model_api_provider_validation_contract(provider)
 
     config["provider"] = canonical
     config["adapter_provider_id"] = validation["adapter_provider_id"]

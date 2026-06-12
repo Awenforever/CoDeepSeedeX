@@ -72,3 +72,14 @@ Provider-specific live key variables:
 ### Evidence-mode live smoke
 
 Use `--allow-provider-failures` during evidence collection when failed provider responses are expected and should be captured as data rather than treated as command failure. Keep the default non-zero exit behavior for CI or release checks.
+
+
+## Qwen native adapter skeleton
+
+Concrete Qwen/DashScope model API regions use native adapter ids:
+
+- `qwen_beijing`
+- `qwen_singapore`
+- `qwen_us`
+
+These adapters intentionally keep OpenAI-compatible Chat Completions payload behavior while carrying region-specific defaults, validation metadata, and diagnostics. The ambiguous compatibility aliases `qwen` and `dashscope` remain non-region-specific compatibility aliases; user-facing configuration should prefer explicit region provider ids.

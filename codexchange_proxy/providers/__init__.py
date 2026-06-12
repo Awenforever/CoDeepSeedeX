@@ -9,6 +9,7 @@ from .base import (
 )
 from .deepseek import DeepSeekProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
+from .qwen import QwenProviderAdapter
 from .registry import (
     canonical_provider_id,
     get_provider_adapter,
@@ -24,6 +25,7 @@ __all__ = [
     "ValidationRequest",
     "DeepSeekProviderAdapter",
     "OpenAICompatibleProviderAdapter",
+    "QwenProviderAdapter",
     "canonical_provider_id",
     "get_provider_adapter",
     "provider_registry_status",

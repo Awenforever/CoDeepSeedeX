@@ -23,7 +23,7 @@ def test_model_api_provider_config_uses_adapter_validation_for_deepseek() -> Non
 
 @pytest.mark.parametrize(
     "provider",
-    ["custom", "kimi", "moonshot", "zhipu", "bigmodel", "zhipu-coding", "zai", "zai-coding", "qwen", "dashscope", "qwen-beijing", "qwen-singapore", "qwen-us"],
+    ["custom", "kimi", "moonshot", "zhipu", "bigmodel", "zhipu-coding", "zai", "zai-coding", "qwen", "dashscope"],
 )
 def test_model_api_provider_config_uses_openai_compatible_adapter_for_generic_routes(provider: str) -> None:
     config = cli._model_api_provider_config(provider)
@@ -65,3 +65,20 @@ def test_xai_and_grok_aliases_exist_at_adapter_registry_level_only() -> None:
         cli._model_api_provider_config("xai")
     with pytest.raises(ValueError, match="unsupported_model_api_provider"):
         cli._model_api_provider_config("grok")
+
+def test_model_api_provider_config_uses_qwen_native_adapters_for_concrete_regions() -> None:
+    beijing = cli._model_api_provider_config("qwen-beijing")
+    singapore = cli._model_api_provider_config("qwen-singapore")
+    us = cli._model_api_provider_config("qwen-us")
+
+    assert beijing["adapter_provider_id"] == "qwen_beijing"
+    assert beijing["adapter_family"] == "qwen"
+    assert beijing["validation_method"] == "qwen_openai_compatible_models"
+
+    assert singapore["adapter_provider_id"] == "qwen_singapore"
+    assert singapore["adapter_family"] == "qwen"
+    assert singapore["validation_method"] == "qwen_openai_compatible_models"
+
+    assert us["adapter_provider_id"] == "qwen_us"
+    assert us["adapter_family"] == "qwen"
+    assert us["validation_method"] == "qwen_openai_compatible_models"
