@@ -1,3 +1,11 @@
+## p3.0a12-provider-adapter-status-matrix
+
+- Added stable model API provider adapter matrix helpers.
+- Exposed current provider adapter status plus full supported-provider adapter matrix in model API configuration status.
+- Marked DeepSeek and explicit Qwen region providers as native adapters.
+- Marked Kimi, Zhipu, Z.AI, and custom OpenAI-compatible routes as generic adapters.
+- Added tests to prevent Qwen native adapters or ambiguous Qwen compatibility aliases from regressing.
+
 ## p3.0a11-qwen-native-doc-consistency
 
 - Updated provider adapter contract wording after p3.0a10: explicit Qwen region ids now use native `qwen` adapters.

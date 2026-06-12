@@ -4738,6 +4738,56 @@ def _load_deepseek_api_key(*, env_file: Path | None = None) -> tuple[str, str | 
 
 
 
+
+def _model_api_provider_adapter_kind(config: dict[str, Any]) -> str:
+    adapter_id = str(config.get("adapter_provider_id") or "")
+    return "generic" if adapter_id == "openai_compatible" else "native"
+
+
+def _model_api_provider_adapter_status_row(provider: str) -> dict[str, Any]:
+    config = _model_api_provider_config(provider)
+    adapter_kind = _model_api_provider_adapter_kind(config)
+    return {
+        "provider": provider,
+        "canonical_provider": config.get("provider"),
+        "display_name": config.get("display_name"),
+        "adapter_provider_id": config.get("adapter_provider_id"),
+        "adapter_family": config.get("adapter_family"),
+        "adapter_kind": adapter_kind,
+        "adapter_is_native": adapter_kind == "native",
+        "adapter_is_generic": adapter_kind == "generic",
+        "wire_protocol": config.get("wire_protocol"),
+        "validation_method": config.get("validation_method"),
+        "validation_path": config.get("validation_path"),
+        "base_url": config.get("base_url"),
+        "model": config.get("model"),
+        "region": config.get("region"),
+        "region_code": config.get("region_code"),
+        "endpoint_scope": config.get("endpoint_scope"),
+        "selection_warning": config.get("selection_warning"),
+        "diagnostic_hints": config.get("diagnostic_hints", []),
+    }
+
+
+def _model_api_provider_adapter_matrix(providers: list[str] | None = None) -> list[dict[str, Any]]:
+    selected = providers if providers is not None else _supported_model_api_providers()
+    return [_model_api_provider_adapter_status_row(provider) for provider in selected]
+
+
+def _model_api_provider_adapter_matrix_summary(matrix: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    rows = matrix if matrix is not None else _model_api_provider_adapter_matrix()
+    native = [row["provider"] for row in rows if row.get("adapter_is_native")]
+    generic = [row["provider"] for row in rows if row.get("adapter_is_generic")]
+    return {
+        "providers_total": len(rows),
+        "native_count": len(native),
+        "generic_count": len(generic),
+        "native_providers": native,
+        "generic_providers": generic,
+    }
+
+
+
 def _model_api_validation_url(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + "/" + path.lstrip("/")
 
@@ -5381,6 +5431,12 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "region_code": provider_config.get("region_code"),
         "endpoint_scope": provider_config.get("endpoint_scope"),
         "selection_warning": provider_config.get("selection_warning"),
+        "adapter_status": _model_api_provider_adapter_status_row(provider),
+        "adapter_kind": _model_api_provider_adapter_kind(provider_config),
+        "adapter_is_native": _model_api_provider_adapter_kind(provider_config) == "native",
+        "adapter_is_generic": _model_api_provider_adapter_kind(provider_config) == "generic",
+        "adapter_matrix": _model_api_provider_adapter_matrix(),
+        "adapter_matrix_summary": _model_api_provider_adapter_matrix_summary(),
         "diagnostic_hints": provider_config.get("diagnostic_hints", []),
         "may_consume_quota": False,
     }

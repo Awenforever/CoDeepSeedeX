@@ -83,3 +83,28 @@ Concrete Qwen/DashScope model API regions use native adapter ids:
 - `qwen_us`
 
 These adapters intentionally keep OpenAI-compatible Chat Completions payload behavior while carrying region-specific defaults, validation metadata, and diagnostics. The ambiguous compatibility aliases `qwen` and `dashscope` remain non-region-specific compatibility aliases that resolve through the generic `openai_compatible` adapter path with a selection warning; user-facing configuration should prefer explicit region provider ids.
+
+
+## Provider adapter status matrix
+
+Model API configuration status exposes stable adapter metadata for diagnostics:
+
+- `adapter_status`: the currently configured model provider adapter row.
+- `adapter_kind`: `native` or `generic` for the currently configured model provider.
+- `adapter_matrix`: one row per supported public model provider.
+- `adapter_matrix_summary`: total/native/generic provider counts and provider lists.
+
+The intended matrix after the Qwen native adapter skeleton is:
+
+| Provider | Adapter kind | Adapter family |
+|---|---:|---|
+| `deepseek` | native | `deepseek` |
+| `qwen-beijing` | native | `qwen` |
+| `qwen-singapore` | native | `qwen` |
+| `qwen-us` | native | `qwen` |
+| `kimi` | generic | `openai_compatible` |
+| `zhipu` | generic | `openai_compatible` |
+| `zhipu-coding` | generic | `openai_compatible` |
+| `zai` | generic | `openai_compatible` |
+| `zai-coding` | generic | `openai_compatible` |
+| `custom` | generic | `openai_compatible` |
