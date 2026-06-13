@@ -287,6 +287,8 @@ MODEL_API_PROVIDER_ALIASES = {
     "deepseek": "deepseek",
     "kimi": "kimi",
     "moonshot": "kimi",
+    "moonshot_ai": "kimi",
+    "moonshot-ai": "kimi",
 
     # Backward-compatible aliases. The public guide should prefer explicit
     # site and plan names below instead of the ambiguous glm/qwen shortcuts.
@@ -484,6 +486,8 @@ def _model_api_provider_adapter_id(provider: str | None) -> str:
     canonical = _canonical_model_api_provider(provider)
     if canonical == "deepseek":
         return "deepseek"
+    if canonical == "kimi":
+        return "kimi"
     if canonical in {"qwen_beijing", "qwen_singapore", "qwen_us"}:
         return canonical
     if canonical in {"zhipu", "zhipu_coding"}:

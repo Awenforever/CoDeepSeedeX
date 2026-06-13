@@ -11,6 +11,7 @@ WireProtocol = Literal[
 
 ProviderFamily = Literal[
     "deepseek",
+    "kimi",
     "openai_compatible",
     "qwen",
     "zhipu",

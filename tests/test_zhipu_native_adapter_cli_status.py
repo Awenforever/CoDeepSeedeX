@@ -43,10 +43,11 @@ def test_provider_adapter_matrix_marks_zhipu_as_native() -> None:
     assert rows["zhipu-coding"]["adapter_family"] == "zhipu"
 
     assert summary["providers_total"] == 10
-    assert summary["native_count"] == 8
-    assert summary["generic_count"] == 2
+    assert summary["native_count"] == 9
+    assert summary["generic_count"] == 1
     assert summary["native_providers"] == [
         "deepseek",
+        "kimi",
         "zhipu",
         "zhipu-coding",
         "zai",
@@ -55,10 +56,7 @@ def test_provider_adapter_matrix_marks_zhipu_as_native() -> None:
         "qwen-singapore",
         "qwen-us",
     ]
-    assert summary["generic_providers"] == [
-        "kimi",
-        "custom",
-    ]
+    assert summary["generic_providers"] == ["custom"]
 
 
 def test_adapter_matrix_display_marks_zhipu_as_native() -> None:
@@ -66,5 +64,5 @@ def test_adapter_matrix_display_marks_zhipu_as_native() -> None:
 
     assert "zhipu           native  zhipu              zhipu" in display
     assert "zhipu-coding    native  zhipu              zhipu_coding" in display
-    assert "kimi            generic openai_compatible  openai_compatible" in display
+    assert "kimi            native  kimi               kimi" in display
     assert "zai             native  zai                zai" in display

@@ -43,10 +43,10 @@ def test_config_status_alias_matches_config_show_payload() -> None:
     assert status_payload["model_api"]["adapter_status"]["adapter_provider_id"] == "qwen_beijing"
     assert status_payload["model_api"]["adapter_provider_id"] == "qwen_beijing"
     assert status_payload["model_api"]["adapter_family"] == "qwen"
-    assert status_payload["model_api"]["adapter_matrix_summary"]["native_count"] == 8
-    assert status_payload["model_api"]["adapter_matrix_summary"]["generic_count"] == 2
+    assert status_payload["model_api"]["adapter_matrix_summary"]["native_count"] == 9
+    assert status_payload["model_api"]["adapter_matrix_summary"]["generic_count"] == 1
     assert "qwen-beijing    native  qwen               qwen_beijing" in status_payload["model_api"]["adapter_matrix_display"]
-    assert "kimi            generic openai_compatible  openai_compatible" in status_payload["model_api"]["adapter_matrix_display"]
+    assert "kimi            native  kimi               kimi" in status_payload["model_api"]["adapter_matrix_display"]
 
 
 def test_config_status_alias_is_listed_in_config_help() -> None:

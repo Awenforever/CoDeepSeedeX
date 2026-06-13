@@ -1,3 +1,11 @@
+## p3.0a19-kimi-native-adapter-skeleton
+
+- Added Kimi / Moonshot native adapter skeleton for `kimi`.
+- Kept OpenAI-compatible Chat Completions payload behavior unchanged while carrying provider-specific endpoint metadata.
+- Mapped `kimi`, `moonshot`, `moonshot-ai`, and `moonshot_ai` to the native `kimi` adapter.
+- Updated provider adapter matrix expectations: DeepSeek, Kimi, Zhipu general, Zhipu Coding, Z.AI general, Z.AI Coding, and explicit Qwen regions are native; custom remains generic.
+- Preserved the interpretation that historical Kimi HTTP 401 is key, account, or permission evidence rather than endpoint-shape evidence.
+
 ## p3.0a17-zai-native-adapter-skeleton
 
 - Added Z.AI native adapter skeletons for `zai` and `zai_coding`.

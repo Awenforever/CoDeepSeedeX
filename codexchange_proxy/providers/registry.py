@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .base import ProviderAdapter
 from .deepseek import DeepSeekProviderAdapter
+from .kimi import KimiProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
 from .qwen import QwenProviderAdapter
 from .zai import ZaiProviderAdapter
@@ -9,6 +10,7 @@ from .zhipu import ZhipuProviderAdapter
 
 _DEEPSEEK = DeepSeekProviderAdapter()
 _OPENAI_COMPATIBLE = OpenAICompatibleProviderAdapter()
+_KIMI = KimiProviderAdapter()
 _QWEN_BEIJING = QwenProviderAdapter(
     provider_id="qwen_beijing",
     region="Beijing",
@@ -69,8 +71,10 @@ _ALIAS_TO_CANONICAL = {
     "openai-compatible": "openai_compatible",
     "custom": "openai_compatible",
     "openai": "openai_compatible",
-    "kimi": "openai_compatible",
-    "moonshot": "openai_compatible",
+    "kimi": "kimi",
+    "moonshot": "kimi",
+    "moonshot_ai": "kimi",
+    "moonshot-ai": "kimi",
     "zhipu": "zhipu",
     "zhipuai": "zhipu",
     "bigmodel": "zhipu",
@@ -115,6 +119,7 @@ _ALIAS_TO_CANONICAL = {
 _ADAPTERS: dict[str, ProviderAdapter] = {
     "deepseek": _DEEPSEEK,
     "openai_compatible": _OPENAI_COMPATIBLE,
+    "kimi": _KIMI,
     "qwen_beijing": _QWEN_BEIJING,
     "qwen_singapore": _QWEN_SINGAPORE,
     "qwen_us": _QWEN_US,

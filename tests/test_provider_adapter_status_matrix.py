@@ -23,7 +23,7 @@ def test_model_api_provider_adapter_matrix_marks_native_and_generic_providers() 
     assert rows["qwen-us"]["adapter_provider_id"] == "qwen_us"
     assert rows["qwen-us"]["adapter_family"] == "qwen"
 
-    for provider in ("kimi", "custom"):
+    for provider in ("custom",):
         assert rows[provider]["adapter_kind"] == "generic"
         assert rows[provider]["adapter_provider_id"] == "openai_compatible"
         assert rows[provider]["adapter_family"] == "openai_compatible"
@@ -33,10 +33,11 @@ def test_model_api_provider_adapter_matrix_summary_is_stable() -> None:
     summary = cli._model_api_provider_adapter_matrix_summary()
 
     assert summary["providers_total"] == 10
-    assert summary["native_count"] == 8
-    assert summary["generic_count"] == 2
+    assert summary["native_count"] == 9
+    assert summary["generic_count"] == 1
     assert summary["native_providers"] == [
         "deepseek",
+        "kimi",
         "zhipu",
         "zhipu-coding",
         "zai",
@@ -45,10 +46,7 @@ def test_model_api_provider_adapter_matrix_summary_is_stable() -> None:
         "qwen-singapore",
         "qwen-us",
     ]
-    assert summary["generic_providers"] == [
-        "kimi",
-        "custom",
-    ]
+    assert summary["generic_providers"] == ["custom"]
 
 
 def test_model_api_config_status_exposes_current_adapter_and_matrix() -> None:
@@ -70,9 +68,11 @@ def test_model_api_config_status_exposes_current_adapter_and_matrix() -> None:
 
     matrix = {row["provider"]: row for row in status["adapter_matrix"]}
     assert matrix["qwen-beijing"]["adapter_kind"] == "native"
-    assert matrix["kimi"]["adapter_kind"] == "generic"
-    assert status["adapter_matrix_summary"]["native_count"] == 8
-    assert status["adapter_matrix_summary"]["generic_count"] == 2
+    assert matrix["kimi"]["adapter_kind"] == "native"
+    assert matrix["kimi"]["adapter_family"] == "kimi"
+    assert matrix["kimi"]["adapter_provider_id"] == "kimi"
+    assert status["adapter_matrix_summary"]["native_count"] == 9
+    assert status["adapter_matrix_summary"]["generic_count"] == 1
 
 
 def test_ambiguous_qwen_aliases_remain_generic_in_matrix_helpers() -> None:

@@ -5,7 +5,7 @@ p3.0a2 introduces the first CodeXchange provider adapter contract. This patch do
 ## Initial adapters
 
 - `deepseek`: OpenAI-compatible chat completions plus provider-specific reasoning, pricing, balance, and tokenizer capabilities.
-- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as Kimi/Moonshot, xAI/Grok, and OpenAI-compatible routes.
+- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as xAI/Grok and OpenAI-compatible routes.
 
 ## Boundary
 
@@ -53,7 +53,7 @@ CLI model-provider configuration now exposes adapter-backed validation metadata:
 - `adapter_capabilities`
 
 DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
-- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
+- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while custom and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
 
 
 ## p3.0a5 provider live smoke matrix
@@ -73,6 +73,16 @@ Provider-specific live key variables:
 
 Use `--allow-provider-failures` during evidence collection when failed provider responses are expected and should be captured as data rather than treated as command failure. Keep the default non-zero exit behavior for CI or release checks.
 
+
+
+## Kimi native adapter
+
+The Kimi / Moonshot native adapter skeleton keeps OpenAI-compatible Chat Completions payload behavior while carrying provider-specific endpoint metadata:
+
+- `kimi`: Moonshot OpenAI-compatible API, `https://api.moonshot.ai/v1`, default model `kimi-latest`.
+- `moonshot`: compatibility alias for the `kimi` provider id.
+
+Validation remains `GET /models` with `kimi_openai_compatible_models`. Historical live evidence showed the endpoint reachable while the supplied key returned HTTP 401; treat 401 as key, account, or permission evidence rather than endpoint-shape evidence.
 
 ## Qwen native adapter skeleton
 
@@ -98,7 +108,7 @@ Model API configuration status exposes stable adapter metadata for diagnostics:
 - `adapter_matrix_compact`: compact rows with provider, adapter kind, adapter family, and adapter id.
 - `adapter_matrix_display`: preformatted rows for quick CLI inspection.
 
-The current adapter matrix after the Qwen, Zhipu, and Z.AI native adapter skeletons is:
+The current adapter matrix after the Kimi, Qwen, Zhipu, and Z.AI native adapter skeletons is:
 
 | Provider | Adapter kind | Adapter family |
 |---|---:|---|
@@ -106,7 +116,7 @@ The current adapter matrix after the Qwen, Zhipu, and Z.AI native adapter skelet
 | `qwen-beijing` | native | `qwen` |
 | `qwen-singapore` | native | `qwen` |
 | `qwen-us` | native | `qwen` |
-| `kimi` | generic | `openai_compatible` |
+| `kimi` | native | `kimi` |
 | `zhipu` | native | `zhipu` |
 | `zhipu-coding` | native | `zhipu` |
 | `zai` | native | `zai` |

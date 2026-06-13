@@ -8,6 +8,7 @@ from .base import (
     ValidationRequest,
 )
 from .deepseek import DeepSeekProviderAdapter
+from .kimi import KimiProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
 from .qwen import QwenProviderAdapter
 from .zai import ZaiProviderAdapter
@@ -26,6 +27,7 @@ __all__ = [
     "UpstreamRequest",
     "ValidationRequest",
     "DeepSeekProviderAdapter",
+    "KimiProviderAdapter",
     "OpenAICompatibleProviderAdapter",
     "QwenProviderAdapter",
     "ZaiProviderAdapter",

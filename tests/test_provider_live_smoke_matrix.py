@@ -79,7 +79,7 @@ def test_smoke_matrix_runs_openai_compatible_chat_with_provider_specific_key(mon
 
     result = module.run_provider("kimi", include_chat=True, timeout_seconds=1, insecure_tls=False)
 
-    assert result["adapter_provider_id"] == "openai_compatible"
+    assert result["adapter_provider_id"] == "kimi"
     assert result["validation_path"] == "/models"
     assert result["validation"]["ok"] is True
     assert result["chat"]["ok"] is True
