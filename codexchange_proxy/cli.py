@@ -7092,7 +7092,7 @@ def _config(args: argparse.Namespace) -> int:
         print(json.dumps({"path": str(path), "created_or_overwritten": changed}, ensure_ascii=False, indent=2))
         return 0
 
-    if args.config_command == "show":
+    if args.config_command in {"show", "status"}:
         values = _read_env_exports(env_file)
         safe_values = {
             key: _mask_env_secret(key, value)
@@ -8709,7 +8709,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_init.add_argument("--force", action="store_true")
     config_init.set_defaults(func=_config)
 
-    config_show = config_sub.add_parser("show", help="show local env configuration")
+    config_show = config_sub.add_parser("show", aliases=["status"], help="show local env configuration")
     config_show.add_argument("--env-file")
     config_show.set_defaults(func=_config)
 

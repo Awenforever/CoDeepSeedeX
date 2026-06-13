@@ -113,7 +113,8 @@
    - `cox profile status`一致报告profile source和profile layout。
    - legacy Codex profile table下，`context_window.codex_profile.source`必须是`codex_profile.legacy_profile_table`。
    - managed profile context保持`model_context_window=1000000`和`model_auto_compact_token_limit=900000`。
-   - `cox config show`和`cox config test-api-key`显示validation method和URL，但不得记录API key材料。
+   - `cox config show
+`cox config status`是`cox config show`的只读别名，返回相同的JSON载荷。`和`cox config test-api-key`显示validation method和URL，但不得记录API key材料。
 
 5. Provider bridges
    - Web search tool bridge

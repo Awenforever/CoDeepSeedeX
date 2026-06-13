@@ -130,7 +130,8 @@ subprocess.run(["command", "-v", "gh"], ...)
    - `cox profile status` reports profile source and profile layout consistently.
    - For legacy Codex profile tables, `context_window.codex_profile.source` must be `codex_profile.legacy_profile_table`.
    - Managed profile context remains `model_context_window=1000000` and `model_auto_compact_token_limit=900000`.
-   - `cox config show` and `cox config test-api-key` expose validation method and URL without logging API-key material.
+   - `cox config show
+`cox config status` is a read-only alias for `cox config show` and returns the same JSON payload.` and `cox config test-api-key` expose validation method and URL without logging API-key material.
 
 5. Provider bridges
    - Web search tool bridge

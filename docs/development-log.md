@@ -1,3 +1,9 @@
+## p3.0a14-config-status-alias
+
+- Added `cox config status` as a read-only alias for `cox config show`.
+- Preserved the exact JSON payload semantics between `config show` and `config status`.
+- Covered the alias with tests, including the provider adapter matrix display fields added in p3.0a13.
+
 ## p3.0a13-provider-status-cli-output-ux
 
 - Added compact and display-oriented provider adapter matrix fields to `cox config show` output.
