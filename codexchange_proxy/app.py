@@ -11340,7 +11340,7 @@ def _image_generation_tool_schema() -> dict[str, Any]:
         "type": "function",
         "function": {
             "name": "proxy_image_generate",
-            "description": "Generate an image using the configured DeepSeek proxy image provider.",
+            "description": "Generate an image using the configured CodeXchange proxy image provider.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -12124,7 +12124,7 @@ def _web_search_tool_schema() -> dict[str, Any]:
         "type": "function",
         "function": {
             "name": "proxy_web_search",
-            "description": "Search the web using the configured DeepSeek proxy search provider.",
+            "description": "Search the web using the configured CodeXchange proxy search provider.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -12187,7 +12187,7 @@ async def _mock_web_search(query: str, max_results: int) -> dict[str, Any]:
             {
                 "title": f"Mock search result for {query}",
                 "url": "https://example.com/mock-search-result",
-                "snippet": "This is a deterministic mock web search result from the DeepSeek proxy.",
+                "snippet": "This is a deterministic mock web search result from the CodeXchange proxy.",
                 "published_at": None,
             }
         ][:max_results],
@@ -12647,16 +12647,16 @@ def _deepseek_proxy_account_tool_schemas() -> list[dict[str, Any]]:
     return [
         _proxy_function_tool_schema(
             "proxy_status",
-            "Return DeepSeek proxy runtime status without exposing secrets.",
+            "Return CodeXchange proxy runtime status without exposing secrets.",
         ),
         _proxy_function_tool_schema(
             "proxy_usage_summary",
-            "Return DeepSeek proxy usage summary with optional filters.",
+            "Return CodeXchange proxy usage summary with optional filters.",
             usage_filter_properties,
         ),
         _proxy_function_tool_schema(
             "proxy_usage_events",
-            "Return recent DeepSeek proxy usage ledger events with optional filters.",
+            "Return recent CodeXchange proxy usage ledger events with optional filters.",
             usage_events_properties,
         ),
         _proxy_function_tool_schema(
@@ -12678,7 +12678,7 @@ def _proxy_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "proxy_echo",
-                "description": "Echo a value for DeepSeek proxy tool-loop testing.",
+                "description": "Echo a value for CodeXchange proxy tool-loop testing.",
                 "parameters": {
                     "type": "object",
                     "properties": {
