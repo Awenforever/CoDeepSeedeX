@@ -13,6 +13,7 @@ ProviderFamily = Literal[
     "deepseek",
     "openai_compatible",
     "qwen",
+    "zhipu",
     "anthropic",
     "xai",
     "custom",

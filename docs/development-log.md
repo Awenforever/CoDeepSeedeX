@@ -1,3 +1,11 @@
+## p3.0a15-zhipu-native-adapter-skeleton
+
+- Added ZhipuAI / BigModel native adapter skeletons for `zhipu` and `zhipu_coding`.
+- Kept OpenAI-compatible Chat Completions payload behavior unchanged while carrying plan-specific endpoint metadata.
+- Mapped `zhipu`, `zhipuai`, `bigmodel`, and domestic aliases to the native `zhipu` adapter.
+- Mapped `zhipu-coding` and `bigmodel-coding` aliases to the native `zhipu_coding` adapter.
+- Updated provider adapter matrix expectations: DeepSeek, Zhipu general, Zhipu Coding, and explicit Qwen regions are native; Kimi, Z.AI, and custom remain generic.
+
 ## p3.0a14-config-status-alias
 
 - Added `cox config status` as a read-only alias for `cox config show`.

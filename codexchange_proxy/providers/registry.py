@@ -4,6 +4,7 @@ from .base import ProviderAdapter
 from .deepseek import DeepSeekProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
 from .qwen import QwenProviderAdapter
+from .zhipu import ZhipuProviderAdapter
 
 _DEEPSEEK = DeepSeekProviderAdapter()
 _OPENAI_COMPATIBLE = OpenAICompatibleProviderAdapter()
@@ -31,6 +32,20 @@ _QWEN_US = QwenProviderAdapter(
     default_base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1",
     default_model="qwen-plus-us",
 )
+_ZHIPU_GENERAL = ZhipuProviderAdapter(
+    provider_id="zhipu",
+    plan="domestic general",
+    endpoint_scope="BigModel Token API",
+    default_base_url="https://open.bigmodel.cn/api/paas/v4",
+    default_model="glm-5.1",
+)
+_ZHIPU_CODING = ZhipuProviderAdapter(
+    provider_id="zhipu_coding",
+    plan="domestic Coding Plan",
+    endpoint_scope="BigModel Coding Plan",
+    default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+    default_model="glm-5.1",
+)
 
 _ALIAS_TO_CANONICAL = {
     "deepseek": "deepseek",
@@ -41,8 +56,15 @@ _ALIAS_TO_CANONICAL = {
     "openai": "openai_compatible",
     "kimi": "openai_compatible",
     "moonshot": "openai_compatible",
-    "zhipu": "openai_compatible",
-    "bigmodel": "openai_compatible",
+    "zhipu": "zhipu",
+    "zhipuai": "zhipu",
+    "bigmodel": "zhipu",
+    "zhipu_domestic": "zhipu",
+    "bigmodel_domestic": "zhipu",
+    "zhipu_coding": "zhipu_coding",
+    "zhipu-coding": "zhipu_coding",
+    "bigmodel_coding": "zhipu_coding",
+    "bigmodel-coding": "zhipu_coding",
     "zai": "openai_compatible",
     "z_ai": "openai_compatible",
     "qwen": "openai_compatible",
@@ -73,6 +95,8 @@ _ADAPTERS: dict[str, ProviderAdapter] = {
     "qwen_beijing": _QWEN_BEIJING,
     "qwen_singapore": _QWEN_SINGAPORE,
     "qwen_us": _QWEN_US,
+    "zhipu": _ZHIPU_GENERAL,
+    "zhipu_coding": _ZHIPU_CODING,
 }
 
 

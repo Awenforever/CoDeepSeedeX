@@ -16,8 +16,8 @@ def test_adapter_matrix_compact_and_display_rows_are_user_readable() -> None:
     assert compact == [
         {"provider": "deepseek", "adapter_kind": "native", "adapter_family": "deepseek", "adapter_provider_id": "deepseek"},
         {"provider": "kimi", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"},
-        {"provider": "zhipu", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"},
-        {"provider": "zhipu-coding", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"},
+        {"provider": "zhipu", "adapter_kind": "native", "adapter_family": "zhipu", "adapter_provider_id": "zhipu"},
+        {"provider": "zhipu-coding", "adapter_kind": "native", "adapter_family": "zhipu", "adapter_provider_id": "zhipu_coding"},
         {"provider": "zai", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"},
         {"provider": "zai-coding", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"},
         {"provider": "qwen-beijing", "adapter_kind": "native", "adapter_family": "qwen", "adapter_provider_id": "qwen_beijing"},
@@ -30,6 +30,8 @@ def test_adapter_matrix_compact_and_display_rows_are_user_readable() -> None:
     assert "qwen-beijing    native  qwen               qwen_beijing" in display
     assert "qwen-singapore  native  qwen               qwen_singapore" in display
     assert "qwen-us         native  qwen               qwen_us" in display
+    assert "zhipu           native  zhipu              zhipu" in display
+    assert "zhipu-coding    native  zhipu              zhipu_coding" in display
     assert "kimi            generic openai_compatible  openai_compatible" in display
     assert "custom          generic openai_compatible  openai_compatible" in display
 
@@ -61,6 +63,8 @@ def test_config_show_exposes_compact_adapter_matrix_for_cli_ux() -> None:
     assert {"provider": "qwen-beijing", "adapter_kind": "native", "adapter_family": "qwen", "adapter_provider_id": "qwen_beijing"} in compact
     assert {"provider": "kimi", "adapter_kind": "generic", "adapter_family": "openai_compatible", "adapter_provider_id": "openai_compatible"} in compact
     assert "qwen-beijing    native  qwen               qwen_beijing" in display
+    assert "zhipu           native  zhipu              zhipu" in display
+    assert "zhipu-coding    native  zhipu              zhipu_coding" in display
     assert "kimi            generic openai_compatible  openai_compatible" in display
 
 

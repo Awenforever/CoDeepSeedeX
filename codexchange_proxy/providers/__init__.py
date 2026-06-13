@@ -10,6 +10,7 @@ from .base import (
 from .deepseek import DeepSeekProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
 from .qwen import QwenProviderAdapter
+from .zhipu import ZhipuProviderAdapter
 from .registry import (
     canonical_provider_id,
     get_provider_adapter,
@@ -26,6 +27,7 @@ __all__ = [
     "DeepSeekProviderAdapter",
     "OpenAICompatibleProviderAdapter",
     "QwenProviderAdapter",
+    "ZhipuProviderAdapter",
     "canonical_provider_id",
     "get_provider_adapter",
     "provider_registry_status",

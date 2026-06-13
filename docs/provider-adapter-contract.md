@@ -5,7 +5,7 @@ p3.0a2 introduces the first CodeXchange provider adapter contract. This patch do
 ## Initial adapters
 
 - `deepseek`: OpenAI-compatible chat completions plus provider-specific reasoning, pricing, balance, and tokenizer capabilities.
-- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as Kimi/Moonshot, Zhipu/BigModel, Z.AI, Qwen/DashScope, xAI/Grok, and OpenAI-compatible routes.
+- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as Kimi/Moonshot, Z.AI, xAI/Grok, and OpenAI-compatible routes.
 
 ## Boundary
 
@@ -53,7 +53,7 @@ CLI model-provider configuration now exposes adapter-backed validation metadata:
 - `adapter_capabilities`
 
 DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
-- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, Zhipu/BigModel, Z.AI, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
+- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, Z.AI, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
 
 
 ## p3.0a5 provider live smoke matrix
@@ -105,8 +105,18 @@ The intended matrix after the Qwen native adapter skeleton is:
 | `qwen-singapore` | native | `qwen` |
 | `qwen-us` | native | `qwen` |
 | `kimi` | generic | `openai_compatible` |
-| `zhipu` | generic | `openai_compatible` |
-| `zhipu-coding` | generic | `openai_compatible` |
+| `zhipu` | native | `zhipu` |
+| `zhipu-coding` | native | `zhipu` |
 | `zai` | generic | `openai_compatible` |
 | `zai-coding` | generic | `openai_compatible` |
 | `custom` | generic | `openai_compatible` |
+
+
+## Zhipu native adapters
+
+The Zhipu native adapter skeletons keep OpenAI-compatible Chat Completions payload behavior while carrying plan-specific endpoint metadata:
+
+- `zhipu`: domestic general Token API, `https://open.bigmodel.cn/api/paas/v4`, default model `glm-5.1`.
+- `zhipu_coding`: domestic Coding Plan API, `https://open.bigmodel.cn/api/coding/paas/v4`, default model `glm-5.1`.
+
+Validation remains `GET /models` with `zhipu_openai_compatible_models`.

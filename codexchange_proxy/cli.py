@@ -477,16 +477,18 @@ def _model_api_provider_config_legacy(provider: str | None) -> dict[str, str]:
 
 
 def _model_api_provider_adapter_id(provider: str | None) -> str:
-    requested = (provider or "").strip().lower().replace("-", "_")
+    requested = str(provider or "").strip().lower().replace("-", "_")
+    if requested in {"qwen", "dashscope"}:
+        return "openai_compatible"
+
     canonical = _canonical_model_api_provider(provider)
     if canonical == "deepseek":
         return "deepseek"
-    if requested in AMBIGUOUS_QWEN_MODEL_API_ALIASES:
-        return "openai_compatible"
-    if canonical in QWEN_MODEL_API_REGIONS:
+    if canonical in {"qwen_beijing", "qwen_singapore", "qwen_us"}:
+        return canonical
+    if canonical in {"zhipu", "zhipu_coding"}:
         return canonical
     return "openai_compatible"
-
 
 def _model_api_provider_validation_contract(provider: str | None) -> dict[str, Any]:
     canonical = _canonical_model_api_provider(provider)
