@@ -1775,8 +1775,8 @@ model_api_provider_type_label() {
   case "${PROMPTED_MODEL_PROVIDER:-${RESOLVED_MODEL_PROVIDER:-}}" in
     custom) printf '%s\n' "Custom OpenAI-compatible" ;;
     deepseek) printf '%s\n' "DeepSeek official" ;;
-    kimi|zai|zai-coding) printf '%s\n' "Built-in OpenAI-compatible" ;;
-    zhipu|zhipu-coding|qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Built-in native adapter" ;;
+    kimi) printf '%s\n' "Built-in OpenAI-compatible" ;;
+    zhipu|zhipu-coding|zai|zai-coding|qwen-beijing|qwen-singapore|qwen-us) printf '%s\n' "Built-in native adapter" ;;
     *) printf '%s\n' "Model API" ;;
   esac
 }

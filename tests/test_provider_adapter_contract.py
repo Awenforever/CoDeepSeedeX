@@ -25,6 +25,8 @@ def test_provider_registry_exposes_initial_adapter_contracts() -> None:
     assert "qwen_us" in status["supported_provider_ids"]
     assert "zhipu" in status["supported_provider_ids"]
     assert "zhipu_coding" in status["supported_provider_ids"]
+    assert "zai" in status["supported_provider_ids"]
+    assert "zai_coding" in status["supported_provider_ids"]
     assert canonical_provider_id("qwen") == "openai_compatible"
     assert canonical_provider_id("qwen-beijing") == "qwen_beijing"
     assert canonical_provider_id("qwen-singapore") == "qwen_singapore"
@@ -32,6 +34,10 @@ def test_provider_registry_exposes_initial_adapter_contracts() -> None:
     assert canonical_provider_id("kimi") == "openai_compatible"
     assert canonical_provider_id("zhipu") == "zhipu"
     assert canonical_provider_id("zhipu-coding") == "zhipu_coding"
+    assert canonical_provider_id("zai") == "zai"
+    assert canonical_provider_id("zai-coding") == "zai_coding"
+    assert canonical_provider_id("z.ai") == "zai"
+    assert canonical_provider_id("glm") == "zai"
     assert canonical_provider_id("xai") == "openai_compatible"
     assert canonical_provider_id("grok") == "openai_compatible"
 

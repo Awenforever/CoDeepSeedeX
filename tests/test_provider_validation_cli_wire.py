@@ -23,7 +23,7 @@ def test_model_api_provider_config_uses_adapter_validation_for_deepseek() -> Non
 
 @pytest.mark.parametrize(
     "provider",
-    ["custom", "kimi", "moonshot", "zai", "zai-coding", "qwen", "dashscope"],
+    ["custom", "kimi", "moonshot", "qwen", "dashscope"],
 )
 def test_model_api_provider_config_uses_openai_compatible_adapter_for_generic_routes(provider: str) -> None:
     config = cli._model_api_provider_config(provider)
@@ -94,3 +94,15 @@ def test_zhipu_native_provider_validation_contract_is_adapter_backed() -> None:
     assert coding["adapter_provider_id"] == "zhipu_coding"
     assert coding["adapter_family"] == "zhipu"
     assert coding["validation_method"] == "zhipu_openai_compatible_models"
+
+
+def test_zai_native_provider_validation_contract_is_adapter_backed() -> None:
+    general = cli._model_api_provider_validation_contract("zai")
+    coding = cli._model_api_provider_validation_contract("zai-coding")
+
+    assert general["adapter_provider_id"] == "zai"
+    assert general["adapter_family"] == "zai"
+    assert general["validation_method"] == "zai_openai_compatible_models"
+    assert coding["adapter_provider_id"] == "zai_coding"
+    assert coding["adapter_family"] == "zai"
+    assert coding["validation_method"] == "zai_openai_compatible_models"

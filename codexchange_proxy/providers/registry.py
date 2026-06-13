@@ -4,6 +4,7 @@ from .base import ProviderAdapter
 from .deepseek import DeepSeekProviderAdapter
 from .openai_compatible import OpenAICompatibleProviderAdapter
 from .qwen import QwenProviderAdapter
+from .zai import ZaiProviderAdapter
 from .zhipu import ZhipuProviderAdapter
 
 _DEEPSEEK = DeepSeekProviderAdapter()
@@ -46,6 +47,20 @@ _ZHIPU_CODING = ZhipuProviderAdapter(
     default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
     default_model="glm-5.1",
 )
+_ZAI_GENERAL = ZaiProviderAdapter(
+    provider_id="zai",
+    plan="international general",
+    endpoint_scope="Z.AI Token API",
+    default_base_url="https://api.z.ai/api/paas/v4",
+    default_model="glm-5.1",
+)
+_ZAI_CODING = ZaiProviderAdapter(
+    provider_id="zai_coding",
+    plan="international Coding Plan",
+    endpoint_scope="Z.AI Coding Plan",
+    default_base_url="https://api.z.ai/api/coding/paas/v4",
+    default_model="glm-4.7",
+)
 
 _ALIAS_TO_CANONICAL = {
     "deepseek": "deepseek",
@@ -65,8 +80,16 @@ _ALIAS_TO_CANONICAL = {
     "zhipu-coding": "zhipu_coding",
     "bigmodel_coding": "zhipu_coding",
     "bigmodel-coding": "zhipu_coding",
-    "zai": "openai_compatible",
-    "z_ai": "openai_compatible",
+    "zai": "zai",
+    "z_ai": "zai",
+    "z.ai": "zai",
+    "glm": "zai",
+    "zai_general": "zai",
+    "zai_coding": "zai_coding",
+    "zai-coding": "zai_coding",
+    "z.ai_coding": "zai_coding",
+    "z.ai-coding": "zai_coding",
+    "glm_coding": "zai_coding",
     "qwen": "openai_compatible",
     "dashscope": "openai_compatible",
     "qwen_beijing": "qwen_beijing",
@@ -97,6 +120,8 @@ _ADAPTERS: dict[str, ProviderAdapter] = {
     "qwen_us": _QWEN_US,
     "zhipu": _ZHIPU_GENERAL,
     "zhipu_coding": _ZHIPU_CODING,
+    "zai": _ZAI_GENERAL,
+    "zai_coding": _ZAI_CODING,
 }
 
 

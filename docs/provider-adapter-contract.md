@@ -5,7 +5,7 @@ p3.0a2 introduces the first CodeXchange provider adapter contract. This patch do
 ## Initial adapters
 
 - `deepseek`: OpenAI-compatible chat completions plus provider-specific reasoning, pricing, balance, and tokenizer capabilities.
-- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as Kimi/Moonshot, Z.AI, xAI/Grok, and OpenAI-compatible routes.
+- `openai_compatible`: generic OpenAI-compatible chat completions for custom endpoints and providers such as Kimi/Moonshot, xAI/Grok, and OpenAI-compatible routes.
 
 ## Boundary
 
@@ -53,7 +53,7 @@ CLI model-provider configuration now exposes adapter-backed validation metadata:
 - `adapter_capabilities`
 
 DeepSeek keeps the account-balance validation probe. Generic OpenAI-compatible providers use the `/models` validation probe exposed by `OpenAICompatibleProviderAdapter`.
-- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, Z.AI, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
+- CLI-specific concrete provider ids map according to available native adapters: Qwen region ids `qwen_beijing`, `qwen_singapore`, and `qwen_us` use native `qwen` adapters, while Kimi/Moonshot, custom, and other OpenAI-compatible routes still use the generic `openai_compatible` adapter until native adapters are added.
 
 
 ## p3.0a5 provider live smoke matrix
@@ -98,7 +98,7 @@ Model API configuration status exposes stable adapter metadata for diagnostics:
 - `adapter_matrix_compact`: compact rows with provider, adapter kind, adapter family, and adapter id.
 - `adapter_matrix_display`: preformatted rows for quick CLI inspection.
 
-The current adapter matrix after the Qwen and Zhipu native adapter skeletons is:
+The current adapter matrix after the Qwen, Zhipu, and Z.AI native adapter skeletons is:
 
 | Provider | Adapter kind | Adapter family |
 |---|---:|---|
@@ -109,8 +109,8 @@ The current adapter matrix after the Qwen and Zhipu native adapter skeletons is:
 | `kimi` | generic | `openai_compatible` |
 | `zhipu` | native | `zhipu` |
 | `zhipu-coding` | native | `zhipu` |
-| `zai` | generic | `openai_compatible` |
-| `zai-coding` | generic | `openai_compatible` |
+| `zai` | native | `zai` |
+| `zai-coding` | native | `zai` |
 | `custom` | generic | `openai_compatible` |
 
 
@@ -122,3 +122,13 @@ The Zhipu native adapter skeletons keep OpenAI-compatible Chat Completions paylo
 - `zhipu_coding`: domestic Coding Plan API, `https://open.bigmodel.cn/api/coding/paas/v4`, default model `glm-5.1`.
 
 Validation remains `GET /models` with `zhipu_openai_compatible_models`.
+
+
+## Z.AI native adapters
+
+The Z.AI native adapter skeletons keep OpenAI-compatible Chat Completions payload behavior while carrying plan-specific endpoint metadata:
+
+- `zai`: international general Token API, `https://api.z.ai/api/paas/v4`, default model `glm-5.1`.
+- `zai_coding`: international Coding Plan API, `https://api.z.ai/api/coding/paas/v4`, default model `glm-4.7`.
+
+Validation remains `GET /models` with `zai_openai_compatible_models`. Historical live evidence showed `/models` validation working while chat returned HTTP 429; treat 429 as quota, rate-limit, or account-entitlement evidence rather than endpoint-shape evidence.

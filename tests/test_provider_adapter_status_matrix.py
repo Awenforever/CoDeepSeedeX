@@ -23,7 +23,7 @@ def test_model_api_provider_adapter_matrix_marks_native_and_generic_providers() 
     assert rows["qwen-us"]["adapter_provider_id"] == "qwen_us"
     assert rows["qwen-us"]["adapter_family"] == "qwen"
 
-    for provider in ("kimi", "zai", "zai-coding", "custom"):
+    for provider in ("kimi", "custom"):
         assert rows[provider]["adapter_kind"] == "generic"
         assert rows[provider]["adapter_provider_id"] == "openai_compatible"
         assert rows[provider]["adapter_family"] == "openai_compatible"
@@ -33,20 +33,20 @@ def test_model_api_provider_adapter_matrix_summary_is_stable() -> None:
     summary = cli._model_api_provider_adapter_matrix_summary()
 
     assert summary["providers_total"] == 10
-    assert summary["native_count"] == 6
-    assert summary["generic_count"] == 4
+    assert summary["native_count"] == 8
+    assert summary["generic_count"] == 2
     assert summary["native_providers"] == [
         "deepseek",
         "zhipu",
         "zhipu-coding",
+        "zai",
+        "zai-coding",
         "qwen-beijing",
         "qwen-singapore",
         "qwen-us",
     ]
     assert summary["generic_providers"] == [
         "kimi",
-        "zai",
-        "zai-coding",
         "custom",
     ]
 
@@ -71,8 +71,8 @@ def test_model_api_config_status_exposes_current_adapter_and_matrix() -> None:
     matrix = {row["provider"]: row for row in status["adapter_matrix"]}
     assert matrix["qwen-beijing"]["adapter_kind"] == "native"
     assert matrix["kimi"]["adapter_kind"] == "generic"
-    assert status["adapter_matrix_summary"]["native_count"] == 6
-    assert status["adapter_matrix_summary"]["generic_count"] == 4
+    assert status["adapter_matrix_summary"]["native_count"] == 8
+    assert status["adapter_matrix_summary"]["generic_count"] == 2
 
 
 def test_ambiguous_qwen_aliases_remain_generic_in_matrix_helpers() -> None:

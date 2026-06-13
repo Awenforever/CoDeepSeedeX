@@ -488,6 +488,8 @@ def _model_api_provider_adapter_id(provider: str | None) -> str:
         return canonical
     if canonical in {"zhipu", "zhipu_coding"}:
         return canonical
+    if canonical in {"zai", "zai_coding"}:
+        return canonical
     return "openai_compatible"
 
 def _model_api_provider_validation_contract(provider: str | None) -> dict[str, Any]:

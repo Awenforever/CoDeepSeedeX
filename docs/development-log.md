@@ -1,3 +1,12 @@
+## p3.0a17-zai-native-adapter-skeleton
+
+- Added Z.AI native adapter skeletons for `zai` and `zai_coding`.
+- Kept OpenAI-compatible Chat Completions payload behavior unchanged while carrying plan-specific endpoint metadata.
+- Mapped `zai`, `z.ai`, `glm`, and general aliases to the native `zai` adapter.
+- Mapped `zai-coding`, `z.ai-coding`, and coding aliases to the native `zai_coding` adapter.
+- Updated provider adapter matrix expectations: DeepSeek, Zhipu general, Zhipu Coding, Z.AI general, Z.AI Coding, and explicit Qwen regions are native; Kimi and custom remain generic.
+- Preserved the interpretation that historical Z.AI chat HTTP 429 is quota, rate-limit, or account-entitlement evidence rather than endpoint-shape evidence.
+
 ## p3.0a16-zhipu-doc-closeout-and-smoke-evidence
 
 - Added top-level `adapter_provider_id` and `adapter_family` to `cox config show/status` model API status for the current provider.

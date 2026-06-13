@@ -14,6 +14,7 @@ ProviderFamily = Literal[
     "openai_compatible",
     "qwen",
     "zhipu",
+    "zai",
     "anthropic",
     "xai",
     "custom",
