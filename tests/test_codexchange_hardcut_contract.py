@@ -92,15 +92,35 @@ def _tracked_text_files() -> list[Path]:
 
 
 def test_codexchange_hardcut_removes_legacy_product_markers() -> None:
+    """Reject legacy product branding while allowing the real GitHub repository slug.
+
+    CodeXchange is the product boundary. The historical repository slug is still
+    the public GitHub release path, so Awenforever/<legacy tail> may appear only
+    as repository/addressing evidence, not as product branding.
+    """
+    legacy_repo_tail = "".join(("Co", "DeepSeedeX"))
+    allowed_repo_slug_contexts = (
+        f"Awenforever/{legacy_repo_tail}",
+        f"github.com/Awenforever/{legacy_repo_tail}",
+        f"api.github.com/repos/Awenforever/{legacy_repo_tail}",
+        f"raw.githubusercontent.com/Awenforever/{legacy_repo_tail}",
+        f"cdn.jsdelivr.net/gh/Awenforever/{legacy_repo_tail}",
+        f"fastly.jsdelivr.net/gh/Awenforever/{legacy_repo_tail}",
+        f"codeload.github.com/Awenforever/{legacy_repo_tail}",
+    )
+
     violations: list[str] = []
     for path in _tracked_text_files():
         text = path.read_text(encoding="utf-8", errors="replace")
         for marker in sorted(FORBIDDEN_PRODUCT_MARKERS):
+            if marker == legacy_repo_tail:
+                for line_no, line in enumerate(text.splitlines(), start=1):
+                    if marker in line and not any(ctx in line for ctx in allowed_repo_slug_contexts):
+                        violations.append(f"{path.relative_to(ROOT)}:{line_no} contains {marker} outside GitHub repository slug context")
+                continue
             if marker in text:
                 violations.append(f"{path.relative_to(ROOT)} contains {marker}")
     assert not violations, "legacy product markers remain:\n" + "\n".join(violations[:80])
-
-
 def test_codexchange_canonical_entrypoints_are_present() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "codexchange"' in pyproject

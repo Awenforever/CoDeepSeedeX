@@ -103,7 +103,7 @@ For release, tag, handoff, and development workflow troubleshooting, see `docs/d
 Use the Latest Release bootstrap entrypoint:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 
@@ -113,7 +113,7 @@ When the Latest Release asset path is unavailable, use the resolved release tag 
 
 ```bash
 tag="v0.3.8-alpha"
-curl -fsSL https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 
 ## Maintainer documentation

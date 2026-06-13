@@ -7485,13 +7485,13 @@ def _upgrade_bootstrap_urls_for_ref(target_ref: str, *, target_source: str | Non
     ref = str(target_ref or "").strip()
     urls: list[str] = []
     if target_source == "latest_release":
-        urls.append("https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh")
+        urls.append("https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh")
     if ref:
         quoted_ref = urllib.parse.quote(ref, safe="")
         urls.extend([
-            f"https://github.com/Awenforever/CodeXchange/releases/download/{quoted_ref}/bootstrap.sh",
-            f"https://raw.githubusercontent.com/Awenforever/CodeXchange/{urllib.parse.quote(ref, safe='/._-')}/bootstrap.sh",
-            f"https://github.com/Awenforever/CodeXchange/raw/refs/tags/{quoted_ref}/bootstrap.sh",
+            f"https://github.com/Awenforever/CoDeepSeedeX/releases/download/{quoted_ref}/bootstrap.sh",
+            f"https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/{urllib.parse.quote(ref, safe='/._-')}/bootstrap.sh",
+            f"https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/{quoted_ref}/bootstrap.sh",
         ])
     deduped: list[str] = []
     for url in urls:
@@ -7531,7 +7531,7 @@ def _download_upgrade_bootstrap(
     dry_run: bool,
 ) -> bool:
     urls = _upgrade_bootstrap_urls_for_ref(target_ref, target_source=target_source)
-    result["one_line_upgrade"] = f"curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/{target_ref}/bootstrap.sh | bash -s -- --install-ref {target_ref}"
+    result["one_line_upgrade"] = f"curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/{target_ref}/bootstrap.sh | bash -s -- --install-ref {target_ref}"
     result["bootstrap_urls"] = urls
     step: dict[str, Any] = {
         "label": "download_release_bootstrap",
@@ -7781,8 +7781,8 @@ def _upgrade_run_step(
 
 
 
-LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CodeXchange/releases/latest"
-ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CodeXchange/releases?per_page=50"
+LATEST_RELEASE_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest"
+ALPHA_RELEASES_API_URL = "https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases?per_page=50"
 
 
 def _default_latest_release_fallback_tag() -> str:
@@ -7807,7 +7807,7 @@ def _latest_release_resolution_fallback(
         "api_url": release_url,
         "tag_name": fallback_tag,
         "name": f"CodeXchange {fallback_tag}",
-        "html_url": f"https://github.com/Awenforever/CodeXchange/releases/tag/{fallback_tag}",
+        "html_url": f"https://github.com/Awenforever/CoDeepSeedeX/releases/tag/{fallback_tag}",
         "prerelease": False,
         "draft": False,
         "resolution_fallback": True,

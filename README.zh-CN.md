@@ -30,13 +30,13 @@ npm install -g @openai/codex
 默认通道，使用GitHub Latest Release资产：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 固定当前Latest Release tag（`v0.4.3-alpha`）：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
@@ -46,11 +46,11 @@ tag="v0.4.3-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CodeXchange/releases/download/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://raw.githubusercontent.com/Awenforever/CodeXchange/${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://cdn.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" -o "$bs" ||
-  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://fastly.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" -o "$bs"
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/releases/download/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs" ||
+  curl -fL --retry 5 --retry-all-errors --retry-delay 3 "https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" -o "$bs"
 ) && bash "$bs" --install-ref "$tag"
 ```
 

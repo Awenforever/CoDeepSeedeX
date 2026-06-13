@@ -23,7 +23,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 ## 2. Current trusted state
 
 - Local project path: `~/projects/codexchange`
-- GitHub repository: `Awenforever/CodeXchange`
+- GitHub repository: `Awenforever/CoDeepSeedeX`
 - Primary branch: `master`
 - Current public Release: `v0.4.3-alpha`
 - Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`
@@ -347,8 +347,8 @@ git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
-gh release view v0.4.3-alpha --repo Awenforever/CodeXchange --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
-gh api repos/Awenforever/CodeXchange/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
+gh release view v0.4.3-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
+gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
 cox --version
 ```
 
@@ -376,20 +376,20 @@ Then read `docs/developer-handbook.md`. Read `docs/development-log.md` only when
 Latest Release bootstrap:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 Resolved tag fallback:
 
 ```bash
 tag="v0.4.3-alpha"
-curl -fsSL https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 
 Pinned Release-asset bootstrap:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
 ```
 
 Product uninstall remains installer-owned:

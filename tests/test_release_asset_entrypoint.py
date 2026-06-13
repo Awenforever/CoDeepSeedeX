@@ -3,14 +3,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-RELEASE_BOOTSTRAP = "https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh"
-RELEASE_INSTALL = "https://github.com/Awenforever/CodeXchange/releases/latest/download/install.sh"
-TAGGED_RAW_BOOTSTRAP = "https://raw.githubusercontent.com/Awenforever/CodeXchange/${tag}/bootstrap.sh"
-TAGGED_RAW_INSTALL = "https://raw.githubusercontent.com/Awenforever/CodeXchange/${fallback_ref}/scripts/install.sh"
-TAGGED_GITHUB_RAW_BOOTSTRAP = "https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh"
-TAGGED_GITHUB_RAW_INSTALL = "https://github.com/Awenforever/CodeXchange/raw/refs/tags/${fallback_ref}/scripts/install.sh"
-TAGGED_CDN_BOOTSTRAP = "https://cdn.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh"
-TAGGED_FASTLY_BOOTSTRAP = "https://fastly.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh"
+RELEASE_BOOTSTRAP = "https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh"
+RELEASE_INSTALL = "https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/install.sh"
+TAGGED_RAW_BOOTSTRAP = "https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${tag}/bootstrap.sh"
+TAGGED_RAW_INSTALL = "https://raw.githubusercontent.com/Awenforever/CoDeepSeedeX/${fallback_ref}/scripts/install.sh"
+TAGGED_GITHUB_RAW_BOOTSTRAP = "https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh"
+TAGGED_GITHUB_RAW_INSTALL = "https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${fallback_ref}/scripts/install.sh"
+TAGGED_CDN_BOOTSTRAP = "https://cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh"
+TAGGED_FASTLY_BOOTSTRAP = "https://fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh"
 
 
 def text(rel: str) -> str:

@@ -58,9 +58,9 @@ def test_install_repairs_codex_model_catalog_before_completion_hold() -> None:
 
 def test_docs_include_latest_tag_fallback_install_domains() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "cdn.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" in readme
-    assert "fastly.jsdelivr.net/gh/Awenforever/CodeXchange@${tag}/bootstrap.sh" in readme
-    assert "github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh" in readme
+    assert "cdn.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" in readme
+    assert "fastly.jsdelivr.net/gh/Awenforever/CoDeepSeedeX@${tag}/bootstrap.sh" in readme
+    assert "github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh" in readme
     assert "@master/bootstrap.sh" not in readme
     assert "refs/heads/master/bootstrap.sh" not in readme
 def test_troubleshooting_mentions_model_path_resolution() -> None:
@@ -457,7 +457,7 @@ def test_bootstrap_install_ref_uses_release_asset_installer_url(tmp_path) -> Non
     bootstrap = REPO_ROOT / "bootstrap.sh"
     text = bootstrap.read_text(encoding="utf-8")
     assert "--install-ref)" in text
-    assert "https://github.com/Awenforever/CodeXchange/releases/download/${fallback_ref}/install.sh" in text
+    assert "https://github.com/Awenforever/CoDeepSeedeX/releases/download/${fallback_ref}/install.sh" in text
     assert "COX_INSTALLER_SOURCE" in text
     assert "installer source:" in text
     assert "requested install ref:" in text
@@ -471,9 +471,9 @@ def test_bootstrap_install_ref_uses_release_asset_installer_url(tmp_path) -> Non
         check=True,
     )
     output = result.stdout + result.stderr
-    assert "would download install.sh from https://github.com/Awenforever/CodeXchange/releases/download/v0.3.8-alpha/install.sh" in output
+    assert "would download install.sh from https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/install.sh" in output
     assert "would pass COX_INSTALL_REF=v0.3.8-alpha" in output
-    assert "would pass COX_INSTALLER_SOURCE=https://github.com/Awenforever/CodeXchange/releases/download/v0.3.8-alpha/install.sh" in output
+    assert "would pass COX_INSTALLER_SOURCE=https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.3.8-alpha/install.sh" in output
 
 
 def test_installer_logs_source_without_verbose_visible_source_block() -> None:
@@ -525,7 +525,7 @@ def test_installer_p210a15_provider_flow_and_archive_fallback() -> None:
     assert "Press Enter three times to skip" in text
     assert "download_source_archive_to_install_dir()" in text
     assert "prepare_install_checkout()" in text
-    assert "codeload.github.com/Awenforever/CodeXchange/tar.gz/refs/tags/$ref" in text
+    assert "codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref" in text
     assert "COX_MODEL_API_KEY is empty; configure later with: cox config set-model --provider deepseek" not in text
 
 

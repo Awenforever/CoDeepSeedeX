@@ -23,7 +23,7 @@
 ## 2. 当前可信状态
 
 - 本地项目路径：`~/projects/codexchange`
-- GitHub仓库：`Awenforever/CodeXchange`
+- GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
 - 当前公开Release：`v0.4.3-alpha`
 - 当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`
@@ -326,8 +326,8 @@ git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
-gh release view v0.4.3-alpha --repo Awenforever/CodeXchange --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
-gh api repos/Awenforever/CodeXchange/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
+gh release view v0.4.3-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
+gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
 cox --version
 ```
 
@@ -355,20 +355,20 @@ internal version: p2.19a25-docs-release-state-sync | <current internal tag commi
 Latest Release bootstrap：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/latest/download/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
 指定tag fallback：
 
 ```bash
 tag="v0.4.3-alpha"
-curl -fsSL https://github.com/Awenforever/CodeXchange/raw/refs/tags/${tag}/bootstrap.sh | bash
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 
 固定Release资产bootstrap：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CodeXchange/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.3-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.3-alpha
 ```
 
 产品级卸载仍由安装器负责：

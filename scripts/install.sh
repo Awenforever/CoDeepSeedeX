@@ -2,8 +2,8 @@
 set -euo pipefail
 
 INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
-REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CodeXchange.git}"
-LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CodeXchange/releases/latest}"
+REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
+LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${COX_INSTALL_REF:-}"
 COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.3-alpha}"
 BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
@@ -4052,8 +4052,8 @@ download_source_archive_to_install_dir() {
   local extract_dir="$tmp_root/extract"
   mkdir -p "$extract_dir"
 
-  local url1="https://codeload.github.com/Awenforever/CodeXchange/tar.gz/refs/tags/$ref"
-  local url2="https://github.com/Awenforever/CodeXchange/archive/refs/tags/$ref.tar.gz"
+  local url1="https://codeload.github.com/Awenforever/CoDeepSeedeX/tar.gz/refs/tags/$ref"
+  local url2="https://github.com/Awenforever/CoDeepSeedeX/archive/refs/tags/$ref.tar.gz"
 
   printf '+ Source archive fallback for ref %s\n' "$ref" >> "$INSTALL_LOG"
   if ! curl -fL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 "$url1" -o "$archive" >> "$INSTALL_LOG" 2>&1; then
