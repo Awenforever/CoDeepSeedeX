@@ -4787,6 +4787,27 @@ def _model_api_provider_adapter_matrix_summary(matrix: list[dict[str, Any]] | No
     }
 
 
+def _model_api_provider_adapter_matrix_compact(matrix: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
+    rows = matrix if matrix is not None else _model_api_provider_adapter_matrix()
+    return [
+        {
+            "provider": str(row.get("provider") or ""),
+            "adapter_kind": str(row.get("adapter_kind") or ""),
+            "adapter_family": str(row.get("adapter_family") or ""),
+            "adapter_provider_id": str(row.get("adapter_provider_id") or ""),
+        }
+        for row in rows
+    ]
+
+
+def _model_api_provider_adapter_matrix_display(matrix: list[dict[str, Any]] | None = None) -> list[str]:
+    compact = _model_api_provider_adapter_matrix_compact(matrix)
+    return [
+        "{provider:<15} {adapter_kind:<7} {adapter_family:<18} {adapter_provider_id}".format(**row).rstrip()
+        for row in compact
+    ]
+
+
 
 def _model_api_validation_url(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + "/" + path.lstrip("/")
@@ -5437,6 +5458,8 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "adapter_is_generic": _model_api_provider_adapter_kind(provider_config) == "generic",
         "adapter_matrix": _model_api_provider_adapter_matrix(),
         "adapter_matrix_summary": _model_api_provider_adapter_matrix_summary(),
+        "adapter_matrix_compact": _model_api_provider_adapter_matrix_compact(),
+        "adapter_matrix_display": _model_api_provider_adapter_matrix_display(),
         "diagnostic_hints": provider_config.get("diagnostic_hints", []),
         "may_consume_quota": False,
     }

@@ -1,3 +1,10 @@
+## p3.0a13-provider-status-cli-output-ux
+
+- Added compact and display-oriented provider adapter matrix fields to `cox config show` output.
+- Kept the canonical structured `adapter_matrix` unchanged while adding `adapter_matrix_compact` for concise machine-readable summaries.
+- Added `adapter_matrix_display` for quick human inspection of provider/native-generic adapter status.
+- Added tests covering current configured provider output and ambiguous Qwen/DashScope compatibility aliases.
+
 ## p3.0a12-provider-adapter-status-matrix
 
 - Added stable model API provider adapter matrix helpers.

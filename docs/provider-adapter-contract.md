@@ -93,6 +93,8 @@ Model API configuration status exposes stable adapter metadata for diagnostics:
 - `adapter_kind`: `native` or `generic` for the currently configured model provider.
 - `adapter_matrix`: one row per supported public model provider.
 - `adapter_matrix_summary`: total/native/generic provider counts and provider lists.
+- `adapter_matrix_compact`: compact rows with provider, adapter kind, adapter family, and adapter id.
+- `adapter_matrix_display`: preformatted rows for quick CLI inspection.
 
 The intended matrix after the Qwen native adapter skeleton is:
 
