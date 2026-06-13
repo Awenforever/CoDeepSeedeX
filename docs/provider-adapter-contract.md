@@ -90,13 +90,15 @@ These adapters intentionally keep OpenAI-compatible Chat Completions payload beh
 Model API configuration status exposes stable adapter metadata for diagnostics:
 
 - `adapter_status`: the currently configured model provider adapter row.
+- `adapter_provider_id`: the currently configured provider adapter id.
+- `adapter_family`: the currently configured provider adapter family.
 - `adapter_kind`: `native` or `generic` for the currently configured model provider.
 - `adapter_matrix`: one row per supported public model provider.
 - `adapter_matrix_summary`: total/native/generic provider counts and provider lists.
 - `adapter_matrix_compact`: compact rows with provider, adapter kind, adapter family, and adapter id.
 - `adapter_matrix_display`: preformatted rows for quick CLI inspection.
 
-The intended matrix after the Qwen native adapter skeleton is:
+The current adapter matrix after the Qwen and Zhipu native adapter skeletons is:
 
 | Provider | Adapter kind | Adapter family |
 |---|---:|---|

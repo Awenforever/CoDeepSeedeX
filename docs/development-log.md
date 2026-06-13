@@ -1,3 +1,10 @@
+## p3.0a16-zhipu-doc-closeout-and-smoke-evidence
+
+- Added top-level `adapter_provider_id` and `adapter_family` to `cox config show/status` model API status for the current provider.
+- Updated installer model-provider classification so Zhipu general, Zhipu Coding, and explicit Qwen regions are described as built-in native adapters.
+- Clarified provider adapter contract wording for the current Qwen + Zhipu native adapter matrix.
+- Added closeout tests for Zhipu native status, installer classification, config show/status parity, and no-key smoke evidence.
+
 ## p3.0a15-zhipu-native-adapter-skeleton
 
 - Added ZhipuAI / BigModel native adapter skeletons for `zhipu` and `zhipu_coding`.

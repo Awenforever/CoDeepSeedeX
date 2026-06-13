@@ -5455,6 +5455,8 @@ def _model_api_config_status(env_file: Path | None = None, values: dict[str, str
         "endpoint_scope": provider_config.get("endpoint_scope"),
         "selection_warning": provider_config.get("selection_warning"),
         "adapter_status": _model_api_provider_adapter_status_row(provider),
+        "adapter_provider_id": provider_config.get("adapter_provider_id"),
+        "adapter_family": provider_config.get("adapter_family"),
         "adapter_kind": _model_api_provider_adapter_kind(provider_config),
         "adapter_is_native": _model_api_provider_adapter_kind(provider_config) == "native",
         "adapter_is_generic": _model_api_provider_adapter_kind(provider_config) == "generic",

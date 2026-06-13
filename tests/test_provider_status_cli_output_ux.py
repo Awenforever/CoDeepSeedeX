@@ -56,6 +56,8 @@ def test_config_show_exposes_compact_adapter_matrix_for_cli_ux() -> None:
 
     assert model_api["adapter_kind"] == "native"
     assert model_api["adapter_status"]["adapter_provider_id"] == "qwen_beijing"
+    assert model_api["adapter_provider_id"] == "qwen_beijing"
+    assert model_api["adapter_family"] == "qwen"
 
     compact = model_api["adapter_matrix_compact"]
     display = model_api["adapter_matrix_display"]
