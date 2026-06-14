@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.9-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.10-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -17087,12 +17087,17 @@ def _profile_tokenizer_requested_categories() -> list[str]:
 
 def _profile_tokenizer_kind_for_model(model: str | None, provider: str | None = None) -> str | None:
     provider_key = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek").strip().lower()
+    try:
+        adapter = get_provider_adapter("deepseek" if provider_key in {"deepseek-v3", "deepseek-v4"} else provider_key)
+        method = getattr(adapter, "profile_tokenizer_kind_for_model", None)
+        if callable(method):
+            return method(model, provider_key)
+    except Exception:
+        pass
     model_key = str(model or "").strip().lower()
     if provider_key == "deepseek" or model_key.startswith("deepseek-"):
         return "deepseek_official_current"
     return None
-
-
 def _profile_tokenizer_resource_root() -> Path:
     raw = os.environ.get("COX_TOKENIZER_RESOURCE_DIR", "").strip()
     if raw:
@@ -17106,6 +17111,19 @@ def _profile_tokenizer_resource_root() -> Path:
 
 
 def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
+    try:
+        adapter = get_provider_adapter("deepseek")
+        method = getattr(adapter, "tokenizer_json_candidates", None)
+        if callable(method):
+            return method(
+                kind,
+                resource_root=_profile_tokenizer_resource_root(),
+                package_root=Path(__file__).resolve().parent / "resources" / "tokenizers",
+                env_get=os.environ.get,
+            )
+    except Exception:
+        pass
+
     candidates: list[tuple[Path, str]] = []
     for name in ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"]:
         raw = os.environ.get(name)
@@ -17124,10 +17142,30 @@ def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
         candidates.append((package_root / "deepseek_v3" / "tokenizer.json", "legacy_package_resource"))
 
     return candidates
-
-
 def _profile_tokenizer_contract(model: str | None, provider: str | None = None) -> dict[str, Any]:
     provider_value = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek")
+    tokenizers_error: str | None = None
+    try:
+        import tokenizers  # type: ignore  # noqa: F401
+    except Exception as exc:
+        tokenizers_error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        provider_key = provider_value.strip().lower()
+        adapter = get_provider_adapter("deepseek" if provider_key in {"deepseek-v3", "deepseek-v4"} else provider_key)
+        method = getattr(adapter, "profile_tokenizer_contract", None)
+        if callable(method):
+            return method(
+                model,
+                provider_value,
+                resource_root=_profile_tokenizer_resource_root(),
+                package_root=Path(__file__).resolve().parent / "resources" / "tokenizers",
+                env_get=os.environ.get,
+                tokenizers_error=tokenizers_error,
+            )
+    except Exception:
+        pass
+
     kind = _profile_tokenizer_kind_for_model(model, provider_value)
     if kind is None:
         return {
@@ -17165,9 +17203,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
             "checked": checked,
         }
 
-    try:
-        import tokenizers  # type: ignore  # noqa: F401
-    except Exception as exc:
+    if tokenizers_error:
         return {
             "available": False,
             "unit": "tokens",
@@ -17177,7 +17213,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
             "source": str(selected_path),
             "source_kind": selected_source,
             "reason": "python_tokenizers_package_unavailable",
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": tokenizers_error,
             "action": "install the tokenizers Python package from the project dependencies",
             "checked": checked,
         }
@@ -17194,8 +17230,6 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
         "action": None,
         "checked": checked,
     }
-
-
 def _load_profile_tokenizer(contract: dict[str, Any]) -> Any | None:
     if not isinstance(contract, dict) or not contract.get("available"):
         return None

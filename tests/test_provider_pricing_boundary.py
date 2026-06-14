@@ -51,4 +51,4 @@ def test_deepseek_adapter_parser_matches_public_app_wrapper() -> None:
 
 
 def test_public_release_tag_is_synchronized_to_v049() -> None:
-    assert app_module.PROXY_PUBLIC_VERSION == "v0.4.9-alpha"
+    assert app_module.PROXY_PUBLIC_VERSION == "v0.4.10-alpha"

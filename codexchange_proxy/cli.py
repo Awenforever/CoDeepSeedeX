@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .providers import get_provider_adapter
+
 import argparse
 import hashlib
 import io
@@ -3548,6 +3550,25 @@ DEEPSEEK_TOKENIZER_ZIP_ENTRIES = {
 }
 
 
+def _deepseek_tokenizer_resource_metadata() -> dict[str, Any]:
+    try:
+        adapter = get_provider_adapter("deepseek")
+        method = getattr(adapter, "tokenizer_resource_metadata", None)
+        if callable(method):
+            metadata = method()
+            if isinstance(metadata, dict):
+                return metadata
+    except Exception:
+        pass
+    return {
+        "provider": "deepseek",
+        "tokenizer": True,
+        "tokenizer_kind": DEEPSEEK_TOKENIZER_KIND,
+        "legacy_tokenizer_kind": "deepseek_v3",
+        "env_names": ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"],
+        "sync_action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+    }
+
 def _tokenizer_resource_root(value: str | None = None) -> Path:
     if value:
         return Path(value).expanduser()
@@ -3562,11 +3583,17 @@ def _tokenizer_resource_root(value: str | None = None) -> Path:
 
 def _tokenizer_provider_kind(provider: str | None) -> str | None:
     provider_key = str(provider or "deepseek").strip().lower()
+    adapter_id = "deepseek" if provider_key in {"deepseek-v3", "deepseek-v4"} else provider_key
+    try:
+        adapter = get_provider_adapter(adapter_id)
+        method = getattr(adapter, "tokenizer_provider_kind", None)
+        if callable(method):
+            return method(provider_key)
+    except Exception:
+        pass
     if provider_key in {"deepseek", "deepseek-v3", "deepseek-v4"}:
         return DEEPSEEK_TOKENIZER_KIND
     return None
-
-
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -3590,6 +3617,7 @@ def _read_tokenizer_source_bytes(source_url: str, *, timeout: float) -> bytes:
 
 
 def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str | None = None) -> dict[str, Any]:
+    metadata = _deepseek_tokenizer_resource_metadata()
     kind = _tokenizer_provider_kind(provider)
     root = _tokenizer_resource_root(resource_root)
     if kind is None:
@@ -3599,6 +3627,7 @@ def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str
             "available": False,
             "reason": "unsupported_tokenizer_provider",
             "supported_providers": ["deepseek"],
+            "provider_tokenizer": metadata,
         }
 
     resource_dir = root / kind
@@ -3620,6 +3649,7 @@ def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str
         "available": tokenizer_json.is_file(),
         "resource_root": str(root),
         "resource_dir": str(resource_dir),
+        "provider_tokenizer": metadata,
         "tokenizer_json": {
             "path": str(tokenizer_json),
             "exists": tokenizer_json.is_file(),
@@ -3635,8 +3665,6 @@ def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str
         "manifest": manifest,
         "runtime_contract": contract,
     }
-
-
 def _sync_deepseek_tokenizer_resource(
     *,
     source_url: str = DEEPSEEK_TOKENIZER_SOURCE_URL,
@@ -3646,7 +3674,8 @@ def _sync_deepseek_tokenizer_resource(
     force: bool = False,
 ) -> dict[str, Any]:
     root = _tokenizer_resource_root(resource_root)
-    kind = DEEPSEEK_TOKENIZER_KIND
+    metadata = _deepseek_tokenizer_resource_metadata()
+    kind = str(metadata.get("tokenizer_kind") or DEEPSEEK_TOKENIZER_KIND)
     resource_dir = root / kind
     tokenizer_json = resource_dir / "tokenizer.json"
     tokenizer_config = resource_dir / "tokenizer_config.json"
@@ -3707,6 +3736,7 @@ def _sync_deepseek_tokenizer_resource(
                 "upstream_archive_name": "deepseek_v3_tokenizer.zip",
                 "upstream_archive_internal_dir": "deepseek_v3_tokenizer",
                 "naming_note": "DeepSeek currently publishes this official tokenizer archive from its token usage documentation; the archive name remains deepseek_v3_tokenizer even when used for current DeepSeek profile local estimates.",
+                "provider_tokenizer": metadata,
                 "fetched_at": int(time.time()),
                 "tokenizer_json_sha256": _sha256_path(tmp_dir / "tokenizer.json"),
                 "tokenizer_config_json_sha256": _sha256_path(tmp_dir / "tokenizer_config.json"),
