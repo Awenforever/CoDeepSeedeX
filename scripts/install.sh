@@ -5,7 +5,7 @@ INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
 REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${COX_INSTALL_REF:-}"
-COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.11-alpha}"
+COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.12-alpha}"
 BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
@@ -503,7 +503,7 @@ show_install_completion_hold() {
   local detected_public
   local detected_internal
   width="$(ui_terminal_width)"
-  public_version="${COX_PUBLIC_VERSION:-v0.4.11-alpha}"
+  public_version="${COX_PUBLIC_VERSION:-v0.4.12-alpha}"
   internal_version="${COX_INTERNAL_VERSION:-}"
 
   if [ -x "${INSTALL_DIR:-}/.venv/bin/cox" ]; then
@@ -3114,18 +3114,18 @@ ensure_managed_resources_git_excluded() {
 sync_deepseek_tokenizer_resource() {
   if [ "$DRY_RUN" = "1" ]; then
     printf '+ COX_INSTALL_DIR=%q COX_TOKENIZER_RESOURCE_DIR=%q %q tokenizer sync deepseek --json --resource-dir %q\n' "$INSTALL_DIR" "$INSTALL_DIR/resources/tokenizers" "$INSTALL_DIR/.venv/bin/cox" "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG"
-    ok "DeepSeek tokenizer resource sync planned"
+    ok "Provider tokenizer resource sync planned: deepseek"
     return 0
   fi
 
-  printf '  ... DeepSeek tokenizer resource synced\n'
+  printf '  ... Provider tokenizer resource synced: deepseek\n'
   if env COX_INSTALL_DIR="$INSTALL_DIR" COX_TOKENIZER_RESOURCE_DIR="$INSTALL_DIR/resources/tokenizers" \
     "$INSTALL_DIR/.venv/bin/cox" tokenizer sync deepseek --json --resource-dir "$INSTALL_DIR/resources/tokenizers" >> "$INSTALL_LOG" 2>&1; then
-    ok "DeepSeek tokenizer resource synced"
+    ok "Provider tokenizer resource synced: deepseek"
     return 0
   fi
 
-  warn "DeepSeek tokenizer resource sync failed. Run: cox tokenizer sync deepseek --json"
+  warn "Provider tokenizer resource sync failed for deepseek. Run: cox tokenizer sync deepseek --json"
   return 1
 }
 

@@ -33,16 +33,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Pinned current Latest Release tag (`v0.4.11-alpha`):
+Pinned current Latest Release tag (`v0.4.12-alpha`):
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.11-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.11-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.12-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.12-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.4.11-alpha"
+tag="v0.4.12-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -225,7 +225,7 @@ cox upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-cox upgrade --tag v0.4.11-alpha
+cox upgrade --tag v0.4.12-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -343,7 +343,7 @@ Current WeClaw-facing fields include:
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 
-### v0.4.11-alpha
+### v0.4.12-alpha
 
 The current public release improves custom OpenAI-compatible provider support, fixes custom reasoning-only responses, and keeps image payloads from being compacted or trimmed.
 
