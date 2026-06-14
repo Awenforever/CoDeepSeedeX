@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.8-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.9-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -302,8 +302,8 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
     }
 
 
-DEEPSEEK_OFFICIAL_PRICING_URL = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
-DEEPSEEK_OFFICIAL_PRICING_URL_EN = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing//"
+DEEPSEEK_OFFICIAL_PRICING_URL = get_provider_adapter("deepseek").official_pricing_url
+DEEPSEEK_OFFICIAL_PRICING_URL_EN = get_provider_adapter("deepseek").official_pricing_url_en
 
 
 def _pricing_project_config_path() -> Path:
@@ -698,155 +698,19 @@ def _parse_pricing_cell_details(text: str) -> dict[str, Any]:
 
 
 def _deepseek_discount_window_from_text(text: str) -> dict[str, Any]:
-    compact = _clean_pricing_html_cell(text)
-    match = re.search(
-        r"优惠期[^。\n]*?(20\d{2})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{2})",
-        compact,
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    return get_provider_adapter("deepseek").discount_window_from_pricing_text(
+        text,
+        clean_pricing_html_cell=_clean_pricing_html_cell,
     )
-    if not match:
-        return {"valid_from": None, "valid_until": None, "validity_confidence": "unknown"}
-    year, month, day, hour, minute = [int(value) for value in match.groups()]
-    return {
-        "valid_from": None,
-        "valid_until": f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:00+08:00",
-        "validity_confidence": "official_note",
-    }
-
-
 def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool = False) -> dict[str, Any]:
-    compact = re.sub(r"\s+", " ", text)
-    table_match = None
-    for match in re.finditer(r"<table\b.*?</table>", compact, flags=re.IGNORECASE | re.DOTALL):
-        table = match.group(0)
-        if "deepseek-v4-flash" in table and "deepseek-v4-pro" in table:
-            table_match = table
-            break
-
-    if table_match is None:
-        # The docs renderer may flatten the table into plain text. Keep a
-        # text-mode fallback because the official page currently exposes
-        # "价格 百万tokens输入（缓存命中）..." as parsed text in some clients.
-        text_rows = _clean_pricing_html_cell(text)
-        if not ("deepseek-v4-flash" in text_rows and "deepseek-v4-pro" in text_rows):
-            raise ValueError("official pricing table for deepseek-v4-flash/deepseek-v4-pro was not found")
-        table_rows = [
-            ["百万tokens输入（缓存命中）", "0.02元", "0.025元（2.5折）~~0.1元~~"],
-            ["百万tokens输入（缓存未命中）", "1元", "3元（2.5折）~~12元~~"],
-            ["百万tokens输出", "2元", "6元（2.5折）~~24元~~"],
-        ]
-    else:
-        table_rows = []
-        for row_html in re.findall(r"<tr\b.*?</tr>", table_match, flags=re.IGNORECASE | re.DOTALL):
-            cells = [
-                _clean_pricing_html_cell(cell)
-                for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row_html, flags=re.IGNORECASE | re.DOTALL)
-            ]
-            if cells:
-                table_rows.append(cells)
-
-    prices: dict[str, Any] = {
-        "deepseek-v4-flash": {},
-        "deepseek-v4-pro": {},
-    }
-    model_metadata: dict[str, dict[str, Any]] = {
-        "deepseek-v4-flash": {},
-        "deepseek-v4-pro": {},
-    }
-
-    label_map = {
-        "CACHE HIT": "input_cache_hit",
-        "缓存命中": "input_cache_hit",
-        "CACHE MISS": "input_cache_miss",
-        "缓存未命中": "input_cache_miss",
-        "OUTPUT TOKENS": "output",
-        "百万TOKENS输出": "output",
-        "百万TOKENS 输出": "output",
-        "OUTPUT": "output",
-        "输出": "output",
-    }
-    discount_window = _deepseek_discount_window_from_text(text)
-
-    for row in table_rows:
-        joined = " ".join(row).upper()
-        joined_raw = " ".join(row)
-        if (
-            "MAX OUTPUT" in joined
-            or "MAXIMUM" in joined
-            or "最大输出" in joined_raw
-            or "输出长度" in joined_raw
-        ):
-            continue
-
-        key = None
-        for label, mapped_key in label_map.items():
-            if label in joined or label in joined_raw:
-                key = mapped_key
-                break
-        if key is None:
-            continue
-
-        details_list: list[dict[str, Any]] = []
-        for cell in row:
-            upper_cell = cell.upper()
-            label_like = (
-                "TOKEN" in upper_cell
-                or "TOKENS" in upper_cell
-                or "缓存" in cell
-                or "输入" in cell
-                or ("输出" in cell and not re.search(r"[0-9]", cell))
-            )
-            if label_like:
-                continue
-            try:
-                details_list.append(_parse_pricing_cell_details(cell))
-            except ValueError:
-                continue
-
-        if len(details_list) < 2:
-            # Official docs may include capability rows such as
-            # "输出长度 / 最大 384K" in the same table. These rows can contain
-            # output-like labels but no prices, so skip them and let the final
-            # required-key validation fail only if a real price row is missing.
-            continue
-
-        for model, details in zip(["deepseek-v4-flash", "deepseek-v4-pro"], details_list[:2]):
-            prices[model][key] = float(details["effective_price"])
-            metadata = model_metadata.setdefault(model, {})
-            metadata.setdefault("effective_prices", {})
-            metadata.setdefault("original_prices", {})
-            metadata.setdefault("discount_prices", {})
-            metadata["effective_prices"][key] = float(details["effective_price"])
-            if details.get("original_price") is not None:
-                metadata["original_prices"][key] = float(details["original_price"])
-            if details.get("discount_price") is not None:
-                metadata["discount_prices"][key] = float(details["discount_price"])
-            if details.get("discount_available"):
-                metadata["discount"] = {
-                    "available": True,
-                    "label": details.get("discount_label"),
-                    "discount_rate": details.get("discount_rate"),
-                    "valid_from": discount_window.get("valid_from"),
-                    "valid_until": discount_window.get("valid_until"),
-                    "validity_confidence": discount_window.get("validity_confidence"),
-                    "source": "deepseek_official_pricing_page_note",
-                }
-
-    required_keys = {"input_cache_hit", "input_cache_miss", "output"}
-    for model, item in prices.items():
-        if not required_keys.issubset(item):
-            raise ValueError(f"official pricing table missing keys for {model}: {sorted(required_keys - set(item))}")
-        metadata = model_metadata.setdefault(model, {})
-        metadata.setdefault("effective_prices", dict(item))
-        metadata.setdefault("original_prices", {})
-        metadata.setdefault("discount_prices", {})
-        metadata.setdefault("discount", {"available": False, "validity_confidence": "none"})
-
-    if include_metadata:
-        prices["__model_metadata__"] = model_metadata
-    return prices
-
-
-
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    return get_provider_adapter("deepseek").parse_official_pricing_html(
+        text,
+        include_metadata=include_metadata,
+        clean_pricing_html_cell=_clean_pricing_html_cell,
+        parse_pricing_cell_details=_parse_pricing_cell_details,
+    )
 def _write_pricing_cache_atomic(
     prices: dict[str, Any],
     *,
@@ -889,114 +753,23 @@ def _refresh_deepseek_pricing_from_official_docs(
     cache_path: str | Path | None = None,
     timeout: float = 20.0,
 ) -> dict[str, Any]:
-    fetched_at = _pricing_now_iso()
-    ttl_seconds = _pricing_ttl_seconds()
-    target_path = Path(cache_path).expanduser() if cache_path else _pricing_cache_path()
-
-    try:
-        text = _fetch_text_url(source_url, timeout=timeout)
-    except Exception as exc:
-        return {
-            "status": "error",
-            "available": False,
-            "reason": "official_pricing_fetch_failed",
-            "error_type": type(exc).__name__,
-            "error": str(exc)[:1000],
-            "source_url": source_url,
-            "source_kind": "official_docs_html",
-            "writes_cache": False,
-            "cache_path": str(target_path),
-            "old_cache_preserved": True,
-        }
-
-    try:
-        prices = _parse_deepseek_official_pricing_html(text, include_metadata=True)
-    except Exception as exc:
-        return {
-            "status": "error",
-            "available": False,
-            "reason": "official_pricing_parse_failed",
-            "error_type": type(exc).__name__,
-            "error": str(exc)[:1000],
-            "source_url": source_url,
-            "source_kind": "official_docs_html",
-            "writes_cache": False,
-            "cache_path": str(target_path),
-            "old_cache_preserved": True,
-        }
-
-    cache_written = False
-    if write_cache:
-        try:
-            _write_pricing_cache_atomic(
-                prices,
-                path=target_path,
-                source_url=source_url,
-                fetched_at=fetched_at,
-                ttl_seconds=ttl_seconds,
-            )
-            cache_written = True
-        except Exception as exc:
-            return {
-                "status": "error",
-                "available": False,
-                "reason": "official_pricing_cache_write_failed",
-                "error_type": type(exc).__name__,
-                "error": str(exc)[:1000],
-                "source_url": source_url,
-                "source_kind": "official_docs_html",
-                "writes_cache": False,
-                "cache_path": str(target_path),
-                "old_cache_preserved": True,
-                "validated_prices": prices,
-            }
-
-    model_key = str(model or DEFAULT_MODEL)
-    model_prices = prices.get(model_key)
-    model_metadata = (prices.get("__model_metadata__") or {}).get(model_key, {}) if isinstance(prices.get("__model_metadata__"), dict) else {}
-    expires_ts = (_pricing_parse_iso_timestamp(fetched_at) or time.time()) + ttl_seconds
-    all_model_keys = sorted(key for key in prices if isinstance(key, str) and not key.startswith("__"))
-
-    return {
-        "status": "ok",
-        "available": True,
-        "reason": None,
-        "action": "validated official DeepSeek pricing HTML; add --write-cache to persist the cache" if not cache_written else "validated and persisted official DeepSeek pricing cache",
-        "source_url": source_url,
-        "source_kind": "official_docs_html",
-        "fetched_at": fetched_at,
-        "updated_at": fetched_at,
-        "expires_at": _pricing_iso_from_timestamp(expires_ts),
-        "ttl_seconds": ttl_seconds,
-        "currency": "CNY",
-        "unit": "per_million_tokens",
-        "unit_legacy": "per_1m_tokens",
-        "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
-        "pricing": {
-            "available": bool(model_prices),
-            "provider": "deepseek",
-            "model": model_key,
-            "currency": "CNY",
-            "unit": "per_million_tokens",
-            "source": "official_deepseek_pricing_docs",
-            "source_url": source_url,
-            "source_kind": "official_docs_html",
-            "prices": model_prices,
-            "current_prices": model_metadata.get("effective_prices") or model_prices,
-            "effective_prices": model_metadata.get("effective_prices") or model_prices,
-            "original_prices": model_metadata.get("original_prices") or {},
-            "discount_prices": model_metadata.get("discount_prices") or {},
-            "discount": model_metadata.get("discount") or {"available": False},
-            "all_models": all_model_keys,
-            "missing": [] if model_prices else ["model_pricing_entry"],
-        },
-        "all_prices": prices,
-        "writes_cache": cache_written,
-        "cache_path": str(target_path),
-        "old_cache_preserved": True,
-    }
-
-
+    """Compatibility wrapper backed by the DeepSeek provider adapter."""
+    return get_provider_adapter("deepseek").refresh_pricing_from_official_docs(
+        model=model,
+        source_url=source_url,
+        write_cache=write_cache,
+        cache_path=cache_path,
+        timeout=timeout,
+        default_model=DEFAULT_MODEL,
+        fetch_text_url=_fetch_text_url,
+        parse_official_pricing_html=_parse_deepseek_official_pricing_html,
+        pricing_cache_path=_pricing_cache_path,
+        pricing_now_iso=_pricing_now_iso,
+        pricing_ttl_seconds=_pricing_ttl_seconds,
+        pricing_parse_iso_timestamp=_pricing_parse_iso_timestamp,
+        pricing_iso_from_timestamp=_pricing_iso_from_timestamp,
+        write_pricing_cache_atomic=_write_pricing_cache_atomic,
+    )
 def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
     pricing = _load_model_pricing_usd_per_1m().get(model)
     if pricing is None:

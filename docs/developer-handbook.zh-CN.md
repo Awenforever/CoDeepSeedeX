@@ -25,16 +25,16 @@
 - 本地项目路径：`~/projects/codexchange`
 - GitHub仓库：`Awenforever/CoDeepSeedeX`
 - 主分支：`master`
-- 当前公开Release：`v0.4.8-alpha`
+- 当前公开Release：`v0.4.9-alpha`
 - 当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`
 - 当前公开Release提交：`tag-managed p2.22 closeout release update`
-- GitHub Latest普通Release：`v0.4.8-alpha`
-- GitHub Release标题：`CodeXchange v0.4.8-alpha`
+- GitHub Latest普通Release：`v0.4.9-alpha`
+- GitHub Release标题：`CodeXchange v0.4.9-alpha`
 - GitHub Release状态：`isDraft=false`，`isPrerelease=false`
 - Release资产：`bootstrap.sh`，`install.sh`
 - Release资产digest：
   - `bootstrap.sh` sha256：`5005d628290b569780c042e30ac7e44aff02b4df4b957f2159c25b69356dd12a`
-  - `install.sh` sha256：`3239c0adf9e58954ce03682d904c4b9886fdae93567186f8b11b34a5b8e41623`
+  - `install.sh` sha256：`5a108260e6ef6a5a748f8f5ad8932be58b8f4f6baf1881c10f62eca430b6af9e`
 - 当前内部开发检查点：`p2.22a16-release-v043-alpha-update-to-p222-closeout`
 - 当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - 最新闭合文档同步检查点：`p2.21a6-docs-public-tag-state-sync`
@@ -50,7 +50,7 @@
 - 当前公开Release note同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw要求：如果使用WeClaw集成，要求`weclaw_dev >= v0.1.9-alpha`。
 - 未经明确Release更新任务不得移动的公开tag：
-  - `v0.4.8-alpha = <pending>`
+  - `v0.4.9-alpha = <pending>`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,14 +60,14 @@
 
 当前收口证据：
 
-- 公开tag `v0.4.8-alpha = <pending>`。
+- 公开tag `v0.4.9-alpha = <pending>`。
 - 当前公开Release包含的内部检查点：`p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`。
 - GitHub Release非draft、非prerelease。
-- GitHub Latest API返回`v0.4.8-alpha`。
+- GitHub Latest API返回`v0.4.9-alpha`。
 - Release资产只有`bootstrap.sh`和`install.sh`。
-- 刷新后的Release线运行`cox --version`应报告`public version: v0.4.8-alpha | b11a1c4`。
+- 刷新后的Release线运行`cox --version`应报告`public version: v0.4.9-alpha | b11a1c4`。
 - `p2.19a24`真实Codex入口复测已通过：故意把两个managed splitprofile漂移到`glm-5.1`后，入口路径会自动修复并使用`deepseek-v4-flash-ascend`，无403/access-denied、无默认模型泄漏、无`/tmp`wrapper链。
-- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.8-alpha`标签由本次明确的Release更新任务刷新到p2.22闭合发布提交。
+- 本次文档同步可能让`master`领先公开Release提交；公开`v0.4.9-alpha`标签由本次明确的Release更新任务刷新到p2.22闭合发布提交。
 
 ## 3. 关键文件地图
 
@@ -86,7 +86,7 @@
 
 ## 4. 当前用户可见Release面
 
-`v0.4.8-alpha`当前覆盖以下用户可见内容：
+`v0.4.9-alpha`当前覆盖以下用户可见内容：
 
 1. 安装器和`cox config wizard`
    - 语言选择属于guided flow。
@@ -320,13 +320,13 @@ git branch --show-current
 git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
-git rev-parse --short v0.4.8-alpha^{}
+git rev-parse --short v0.4.9-alpha^{}
 git rev-parse --short p2.19a15-provider-alias-boundary^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
-gh release view v0.4.8-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
+gh release view v0.4.9-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
 gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
 cox --version
 ```
@@ -336,15 +336,15 @@ cox --version
 ```text
 worktree clean
 master=origin/master=<current p2.19a25 documentation sync commit>
-v0.4.8-alpha=6a96593
+v0.4.9-alpha=6a96593
 p2.19a23-profile-drift-failclosed-guard=6a96593
-GitHub Latest Release=v0.4.8-alpha
+GitHub Latest Release=v0.4.9-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 bootstrap.sh sha256=5005d628290b569780c042e30ac7e44aff02b4df4b957f2159c25b69356dd12a
-install.sh sha256=3239c0adf9e58954ce03682d904c4b9886fdae93567186f8b11b34a5b8e41623
-public version: v0.4.8-alpha | 6a96593
+install.sh sha256=5a108260e6ef6a5a748f8f5ad8932be58b8f4f6baf1881c10f62eca430b6af9e
+public version: v0.4.9-alpha | 6a96593
 internal version: p2.19a25-docs-release-state-sync | <current internal tag commit>
 ```
 
@@ -361,14 +361,14 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 指定tag fallback：
 
 ```bash
-tag="v0.4.8-alpha"
+tag="v0.4.9-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 
 固定Release资产bootstrap：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.8-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.8-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.9-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.9-alpha
 ```
 
 产品级卸载仍由安装器负责：
@@ -384,7 +384,7 @@ bash ~/.local/share/codexchange/scripts/install.sh --uninstall --remove-files
 
 | ID | 主线任务 | 预期指标 | 当前版本 / 锚点 | 当前状态 | 最近更新 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Release | `v0.4.8-alpha`当前Latest | GitHub Latest Release存在，`isPrerelease=false`，资产只有`bootstrap.sh`和`install.sh`，Release正文不重复标题。 | `v0.4.8-alpha = <pending>` | 已闭合 | 2026-06-08 | 包含p2.19 custom provider registry、guided UI、Codex兼容/wrapper加固、status JSON、辅助模型泄漏修复、profile漂移fail-closed guard和真实Codex入口验证。 |
+| Release | `v0.4.9-alpha`当前Latest | GitHub Latest Release存在，`isPrerelease=false`，资产只有`bootstrap.sh`和`install.sh`，Release正文不重复标题。 | `v0.4.9-alpha = <pending>` | 已闭合 | 2026-06-08 | 包含p2.19 custom provider registry、guided UI、Codex兼容/wrapper加固、status JSON、辅助模型泄漏修复、profile漂移fail-closed guard和真实Codex入口验证。 |
 | Installer UX | 安装器和wizard一致性 | step-local hints、箭头键菜单、Backspace导航、简洁验证摘要、无跨步骤model摘要泄漏。 | `p2.19a10-guided-installer-contextual-hints` | 已闭合 | 2026-06-07 | VM真实HOME验证通过。 |
 | Custom providers | 多custom OpenAI-compatible providers和models | 用户可新增provider、新增model、切换active provider/model，并按配置的`/models`验证。 | `p2.19a1`到`p2.19a6` | 已闭合 | 2026-06-06 | active provider/model镜像到legacy env以保持运行时兼容。 |
 | Codex compatibility | 版本感知profile布局和安全wrapper | Codex `<0.134`使用legacy tables；Codex `>=0.134`使用split files；`REAL_CODEX`不指向wrapper。 | `p2.19a7`到`p2.19a9` | 已闭合 | 2026-06-07 | 真实HOME wrapper执行通过。 |

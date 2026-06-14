@@ -5,7 +5,7 @@ INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
 REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${COX_INSTALL_REF:-}"
-COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.8-alpha}"
+COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.9-alpha}"
 BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
@@ -503,7 +503,7 @@ show_install_completion_hold() {
   local detected_public
   local detected_internal
   width="$(ui_terminal_width)"
-  public_version="${COX_PUBLIC_VERSION:-v0.4.8-alpha}"
+  public_version="${COX_PUBLIC_VERSION:-v0.4.9-alpha}"
   internal_version="${COX_INTERNAL_VERSION:-}"
 
   if [ -x "${INSTALL_DIR:-}/.venv/bin/cox" ]; then

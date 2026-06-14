@@ -49,4 +49,4 @@ def test_public_release_tag_is_synchronized_to_v048() -> None:
         "tests/test_version_metadata.py",
         "tests/test_docs_release_readiness.py",
     ]:
-        assert "v0.4.8-alpha" in read(rel)
+        assert "v0.4.9-alpha" in read(rel)
