@@ -59,7 +59,7 @@ def _clear_provider_probe_test_env(monkeypatch):
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "public version: v0.4.6-alpha |" in out
+    assert "public version: v0.4.7-alpha |" in out
     assert "internal version: p" in out
 
 
@@ -3204,7 +3204,7 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
     text = config_path.read_text(encoding="utf-8")
     profile_text = _codex_profile_text(config_path)
     assert '[model_providers.cox-proxy]' in text
-    assert 'name = "DeepSeek Thinking Responses Proxy"' in text
+    assert 'name = "CodeXchange reasoning Responses proxy"' in text
     assert 'base_url = "http://127.0.0.1:8001/v1"' in text
     assert 'env_key = "COX_MODEL_API_KEY"' in text
     assert 'wire_api = "responses"' in text

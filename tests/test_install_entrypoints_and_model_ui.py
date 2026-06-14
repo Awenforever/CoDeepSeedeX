@@ -549,7 +549,7 @@ def test_installer_logo_function_renders_without_backtick_substitution(tmp_path)
     assert "CodeXchange " in result.stdout
     assert "v0.3.8-alpha" in result.stdout
     assert "\x1b[1;35m" in result.stdout
-    assert "Codex × DeepSeek local Responses proxy" in result.stdout
+    assert "Codex × multi-provider local Responses exchange" in result.stdout
 
 
 
@@ -857,7 +857,7 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
 
 def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.6-alpha}"' in text
+    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.7-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
 

@@ -1017,7 +1017,7 @@ def _codex_profile_blocks(
 
     provider_defaults = _managed_profile_provider_defaults(profile_name) or {}
     provider_label = provider_defaults.get("provider_label") or (
-        "DeepSeek Thinking Responses Proxy" if "thinking" in profile_name else "CodeXchange"
+        "CodeXchange reasoning Responses proxy" if "thinking" in profile_name else "CodeXchange"
     )
     provider_lines = [
         provider_header,
@@ -1167,7 +1167,7 @@ def _managed_profile_provider_defaults(profile_name: str) -> dict[str, str] | No
     if profile_name == "cox":
         return {
             "provider_name": "cox-proxy",
-            "provider_label": "DeepSeek Thinking Responses Proxy",
+            "provider_label": "CodeXchange reasoning Responses proxy",
             "base_url": "http://127.0.0.1:8001/v1",
         }
     return None
