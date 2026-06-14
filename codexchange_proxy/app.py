@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.10-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.11-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -12434,7 +12434,7 @@ def _deepseek_proxy_account_tool_schemas() -> list[dict[str, Any]]:
         ),
         _proxy_function_tool_schema(
             "proxy_balance",
-            "Return DeepSeek account balance through the configured upstream client.",
+            "Return provider account balance through the configured upstream client when supported.",
         ),
     ]
 

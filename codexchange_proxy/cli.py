@@ -4763,6 +4763,60 @@ def _mask_api_key(value: str) -> str:
     return value[:4] + "..." + value[-4:]
 
 
+def _provider_balance_metadata(provider: str = "deepseek", *, base_url: str | None = None) -> dict[str, object]:
+    provider_value = str(provider or "deepseek").strip().lower().replace(" ", "_")
+    try:
+        from codexchange_proxy.providers import get_provider_adapter
+
+        adapter = get_provider_adapter(provider_value)
+        method = getattr(adapter, "account_balance_metadata", None)
+        if callable(method):
+            try:
+                metadata = method(base_url=base_url)
+            except TypeError:
+                metadata = method()
+            if isinstance(metadata, dict):
+                return dict(metadata)
+
+        request = adapter.validation_request()
+        root = str(base_url or getattr(adapter, "default_base_url", "https://api.deepseek.com")).rstrip("/")
+        path = str(getattr(request, "path", "/user/balance"))
+        return {
+            "provider": provider_value,
+            "provider_id": getattr(adapter, "provider_id", provider_value),
+            "supported": bool(getattr(getattr(adapter, "capabilities", object()), "account_balance", False)),
+            "method": getattr(request, "method", "GET"),
+            "path": path,
+            "url": f"{root}{path}",
+            "endpoint": f"{root}{path}",
+            "validation_method": getattr(request, "validation_method", "account_balance_probe"),
+            "source": "provider_adapter.validation_request",
+        }
+    except Exception as exc:
+        root = str(base_url or "https://api.deepseek.com").rstrip("/")
+        return {
+            "provider": provider_value,
+            "supported": provider_value == "deepseek",
+            "method": "GET",
+            "path": "/user/balance",
+            "url": f"{root}/user/balance",
+            "endpoint": f"{root}/user/balance",
+            "validation_method": "account_balance_probe",
+            "source": "provider_balance_metadata_fallback",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _provider_balance_url(provider: str = "deepseek", *, base_url: str | None = None) -> str:
+    metadata = _provider_balance_metadata(provider, base_url=base_url)
+    return str(metadata.get("url") or metadata.get("endpoint") or "https://api.deepseek.com/user/balance")
+
+
+def _provider_balance_validation_method(provider: str = "deepseek") -> str:
+    metadata = _provider_balance_metadata(provider)
+    return str(metadata.get("validation_method") or "account_balance_probe")
+
+
 def _load_deepseek_api_key(*, env_file: Path | None = None) -> tuple[str, str | None]:
     env_value = os.environ.get("COX_MODEL_API_KEY", "")
     if env_value:
@@ -6749,7 +6803,7 @@ def _run_guided_config(env_file: Path, *, non_interactive: bool = False, emit_js
                         )
                         if key:
                             if provider == "deepseek":
-                                validation = _check_deepseek_api_key(key, url="https://api.deepseek.com/user/balance", timeout=10.0)
+                                validation = _check_deepseek_api_key(key, url=_provider_balance_url("deepseek"), timeout=10.0)
                                 validation["kind"] = "model_api"
                                 validation["provider"] = "deepseek"
                             else:
@@ -7029,7 +7083,7 @@ def _configure_model_api_command(args: argparse.Namespace, env_file: Path, *, le
         if provider == "deepseek":
             validation_result = _check_deepseek_api_key(
                 api_key_value,
-                url=getattr(args, "validation_url", "https://api.deepseek.com/user/balance"),
+                url=getattr(args, "validation_url", None) or _provider_balance_url("deepseek"),
                 timeout=float(getattr(args, "validation_timeout", 10.0)),
             )
             validation_result["kind"] = "model_api"
@@ -8590,6 +8644,25 @@ def _debug(args: argparse.Namespace) -> int:
 
 
 def _balance(args: argparse.Namespace) -> int:
+    provider = str(getattr(args, "provider", "deepseek") or "deepseek").strip().lower().replace(" ", "_")
+    metadata = _provider_balance_metadata(provider)
+    url = str(getattr(args, "url", None) or _provider_balance_url(provider))
+    if not bool(metadata.get("supported", False)):
+        print(json.dumps({
+            "status": "unsupported",
+            "provider": provider,
+            "error": "provider_balance_unsupported",
+            "message": "Selected provider does not expose an account balance API through cox.",
+            "balance": {
+                "available": False,
+                "provider": provider,
+                "source": "provider_adapter.capabilities.account_balance",
+                "reason": "provider_balance_unsupported",
+                "action": "choose a provider with account_balance capability or pass --url for a compatible provider endpoint",
+            },
+        }, ensure_ascii=False, indent=2))
+        return 2
+
     api_key = os.environ.get("COX_MODEL_API_KEY", "")
     if not api_key:
         env_values = _read_env_exports(Path(args.env_file).expanduser() if args.env_file else default_env_file_path())
@@ -8598,13 +8671,14 @@ def _balance(args: argparse.Namespace) -> int:
     if not api_key:
         print(json.dumps({
             "status": "error",
-            "error": "missing_deepseek_api_key",
+            "provider": provider,
+            "error": "missing_deepseek_api_key" if provider == "deepseek" else "missing_provider_api_key",
             "hint": "Set COX_MODEL_API_KEY or write the local env file.",
         }, ensure_ascii=False, indent=2))
         return 1
 
     request = urllib.request.Request(
-        args.url,
+        url,
         headers={
             "Accept": "application/json",
             "Authorization": f"Bearer {api_key}",
@@ -8618,13 +8692,13 @@ def _balance(args: argparse.Namespace) -> int:
             data = json.loads(raw)
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        print(json.dumps({"status": "error", "http_status": exc.code, "body": raw[:2000]}, ensure_ascii=False, indent=2))
+        print(json.dumps({"status": "error", "provider": provider, "http_status": exc.code, "url": url, "body": raw[:2000]}, ensure_ascii=False, indent=2))
         return 1
     except Exception as exc:
-        print(json.dumps({"status": "error", "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False, indent=2))
+        print(json.dumps({"status": "error", "provider": provider, "url": url, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False, indent=2))
         return 1
 
-    print(json.dumps({"status": "ok", "url": args.url, "balance": data}, ensure_ascii=False, indent=2))
+    print(json.dumps({"status": "ok", "provider": provider, "url": url, "balance": data}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -8776,7 +8850,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_api_key.add_argument("--model", help="upstream model name; required for --provider custom")
     config_set_api_key.add_argument("--value", help="API key value; omit to enter hidden input")
     config_set_api_key.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
-    config_set_api_key.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
+    config_set_api_key.add_argument("--validation-url", default=_provider_balance_url("deepseek"))
     config_set_api_key.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_api_key.set_defaults(func=_config)
 
@@ -8784,7 +8858,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_test_api_key.add_argument("--env-file")
     config_test_api_key.add_argument("--provider", default=None, choices=_supported_model_api_providers(), help="model API provider; defaults to COX_MODEL_PROVIDER from env")
     config_test_api_key.add_argument("--base-url", help="OpenAI-compatible base URL for --provider custom or provider override")
-    config_test_api_key.add_argument("--url", default="https://api.deepseek.com/user/balance")
+    config_test_api_key.add_argument("--url", default=_provider_balance_url("deepseek"))
     config_test_api_key.add_argument("--timeout", type=float, default=10.0)
     config_test_api_key.set_defaults(func=_config)
 
@@ -8812,7 +8886,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_model.add_argument("--base-url", help="OpenAI-compatible base URL; required for --provider custom")
     config_set_model.add_argument("--value", help="API key value; omit to enter hidden input when configuring provider credentials")
     config_set_model.add_argument("--skip-validation", action="store_true", help="store without validating the API key")
-    config_set_model.add_argument("--validation-url", default="https://api.deepseek.com/user/balance")
+    config_set_model.add_argument("--validation-url", default=_provider_balance_url("deepseek"))
     config_set_model.add_argument("--validation-timeout", type=float, default=10.0)
     config_set_model.add_argument("--codex-config")
     config_set_model.add_argument("--profile", default="__managed__", help="Codex profile name, or managed/all to update cox")
@@ -8944,9 +9018,10 @@ def build_parser() -> argparse.ArgumentParser:
     debug_semantic.add_argument("--canary-check", action="store_true", help="check whether semantic payload compaction canary rollout is ready")
     debug_semantic.set_defaults(func=_debug)
 
-    balance = sub.add_parser("balance", help="query DeepSeek API account balance")
+    balance = sub.add_parser("balance", help="query provider API account balance when supported")
     balance.add_argument("--env-file")
-    balance.add_argument("--url", default="https://api.deepseek.com/user/balance")
+    balance.add_argument("--provider", default="deepseek", help="model API provider for balance probe")
+    balance.add_argument("--url")
     balance.add_argument("--timeout", type=float, default=10.0)
     balance.set_defaults(func=_balance)
 

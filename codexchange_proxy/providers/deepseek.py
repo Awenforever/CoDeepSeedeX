@@ -21,6 +21,8 @@ class DeepSeekProviderAdapter:
     family = "deepseek"
     wire_protocol = "openai_chat_completions"
     default_base_url = "https://api.deepseek.com"
+    account_balance_path = "/user/balance"
+    account_balance_validation_method = "account_balance_probe"
     official_pricing_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     official_pricing_url_en = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing//"
     api_key_env_names = ("COX_MODEL_API_KEY",)
@@ -583,6 +585,36 @@ class DeepSeekProviderAdapter:
         }
 
 
+    def account_balance_endpoint(self, base_url: str | None = None) -> str:
+        root = str(base_url or self.default_base_url).rstrip("/")
+        return f"{root}{self.account_balance_path}"
+
+    def account_balance_request(self, *, base_url: str | None = None) -> ValidationRequest:
+        return ValidationRequest(
+            method="GET",
+            path=self.account_balance_path,
+            validation_method=self.account_balance_validation_method,
+        )
+
+    def account_balance_metadata(self, *, base_url: str | None = None) -> dict[str, Any]:
+        request = self.account_balance_request(base_url=base_url)
+        endpoint = self.account_balance_endpoint(base_url=base_url)
+        return {
+            "provider_id": self.provider_id,
+            "provider": self.provider_id,
+            "family": self.family,
+            "supported": bool(self.capabilities.account_balance),
+            "capability": "account_balance",
+            "method": request.method,
+            "path": request.path,
+            "url": endpoint,
+            "endpoint": endpoint,
+            "validation_method": request.validation_method,
+            "expected_status": list(request.expected_status),
+            "api_key_env_names": list(self.api_key_env_names),
+            "source": "provider_adapter.balance_metadata",
+        }
+
     def status_capabilities(self) -> dict[str, Any]:
         return {
             "provider_id": self.provider_id,
@@ -594,8 +626,4 @@ class DeepSeekProviderAdapter:
         }
 
     def validation_request(self) -> ValidationRequest:
-        return ValidationRequest(
-            method="GET",
-            path="/user/balance",
-            validation_method="account_balance_probe",
-        )
+        return self.account_balance_request()

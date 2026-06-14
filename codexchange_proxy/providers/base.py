@@ -112,5 +112,6 @@ class ProviderAdapter(Protocol):
     def status_capabilities(self) -> dict[str, Any]:
         ...
 
+
     def validation_request(self) -> ValidationRequest:
         ...
