@@ -106,12 +106,12 @@ def test_readme_current_latest_release_is_not_described_as_current_prerelease_ch
     en = (ROOT / "README.md").read_text(encoding="utf-8")
     zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
 
-    assert "Explicit pre-release channel, currently `v0.4.4-alpha`" not in en
-    assert "显式pre-release通道，当前为`v0.4.4-alpha`" not in zh
-    assert "Pinned current Latest Release tag (`v0.4.4-alpha`)" in en
-    assert "固定当前Latest Release tag（`v0.4.4-alpha`）" in zh
-    assert "If WeClaw integration is used with CodeXchange `v0.4.4-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`" not in en
-    assert "如果WeClaw联动使用CodeXchange `v0.4.4-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`" not in zh
+    assert "Explicit pre-release channel, currently `v0.4.5-alpha`" not in en
+    assert "显式pre-release通道，当前为`v0.4.5-alpha`" not in zh
+    assert "Pinned current Latest Release tag (`v0.4.5-alpha`)" in en
+    assert "固定当前Latest Release tag（`v0.4.5-alpha`）" in zh
+    assert "If WeClaw integration is used with CodeXchange `v0.4.5-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`" not in en
+    assert "如果WeClaw联动使用CodeXchange `v0.4.5-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`" not in zh
 
 
 def test_p219a15_qwen_us_remains_current_public_regional_provider() -> None:
