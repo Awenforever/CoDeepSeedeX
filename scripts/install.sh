@@ -5,7 +5,7 @@ INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
 REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${COX_INSTALL_REF:-}"
-COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.5-alpha}"
+COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.6-alpha}"
 BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
@@ -444,7 +444,17 @@ ui_render_input_panel() {
 }
 
 
+cox_should_skip_interactive_hold() {
+  [ "${COX_NONINTERACTIVE:-}" = "1" ] && return 0
+  [ "${CI:-}" = "1" ] && return 0
+  [ ! -t 2 ] && return 0
+  return 1
+}
+
 show_model_api_validation_hold() {
+  if cox_should_skip_interactive_hold; then
+    return 0
+  fi
   local width
   local key_state
   local provider_label
@@ -484,13 +494,16 @@ show_model_api_validation_hold() {
 }
 
 show_install_completion_hold() {
+  if cox_should_skip_interactive_hold; then
+    return 0
+  fi
   local width
   local public_version
   local internal_version
   local detected_public
   local detected_internal
   width="$(ui_terminal_width)"
-  public_version="${COX_PUBLIC_VERSION:-v0.4.5-alpha}"
+  public_version="${COX_PUBLIC_VERSION:-v0.4.6-alpha}"
   internal_version="${COX_INTERNAL_VERSION:-}"
 
   if [ -x "${INSTALL_DIR:-}/.venv/bin/cox" ]; then

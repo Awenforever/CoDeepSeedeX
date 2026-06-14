@@ -857,7 +857,7 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
 
 def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.5-alpha}"' in text
+    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.6-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
 
@@ -1467,3 +1467,16 @@ def test_cli_records_canonical_codex_wrapper_paths_for_propagation_audits() -> N
     assert 'CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"' in text
     assert 'CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"' in text
     assert "_canonical_codex_wrapper_template_candidates" in text
+
+def test_installer_completion_holds_skip_in_noninteractive_or_ci_mode() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "cox_should_skip_interactive_hold()" in text
+    assert '[ "${COX_NONINTERACTIVE:-}" = "1" ] && return 0' in text
+    assert '[ "${CI:-}" = "1" ] && return 0' in text
+    assert "[ ! -t 2 ] && return 0" in text
+
+    for fn in ["show_model_api_validation_hold", "show_install_completion_hold"]:
+        start = text.index(f"{fn}() {{")
+        snippet = text[start:start + 260]
+        assert "cox_should_skip_interactive_hold" in snippet
+        assert "return 0" in snippet
