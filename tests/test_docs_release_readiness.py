@@ -44,52 +44,52 @@ def test_developer_handbook_current_release_state_is_synced_to_latest_release_no
     assert "Latest closed test contract pruning checkpoint: `p2.19a14-test-contract-pruning`" in en_current
 
     # Current public Release contract after the p2.19a23 Release refresh.
-    assert "Current public Release: `v0.4.7-alpha`" in en_current
+    assert "Current public Release: `v0.4.8-alpha`" in en_current
     assert "Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`" in en_current
     assert "Current public Release commit: `tag-managed p2.22 closeout release update`" in en_current
-    assert "GitHub Latest ordinary Release: `v0.4.7-alpha`" in en_current
+    assert "GitHub Latest ordinary Release: `v0.4.8-alpha`" in en_current
     assert "GitHub Release state: `isDraft=false`, `isPrerelease=false`" in en_current
     assert "Public Release assets: `bootstrap.sh`, `install.sh`" in en_current
     assert "`bootstrap.sh` sha256: `5005d628290b569780c042e30ac7e44aff02b4df4b957f2159c25b69356dd12a`" in en_current
-    assert "`install.sh` sha256: `6d032c994610720a82deb77c2a3ea143e4d8b59eb0222ceb60c234c1b2f2f6a5`" in en_current
+    assert "`install.sh` sha256: `3239c0adf9e58954ce03682d904c4b9886fdae93567186f8b11b34a5b8e41623`" in en_current
     assert "Current internal development checkpoint: `p2.22a16-release-v043-alpha-update-to-p222-closeout`" in en_current
     assert "Latest runtime checkpoint included in the public Release: `p2.21a4-codex-wrapper-nonfatal-split-profile`" in en_current
     assert "Latest closed documentation sync checkpoint: `p2.21a6-docs-public-tag-state-sync`" in en_current
     assert "Latest provider/profile abstraction checkpoint: `p2.20a2-provider-profile-primary-only-and-real-entry`" in en_current
     assert "Latest closed ghost audit tool checkpoint: `p2.19a23-profile-drift-failclosed-guard`" in en_current
     assert "Current public Release note synchronization checkpoint: `p2.21a4-codex-wrapper-nonfatal-split-profile`" in en_current
-    assert "The public `v0.4.7-alpha` tag is being refreshed by this explicit Release-update task to the p2.22 closeout release commit." in en_current
+    assert "The public `v0.4.8-alpha` tag is being refreshed by this explicit Release-update task to the p2.22 closeout release commit." in en_current
     assert "  - `v0.3.9-alpha = 82a4428`" in en_current
 
-    assert "当前公开Release：`v0.4.7-alpha`" in zh_current
+    assert "当前公开Release：`v0.4.8-alpha`" in zh_current
     assert "当前公开Release类型：GitHub Latest普通alpha Release，`isPrerelease=false`" in zh_current
     assert "当前公开Release提交：`tag-managed p2.22 closeout release update`" in zh_current
-    assert "GitHub Latest普通Release：`v0.4.7-alpha`" in zh_current
+    assert "GitHub Latest普通Release：`v0.4.8-alpha`" in zh_current
     assert "GitHub Release状态：`isDraft=false`，`isPrerelease=false`" in zh_current
     assert "Release资产：`bootstrap.sh`，`install.sh`" in zh_current
     assert "`bootstrap.sh` sha256：`5005d628290b569780c042e30ac7e44aff02b4df4b957f2159c25b69356dd12a`" in zh_current
-    assert "`install.sh` sha256：`6d032c994610720a82deb77c2a3ea143e4d8b59eb0222ceb60c234c1b2f2f6a5`" in zh_current
+    assert "`install.sh` sha256：`3239c0adf9e58954ce03682d904c4b9886fdae93567186f8b11b34a5b8e41623`" in zh_current
     assert "当前内部开发检查点：`p2.22a16-release-v043-alpha-update-to-p222-closeout`" in zh_current
     assert "当前公开Release包含的最新运行时检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`" in zh_current
     assert "最新闭合文档同步检查点：`p2.21a6-docs-public-tag-state-sync`" in zh_current
     assert "最新provider/profile抽象检查点：`p2.20a2-provider-profile-primary-only-and-real-entry`" in zh_current
     assert "最新闭合幽灵审计工具检查点：`p2.19a23-profile-drift-failclosed-guard`" in zh_current
     assert "当前公开Release note同步检查点：`p2.21a4-codex-wrapper-nonfatal-split-profile`" in zh_current
-    assert "公开`v0.4.7-alpha`标签由本次明确的Release更新任务刷新到p2.22闭合发布提交。" in zh_current
+    assert "公开`v0.4.8-alpha`标签由本次明确的Release更新任务刷新到p2.22闭合发布提交。" in zh_current
     assert "  - `v0.3.9-alpha = 82a4428`" in zh_current
 
     # Removed stale contract assertions from the old pre-release/old-Latest period.
     stale_markers = [
         "Current public Release kind: " + "pre-release",
-        "Current public Release commit: resolved from `v0.4.7-alpha` tag after publication",
+        "Current public Release commit: resolved from `v0.4.8-alpha` tag after publication",
         "GitHub Latest ordinary Release: `v0.4.0-" + "alpha`",
         "GitHub Release flags: `isDraft=false`, `isPrerelease=" + "true`",
-        "  - `v0.4.7-alpha = resolved by release " + "tag`",
+        "  - `v0.4.8-alpha = resolved by release " + "tag`",
         "当前公开Release类型：" + "pre-release",
-        "当前公开Release提交：发布后由`v0.4.7-alpha` tag解析",
+        "当前公开Release提交：发布后由`v0.4.8-alpha` tag解析",
         "GitHub Latest普通Release：`v0.4.0-" + "alpha`",
         "GitHub Release标志：`isDraft=false`，`isPrerelease=" + "true`",
-        "  - `v0.4.7-alpha = resolved by release " + "tag`",
+        "  - `v0.4.8-alpha = resolved by release " + "tag`",
         "ab680ee",
     ]
     for stale in stale_markers:
