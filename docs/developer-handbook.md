@@ -25,11 +25,11 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Local project path: `~/projects/codexchange`
 - GitHub repository: `Awenforever/CoDeepSeedeX`
 - Primary branch: `master`
-- Current public Release: `v0.4.12-alpha`
+- Current public Release: `v0.4.13-alpha`
 - Current public Release kind: ordinary GitHub Latest alpha Release, with `isPrerelease=false`
 - Current public Release commit: `tag-managed p2.22 closeout release update`
-- GitHub Latest ordinary Release: `v0.4.12-alpha`
-- GitHub Release title: `CodeXchange v0.4.12-alpha`
+- GitHub Latest ordinary Release: `v0.4.13-alpha`
+- GitHub Release title: `CodeXchange v0.4.13-alpha`
 - GitHub Release state: `isDraft=false`, `isPrerelease=false`
 - Public Release assets: `bootstrap.sh`, `install.sh`
 - Public Release asset digests:
@@ -50,7 +50,7 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 - Current public Release note synchronization checkpoint: `p2.21a4-codex-wrapper-nonfatal-split-profile`
 - WeClaw requirement: Requires `weclaw_dev >= v0.1.9-alpha` if WeClaw integration is used.
 - Public tags that must not move without an explicit Release-update task:
-  - `v0.4.12-alpha = <pending>`
+  - `v0.4.13-alpha = <pending>`
   - `v0.3.9-alpha = 82a4428`
   - `v0.3.8-alpha = dfdc629`
   - `v0.3.7-alpha = 466706f`
@@ -60,14 +60,14 @@ Retired document families must not be reintroduced as active documents: `OPERATI
 
 Current closeout evidence:
 
-- Public tag `v0.4.12-alpha = <pending>`.
+- Public tag `v0.4.13-alpha = <pending>`.
 - Internal checkpoint included in the public Release: `p2.20a2-provider-profile-primary-only-and-real-entry = b11a1c4`.
 - GitHub Release is non-draft and non-prerelease.
-- GitHub Latest API returns `v0.4.12-alpha`.
+- GitHub Latest API returns `v0.4.13-alpha`.
 - Release assets are exactly `bootstrap.sh` and `install.sh`.
-- `cox --version` from the refreshed release line reports `public version: v0.4.12-alpha | b11a1c4`.
+- `cox --version` from the refreshed release line reports `public version: v0.4.13-alpha | b11a1c4`.
 - The `p2.19a24` real Codex entry re-test passed after deliberately drifting both managed split profiles to `glm-5.1`; the entry path repaired them and used `deepseek-v4-flash-ascend` without 403/access-denied, default-model leakage, or a `/tmp` wrapper chain.
-- This documentation sync may advance `master` beyond the public Release commit. The public `v0.4.12-alpha` tag is being refreshed by this explicit Release-update task to the p2.22 closeout release commit.
+- This documentation sync may advance `master` beyond the public Release commit. The public `v0.4.13-alpha` tag is being refreshed by this explicit Release-update task to the p2.22 closeout release commit.
 
 ## 3. Key file map
 
@@ -103,7 +103,7 @@ subprocess.run(["command", "-v", "gh"], ...)
 `command` is a shell built-in, not a guaranteed executable on `PATH`; calling it directly from Python can raise `FileNotFoundError` before any useful release or validation action runs. The same rule applies to shell functions and shell-only features such as `source`, `alias`, `set`, `shopt`, `ulimit`, and compound shell syntax. When shell semantics are unnecessary, prefer a direct executable probe such as `shutil.which("gh")` or `subprocess.run(["gh", "--version"], ...)`.
 
 
-`v0.4.12-alpha` currently covers these user-visible areas:
+`v0.4.13-alpha` currently covers these user-visible areas:
 
 1. Guided installer and `cox config wizard`
    - Language is part of the guided flow.
@@ -341,13 +341,13 @@ git branch --show-current
 git rev-parse --short HEAD
 git rev-parse --short origin/master
 git status --short
-git rev-parse --short v0.4.12-alpha^{}
+git rev-parse --short v0.4.13-alpha^{}
 git rev-parse --short p2.19a15-provider-alias-boundary^{} || true
 git rev-parse --short p2.19a10-guided-installer-contextual-hints^{}
 git rev-parse --short refs/tags/v0.4.0^{} || true
 git rev-parse --short refs/tags/v0.3.9^{} || true
 git rev-parse --short refs/tags/v0.3.5^{} || true
-gh release view v0.4.12-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
+gh release view v0.4.13-alpha --repo Awenforever/CoDeepSeedeX --json tagName,name,isDraft,isPrerelease,targetCommitish,assets,publishedAt
 gh api repos/Awenforever/CoDeepSeedeX/releases/latest --jq '{tag_name:.tag_name,name:.name,draft:.draft,prerelease:.prerelease,target_commitish:.target_commitish,assets:[.assets[].name]}'
 cox --version
 ```
@@ -357,15 +357,15 @@ Expected current public Release baseline:
 ```text
 worktree clean
 master=origin/master=<current p2.19a25 documentation sync commit>
-v0.4.12-alpha=6a96593
+v0.4.13-alpha=6a96593
 p2.19a23-profile-drift-failclosed-guard=6a96593
-GitHub Latest Release=v0.4.12-alpha
+GitHub Latest Release=v0.4.13-alpha
 isDraft=false
 isPrerelease=false
 assets=[bootstrap.sh, install.sh]
 bootstrap.sh sha256=5005d628290b569780c042e30ac7e44aff02b4df4b957f2159c25b69356dd12a
 install.sh sha256=5a108260e6ef6a5a748f8f5ad8932be58b8f4f6baf1881c10f62eca430b6af9e
-public version: v0.4.12-alpha | 6a96593
+public version: v0.4.13-alpha | 6a96593
 internal version: p2.19a25-docs-release-state-sync | <current internal tag commit>
 ```
 
@@ -382,14 +382,14 @@ curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/
 Resolved tag fallback:
 
 ```bash
-tag="v0.4.12-alpha"
+tag="v0.4.13-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
 
 Pinned Release-asset bootstrap:
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.12-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.12-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.13-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.13-alpha
 ```
 
 Product uninstall remains installer-owned:
@@ -405,7 +405,7 @@ Uninstall must not delete unrelated user files or non-CodeXchange configuration.
 
 | ID | Mainline task | Expected indicator | Current version / anchor | Current status | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Release | `v0.4.12-alpha` current Latest | GitHub Latest Release exists with `isPrerelease=false`, assets exactly `bootstrap.sh` and `install.sh`, and no duplicate Release title in body. | `v0.4.12-alpha = <pending>` | Closed | 2026-06-08 | Includes the p2.19 custom provider registry, guided UI, Codex compatibility/wrapper hardening, status JSON, auxiliary-model leakage fix, profile-drift fail-closed guard, and real Codex entry validation. |
+| Release | `v0.4.13-alpha` current Latest | GitHub Latest Release exists with `isPrerelease=false`, assets exactly `bootstrap.sh` and `install.sh`, and no duplicate Release title in body. | `v0.4.13-alpha = <pending>` | Closed | 2026-06-08 | Includes the p2.19 custom provider registry, guided UI, Codex compatibility/wrapper hardening, status JSON, auxiliary-model leakage fix, profile-drift fail-closed guard, and real Codex entry validation. |
 | Installer UX | Guided installer and wizard consistency | Step-local hints, arrow-key menus, Backspace navigation, concise validation summary, and no cross-step model summary leakage. | `p2.19a10-guided-installer-contextual-hints` | Closed | 2026-06-07 | VM real-home validation passed. |
 | Custom providers | Multiple custom OpenAI-compatible providers and models | Users can add providers, add models, switch active provider/model, and validate against configured `/models`. | `p2.19a1` to `p2.19a6` | Closed | 2026-06-06 | Active provider/model mirrors to legacy env for runtime compatibility. |
 | Codex compatibility | Version-aware profile layout and safe wrapper | Codex `<0.134` uses legacy tables; Codex `>=0.134` uses split files; `REAL_CODEX` never points to a wrapper. | `p2.19a7` to `p2.19a9` | Closed | 2026-06-07 | Real-home wrapper execution passed. |

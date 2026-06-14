@@ -857,7 +857,7 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
 
 def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.12-alpha}"' in text
+    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.13-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
 

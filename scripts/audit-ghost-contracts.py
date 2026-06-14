@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-CURRENT_PUBLIC_TAG = "v0.4.12-alpha"
+CURRENT_PUBLIC_TAG = "v0.4.13-alpha"
 CURRENT_PUBLIC_COMMIT_SHORT = "01d6cee"
 CURRENT_INTERNAL_TAG = "p2.19a23-profile-drift-failclosed-guard"
 CURRENT_RUNTIME_RELEASE_INTERNAL_TAG = "p2.19a10-guided-installer-contextual-hints"
@@ -57,7 +57,7 @@ class PatternSpec:
 PATTERNS: list[PatternSpec] = [
     PatternSpec(
         "stale_release_state",
-        "Old Release/Latest state contradicting the current v0.4.12-alpha Latest ordinary Release",
+        "Old Release/Latest state contradicting the current v0.4.13-alpha Latest ordinary Release",
         r"Current public Release kind:\s*pre-release|当前公开Release类型：pre-release|"
         r"GitHub Latest ordinary Release:\s*`v0\.4\.0-alpha`|GitHub Latest普通Release：`v0\.4\.0-alpha`|"
         r"GitHub Release flags:\s*`isDraft=false`,\s*`isPrerelease=true`|"

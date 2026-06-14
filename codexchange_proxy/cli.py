@@ -284,6 +284,34 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_STABLE_PORT = 8000
 DEFAULT_THINKING_PORT = 8001
 
+COX_ROUTE_TARGET_ALIASES = {
+    "reasoning": True,
+    "thinking": True,
+    "standard": False,
+    "stable": False,
+    "non-thinking": False,
+    "nonthinking": False,
+}
+COX_ROUTE_TARGET_CHOICES = sorted({
+    "reasoning",
+    "thinking",
+    "standard",
+    "stable",
+    "non-thinking",
+    "non_thinking",
+    "nonthinking",
+})
+
+
+def _normalize_route_target_to_thinking(target: object) -> bool | None:
+    if target is None:
+        return None
+    value = str(target).strip().lower()
+    if not value:
+        return None
+    normalized = value.replace("_", "-")
+    return COX_ROUTE_TARGET_ALIASES.get(normalized)
+
 
 MODEL_API_PROVIDER_ALIASES = {
     "deepseek": "deepseek",
@@ -8710,7 +8738,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     start = sub.add_parser("start", help="start the local proxy")
-    start.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
+    start.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: thinking")
     start.add_argument("--thinking", action="store_true", help="start thinking proxy on port 8001")
     start.add_argument("--port", type=int)
     start.add_argument("--state-dir")
@@ -8720,7 +8748,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.set_defaults(func=_start_proxy)
 
     stop = sub.add_parser("stop", help="stop the local proxy")
-    stop.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
+    stop.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: thinking")
     stop.add_argument("--thinking", action="store_true")
     stop.add_argument("--state-dir")
     stop.add_argument("--pid-file")
@@ -8728,7 +8756,7 @@ def build_parser() -> argparse.ArgumentParser:
     stop.set_defaults(func=_stop_proxy)
 
     status = sub.add_parser("status", help="print /v1/proxy/status")
-    status.add_argument("target", nargs="?", choices=["thinking"], help="optional target: thinking")
+    status.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: thinking")
     status.add_argument("--thinking", action="store_true")
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
@@ -9073,8 +9101,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if getattr(args, "target", None) == "thinking":
-        setattr(args, "thinking", True)
+    target_thinking = _normalize_route_target_to_thinking(getattr(args, "target", None))
+    if target_thinking is not None:
+        setattr(args, "thinking", target_thinking)
 
     if args.version:
         print(_format_version_metadata())
