@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_deepseek_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
+from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_provider_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
 from .providers import canonical_provider_id as _adapter_canonical_provider_id, get_provider_adapter as _get_provider_adapter, provider_registry_status as _provider_adapter_registry_status
 
 
@@ -3850,9 +3850,11 @@ def _pricing(args: argparse.Namespace) -> int:
         return 0
 
     if command == "refresh":
-        payload = _refresh_deepseek_pricing_from_official_docs(
+        provider = _adapter_canonical_provider_id(getattr(args, "provider", None) or "deepseek")
+        payload = _refresh_provider_pricing_from_official_docs(
+            provider,
             model=model,
-            source_url=getattr(args, "source_url", None) or "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+            source_url=getattr(args, "source_url", None),
             write_cache=bool(getattr(args, "write_cache", False)),
             cache_path=getattr(args, "cache_path", None),
             timeout=float(getattr(args, "timeout", 20.0) or 20.0),
@@ -8820,12 +8822,13 @@ def build_parser() -> argparse.ArgumentParser:
     pricing_show.add_argument("--model", default=None)
     pricing_show.set_defaults(func=_pricing)
 
-    pricing_refresh = pricing_sub.add_parser("refresh", help="fetch and validate official DeepSeek pricing HTML")
+    pricing_refresh = pricing_sub.add_parser("refresh", help="fetch and validate provider official pricing HTML")
     pricing_refresh.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     pricing_refresh.add_argument("--model", default=None)
+    pricing_refresh.add_argument("--provider", default="deepseek", help="provider id for pricing refresh; default: deepseek")
     pricing_refresh.add_argument("--write-cache", action="store_true", help="atomically write validated pricing to the user cache")
     pricing_refresh.add_argument("--cache-path", default=None, help="optional explicit cache path for --write-cache")
-    pricing_refresh.add_argument("--source-url", default="https://api-docs.deepseek.com/zh-cn/quick_start/pricing/")
+    pricing_refresh.add_argument("--source-url", default=None, help="optional explicit provider official pricing source URL override")
     pricing_refresh.add_argument("--timeout", type=float, default=20.0)
     pricing_refresh.set_defaults(func=_pricing)
 

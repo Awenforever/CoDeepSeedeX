@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.20-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.21-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -526,7 +526,7 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
         "active_path": str(active_path),
         "cache_path": str(refresh_target_path),
         "refresh_target_path": str(refresh_target_path),
-        "official_source_url": DEEPSEEK_OFFICIAL_PRICING_URL,
+        "official_source_url": get_provider_adapter("deepseek").official_pricing_url,
         "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
         "configured_pricing_path_managed_by_cox": bool(configured),
         "external_config_user_managed": False,
@@ -560,7 +560,8 @@ def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
         )
         return base
 
-    result = _refresh_deepseek_pricing_from_official_docs(
+    result = _refresh_provider_pricing_from_official_docs(
+        "deepseek",
         model=model,
         write_cache=True,
         cache_path=refresh_target_path,
@@ -788,16 +789,26 @@ def _write_pricing_cache_atomic(
 
 
 
-def _refresh_deepseek_pricing_from_official_docs(
+def _refresh_provider_pricing_from_official_docs(
+    provider_id: str,
     *,
     model: str | None = None,
-    source_url: str = DEEPSEEK_OFFICIAL_PRICING_URL,
+    source_url: str | None = None,
     write_cache: bool = False,
     cache_path: str | Path | None = None,
     timeout: float = 20.0,
 ) -> dict[str, Any]:
-    """Compatibility wrapper backed by the DeepSeek provider adapter."""
-    return get_provider_adapter("deepseek").refresh_pricing_from_official_docs(
+    """Refresh provider official pricing through the selected adapter."""
+    adapter = get_provider_adapter(provider_id)
+
+    def _parse_provider_html(text: str, *, include_metadata: bool = False) -> dict[str, Any]:
+        return _parse_provider_official_pricing_html(
+            provider_id,
+            text,
+            include_metadata=include_metadata,
+        )
+
+    return adapter.refresh_pricing_from_official_docs(
         model=model,
         source_url=source_url,
         write_cache=write_cache,
@@ -805,13 +816,32 @@ def _refresh_deepseek_pricing_from_official_docs(
         timeout=timeout,
         default_model=DEFAULT_MODEL,
         fetch_text_url=_fetch_text_url,
-        parse_official_pricing_html=_parse_deepseek_official_pricing_html,
+        parse_official_pricing_html=_parse_provider_html,
         pricing_cache_path=_pricing_cache_path,
         pricing_now_iso=_pricing_now_iso,
         pricing_ttl_seconds=_pricing_ttl_seconds,
         pricing_parse_iso_timestamp=_pricing_parse_iso_timestamp,
         pricing_iso_from_timestamp=_pricing_iso_from_timestamp,
         write_pricing_cache_atomic=_write_pricing_cache_atomic,
+    )
+
+
+def _refresh_deepseek_pricing_from_official_docs(
+    *,
+    model: str | None = None,
+    source_url: str | None = None,
+    write_cache: bool = False,
+    cache_path: str | Path | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """Legacy DeepSeek pricing wrapper backed by the provider-neutral adapter seam."""
+    return _refresh_provider_pricing_from_official_docs(
+        "deepseek",
+        model=model,
+        source_url=source_url,
+        write_cache=write_cache,
+        cache_path=cache_path,
+        timeout=timeout,
     )
 def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
     pricing = _load_model_pricing_usd_per_1m().get(model)

@@ -59,7 +59,7 @@ def _clear_provider_probe_test_env(monkeypatch):
 def test_cli_version(capsys):
     assert main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "public version: v0.4.20-alpha |" in out
+    assert "public version: v0.4.21-alpha |" in out
     assert "internal version: p" in out
 
 
@@ -3579,13 +3579,14 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
     assert show["pricing"]["refresh"]["available"] is True
     assert show["pricing"]["refresh"]["write_cache_requires_flag"] == "--write-cache"
 
-    def fake_refresh(**kwargs):
+    def fake_refresh(provider_id, **kwargs):
+        assert provider_id == "deepseek"
         return {
             "status": "ok",
             "available": True,
             "reason": None,
             "source_kind": "official_docs_html",
-            "source_url": kwargs["source_url"],
+            "source_url": kwargs["source_url"] or "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
             "writes_cache": bool(kwargs["write_cache"]),
             "cache_path": str(kwargs["cache_path"]),
             "pricing": {
@@ -3598,7 +3599,7 @@ def test_cli_pricing_show_and_refresh_are_structured(monkeypatch, tmp_path, caps
             },
         }
 
-    monkeypatch.setattr(cli_module, "_refresh_deepseek_pricing_from_official_docs", fake_refresh)
+    monkeypatch.setattr(cli_module, "_refresh_provider_pricing_from_official_docs", fake_refresh)
 
     assert main([
         "pricing",

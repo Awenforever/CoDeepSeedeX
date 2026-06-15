@@ -24,7 +24,8 @@ def test_app_deepseek_pricing_wrappers_delegate_to_provider_adapter() -> None:
 
     assert "_parse_provider_official_pricing_html" in parse_source
     assert 'get_provider_adapter("deepseek").parse_official_pricing_html' not in parse_source
-    assert 'get_provider_adapter("deepseek").refresh_pricing_from_official_docs' in refresh_source
+    assert "_refresh_provider_pricing_from_official_docs" in refresh_source
+    assert 'get_provider_adapter("deepseek").refresh_pricing_from_official_docs' not in refresh_source
     assert "_provider_discount_window_from_text" in discount_source
     assert 'get_provider_adapter("deepseek").discount_window_from_pricing_text' not in discount_source
 
@@ -53,4 +54,4 @@ def test_deepseek_adapter_parser_matches_public_app_wrapper() -> None:
 
 
 def test_public_release_tag_is_synchronized_to_v049() -> None:
-    assert app_module.PROXY_PUBLIC_VERSION == "v0.4.20-alpha"
+    assert app_module.PROXY_PUBLIC_VERSION == "v0.4.21-alpha"
