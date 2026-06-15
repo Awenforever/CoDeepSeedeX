@@ -303,7 +303,7 @@ COX_ROUTE_TARGET_CHOICES = sorted({
 })
 
 
-def _normalize_route_target_to_thinking(target: object) -> bool | None:
+def _normalize_route_target_to_reasoning(target: object) -> bool | None:
     if target is None:
         return None
     value = str(target).strip().lower()
@@ -311,6 +311,15 @@ def _normalize_route_target_to_thinking(target: object) -> bool | None:
         return None
     normalized = value.replace("_", "-")
     return COX_ROUTE_TARGET_ALIASES.get(normalized)
+
+
+def _normalize_route_target_to_thinking(target: object) -> bool | None:
+    """Legacy compatibility alias for route target normalization.
+
+    The CLI still stores this boolean on args.thinking for compatibility with
+    existing code paths, but primary route terminology is standard/reasoning.
+    """
+    return _normalize_route_target_to_reasoning(target)
 
 
 MODEL_API_PROVIDER_ALIASES = {
@@ -9101,9 +9110,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    target_thinking = _normalize_route_target_to_thinking(getattr(args, "target", None))
-    if target_thinking is not None:
-        setattr(args, "thinking", target_thinking)
+    target_reasoning = _normalize_route_target_to_reasoning(getattr(args, "target", None))
+    if target_reasoning is not None:
+        setattr(args, "thinking", target_reasoning)
 
     if args.version:
         print(_format_version_metadata())

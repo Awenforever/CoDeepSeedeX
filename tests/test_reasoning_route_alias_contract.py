@@ -4,13 +4,13 @@ from codexchange_proxy import cli
 
 
 def test_route_target_alias_normalization_contract() -> None:
-    assert cli._normalize_route_target_to_thinking("reasoning") is True
-    assert cli._normalize_route_target_to_thinking("thinking") is True
-    assert cli._normalize_route_target_to_thinking("standard") is False
-    assert cli._normalize_route_target_to_thinking("stable") is False
-    assert cli._normalize_route_target_to_thinking("non-thinking") is False
-    assert cli._normalize_route_target_to_thinking("non_thinking") is False
-    assert cli._normalize_route_target_to_thinking(None) is None
+    assert cli._normalize_route_target_to_reasoning("reasoning") is True
+    assert cli._normalize_route_target_to_reasoning("thinking") is True
+    assert cli._normalize_route_target_to_reasoning("standard") is False
+    assert cli._normalize_route_target_to_reasoning("stable") is False
+    assert cli._normalize_route_target_to_reasoning("non-thinking") is False
+    assert cli._normalize_route_target_to_reasoning("non_thinking") is False
+    assert cli._normalize_route_target_to_reasoning(None) is None
 
 
 def test_lifecycle_commands_accept_standard_and_reasoning_aliases(monkeypatch) -> None:
