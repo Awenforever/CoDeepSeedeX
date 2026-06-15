@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.22-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.23-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -12706,26 +12706,29 @@ async def _execute_proxy_tool_call(
         }
 
     if name == "proxy_balance":
-        if deepseek_client is None or not hasattr(deepseek_client, "user_balance"):
-            return {
+        balance_contract = await _provider_balance_contract(
+            "deepseek",
+            client=deepseek_client,
+            include_balance=True,
+        )
+        if not balance_contract.get("available"):
+            result = {
                 "ok": False,
                 "tool": name,
-                "error": "balance_client_unavailable",
+                "error": balance_contract.get("reason") or "balance_request_failed",
             }
-        try:
-            balance = await deepseek_client.user_balance()
-        except Exception as exc:
-            return {
-                "ok": False,
-                "tool": name,
-                "error": "balance_request_failed",
-                "message": str(exc),
-            }
+            if balance_contract.get("message"):
+                result["message"] = balance_contract.get("message")
+            return result
         return {
             "ok": True,
             "tool": name,
-            "upstream": "deepseek",
-            "balance": balance,
+            "upstream": balance_contract.get("provider") or "deepseek",
+            "provider": balance_contract.get("provider") or "deepseek",
+            "balance": balance_contract.get("balance"),
+            "currency": balance_contract.get("currency"),
+            "amount": balance_contract.get("amount"),
+            "display": balance_contract.get("display"),
         }
 
     if name == "proxy_echo":
@@ -20496,26 +20499,37 @@ def _weclaw_balance_exception_reason(exc: Exception) -> str:
     return "balance_request_failed"
 
 
-async def _weclaw_balance_contract(
+async def _provider_user_balance(provider_id: str, client: Any | None) -> Any:
+    """Call a provider account-balance client method through a provider-neutral seam."""
+    provider_value = str(provider_id or "deepseek").strip().lower().replace(" ", "_") or "deepseek"
+    if client is None or not hasattr(client, "user_balance"):
+        raise RuntimeError(f"{provider_value}_balance_client_unavailable")
+    return await client.user_balance()
+
+
+async def _provider_balance_contract(
+    provider_id: str = "deepseek",
     *,
-    deepseek_client: Any | None,
+    client: Any | None,
     include_balance: bool = True,
 ) -> dict[str, Any]:
+    """Return provider account-balance status without exposing DeepSeek as the runtime boundary."""
+    provider_value = str(provider_id or "deepseek").strip().lower().replace(" ", "_") or "deepseek"
     if not include_balance:
-        return _weclaw_balance_unavailable("disabled_by_request")
-    if deepseek_client is None or not hasattr(deepseek_client, "user_balance"):
-        return _weclaw_balance_unavailable("balance_client_unavailable")
+        return _weclaw_balance_unavailable("disabled_by_request", provider=provider_value)
+    if client is None or not hasattr(client, "user_balance"):
+        return _weclaw_balance_unavailable("balance_client_unavailable", provider=provider_value)
 
-    api_key = getattr(deepseek_client, "api_key", None)
-    if deepseek_client.__class__ is DeepSeekClient and api_key is not None and not str(api_key).strip():
-        return _weclaw_balance_unavailable("api_key_not_configured")
+    api_key = getattr(client, "api_key", None)
+    if provider_value == "deepseek" and client.__class__ is DeepSeekClient and api_key is not None and not str(api_key).strip():
+        return _weclaw_balance_unavailable("api_key_not_configured", provider=provider_value)
 
     try:
-        balance = await deepseek_client.user_balance()
+        balance = await _provider_user_balance(provider_value, client)
     except Exception as exc:
         reason = _weclaw_balance_exception_reason(exc)
         return {
-            **_weclaw_balance_unavailable(reason),
+            **_weclaw_balance_unavailable(reason, provider=provider_value),
             "error_type": type(exc).__name__,
             "message": str(exc)[:1000],
         }
@@ -20525,7 +20539,7 @@ async def _weclaw_balance_contract(
         "available": True,
         "status": "ok",
         "source": "provider_balance_api",
-        "provider": "deepseek",
+        "provider": provider_value,
         "updated_at": _now(),
         "fetched_at": _now(),
         "balance": balance,
@@ -20533,6 +20547,19 @@ async def _weclaw_balance_contract(
         "action": None,
         **display_fields,
     }
+
+
+async def _weclaw_balance_contract(
+    *,
+    deepseek_client: Any | None,
+    include_balance: bool = True,
+) -> dict[str, Any]:
+    """Legacy DeepSeek WeClaw balance wrapper backed by the provider-neutral balance seam."""
+    return await _provider_balance_contract(
+        "deepseek",
+        client=deepseek_client,
+        include_balance=include_balance,
+    )
 
 def _runtime_weclaw_status(
     profile: str,
@@ -20811,13 +20838,14 @@ def create_app(
     @app.get("/v1/proxy/balance")
     async def proxy_balance() -> dict[str, Any]:
         try:
-            balance = await app.state.deepseek_client.user_balance()
+            balance = await _provider_user_balance("deepseek", app.state.deepseek_client)
         except Exception as exc:
             raise _upstream_exception_to_http_exception(exc) from exc
 
         return {
             "status": "ok",
             "upstream": "deepseek",
+            "provider": "deepseek",
             "balance": balance,
         }
 
