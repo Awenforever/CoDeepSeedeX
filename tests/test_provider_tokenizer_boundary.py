@@ -42,12 +42,15 @@ def test_cli_tokenizer_wrappers_delegate_to_provider_adapter(tmp_path) -> None:
     sync_source = inspect.getsource(cli_module._sync_deepseek_tokenizer_resource)
 
     assert "get_provider_adapter" in kind_source
-    assert "_deepseek_tokenizer_resource_metadata" in status_source
-    assert "_deepseek_tokenizer_resource_metadata" in sync_source
+    assert "_tokenizer_resource_metadata" in status_source
+    assert "_deepseek_tokenizer_resource_metadata" not in status_source
+    assert "_sync_provider_tokenizer_resource" in sync_source
 
     unsupported = cli_module._tokenizer_resource_status("qwen", resource_root=str(tmp_path))
     assert unsupported["status"] == "unsupported"
-    assert unsupported["provider_tokenizer"]["tokenizer_kind"] == "deepseek_official_current"
+    assert unsupported["status"] == "unsupported"
+    assert unsupported["available"] is False
+    assert unsupported["supported_providers"] == ["deepseek"]
 
     status = cli_module._tokenizer_resource_status("deepseek", resource_root=str(tmp_path))
     assert status["status"] == "ok"

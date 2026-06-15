@@ -3587,24 +3587,43 @@ DEEPSEEK_TOKENIZER_ZIP_ENTRIES = {
 }
 
 
-def _deepseek_tokenizer_resource_metadata() -> dict[str, Any]:
+def _tokenizer_resource_metadata(provider: str = "deepseek") -> dict[str, Any]:
+    provider_key = str(provider or "deepseek").strip().lower()
     try:
-        adapter = get_provider_adapter("deepseek")
+        adapter = get_provider_adapter(provider_key)
         method = getattr(adapter, "tokenizer_resource_metadata", None)
         if callable(method):
             metadata = method()
             if isinstance(metadata, dict):
-                return metadata
+                return dict(metadata)
     except Exception:
         pass
+
+    if provider_key == "deepseek":
+        return {
+            "provider": "deepseek",
+            "tokenizer": True,
+            "tokenizer_kind": DEEPSEEK_TOKENIZER_KIND,
+            "legacy_tokenizer_kind": "deepseek_v3",
+            "env_names": ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"],
+            "source_url": DEEPSEEK_TOKENIZER_SOURCE_URL,
+            "source_zip_sha256": DEEPSEEK_TOKENIZER_ZIP_SHA256,
+            "source_zip_entries": DEEPSEEK_TOKENIZER_ZIP_ENTRIES,
+            "source_archive_name": "deepseek_v3_tokenizer.zip",
+            "sync_action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+        }
+
     return {
-        "provider": "deepseek",
-        "tokenizer": True,
-        "tokenizer_kind": DEEPSEEK_TOKENIZER_KIND,
-        "legacy_tokenizer_kind": "deepseek_v3",
-        "env_names": ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"],
-        "sync_action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+        "provider": provider_key,
+        "tokenizer": False,
+        "reason": "profile_tokenizer_resource_unsupported",
+        "supported_providers": ["deepseek"],
     }
+
+
+def _deepseek_tokenizer_resource_metadata() -> dict[str, Any]:
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral tokenizer seam."""
+    return _tokenizer_resource_metadata("deepseek")
 
 def _tokenizer_resource_root(value: str | None = None) -> Path:
     if value:
@@ -3654,7 +3673,7 @@ def _read_tokenizer_source_bytes(source_url: str, *, timeout: float) -> bytes:
 
 
 def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str | None = None) -> dict[str, Any]:
-    metadata = _deepseek_tokenizer_resource_metadata()
+    metadata = _tokenizer_resource_metadata(provider)
     kind = _tokenizer_provider_kind(provider)
     root = _tokenizer_resource_root(resource_root)
     if kind is None:
@@ -3702,16 +3721,38 @@ def _tokenizer_resource_status(provider: str = "deepseek", *, resource_root: str
         "manifest": manifest,
         "runtime_contract": contract,
     }
-def _sync_deepseek_tokenizer_resource(
+def _sync_provider_tokenizer_resource(
+    provider: str = "deepseek",
     *,
-    source_url: str = DEEPSEEK_TOKENIZER_SOURCE_URL,
-    expected_sha256: str = DEEPSEEK_TOKENIZER_ZIP_SHA256,
+    source_url: str | None = None,
+    expected_sha256: str | None = None,
     resource_root: str | None = None,
     timeout: float = 60.0,
     force: bool = False,
 ) -> dict[str, Any]:
     root = _tokenizer_resource_root(resource_root)
-    metadata = _deepseek_tokenizer_resource_metadata()
+    provider_key = str(provider or "deepseek").strip().lower()
+    metadata = _tokenizer_resource_metadata(provider_key)
+    if provider_key != "deepseek":
+        return {
+            "status": "error",
+            "provider": provider_key,
+            "reason": "profile_tokenizer_resource_unsupported",
+            "supported_providers": ["deepseek"],
+        }
+    if not source_url:
+        source_url = str(
+            metadata.get("source_url")
+            or metadata.get("source_zip_url")
+            or metadata.get("download_url")
+            or DEEPSEEK_TOKENIZER_SOURCE_URL
+        )
+    if not expected_sha256:
+        expected_sha256 = str(
+            metadata.get("source_zip_sha256")
+            or metadata.get("zip_sha256")
+            or DEEPSEEK_TOKENIZER_ZIP_SHA256
+        )
     kind = str(metadata.get("tokenizer_kind") or DEEPSEEK_TOKENIZER_KIND)
     resource_dir = root / kind
     tokenizer_json = resource_dir / "tokenizer.json"
@@ -3721,7 +3762,7 @@ def _sync_deepseek_tokenizer_resource(
     if tokenizer_json.is_file() and tokenizer_config.is_file() and not force:
         return {
             "status": "ok",
-            "provider": "deepseek",
+            "provider": provider_key,
             "tokenizer_kind": kind,
             "changed": False,
             "reason": "already_synced",
@@ -3735,7 +3776,7 @@ def _sync_deepseek_tokenizer_resource(
     if expected_sha256 and actual_sha256.lower() != expected_sha256.lower():
         return {
             "status": "error",
-            "provider": "deepseek",
+            "provider": provider_key,
             "tokenizer_kind": kind,
             "changed": False,
             "reason": "tokenizer_zip_sha256_mismatch",
@@ -3750,7 +3791,7 @@ def _sync_deepseek_tokenizer_resource(
         if missing:
             return {
                 "status": "error",
-                "provider": "deepseek",
+                "provider": provider_key,
                 "tokenizer_kind": kind,
                 "changed": False,
                 "reason": "tokenizer_zip_missing_expected_entries",
@@ -3765,12 +3806,12 @@ def _sync_deepseek_tokenizer_resource(
             (tmp_dir / "tokenizer.json").write_bytes(archive.read(DEEPSEEK_TOKENIZER_ZIP_ENTRIES["tokenizer_json"]))
             (tmp_dir / "tokenizer_config.json").write_bytes(archive.read(DEEPSEEK_TOKENIZER_ZIP_ENTRIES["tokenizer_config_json"]))
             manifest = {
-                "provider": "deepseek",
+                "provider": provider_key,
                 "tokenizer_kind": kind,
                 "source_url": source_url,
                 "source_zip_sha256": actual_sha256,
-                "source_zip_entries": DEEPSEEK_TOKENIZER_ZIP_ENTRIES,
-                "upstream_archive_name": "deepseek_v3_tokenizer.zip",
+                "source_zip_entries": dict(metadata.get("source_zip_entries") or DEEPSEEK_TOKENIZER_ZIP_ENTRIES),
+                "upstream_archive_name": str(metadata.get("source_archive_name") or metadata.get("tokenizer_archive_name") or "deepseek_v3_tokenizer.zip"),
                 "upstream_archive_internal_dir": "deepseek_v3_tokenizer",
                 "naming_note": "DeepSeek currently publishes this official tokenizer archive from its token usage documentation; the archive name remains deepseek_v3_tokenizer even when used for current DeepSeek profile local estimates.",
                 "provider_tokenizer": metadata,
@@ -3792,7 +3833,7 @@ def _sync_deepseek_tokenizer_resource(
 
             return {
                 "status": "ok",
-                "provider": "deepseek",
+                "provider": provider_key,
                 "tokenizer_kind": kind,
                 "changed": True,
                 "resource_dir": str(resource_dir),
@@ -3803,6 +3844,25 @@ def _sync_deepseek_tokenizer_resource(
         except Exception:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise
+
+
+def _sync_deepseek_tokenizer_resource(
+    *,
+    source_url: str = DEEPSEEK_TOKENIZER_SOURCE_URL,
+    expected_sha256: str = DEEPSEEK_TOKENIZER_ZIP_SHA256,
+    resource_root: str | None = None,
+    timeout: float = 60.0,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral tokenizer seam."""
+    return _sync_provider_tokenizer_resource(
+        "deepseek",
+        source_url=source_url,
+        expected_sha256=expected_sha256,
+        resource_root=resource_root,
+        timeout=timeout,
+        force=force,
+    )
 
 
 def _tokenizer(args: argparse.Namespace) -> int:
@@ -3822,7 +3882,8 @@ def _tokenizer(args: argparse.Namespace) -> int:
                 "supported_providers": ["deepseek"],
             }, ensure_ascii=False, indent=2))
             return 2
-        payload = _sync_deepseek_tokenizer_resource(
+        payload = _sync_provider_tokenizer_resource(
+            provider,
             source_url=getattr(args, "source_url", None) or DEEPSEEK_TOKENIZER_SOURCE_URL,
             expected_sha256=getattr(args, "expected_sha256", None) or DEEPSEEK_TOKENIZER_ZIP_SHA256,
             resource_root=getattr(args, "resource_dir", None),
