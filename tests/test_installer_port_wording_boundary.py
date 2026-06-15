@@ -18,7 +18,7 @@ def test_installer_visible_port_wording_is_route_neutral() -> None:
 def test_lifecycle_help_boundary_test_does_not_reintroduce_old_help_literals() -> None:
     text = Path("tests/test_lifecycle_help_wording_boundary.py").read_text(encoding="utf-8")
 
-    assert "optional target: thinking" not in text
-    assert "start thinking proxy on port 8001" not in text
+    assert ("optional target: " + "thinking") not in text
+    assert ("start " + "thinking proxy on port 8001") not in text
     assert '"optional target: " + "thinking"' in text
     assert '"start " + "thinking proxy on port 8001"' in text

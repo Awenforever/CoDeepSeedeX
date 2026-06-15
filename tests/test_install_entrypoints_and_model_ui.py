@@ -331,8 +331,12 @@ def test_codex_wrapper_prefers_public_cox_and_fails_closed_on_unhealthy_proxy() 
     assert 'if [ ! -x "\\$COX" ]' in body
     assert 'start_args=(start)' not in start_fn
     assert 'status_args=(status)' not in start_fn
-    assert 'start_args=(start thinking)' in start_fn
-    assert 'status_args=(status thinking)' in start_fn
+    assert 'start_args=(start reasoning)' in start_fn
+    legacy_start_args = 'start_args=(start ' + 'thinking)'
+    assert legacy_start_args not in start_fn
+    assert 'status_args=(status reasoning)' in start_fn
+    legacy_status_args = 'status_args=(status ' + 'thinking)'
+    assert legacy_status_args not in start_fn
     assert 'profile "deepseek" is deprecated' in run_fn
     assert 'activate_codexchange_custom_provider_profile' in body
     assert '"\\$COX" "\\${start_args[@]}" >/dev/null 2>&1' in start_fn
@@ -857,7 +861,7 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
 
 def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.18-alpha}"' in text
+    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.19-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
 

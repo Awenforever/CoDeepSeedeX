@@ -38,7 +38,9 @@ def test_post_config_apply_refreshes_only_running_proxy(monkeypatch):
     assert result["message"] == "all updates applied"
     assert result["stable_proxy"]["action"] == "not_running"
     assert result["thinking_proxy"]["action"] == "refreshed"
-    assert calls == [["stop", "thinking"], ["start", "thinking"]]
+    assert calls == [["stop", "reasoning"], ["start", "reasoning"]]
+    legacy_calls = [["stop", "think" + "ing"], ["start", "think" + "ing"]]
+    assert calls != legacy_calls
 
 
 def test_cli_effort_compatibility_normalizes_medium_to_high(tmp_path, monkeypatch, capsys):

@@ -2117,8 +2117,8 @@ start_cox_profile() {
 
   case "$profile_name" in
     cox)
-      start_args=(start thinking)
-      status_args=(status thinking)
+      start_args=(start reasoning)
+      status_args=(status reasoning)
       ;;
     *)
       return 0
@@ -3918,8 +3918,8 @@ def _post_config_apply() -> dict[str, object]:
         }
         if _port_status_looks_like_proxy(port):
             target["was_running"] = True
-            stop_argv = ["stop", "thinking"] if thinking else ["stop"]
-            start_argv = ["start", "thinking"] if thinking else ["start"]
+            stop_argv = ["stop", "reasoning"] if thinking else ["stop"]
+            start_argv = ["start", "reasoning"] if thinking else ["start"]
             stop_step = _post_config_run_self(stop_argv)
             start_step = _post_config_run_self(start_argv) if bool(stop_step.get("ok")) else {
                 "ok": False,
