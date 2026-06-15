@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.14-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.15-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -185,9 +185,15 @@ def _thinking_enabled() -> bool:
 
 
 
+
+def _normalize_provider_reasoning_effort(provider_id: str, value: Any) -> str | None:
+    """Normalize provider-specific reasoning effort through the selected adapter."""
+    return get_provider_adapter(provider_id).normalize_reasoning_effort(value)
+
+
 def _normalize_deepseek_reasoning_effort(value: Any) -> str | None:
-    """Compatibility wrapper backed by the DeepSeek provider adapter."""
-    return get_provider_adapter("deepseek").normalize_reasoning_effort(value)
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral adapter seam."""
+    return _normalize_provider_reasoning_effort("deepseek", value)
 
 
 def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
@@ -261,9 +267,15 @@ def _select_upstream_model(request_model: str | None) -> str:
 
 
 
-def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
-    """Compatibility wrapper backed by the DeepSeek provider adapter."""
-    numbers = dict(get_provider_adapter("deepseek").parse_usage(deepseek_response))
+
+
+def _extract_provider_usage_numbers(provider_id: str, provider_response: dict[str, Any]) -> dict[str, int]:
+    """Extract usage numbers through the selected provider adapter.
+
+    This preserves the legacy DeepSeek usage accounting contract while moving
+    the provider-specific parse step behind the selected adapter.
+    """
+    numbers = dict(get_provider_adapter(provider_id).parse_usage(provider_response))
 
     prompt_tokens = int(numbers.get("prompt_tokens") or 0)
     completion_tokens = int(numbers.get("completion_tokens") or 0)
@@ -300,6 +312,12 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
         "prompt_cache_miss_tokens": prompt_cache_miss_tokens,
         "reasoning_tokens": reasoning_tokens,
     }
+
+
+
+def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral adapter seam."""
+    return _extract_provider_usage_numbers("deepseek", deepseek_response)
 
 
 DEEPSEEK_OFFICIAL_PRICING_URL = get_provider_adapter("deepseek").official_pricing_url
