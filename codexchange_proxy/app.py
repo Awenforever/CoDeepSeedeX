@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.15-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.16-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -715,19 +715,44 @@ def _parse_pricing_cell_details(text: str) -> dict[str, Any]:
     }
 
 
-def _deepseek_discount_window_from_text(text: str) -> dict[str, Any]:
-    """Compatibility wrapper backed by the DeepSeek provider adapter."""
-    return get_provider_adapter("deepseek").discount_window_from_pricing_text(
+
+
+def _provider_discount_window_from_text(provider_id: str, text: str) -> dict[str, Any]:
+    """Parse provider discount-window metadata through the selected adapter."""
+    return get_provider_adapter(provider_id).discount_window_from_pricing_text(
         text,
         clean_pricing_html_cell=_clean_pricing_html_cell,
     )
-def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool = False) -> dict[str, Any]:
-    """Compatibility wrapper backed by the DeepSeek provider adapter."""
-    return get_provider_adapter("deepseek").parse_official_pricing_html(
+
+
+
+def _deepseek_discount_window_from_text(text: str) -> dict[str, Any]:
+    """Legacy DeepSeek pricing wrapper backed by the provider-neutral adapter seam."""
+    return _provider_discount_window_from_text("deepseek", text)
+
+
+def _parse_provider_official_pricing_html(
+    provider_id: str,
+    text: str,
+    *,
+    include_metadata: bool = False,
+) -> dict[str, Any]:
+    """Parse provider official pricing HTML through the selected adapter."""
+    return get_provider_adapter(provider_id).parse_official_pricing_html(
         text,
         include_metadata=include_metadata,
         clean_pricing_html_cell=_clean_pricing_html_cell,
         parse_pricing_cell_details=_parse_pricing_cell_details,
+    )
+
+
+
+def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool = False) -> dict[str, Any]:
+    """Legacy DeepSeek pricing wrapper backed by the provider-neutral adapter seam."""
+    return _parse_provider_official_pricing_html(
+        "deepseek",
+        text,
+        include_metadata=include_metadata,
     )
 def _write_pricing_cache_atomic(
     prices: dict[str, Any],
