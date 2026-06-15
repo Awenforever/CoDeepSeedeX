@@ -33,16 +33,16 @@ npm install -g @openai/codex
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-固定当前Latest Release tag（`v0.4.17-alpha`）：
+固定当前Latest Release tag（`v0.4.18-alpha`）：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.17-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.17-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.18-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.18-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
 
 ```bash
-tag="v0.4.17-alpha"
+tag="v0.4.18-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -60,8 +60,8 @@ bs="$tmp/bootstrap.sh"
 
 ```bash
 cox --version
-cox status
-cox status thinking
+cox status standard
+cox status reasoning
 ```
 
 版本输出应包含两行：
@@ -175,13 +175,15 @@ live诊断会调用外部API，可能消耗额度或产生费用。
 ## 启动和停止proxy
 
 ```bash
-cox start
-cox start thinking
-cox status
-cox status thinking
-cox stop
-cox stop thinking
+cox start standard
+cox start reasoning
+cox status standard
+cox status reasoning
+cox stop standard
+cox stop reasoning
 ```
+
+`thinking`和`non-thinking`仍作为legacy生命周期别名兼容保留；新的文档示例以`reasoning`和`standard`作为主路由名称。
 
 `cox`是CodeXchange的主受管路由。`deepseek`、`qwen-us`或自定义provider id等provider-backed profiles通过通用provider routing契约独立解析。
 
@@ -225,7 +227,7 @@ cox upgrade --alpha
 显式指定tag或ref：
 
 ```bash
-cox upgrade --tag v0.4.17-alpha
+cox upgrade --tag v0.4.18-alpha
 ```
 
 不要同时使用`--alpha`和`--tag`。
@@ -274,7 +276,7 @@ weclaw_dev >= v0.1.9-alpha
 机器可读status契约：
 
 ```bash
-cox status thinking --weclaw-json
+cox status reasoning --weclaw-json
 ```
 
 WeClaw重点消费字段包括：
@@ -322,7 +324,7 @@ docs/development-log.md
 
 ## WeClaw状态遥测
 
-CodeXchange通过`cox status thinking --weclaw-json`向WeClaw提供结构化状态遥测。
+CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状态遥测。
 
 当前面向WeClaw的字段包括：
 - 来自provider usage的token用量；
@@ -343,7 +345,7 @@ CodeXchange通过`cox status thinking --weclaw-json`向WeClaw提供结构化状�
 
 WeClaw应消费cox提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。
 
-### v0.4.17-alpha
+### v0.4.18-alpha
 
 当前公开版本改进了自定义 OpenAI-compatible provider 支持，修复 custom reasoning-only 响应映射，并保护图片 payload 不再被 compact 或 trim。
 

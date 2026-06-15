@@ -33,16 +33,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Pinned current Latest Release tag (`v0.4.17-alpha`):
+Pinned current Latest Release tag (`v0.4.18-alpha`):
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.17-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.17-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.18-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.18-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.4.17-alpha"
+tag="v0.4.18-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -60,8 +60,8 @@ The installer places CodeXchange under `~/.local/share/codexchange`, creates the
 
 ```bash
 cox --version
-cox status
-cox status thinking
+cox status standard
+cox status reasoning
 ```
 
 Expected version output has two lines:
@@ -175,13 +175,15 @@ Live provider diagnostics may call external APIs and may consume quota or credit
 ## Run and stop proxy
 
 ```bash
-cox start
-cox start thinking
-cox status
-cox status thinking
-cox stop
-cox stop thinking
+cox start standard
+cox start reasoning
+cox status standard
+cox status reasoning
+cox stop standard
+cox stop reasoning
 ```
+
+`thinking` and `non-thinking` remain accepted as legacy lifecycle aliases; new documentation examples use `reasoning` and `standard` as the primary route names.
 
 `cox` is the primary managed CodeXchange route. Provider-backed profiles such as `deepseek`, `qwen-us`, or custom provider ids are independent Codex profiles resolved through the generic provider routing contract.
 
@@ -225,7 +227,7 @@ cox upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-cox upgrade --tag v0.4.17-alpha
+cox upgrade --tag v0.4.18-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -274,7 +276,7 @@ weclaw_dev >= v0.1.9-alpha
 Machine-readable status contract:
 
 ```bash
-cox status thinking --weclaw-json
+cox status reasoning --weclaw-json
 ```
 
 Important fields exposed for WeClaw include:
@@ -322,7 +324,7 @@ Historical release notes and long development records belong in `docs/developmen
 
 ## WeClaw status telemetry
 
-CodeXchange exposes structured WeClaw status telemetry through `cox status thinking --weclaw-json`.
+CodeXchange exposes structured WeClaw status telemetry through `cox status reasoning --weclaw-json`.
 
 Current WeClaw-facing fields include:
 - token usage from provider-reported usage totals,
@@ -343,7 +345,7 @@ Current WeClaw-facing fields include:
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 
-### v0.4.17-alpha
+### v0.4.18-alpha
 
 The current public release improves custom OpenAI-compatible provider support, fixes custom reasoning-only responses, and keeps image payloads from being compacted or trimmed.
 
