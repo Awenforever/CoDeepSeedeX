@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.23-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.24-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -196,41 +196,48 @@ def _normalize_deepseek_reasoning_effort(value: Any) -> str | None:
     return _normalize_provider_reasoning_effort("deepseek", value)
 
 
-def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
-    direct = _normalize_deepseek_reasoning_effort(payload.get("reasoning_effort"))
+def _extract_provider_request_reasoning_effort(provider_id: str, payload: dict[str, Any]) -> str | None:
+    """Extract provider-specific reasoning effort from an OpenAI/Codex payload."""
+    direct = _normalize_provider_reasoning_effort(provider_id, payload.get("reasoning_effort"))
     if direct is not None:
         return direct
 
-    codex_direct = _normalize_deepseek_reasoning_effort(payload.get("model_reasoning_effort"))
+    codex_direct = _normalize_provider_reasoning_effort(provider_id, payload.get("model_reasoning_effort"))
     if codex_direct is not None:
         return codex_direct
 
     reasoning = payload.get("reasoning")
     if isinstance(reasoning, dict):
         for key in ["effort", "reasoning_effort", "model_reasoning_effort"]:
-            value = _normalize_deepseek_reasoning_effort(reasoning.get(key))
+            value = _normalize_provider_reasoning_effort(provider_id, reasoning.get(key))
             if value is not None:
                 return value
     else:
-        value = _normalize_deepseek_reasoning_effort(reasoning)
+        value = _normalize_provider_reasoning_effort(provider_id, reasoning)
         if value is not None:
             return value
 
     return None
 
 
-def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> str | None:
-    """Return DeepSeek reasoning_effort for upstream ChatCompletions."""
+def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral seam."""
+    return _extract_provider_request_reasoning_effort("deepseek", payload)
+
+
+def _provider_reasoning_effort_config(provider_id: str, payload: dict[str, Any] | None = None) -> str | None:
+    """Return provider reasoning_effort for upstream ChatCompletions."""
     if not _thinking_enabled():
         return None
 
     if payload is not None:
-        request_effort = _extract_request_reasoning_effort(payload)
+        request_effort = _extract_provider_request_reasoning_effort(provider_id, payload)
         if request_effort is not None:
             return request_effort
 
-    env_effort = _normalize_deepseek_reasoning_effort(
-        os.environ.get("COX_REASONING_EFFORT", "high")
+    env_effort = _normalize_provider_reasoning_effort(
+        provider_id,
+        os.environ.get("COX_REASONING_EFFORT", "high"),
     )
     if env_effort is not None:
         return env_effort
@@ -240,6 +247,11 @@ def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> 
         f"{os.environ.get('COX_REASONING_EFFORT')!r}; falling back to 'high'"
     )
     return "high"
+
+
+def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> str | None:
+    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral seam."""
+    return _provider_reasoning_effort_config("deepseek", payload)
 
 
 def _force_proxy_model_enabled() -> bool:
@@ -9372,7 +9384,7 @@ async def _chat_completions_with_usage(
             effective_model=effective_model,
             upstream_model=effective_model,
             route="thinking" if thinking_enabled else "non_thinking",
-            effort=_deepseek_reasoning_effort_config(payload),
+            effort=_provider_reasoning_effort_config("deepseek", payload),
             pricing_context=pricing_context,
             estimated_cost_source_amount=estimated_cost_source_amount,
             estimated_cost_display_amount=estimated_cost_source_amount,
@@ -21269,7 +21281,7 @@ def create_app(
         )
 
         messages_for_deepseek = _prepare_messages_for_deepseek(payload_messages)
-        reasoning_effort = _deepseek_reasoning_effort_config(payload)
+        reasoning_effort = _provider_reasoning_effort_config("deepseek", payload)
         chat_payload = _build_chat_payload(
             model=model,
             messages=messages_for_deepseek,
