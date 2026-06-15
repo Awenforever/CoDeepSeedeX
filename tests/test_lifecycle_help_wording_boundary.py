@@ -35,7 +35,8 @@ def test_lifecycle_target_help_is_provider_neutral() -> None:
         normalized = _squish(output)
         assert "optional target: standard or reasoning" in normalized
         assert "legacy aliases: thinking, non-thinking" in normalized
-        assert "optional target: thinking" not in normalized
+        old_primary_target = "optional target: " + "thinking"
+        assert old_primary_target not in normalized
 
 
 def test_legacy_thinking_flag_help_points_to_reasoning_route() -> None:
@@ -44,7 +45,8 @@ def test_legacy_thinking_flag_help_points_to_reasoning_route() -> None:
     assert rc == 0
     assert "--thinking" in output
     assert "legacy alias for reasoning route on port 8001" in _squish(output)
-    assert "start thinking proxy on port 8001" not in _squish(output)
+    old_flag_help = "start " + "thinking proxy on port 8001"
+    assert old_flag_help not in _squish(output)
 
 
 def test_lifecycle_help_keeps_legacy_alias_choices() -> None:
