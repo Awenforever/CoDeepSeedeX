@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.32-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a30-provider-pricing-cache-migration-status-wrapper-v0432"
+PROXY_PUBLIC_VERSION = "v0.4.33-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a32-provider-owned-pricing-cache-writer-wrapper-v0433"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -1462,6 +1462,80 @@ def _build_deepseek_pricing_cache_metadata(
         ttl_seconds=ttl_seconds,
     )
 
+def _build_provider_owned_pricing_cache_metadata(
+    provider_id: str,
+    *,
+    source_url: str,
+    fetched_at: str,
+    ttl_seconds: int,
+) -> dict[str, Any]:
+    """Build identity-bearing metadata for an explicit provider-owned cache."""
+    profile = (
+        _provider_pricing_resource_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        profile.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        profile.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    family = str(
+        profile.get("family")
+        or adapter_provider_id
+    )
+    cache_schema_owner = str(
+        profile.get(
+            "cache_schema_owner"
+        )
+        or ""
+    )
+
+    if (
+        profile.get("supported") is not True
+        or not cache_schema_owner
+    ):
+        raise ValueError(
+            "provider_owned_pricing_cache_"
+            "writer_not_supported:"
+            f"{requested_provider}"
+        )
+
+    metadata = dict(
+        _build_provider_pricing_cache_metadata(
+            requested_provider,
+            source_url=source_url,
+            fetched_at=fetched_at,
+            ttl_seconds=ttl_seconds,
+        )
+    )
+    metadata.update(
+        {
+            "provider": requested_provider,
+            "adapter_provider_id": (
+                adapter_provider_id
+            ),
+            "family": family,
+            "cache_scope": (
+                "provider_scoped"
+            ),
+            "cache_schema_owner": (
+                cache_schema_owner
+            ),
+            "cache_is_provider_scoped": (
+                True
+            ),
+        }
+    )
+
+    return metadata
+
 
 def _write_pricing_cache_atomic(
     prices: dict[str, Any],
@@ -1502,6 +1576,34 @@ def _write_pricing_cache_atomic(
         encoding="utf-8",
     )
     os.replace(tmp_path, path)
+
+def _write_provider_pricing_cache_atomic(prices: dict[str, Any], *, provider_id: str, path: Path, source_url: str, fetched_at: str, ttl_seconds: int) -> None:
+    """Write an explicit provider-owned pricing cache atomically."""
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {'__metadata__': _build_provider_owned_pricing_cache_metadata(provider_id, source_url=source_url, fetched_at=fetched_at, ttl_seconds=ttl_seconds), **prices}
+    tmp_path = path.with_name(f'.{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}')
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    os.replace(tmp_path, path)
+
+
+def _write_deepseek_provider_pricing_cache_atomic(
+    prices: dict[str, dict[str, float]],
+    *,
+    path: Path,
+    source_url: str,
+    fetched_at: str,
+    ttl_seconds: int,
+) -> None:
+    """Write an explicit DeepSeek provider-owned cache."""
+    return _write_provider_pricing_cache_atomic(
+        prices,
+        provider_id="deepseek",
+        path=path,
+        source_url=source_url,
+        fetched_at=fetched_at,
+        ttl_seconds=ttl_seconds,
+    )
 
 
 
