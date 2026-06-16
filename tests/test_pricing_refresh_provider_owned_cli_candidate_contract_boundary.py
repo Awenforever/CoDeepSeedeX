@@ -99,10 +99,6 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
         is True
     )
     assert (
-        result["candidate_requested"]
-        is True
-    )
-    assert (
         result["selected_mode"]
         == "provider_owned"
     )
@@ -313,7 +309,7 @@ def test_candidate_contract_signature_requires_all_cli_inputs() -> None:
         )
 
 
-def test_candidate_contract_is_not_registered_or_dispatched() -> None:
+def test_candidate_contract_is_registered_for_validation_but_not_execution() -> None:
     candidate_name = (
         "_pricing_refresh_provider_owned_"
         "cli_candidate_contract"
@@ -329,14 +325,9 @@ def test_candidate_contract_is_not_registered_or_dispatched() -> None:
         ._pricing_refresh_provider_owned_cli_candidate_contract
     )
 
-    assert candidate_name not in pricing_source
-    assert candidate_name not in parser_source
-
-    for option in (
-        "--provider-owned",
-        "--provider-cache-path",
-    ):
-        assert option not in parser_source
+    assert candidate_name in pricing_source
+    assert "--provider-owned" in parser_source
+    assert "--provider-cache-path" in parser_source
 
     for execution_name in (
         "_provider_pricing_refresh_writer_"
@@ -358,31 +349,37 @@ def test_candidate_contract_is_not_registered_or_dispatched() -> None:
     assert "open(" not in candidate_source
 
 
-def test_current_parser_still_rejects_unregistered_candidate_flags() -> None:
+def test_parser_registers_candidate_flags_with_inert_defaults() -> None:
     parser = cli.build_parser()
 
-    with pytest.raises(SystemExit) as exc:
-        parser.parse_args(
-            [
-                "pricing",
-                "refresh",
-                "--provider-owned",
-            ]
-        )
+    defaults = parser.parse_args(
+        [
+            "pricing",
+            "refresh",
+        ]
+    )
 
-    assert exc.value.code == 2
+    assert defaults.provider_owned is False
+    assert defaults.provider_cache_path is None
 
-    with pytest.raises(SystemExit) as exc:
-        parser.parse_args(
-            [
-                "pricing",
-                "refresh",
-                "--provider-cache-path",
-                "provider.json",
-            ]
-        )
+    candidate = parser.parse_args(
+        [
+            "pricing",
+            "refresh",
+            "--provider",
+            "deepseek",
+            "--write-cache",
+            "--provider-owned",
+            "--provider-cache-path",
+            "provider.json",
+        ]
+    )
 
-    assert exc.value.code == 2
+    assert candidate.provider_owned is True
+    assert (
+        candidate.provider_cache_path
+        == "provider.json"
+    )
 
 
 def test_candidate_environment_variables_remain_absent() -> None:

@@ -3912,6 +3912,46 @@ def _pricing(args: argparse.Namespace) -> int:
 
     if command == "refresh":
         provider = _adapter_canonical_provider_id(getattr(args, "provider", None) or "deepseek")
+        provider_owned = bool(getattr(args, "provider_owned", False))
+        provider_cache_path = getattr(args, "provider_cache_path", None)
+        candidate_requested = bool(
+            provider_owned
+            or (
+                provider_cache_path is not None
+                and str(provider_cache_path).strip()
+            )
+        )
+
+        if candidate_requested:
+            payload = _pricing_refresh_provider_owned_cli_candidate_contract(
+                provider,
+                write_cache=bool(getattr(args, "write_cache", False)),
+                cache_path=getattr(args, "cache_path", None),
+                provider_owned=provider_owned,
+                provider_cache_path=provider_cache_path,
+            )
+            payload = {
+                **payload,
+                "parser_registered": True,
+                "dispatch_wired": True,
+                "execution_called": False,
+                "runtime_active": False,
+                "runtime_activation_allowed": False,
+                "cli_candidate_validation_only": True,
+            }
+
+            if (
+                payload.get("status") == "ok"
+                and payload.get("selected_mode") == "provider_owned"
+            ):
+                payload["action"] = (
+                    "provider-owned CLI candidate validation completed; "
+                    "execution remains disabled pending a separate audit"
+                )
+
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0 if payload.get("status") == "ok" else 1
+
         payload = _refresh_provider_pricing_from_official_docs(
             provider,
             model=model,
@@ -9101,6 +9141,26 @@ def build_parser() -> argparse.ArgumentParser:
     pricing_refresh.add_argument("--provider", default="deepseek", help="provider id for pricing refresh; default: deepseek")
     pricing_refresh.add_argument("--write-cache", action="store_true", help="atomically write validated pricing to the user cache")
     pricing_refresh.add_argument("--cache-path", default=None, help="optional explicit cache path for --write-cache")
+    pricing_refresh.add_argument(
+        "--provider-owned",
+        action="store_true",
+        default=False,
+        help=(
+            "validate an explicit provider-owned pricing "
+            "cache candidate; requires --write-cache and "
+            "--provider-cache-path; validation only"
+        ),
+    )
+    pricing_refresh.add_argument(
+        "--provider-cache-path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "explicit provider-owned pricing cache path; "
+            "valid only with --provider-owned and "
+            "--write-cache; validation only"
+        ),
+    )
     pricing_refresh.add_argument("--source-url", default=None, help="optional explicit provider official pricing source URL override")
     pricing_refresh.add_argument("--timeout", type=float, default=20.0)
     pricing_refresh.set_defaults(func=_pricing)

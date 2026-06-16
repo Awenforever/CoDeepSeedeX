@@ -33,16 +33,16 @@ npm install -g @openai/codex
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-固定当前Latest Release tag（`v0.4.37-alpha`）：
+固定当前Latest Release tag（`v0.4.38-alpha`）：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.37-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.37-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.38-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.38-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
 
 ```bash
-tag="v0.4.37-alpha"
+tag="v0.4.38-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -227,7 +227,7 @@ cox upgrade --alpha
 显式指定tag或ref：
 
 ```bash
-cox upgrade --tag v0.4.37-alpha
+cox upgrade --tag v0.4.38-alpha
 ```
 
 不要同时使用`--alpha`和`--tag`。
@@ -345,7 +345,7 @@ CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状
 
 WeClaw应消费cox提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。
 
-### v0.4.37-alpha
+### v0.4.38-alpha
 
 当前公开版本改进了自定义 OpenAI-compatible provider 支持，修复 custom reasoning-only 响应映射，并保护图片 payload 不再被 compact 或 trim。
 
@@ -360,3 +360,20 @@ codex --profile ustc
 在引导式wizard中添加custom provider时，provider name会经过slug归一化后成为本地provider id/profile id。CodeXchange不声明接管Codex原生`/model`列表；模型切换请使用`cox provider add-model/use`或provider-backed profile。
 
 本节点不声明已接入Codex TUI原生`/model`列表；在实测Codex确实读取profile级model catalog前，请使用`cox provider add-model/use`或provider-backed profiles切换模型。
+
+### 验证 provider-owned 定价刷新候选参数
+
+当前 provider-owned 定价 CLI 路径仅执行参数验证：
+
+```bash
+cox pricing refresh \
+  --provider deepseek \
+  --write-cache \
+  --provider-owned \
+  --provider-cache-path ~/.cache/codexchange/providers/deepseek/pricing.json
+```
+
+该命令只验证显式参数组合并返回 candidate contract，不会调用
+provider-owned writer，不会创建缓存文件，不会自动推断路径，不读取环境变量
+激活配置，也不会回退到 legacy 缓存。现有 `--cache-path` 继续保持
+legacy-shared refresh 语义。
