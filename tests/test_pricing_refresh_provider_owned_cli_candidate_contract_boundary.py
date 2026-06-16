@@ -33,24 +33,12 @@ def test_legacy_candidate_preserves_existing_cache_path_semantics(
     )
 
     assert result["status"] == "ok"
-    assert (
-        result["candidate_contract_valid"]
-        is True
-    )
-    assert (
-        result["candidate_requested"]
-        is False
-    )
-    assert (
-        result["selected_mode"]
-        == "legacy_shared"
-    )
+    assert result["candidate_contract_valid"] is True
+    assert result["candidate_requested"] is False
+    assert result["selected_mode"] == "legacy_shared"
     assert (
         result["dispatch_target"]
-        == (
-            "_refresh_provider_pricing_"
-            "from_official_docs"
-        )
+        == "_refresh_provider_pricing_from_official_docs"
     )
     assert (
         result["legacy_cache_path"]
@@ -63,9 +51,7 @@ def test_legacy_candidate_preserves_existing_cache_path_semantics(
         ]
         is True
     )
-    assert result["parser_registered"] is False
-    assert result["dispatch_wired"] is False
-    assert result["execution_called"] is False
+    assert result["writes_files"] is False
     assert not legacy_path.exists()
     assert not legacy_path.parent.exists()
 
@@ -87,21 +73,13 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
             write_cache=True,
             cache_path=None,
             provider_owned=True,
-            provider_cache_path=str(
-                provider_path
-            ),
+            provider_cache_path=str(provider_path),
         )
     )
 
     assert result["status"] == "ok"
-    assert (
-        result["candidate_contract_valid"]
-        is True
-    )
-    assert (
-        result["selected_mode"]
-        == "provider_owned"
-    )
+    assert result["candidate_contract_valid"] is True
+    assert result["selected_mode"] == "provider_owned"
     assert (
         result["dispatch_target"]
         == (
@@ -112,9 +90,7 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
     assert result["argument_mapping"] == {
         "activate": True,
         "mode": "provider_owned",
-        "provider_path": str(
-            provider_path
-        ),
+        "provider_path": str(provider_path),
     }
     assert (
         result["candidate_source"]
@@ -124,14 +100,8 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
     assert result["environment_lookup"] is False
     assert result["dual_write"] is False
     assert result["fallback_write"] is False
-    assert result["parser_registered"] is False
-    assert result["dispatch_wired"] is False
     assert result["execution_called"] is False
     assert result["writes_files"] is False
-    assert (
-        result["creates_directories"]
-        is False
-    )
     assert not provider_path.exists()
     assert not provider_path.parent.exists()
 
@@ -152,10 +122,7 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
             None,
             False,
             "provider.json",
-            (
-                "provider_cache_path_requires_"
-                "provider_owned"
-            ),
+            "provider_cache_path_requires_provider_owned",
         ),
         (
             "deepseek",
@@ -163,10 +130,7 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
             None,
             True,
             "provider.json",
-            (
-                "provider_owned_requires_"
-                "write_cache"
-            ),
+            "provider_owned_requires_write_cache",
         ),
         (
             "deepseek",
@@ -174,10 +138,7 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
             "legacy.json",
             True,
             "provider.json",
-            (
-                "provider_owned_rejects_"
-                "legacy_cache_path"
-            ),
+            "provider_owned_rejects_legacy_cache_path",
         ),
         (
             "deepseek",
@@ -185,24 +146,10 @@ def test_valid_provider_owned_candidate_maps_explicit_arguments_only(
             None,
             True,
             None,
-            (
-                "provider_owned_requires_"
-                "provider_cache_path"
-            ),
+            "provider_owned_requires_provider_cache_path",
         ),
         (
             "qwen-singapore",
-            True,
-            None,
-            True,
-            "provider.json",
-            (
-                "provider_owned_cli_candidate_"
-                "initially_deepseek_only"
-            ),
-        ),
-        (
-            "kimi",
             True,
             None,
             True,
@@ -256,14 +203,9 @@ def test_invalid_candidate_combinations_fail_without_side_effects(
     assert result["status"] == "error"
     assert result["available"] is False
     assert result["reason"] == reason
-    assert (
-        result["candidate_contract_valid"]
-        is False
-    )
+    assert result["candidate_contract_valid"] is False
     assert result["dispatch_target"] is None
     assert result["argument_mapping"] is None
-    assert result["parser_registered"] is False
-    assert result["dispatch_wired"] is False
     assert result["execution_called"] is False
     assert result["writes_files"] is False
 
@@ -274,15 +216,13 @@ def test_invalid_candidate_combinations_fail_without_side_effects(
         assert not provider.exists()
 
 
-def test_candidate_contract_signature_requires_all_cli_inputs() -> None:
+def test_candidate_contract_signature_is_unchanged() -> None:
     signature = inspect.signature(
         cli
         ._pricing_refresh_provider_owned_cli_candidate_contract
     )
 
-    assert list(
-        signature.parameters
-    ) == [
+    assert list(signature.parameters) == [
         "provider_id",
         "write_cache",
         "cache_path",
@@ -296,9 +236,7 @@ def test_candidate_contract_signature_requires_all_cli_inputs() -> None:
         "provider_owned",
         "provider_cache_path",
     ):
-        parameter = (
-            signature.parameters[name]
-        )
+        parameter = signature.parameters[name]
         assert (
             parameter.kind
             is inspect.Parameter.KEYWORD_ONLY
@@ -309,47 +247,38 @@ def test_candidate_contract_signature_requires_all_cli_inputs() -> None:
         )
 
 
-def test_candidate_contract_is_registered_for_validation_but_not_execution() -> None:
-    candidate_name = (
-        "_pricing_refresh_provider_owned_"
-        "cli_candidate_contract"
-    )
-    pricing_source = inspect.getsource(
-        cli._pricing
-    )
-    parser_source = inspect.getsource(
-        cli.build_parser
-    )
+def test_candidate_contract_remains_execution_free_while_cli_owns_dispatch() -> None:
     candidate_source = inspect.getsource(
         cli
         ._pricing_refresh_provider_owned_cli_candidate_contract
     )
+    pricing_source = inspect.getsource(
+        cli._pricing
+    )
 
-    assert candidate_name in pricing_source
-    assert "--provider-owned" in parser_source
-    assert "--provider-cache-path" in parser_source
-
-    for execution_name in (
+    assert (
         "_provider_pricing_refresh_writer_"
-        "single_write_execution",
-        "_deepseek_pricing_refresh_writer_"
-        "single_write_execution",
+        "single_write_execution("
+        not in candidate_source
+    )
+    assert (
+        "_provider_pricing_refresh_writer_"
+        "single_write_execution("
+        in pricing_source
+    )
+
+    for forbidden in (
+        "os.environ",
+        "os.getenv",
+        ".mkdir(",
+        ".write_text(",
+        ".write_bytes(",
+        "open(",
     ):
-        assert execution_name not in pricing_source
-        assert (
-            f"{execution_name}("
-            not in candidate_source
-        )
-
-    assert "os.environ" not in candidate_source
-    assert "os.getenv" not in candidate_source
-    assert ".mkdir(" not in candidate_source
-    assert ".write_text(" not in candidate_source
-    assert ".write_bytes(" not in candidate_source
-    assert "open(" not in candidate_source
+        assert forbidden not in candidate_source
 
 
-def test_parser_registers_candidate_flags_with_inert_defaults() -> None:
+def test_parser_registers_explicit_execution_flags_with_inert_defaults() -> None:
     parser = cli.build_parser()
 
     defaults = parser.parse_args(
@@ -381,8 +310,14 @@ def test_parser_registers_candidate_flags_with_inert_defaults() -> None:
         == "provider.json"
     )
 
+    source = inspect.getsource(
+        cli.build_parser
+    )
+    assert "validation only" not in source
+    assert "single write target" in source
 
-def test_candidate_environment_variables_remain_absent() -> None:
+
+def test_candidate_environment_activation_remains_absent() -> None:
     source = Path(
         cli.__file__
     ).read_text(

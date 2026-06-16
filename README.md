@@ -33,16 +33,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Pinned current Latest Release tag (`v0.4.38-alpha`):
+Pinned current Latest Release tag (`v0.4.39-alpha`):
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.38-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.38-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.39-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.39-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.4.38-alpha"
+tag="v0.4.39-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -227,7 +227,7 @@ cox upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-cox upgrade --tag v0.4.38-alpha
+cox upgrade --tag v0.4.39-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -345,7 +345,7 @@ Current WeClaw-facing fields include:
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 
-### v0.4.38-alpha
+### v0.4.39-alpha
 
 The current public release improves custom OpenAI-compatible provider support, fixes custom reasoning-only responses, and keeps image payloads from being compacted or trimmed.
 
@@ -361,9 +361,9 @@ When adding a custom provider in the guided wizard, the provider name becomes th
 
 Codex TUI `/model` integration is not claimed here; use `cox provider add-model/use` or provider-backed profiles until Codex behavior proves profile-level model catalogs are honored.
 
-### Validate a provider-owned pricing refresh candidate
+### Execute an explicit provider-owned pricing refresh
 
-The provider-owned pricing CLI path is currently validation-only:
+DeepSeek supports one explicit provider-owned pricing cache write:
 
 ```bash
 cox pricing refresh \
@@ -373,8 +373,13 @@ cox pricing refresh \
   --provider-cache-path ~/.cache/codexchange/providers/deepseek/pricing.json
 ```
 
-This command validates the explicit argument combination and returns the
-candidate contract. It does not call the provider-owned writer, create the
-cache file, infer a path, read activation settings from the environment, or
-fall back to the legacy cache. Existing `--cache-path` behavior remains the
-legacy-shared refresh path.
+The CLI validates the candidate arguments first and then calls the existing
+single-write execution seam exactly once. The supplied provider path is the
+only write target. The command does not infer a path, read activation settings
+from the environment, reinterpret `--cache-path`, write both caches, or fall
+back to the legacy cache after an error.
+
+Requests without `--provider-owned` and `--provider-cache-path` continue through
+the unchanged legacy pricing refresh path. Provider-owned CLI execution remains
+limited to DeepSeek until another provider receives its own separately audited
+writer and execution boundary.

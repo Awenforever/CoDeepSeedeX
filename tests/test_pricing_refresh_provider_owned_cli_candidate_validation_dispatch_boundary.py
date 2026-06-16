@@ -11,9 +11,6 @@ from typing import Any
 import pytest
 
 
-app = importlib.import_module(
-    "codexchange_proxy.app"
-)
 cli = importlib.import_module(
     "codexchange_proxy.cli"
 )
@@ -37,22 +34,27 @@ def _run_pricing(
     ):
         rc = cli._pricing(args)
 
-    payload = json.loads(
+    return rc, json.loads(
         stdout.getvalue()
     )
-    return rc, payload
 
 
-def test_help_exposes_validation_only_candidate_flags() -> None:
-    parser_source = inspect.getsource(
-        cli.build_parser
+def test_cli_imports_existing_single_write_execution_seam() -> None:
+    assert hasattr(
+        cli,
+        (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
     )
+
     pricing_source = inspect.getsource(
         cli._pricing
     )
+    parser_source = inspect.getsource(
+        cli.build_parser
+    )
 
-    assert "--provider-owned" in parser_source
-    assert "--provider-cache-path" in parser_source
     assert (
         "_pricing_refresh_provider_owned_"
         "cli_candidate_contract"
@@ -61,13 +63,10 @@ def test_help_exposes_validation_only_candidate_flags() -> None:
     assert (
         "_provider_pricing_refresh_writer_"
         "single_write_execution"
-        not in pricing_source
+        in pricing_source
     )
-    assert (
-        "_deepseek_pricing_refresh_writer_"
-        "single_write_execution"
-        not in pricing_source
-    )
+    assert "validation only" not in parser_source
+    assert "single write target" in parser_source
 
 
 def test_legacy_refresh_dispatch_is_unchanged(
@@ -83,6 +82,9 @@ def test_legacy_refresh_dispatch_is_unchanged(
         dict[str, object]
     ] = []
     candidate_calls: list[
+        dict[str, object]
+    ] = []
+    execution_calls: list[
         dict[str, object]
     ] = []
 
@@ -125,6 +127,20 @@ def test_legacy_refresh_dispatch_is_unchanged(
             ),
         }
 
+    def forbidden_execution(
+        provider_id: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        execution_calls.append(
+            {
+                "provider_id": provider_id,
+                **kwargs,
+            }
+        )
+        raise AssertionError(
+            "provider_execution_called"
+        )
+
     monkeypatch.setattr(
         cli,
         "_pricing_refresh_provider_owned_cli_candidate_contract",
@@ -134,6 +150,14 @@ def test_legacy_refresh_dispatch_is_unchanged(
         cli,
         "_refresh_provider_pricing_from_official_docs",
         fake_legacy,
+    )
+    monkeypatch.setattr(
+        cli,
+        (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        forbidden_execution,
     )
 
     rc, payload = _run_pricing(
@@ -151,20 +175,16 @@ def test_legacy_refresh_dispatch_is_unchanged(
     assert payload["status"] == "ok"
     assert len(legacy_calls) == 1
     assert candidate_calls == []
+    assert execution_calls == []
     assert (
         legacy_calls[0]["cache_path"]
         == str(legacy_path)
     )
 
 
-@pytest.mark.parametrize(
-    "json_output",
-    [False, True],
-)
-def test_valid_candidate_is_validation_only_dispatched(
+def test_valid_candidate_executes_once_and_normalizes_cli_metadata(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    json_output: bool,
 ) -> None:
     provider_path = (
         tmp_path
@@ -172,35 +192,51 @@ def test_valid_candidate_is_validation_only_dispatched(
         / "deepseek"
         / "pricing.json"
     )
-    legacy_calls: list[
-        dict[str, object]
-    ] = []
-    candidate_calls: list[
-        dict[str, object]
-    ] = []
     execution_calls: list[
         dict[str, object]
     ] = []
+    legacy_calls: list[
+        dict[str, object]
+    ] = []
 
-    original_candidate = (
-        cli
-        ._pricing_refresh_provider_owned_cli_candidate_contract
-    )
-
-    def capture_candidate(
+    def fake_execution(
         provider_id: str,
         **kwargs: object,
     ) -> dict[str, object]:
-        candidate_calls.append(
+        execution_calls.append(
             {
                 "provider_id": provider_id,
                 **kwargs,
             }
         )
-        return original_candidate(
-            provider_id,
-            **kwargs,
-        )
+        return {
+            "status": "ok",
+            "available": True,
+            "writes_cache": True,
+            "cache_path": str(
+                kwargs["provider_path"]
+            ),
+            "execution": {
+                "execution_seam": (
+                    "function_level_unwired"
+                ),
+                "existing_cli_modified": False,
+                "execution_attempted": True,
+                "execution_allowed": True,
+                "target_count": 1,
+                "target_path": str(
+                    kwargs["provider_path"]
+                ),
+                "writer": (
+                    "_write_deepseek_provider_"
+                    "pricing_cache_atomic"
+                ),
+                "legacy_writer_called": False,
+                "legacy_path_written": False,
+                "dual_write": False,
+                "fallback_write": False,
+            },
+        }
 
     def forbidden_legacy(
         provider_id: str,
@@ -216,98 +252,159 @@ def test_valid_candidate_is_validation_only_dispatched(
             "legacy_refresh_called"
         )
 
-    def fake_execution(
-        *args: object,
-        **kwargs: object,
-    ) -> dict[str, object]:
-        execution_calls.append(
-            {
-                "args": args,
-                "kwargs": kwargs,
-            }
-        )
-        raise AssertionError(
-            "execution_seam_called"
-        )
-
     monkeypatch.setattr(
         cli,
-        "_pricing_refresh_provider_owned_cli_candidate_contract",
-        capture_candidate,
+        (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        fake_execution,
     )
     monkeypatch.setattr(
         cli,
         "_refresh_provider_pricing_from_official_docs",
         forbidden_legacy,
     )
-    monkeypatch.setattr(
-        app,
-        "_provider_pricing_refresh_writer_single_write_execution",
-        fake_execution,
-    )
-    monkeypatch.setattr(
-        app,
-        "_deepseek_pricing_refresh_writer_single_write_execution",
-        fake_execution,
-    )
-
-    arguments = [
-        "--provider",
-        "deepseek",
-        "--write-cache",
-        "--provider-owned",
-        "--provider-cache-path",
-        str(provider_path),
-    ]
-
-    if json_output:
-        arguments.append("--json")
 
     rc, payload = _run_pricing(
-        arguments
+        [
+            "--provider",
+            "deepseek",
+            "--model",
+            "deepseek-v4-pro",
+            "--source-url",
+            "https://example.invalid/pricing",
+            "--timeout",
+            "3.5",
+            "--write-cache",
+            "--provider-owned",
+            "--provider-cache-path",
+            str(provider_path),
+            "--json",
+        ]
     )
 
     assert rc == 0
     assert payload["status"] == "ok"
-    assert (
-        payload["selected_mode"]
-        == "provider_owned"
-    )
-    assert (
-        payload["candidate_contract_valid"]
-        is True
-    )
-    assert payload["parser_registered"] is True
-    assert payload["dispatch_wired"] is True
-    assert payload["execution_called"] is False
-    assert (
-        payload[
-            "cli_candidate_validation_only"
-        ]
-        is True
-    )
-    assert payload["runtime_active"] is False
-    assert (
-        payload[
-            "runtime_activation_allowed"
-        ]
-        is False
-    )
-    assert payload["argument_mapping"] == {
+    assert len(execution_calls) == 1
+    assert legacy_calls == []
+
+    assert execution_calls[0] == {
+        "provider_id": "deepseek",
         "activate": True,
         "mode": "provider_owned",
         "provider_path": str(
             provider_path
         ),
+        "model": "deepseek-v4-pro",
+        "source_url": (
+            "https://example.invalid/pricing"
+        ),
+        "timeout": 3.5,
     }
-    assert "execution remains disabled" in str(
-        payload["action"]
+
+    assert (
+        payload["execution"][
+            "execution_seam"
+        ]
+        == (
+            "cli_explicit_provider_owned_"
+            "dispatch"
+        )
     )
-    assert len(candidate_calls) == 1
-    assert legacy_calls == []
-    assert execution_calls == []
-    assert not provider_path.exists()
-    assert not provider_path.parent.exists()
+    assert (
+        payload["execution"][
+            "existing_cli_modified"
+        ]
+        is True
+    )
+    assert (
+        payload["execution"][
+            "target_count"
+        ]
+        == 1
+    )
+    assert (
+        payload["execution"][
+            "legacy_writer_called"
+        ]
+        is False
+    )
+    assert (
+        payload["execution"][
+            "dual_write"
+        ]
+        is False
+    )
+    assert (
+        payload["execution"][
+            "fallback_write"
+        ]
+        is False
+    )
+
+    candidate = payload["cli_candidate"]
+    assert candidate["status"] == "ok"
+    assert (
+        candidate["candidate_contract_valid"]
+        is True
+    )
+    assert (
+        candidate["argument_mapping"]
+        == {
+            "activate": True,
+            "mode": "provider_owned",
+            "provider_path": str(
+                provider_path
+            ),
+        }
+    )
+    assert candidate["parser_registered"] is True
+    assert candidate["dispatch_wired"] is True
+    assert candidate["execution_called"] is False
+
+    cli_execution = payload[
+        "cli_execution"
+    ]
+    assert (
+        cli_execution[
+            "provider_execution_dispatch_wired"
+        ]
+        is True
+    )
+    assert (
+        cli_execution[
+            "execution_called"
+        ]
+        is True
+    )
+    assert (
+        cli_execution[
+            "candidate_validation_only"
+        ]
+        is False
+    )
+    assert (
+        cli_execution[
+            "activation_source"
+        ]
+        == "explicit_cli_arguments_only"
+    )
+    assert (
+        cli_execution[
+            "environment_activation"
+        ]
+        is False
+    )
+    assert (
+        cli_execution["path_inference"]
+        is False
+    )
+    assert cli_execution["dual_write"] is False
+    assert (
+        cli_execution["fallback_write"]
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -386,17 +483,31 @@ def test_valid_candidate_is_validation_only_dispatched(
         ),
     ],
 )
-def test_invalid_candidate_requests_return_validation_errors_without_execution(
+def test_invalid_candidate_never_calls_execution(
     monkeypatch: pytest.MonkeyPatch,
     arguments: list[str],
     reason: str,
 ) -> None:
-    legacy_calls: list[
-        dict[str, object]
-    ] = []
     execution_calls: list[
         dict[str, object]
     ] = []
+    legacy_calls: list[
+        dict[str, object]
+    ] = []
+
+    def forbidden_execution(
+        provider_id: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        execution_calls.append(
+            {
+                "provider_id": provider_id,
+                **kwargs,
+            }
+        )
+        raise AssertionError(
+            "execution_called"
+        )
 
     def forbidden_legacy(
         provider_id: str,
@@ -412,34 +523,18 @@ def test_invalid_candidate_requests_return_validation_errors_without_execution(
             "legacy_refresh_called"
         )
 
-    def fake_execution(
-        *args: object,
-        **kwargs: object,
-    ) -> dict[str, object]:
-        execution_calls.append(
-            {
-                "args": args,
-                "kwargs": kwargs,
-            }
-        )
-        raise AssertionError(
-            "execution_seam_called"
-        )
-
+    monkeypatch.setattr(
+        cli,
+        (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        forbidden_execution,
+    )
     monkeypatch.setattr(
         cli,
         "_refresh_provider_pricing_from_official_docs",
         forbidden_legacy,
-    )
-    monkeypatch.setattr(
-        app,
-        "_provider_pricing_refresh_writer_single_write_execution",
-        fake_execution,
-    )
-    monkeypatch.setattr(
-        app,
-        "_deepseek_pricing_refresh_writer_single_write_execution",
-        fake_execution,
     )
 
     rc, payload = _run_pricing(
@@ -449,27 +544,148 @@ def test_invalid_candidate_requests_return_validation_errors_without_execution(
     assert rc == 1
     assert payload["status"] == "error"
     assert payload["reason"] == reason
-    assert payload["parser_registered"] is True
-    assert payload["dispatch_wired"] is True
     assert payload["execution_called"] is False
     assert (
         payload[
-            "cli_candidate_validation_only"
-        ]
-        is True
-    )
-    assert payload["runtime_active"] is False
-    assert (
-        payload[
-            "runtime_activation_allowed"
+            "cli_execution_dispatch_wired"
         ]
         is False
     )
-    assert legacy_calls == []
     assert execution_calls == []
+    assert legacy_calls == []
 
 
-def test_candidate_dispatch_does_not_read_activation_environment() -> None:
+def test_execution_error_returns_one_without_legacy_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider_path = (
+        tmp_path
+        / "providers"
+        / "deepseek"
+        / "pricing.json"
+    )
+    execution_calls: list[
+        dict[str, object]
+    ] = []
+    legacy_calls: list[
+        dict[str, object]
+    ] = []
+
+    def fake_execution(
+        provider_id: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        execution_calls.append(
+            {
+                "provider_id": provider_id,
+                **kwargs,
+            }
+        )
+        return {
+            "status": "error",
+            "available": False,
+            "reason": (
+                "probe_provider_refresh_error"
+            ),
+            "writes_cache": False,
+            "old_cache_preserved": True,
+            "execution": {
+                "execution_attempted": True,
+                "execution_allowed": True,
+                "target_count": 1,
+                "target_path": str(
+                    kwargs["provider_path"]
+                ),
+                "legacy_writer_called": False,
+                "legacy_path_written": False,
+                "dual_write": False,
+                "fallback_write": False,
+                "execution_seam": (
+                    "function_level_unwired"
+                ),
+                "existing_cli_modified": False,
+            },
+        }
+
+    def forbidden_legacy(
+        provider_id: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        legacy_calls.append(
+            {
+                "provider_id": provider_id,
+                **kwargs,
+            }
+        )
+        raise AssertionError(
+            "legacy_refresh_called"
+        )
+
+    monkeypatch.setattr(
+        cli,
+        (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        fake_execution,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_refresh_provider_pricing_from_official_docs",
+        forbidden_legacy,
+    )
+
+    rc, payload = _run_pricing(
+        [
+            "--provider",
+            "deepseek",
+            "--write-cache",
+            "--provider-owned",
+            "--provider-cache-path",
+            str(provider_path),
+            "--json",
+        ]
+    )
+
+    assert rc == 1
+    assert (
+        payload["reason"]
+        == "probe_provider_refresh_error"
+    )
+    assert payload["writes_cache"] is False
+    assert len(execution_calls) == 1
+    assert legacy_calls == []
+    assert (
+        payload["execution"][
+            "fallback_write"
+        ]
+        is False
+    )
+    assert (
+        payload["execution"][
+            "legacy_writer_called"
+        ]
+        is False
+    )
+    assert (
+        payload["execution"][
+            "execution_seam"
+        ]
+        == (
+            "cli_explicit_provider_owned_"
+            "dispatch"
+        )
+    )
+    assert (
+        payload["execution"][
+            "existing_cli_modified"
+        ]
+        is True
+    )
+
+
+def test_cli_execution_dispatch_does_not_read_activation_environment() -> None:
     pricing_source = inspect.getsource(
         cli._pricing
     )

@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _refresh_provider_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
+from .app import DEFAULT_MODEL, PROXY_INTERNAL_COMMIT, PROXY_INTERNAL_VERSION, PROXY_PUBLIC_COMMIT, PROXY_PUBLIC_VERSION, PROXY_VERSION, _provider_pricing_refresh_writer_single_write_execution, _refresh_provider_pricing_from_official_docs, _weclaw_context_used_tokens_unavailable_contract, _weclaw_diagnostics_contract, _weclaw_model_catalog_contract, _weclaw_pricing_contract, _profile_tokenizer_contract
 from .providers import canonical_provider_id as _adapter_canonical_provider_id, get_provider_adapter as _get_provider_adapter, provider_registry_status as _provider_adapter_registry_status
 
 
@@ -3923,32 +3923,102 @@ def _pricing(args: argparse.Namespace) -> int:
         )
 
         if candidate_requested:
-            payload = _pricing_refresh_provider_owned_cli_candidate_contract(
+            candidate = _pricing_refresh_provider_owned_cli_candidate_contract(
                 provider,
                 write_cache=bool(getattr(args, "write_cache", False)),
                 cache_path=getattr(args, "cache_path", None),
                 provider_owned=provider_owned,
                 provider_cache_path=provider_cache_path,
             )
-            payload = {
-                **payload,
+            candidate = {
+                **candidate,
                 "parser_registered": True,
                 "dispatch_wired": True,
-                "execution_called": False,
-                "runtime_active": False,
-                "runtime_activation_allowed": False,
-                "cli_candidate_validation_only": True,
             }
 
-            if (
-                payload.get("status") == "ok"
-                and payload.get("selected_mode") == "provider_owned"
-            ):
-                payload["action"] = (
-                    "provider-owned CLI candidate validation completed; "
-                    "execution remains disabled pending a separate audit"
-                )
+            if candidate.get("status") != "ok":
+                payload = {
+                    **candidate,
+                    "execution_called": False,
+                    "runtime_active": False,
+                    "runtime_activation_allowed": False,
+                    "cli_candidate_validation_only": True,
+                    "cli_execution_dispatch_wired": False,
+                }
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                return 1
 
+            argument_mapping = candidate.get("argument_mapping")
+            if not isinstance(argument_mapping, dict):
+                payload = {
+                    **candidate,
+                    "status": "error",
+                    "available": False,
+                    "reason": "provider_owned_cli_candidate_argument_mapping_missing",
+                    "action": "re-run candidate validation with all required explicit arguments",
+                    "execution_called": False,
+                    "runtime_active": False,
+                    "runtime_activation_allowed": False,
+                    "cli_candidate_validation_only": True,
+                    "cli_execution_dispatch_wired": False,
+                }
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                return 1
+
+            result = _provider_pricing_refresh_writer_single_write_execution(
+                provider,
+                activate=bool(argument_mapping.get("activate")),
+                mode=str(argument_mapping.get("mode") or ""),
+                provider_path=argument_mapping.get("provider_path"),
+                model=model,
+                source_url=getattr(args, "source_url", None),
+                timeout=float(getattr(args, "timeout", 20.0) or 20.0),
+            )
+            payload = (
+                dict(result)
+                if isinstance(result, dict)
+                else {
+                    "status": "error",
+                    "available": False,
+                    "reason": "provider_owned_cli_execution_result_invalid",
+                    "writes_cache": False,
+                    "old_cache_preserved": True,
+                }
+            )
+            execution = (
+                dict(payload.get("execution") or {})
+                if isinstance(payload.get("execution"), dict)
+                else {}
+            )
+            payload["execution"] = {
+                **execution,
+                "execution_seam": "cli_explicit_provider_owned_dispatch",
+                "existing_cli_modified": True,
+            }
+            payload["cli_candidate"] = {
+                **candidate,
+                "action": "candidate validated before explicit CLI single-write execution",
+                "execution_called": False,
+                "cli_candidate_validation_only": False,
+            }
+            payload["cli_execution"] = {
+                "parser_registered": True,
+                "candidate_validation_dispatch_wired": True,
+                "provider_execution_dispatch_wired": True,
+                "execution_called": True,
+                "candidate_validation_only": False,
+                "activation_source": "explicit_cli_arguments_only",
+                "provider": provider,
+                "path_inference": False,
+                "environment_activation": False,
+                "legacy_cache_path_reinterpreted": False,
+                "dual_write": False,
+                "fallback_write": False,
+                "reader_switch": False,
+                "daily_refresh_switch": False,
+                "usage_source_switch": False,
+                "weclaw_source_switch": False,
+            }
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             return 0 if payload.get("status") == "ok" else 1
 
@@ -9146,9 +9216,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help=(
-            "validate an explicit provider-owned pricing "
-            "cache candidate; requires --write-cache and "
-            "--provider-cache-path; validation only"
+            "execute one explicit provider-owned pricing "
+            "cache write; requires --write-cache and "
+            "--provider-cache-path"
         ),
     )
     pricing_refresh.add_argument(
@@ -9158,7 +9228,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "explicit provider-owned pricing cache path; "
             "valid only with --provider-owned and "
-            "--write-cache; validation only"
+            "--write-cache; used as the single write target"
         ),
     )
     pricing_refresh.add_argument("--source-url", default=None, help="optional explicit provider official pricing source URL override")

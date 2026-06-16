@@ -33,16 +33,16 @@ npm install -g @openai/codex
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-固定当前Latest Release tag（`v0.4.38-alpha`）：
+固定当前Latest Release tag（`v0.4.39-alpha`）：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.38-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.38-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.39-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.39-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
 
 ```bash
-tag="v0.4.38-alpha"
+tag="v0.4.39-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -227,7 +227,7 @@ cox upgrade --alpha
 显式指定tag或ref：
 
 ```bash
-cox upgrade --tag v0.4.38-alpha
+cox upgrade --tag v0.4.39-alpha
 ```
 
 不要同时使用`--alpha`和`--tag`。
@@ -345,7 +345,7 @@ CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状
 
 WeClaw应消费cox提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。
 
-### v0.4.38-alpha
+### v0.4.39-alpha
 
 当前公开版本改进了自定义 OpenAI-compatible provider 支持，修复 custom reasoning-only 响应映射，并保护图片 payload 不再被 compact 或 trim。
 
@@ -361,9 +361,9 @@ codex --profile ustc
 
 本节点不声明已接入Codex TUI原生`/model`列表；在实测Codex确实读取profile级model catalog前，请使用`cox provider add-model/use`或provider-backed profiles切换模型。
 
-### 验证 provider-owned 定价刷新候选参数
+### 执行显式 provider-owned 定价刷新
 
-当前 provider-owned 定价 CLI 路径仅执行参数验证：
+DeepSeek 当前支持一次显式的 provider-owned 定价缓存写入：
 
 ```bash
 cox pricing refresh \
@@ -373,7 +373,11 @@ cox pricing refresh \
   --provider-cache-path ~/.cache/codexchange/providers/deepseek/pricing.json
 ```
 
-该命令只验证显式参数组合并返回 candidate contract，不会调用
-provider-owned writer，不会创建缓存文件，不会自动推断路径，不读取环境变量
-激活配置，也不会回退到 legacy 缓存。现有 `--cache-path` 继续保持
-legacy-shared refresh 语义。
+CLI 会先验证 candidate 参数，再且仅再调用一次现有 single-write execution
+seam。用户提供的 provider 路径是唯一写入目标。该命令不会自动推断路径，不会从
+环境变量读取激活配置，不会重新解释 `--cache-path`，不会双写，也不会在错误后
+回退到 legacy 缓存。
+
+未提供 `--provider-owned` 与 `--provider-cache-path` 的请求继续进入完全不变的
+legacy 定价刷新路径。在其他 provider 分别具备经过审计的 writer 与 execution
+边界前，provider-owned CLI execution 仍只允许 DeepSeek。

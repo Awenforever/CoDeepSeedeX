@@ -544,14 +544,23 @@ def test_execution_signatures_require_explicit_activation_fields() -> None:
             )
 
 
-def test_existing_refresh_cli_and_readers_remain_unwired() -> None:
-    new_names = (
+def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution_only() -> None:
+    provider_execution_name = (
         "_provider_pricing_refresh_writer_"
-        "single_write_execution",
+        "single_write_execution"
+    )
+    deepseek_execution_name = (
         "_deepseek_pricing_refresh_writer_"
-        "single_write_execution",
+        "single_write_execution"
+    )
+    execution_names = (
+        provider_execution_name,
+        deepseek_execution_name,
     )
 
+    # Existing application refresh wrappers, automatic refresh,
+    # readers, usage pricing and WeClaw remain disconnected from
+    # the provider-owned execution seam.
     for function in (
         app._refresh_provider_pricing_from_official_docs,
         app._refresh_deepseek_pricing_from_official_docs,
@@ -564,7 +573,7 @@ def test_existing_refresh_cli_and_readers_remain_unwired() -> None:
             function
         )
 
-        for name in new_names:
+        for name in execution_names:
             assert name not in source
 
     refresh_source = inspect.getsource(
@@ -594,16 +603,66 @@ def test_existing_refresh_cli_and_readers_remain_unwired() -> None:
     cli_source = inspect.getsource(
         cli._pricing
     )
+    candidate_source = inspect.getsource(
+        cli
+        ._pricing_refresh_provider_owned_cli_candidate_contract
+    )
+    execution_source = inspect.getsource(
+        app
+        ._provider_pricing_refresh_writer_single_write_execution
+    )
 
-    for name in new_names:
-        assert name not in cli_source
+    # p3.3a20a44 intentionally wires only the generic provider
+    # execution seam into the explicit CLI candidate branch.
+    assert provider_execution_name in cli_source
+    assert deepseek_execution_name not in cli_source
 
-    for value in (
-        "--pricing-refresh-writer-mode",
-        "--pricing-refresh-writer-path",
-        "--pricing-provider-cache-path",
-        "COX_PRICING_REFRESH_WRITER_MODE",
-        "COX_PRICING_REFRESH_WRITER_PATH",
-        "COX_PRICING_PROVIDER_CACHE_PATH",
-    ):
-        assert value not in cli_source
+    # Candidate validation must occur before execution.
+    candidate_call = (
+        "_pricing_refresh_provider_owned_"
+        "cli_candidate_contract("
+    )
+    provider_execution_call = (
+        "_provider_pricing_refresh_writer_"
+        "single_write_execution("
+    )
+
+    assert candidate_call in cli_source
+    assert provider_execution_call in cli_source
+    assert (
+        cli_source.index(candidate_call)
+        < cli_source.index(
+            provider_execution_call
+        )
+    )
+
+    # The unchanged legacy refresh route remains present.
+    assert (
+        "_refresh_provider_pricing_"
+        "from_official_docs("
+        in cli_source
+    )
+
+    # The candidate contract itself remains validation-only and
+    # never invokes either execution implementation.
+    for name in execution_names:
+        assert f"{name}(" not in candidate_source
+
+    # The application seam remains function-level and unchanged;
+    # CLI output performs the outward metadata normalization.
+    assert (
+        "function_level_unwired"
+        in execution_source
+    )
+    assert (
+        '"existing_cli_modified": False'
+        in execution_source
+    )
+    assert (
+        "cli_explicit_provider_owned_dispatch"
+        in cli_source
+    )
+    assert (
+        '"existing_cli_modified": True'
+        in cli_source
+    )
