@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.39-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a44-pricing-refresh-provider-owned-cli-single-write-execution-dispatch-v0439"
+PROXY_INTERNAL_VERSION = "p3.3a20a46-provider-pricing-daily-refresh-target-selection-profile-wrapper-v0440"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -1922,6 +1922,290 @@ def _deepseek_pricing_refresh_writer_selection_profile(
             provider_path=provider_path,
         )
     )
+
+
+def _provider_pricing_daily_refresh_target_selection_profile(
+    provider_id: str,
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Describe daily-refresh target selection without activating refresh."""
+    resource_profile = (
+        _provider_pricing_resource_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        resource_profile.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        resource_profile.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    family = str(
+        resource_profile.get("family")
+        or adapter_provider_id
+    )
+    cache_schema_owner = str(
+        resource_profile.get(
+            "cache_schema_owner"
+        )
+        or ""
+    )
+
+    allowed_modes = (
+        "legacy_shared",
+        "provider_owned",
+        "disabled",
+    )
+    requested_mode = str(
+        mode or "legacy_shared"
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    if requested_mode not in allowed_modes:
+        raise ValueError(
+            "provider_pricing_daily_refresh_"
+            "target_selection_mode_not_supported:"
+            f"{requested_mode}"
+        )
+
+    supported = bool(
+        resource_profile.get("supported")
+        is True
+        and cache_schema_owner
+    )
+
+    configured_pricing_path = bool(
+        os.environ.get(
+            "COX_PRICING_PATH",
+            "",
+        ).strip()
+    )
+    legacy_target = (
+        _pricing_config_path()
+        if configured_pricing_path
+        else _pricing_cache_path()
+    )
+    provider_candidate = (
+        Path(provider_path).expanduser()
+        if provider_path is not None
+        else None
+    )
+
+    base = {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "family": family,
+        "supported": supported,
+        "capability": (
+            "pricing_daily_refresh_target_"
+            "selection"
+        ),
+        "cache_schema_owner": (
+            cache_schema_owner
+            or None
+        ),
+        "requested_mode": requested_mode,
+        "default_mode": "legacy_shared",
+        "allowed_modes": list(
+            allowed_modes
+        ),
+        "provider_owned_available": (
+            supported
+        ),
+        "legacy_path": str(
+            legacy_target
+        ) if supported else None,
+        "provider_path": (
+            str(provider_candidate)
+            if (
+                supported
+                and provider_candidate is not None
+            )
+            else None
+        ),
+        "configured_pricing_path_managed_by_cox": (
+            configured_pricing_path
+        ),
+        "current_runtime_mode": (
+            "legacy_shared"
+            if supported
+            else None
+        ),
+        "current_runtime_provider": (
+            "deepseek"
+            if supported
+            else None
+        ),
+        "current_runtime_target_path": (
+            str(legacy_target)
+            if supported
+            else None
+        ),
+        "current_runtime_refresh_function": (
+            "_refresh_provider_pricing_"
+            "from_official_docs"
+            if supported
+            else None
+        ),
+        "current_runtime_writer": (
+            "_write_pricing_cache_atomic"
+            if supported
+            else None
+        ),
+        "current_runtime_provider_fixed": (
+            bool(supported)
+        ),
+        "profile_only": True,
+        "runtime_active": False,
+        "runtime_activation_allowed": (
+            False
+        ),
+        "explicit_activation_required": (
+            True
+        ),
+        "requires_explicit_provider_path": (
+            requested_mode
+            == "provider_owned"
+        ),
+        "explicit_provider_path_present": (
+            provider_candidate is not None
+        ),
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "dual_write_supported": False,
+        "fallback_write_supported": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "calls_refresh": False,
+        "calls_writer": False,
+        "selection_has_side_effects": False,
+        "changes_refresh_routing": False,
+        "changes_reader_routing": False,
+        "changes_usage_source": False,
+        "changes_weclaw_source": False,
+        "changes_daily_refresh_contract": False,
+    }
+
+    if not supported:
+        return {
+            **base,
+            "selected_mode": None,
+            "selected_target_path": None,
+            "target_selection_valid": False,
+            "reason": (
+                resource_profile.get("reason")
+                or (
+                    "provider_pricing_daily_refresh_"
+                    "target_selection_not_supported"
+                )
+            ),
+            "action": (
+                resource_profile.get("action")
+                or (
+                    "add and audit provider pricing "
+                    "resource ownership before selecting "
+                    "a daily-refresh target"
+                )
+            ),
+        }
+
+    if requested_mode == "legacy_shared":
+        selection_valid = True
+        selected_target = legacy_target
+        reason = (
+            "legacy_shared_daily_refresh_"
+            "target_selected"
+        )
+        action = (
+            "keep existing daily refresh "
+            "contract unchanged"
+        )
+    elif requested_mode == "provider_owned":
+        selection_valid = (
+            provider_candidate is not None
+        )
+        selected_target = (
+            provider_candidate
+            if selection_valid
+            else None
+        )
+        reason = (
+            "provider_owned_daily_refresh_"
+            "target_selected"
+            if selection_valid
+            else (
+                "explicit_provider_path_"
+                "required"
+            )
+        )
+        action = (
+            "retain profile-only state until "
+            "a separate activation audit"
+            if selection_valid
+            else (
+                "provide an explicit provider "
+                "cache path for candidate "
+                "inspection only"
+            )
+        )
+    else:
+        selection_valid = True
+        selected_target = None
+        reason = (
+            "daily_refresh_disabled_"
+            "target_selected"
+        )
+        action = (
+            "retain profile-only disabled "
+            "target; current runtime remains "
+            "unchanged"
+        )
+
+    return {
+        **base,
+        "selected_mode": (
+            requested_mode
+            if selection_valid
+            else None
+        ),
+        "selected_target_path": (
+            str(selected_target)
+            if selected_target is not None
+            else None
+        ),
+        "target_selection_valid": (
+            selection_valid
+        ),
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _deepseek_pricing_daily_refresh_target_selection_profile(
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for the non-activating daily-refresh target profile."""
+    return (
+        _provider_pricing_daily_refresh_target_selection_profile(
+            "deepseek",
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
 
 def _provider_pricing_refresh_writer_activation_contract(
     provider_id: str,

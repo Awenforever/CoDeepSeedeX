@@ -23,7 +23,7 @@ def test_cli_version_ignores_stale_release_metadata_env() -> None:
 
     output = result.stdout.strip()
     assert "72e0f77" not in output
-    assert "p3.3a20a44-pricing-refresh-provider-owned-cli-single-write-execution-dispatch-v0439" in output
+    assert "p3.3a20a46-provider-pricing-daily-refresh-target-selection-profile-wrapper-v0440" in output
 
 
 def test_install_script_writes_current_release_metadata_env() -> None:
