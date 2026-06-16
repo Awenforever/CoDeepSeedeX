@@ -86,3 +86,83 @@ def test_legacy_chat_compat_wrappers_delegate_to_provider_neutral_seams() -> Non
     assert "_extract_provider_usage_numbers" in usage_source
     assert 'get_provider_adapter("deepseek").normalize_reasoning_effort' not in reasoning_source
     assert 'get_provider_adapter("deepseek").parse_usage' not in usage_source
+
+def test_provider_chat_capability_profile_preserves_deepseek_mode_contract(monkeypatch) -> None:
+    monkeypatch.delenv("COX_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
+
+    profile = proxy_app._provider_chat_capability_profile("deepseek", compat_mode="deepseek")
+
+    assert profile["provider"] == "deepseek"
+    assert profile["chat_compat_mode"] == "deepseek"
+    assert profile["supports_deepseek_extensions"] is True
+    assert profile["allow_all_params"] is True
+    assert "reasoning_effort" not in profile["drop_params"]
+
+
+def test_provider_chat_capability_profile_drops_deepseek_extensions_for_custom_openai_mode(monkeypatch) -> None:
+    monkeypatch.delenv("COX_CHAT_COMPAT_MODE", raising=False)
+    monkeypatch.delenv("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS", raising=False)
+
+    class FakeAdapter:
+        class capabilities:
+            reasoning = False
+            response_reasoning_field = None
+
+    profile = proxy_app._provider_chat_capability_profile(
+        "custom",
+        adapter=FakeAdapter(),
+        compat_mode="openai_compatible",
+    )
+
+    assert profile["provider"] == "custom"
+    assert profile["chat_compat_mode"] == "openai_compatible"
+    assert profile["supports_deepseek_extensions"] is False
+    assert "reasoning_effort" in profile["drop_params"]
+    assert "thinking" in profile["drop_params"]
+
+
+def test_provider_chat_payload_sanitizer_invokes_adapter_before_capability_filter(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeAdapter:
+        class capabilities:
+            reasoning = False
+            response_reasoning_field = None
+
+        def sanitize_chat_payload(self, payload):
+            calls.append(dict(payload))
+            cleaned = dict(payload)
+            cleaned["adapter_added_param"] = "drop-me"
+            cleaned["reasoning_effort"] = "high"
+            return cleaned
+
+    monkeypatch.setattr(proxy_app, "_chat_profile_provider_adapter", lambda provider_id=None: FakeAdapter())
+
+    payload = {
+        "model": "custom-model",
+        "messages": [],
+        "temperature": 0.2,
+        "reasoning_effort": "low",
+    }
+
+    cleaned = proxy_app._sanitize_provider_chat_payload_for_upstream("custom", payload)
+
+    assert calls == [payload]
+    assert cleaned["model"] == "custom-model"
+    assert cleaned["messages"] == []
+    assert cleaned["temperature"] == 0.2
+    assert "reasoning_effort" not in cleaned
+    assert "adapter_added_param" not in cleaned
+
+
+def test_legacy_chat_capability_wrappers_delegate_to_provider_neutral_seams() -> None:
+    compat_source = inspect.getsource(proxy_app._chat_payload_compat_mode)
+    extension_source = inspect.getsource(proxy_app._chat_payload_supports_deepseek_extensions)
+    profile_source = inspect.getsource(proxy_app._chat_capability_profile)
+    sanitize_source = inspect.getsource(proxy_app._sanitize_chat_payload_for_upstream)
+
+    assert "return _provider_chat_payload_compat_mode(" in compat_source
+    assert "return _provider_chat_payload_supports_deepseek_extensions(" in extension_source
+    assert "return _provider_chat_capability_profile(" in profile_source
+    assert "return _sanitize_provider_chat_payload_for_upstream(" in sanitize_source

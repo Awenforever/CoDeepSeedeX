@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.24-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.25-alpha"
 PROXY_INTERNAL_VERSION = "p3.0a1-codexchange-hardcut-generalized-router"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
@@ -15510,16 +15510,20 @@ def _configured_base_url_host(base_url: str | None = None) -> str | None:
 
 
 
-def _chat_payload_compat_mode() -> str:
+def _provider_chat_payload_compat_mode(provider_id: str | None = None) -> str:
     explicit = str(os.environ.get("COX_CHAT_COMPAT_MODE") or "").strip().lower().replace("-", "_")
     if explicit in {"deepseek", "openai_compatible"}:
         return explicit
 
-    provider = _configured_model_provider()
-    if provider in {"custom", "openai", "openai_compatible", "openai-compatible"}:
+    provider = str(provider_id if provider_id is not None else _configured_model_provider()).strip().lower().replace("-", "_")
+    if provider in {"custom", "openai", "openai_compatible"}:
         return "openai_compatible"
 
     return "deepseek" if provider == "deepseek" else "openai_compatible"
+
+
+def _chat_payload_compat_mode() -> str:
+    return _provider_chat_payload_compat_mode(_configured_model_provider())
 
 
 _OPENAI_COMPATIBLE_CHAT_PARAMS = {
@@ -15573,21 +15577,55 @@ def _chat_extra_params_from_env() -> dict[str, Any]:
 
 
 
-def _chat_payload_supports_deepseek_extensions() -> bool:
+def _chat_profile_provider_adapter(provider_id: str | None = None) -> Any | None:
+    try:
+        configured_provider = _configured_model_provider()
+    except Exception:
+        configured_provider = None
+
+    requested_provider = str(provider_id if provider_id is not None else configured_provider or "").strip().lower().replace("-", "_")
+    configured_normalized = str(configured_provider or "").strip().lower().replace("-", "_")
+
+    if provider_id is None or requested_provider == configured_normalized:
+        try:
+            return _configured_provider_adapter()
+        except ValueError:
+            return None
+
+    try:
+        adapter_lookup = globals().get("get_provider_adapter")
+        if callable(adapter_lookup):
+            return adapter_lookup(requested_provider)
+    except Exception:
+        pass
+
+    try:
+        from .providers.registry import get_provider_adapter as registry_get_provider_adapter
+        return registry_get_provider_adapter(requested_provider)
+    except Exception:
+        return None
+
+
+def _provider_chat_payload_supports_deepseek_extensions(
+    provider_id: str | None = None,
+    *,
+    adapter: Any | None = None,
+    compat_mode: str | None = None,
+) -> bool:
     override = _env_flag_value("COX_CHAT_SUPPORTS_DEEPSEEK_EXTENSIONS")
     if override is not None:
         return override
 
-    compat_mode_enabled = _chat_payload_compat_mode() == "deepseek"
+    active_compat_mode = compat_mode or _provider_chat_payload_compat_mode(provider_id)
+    compat_mode_enabled = active_compat_mode == "deepseek"
     if not compat_mode_enabled:
         return False
 
-    try:
-        adapter = _configured_provider_adapter()
-    except ValueError:
+    active_adapter = adapter if adapter is not None else _chat_profile_provider_adapter(provider_id)
+    if active_adapter is None:
         return compat_mode_enabled
 
-    capabilities = getattr(adapter, "capabilities", None)
+    capabilities = getattr(active_adapter, "capabilities", None)
     adapter_supports_deepseek_reasoning = (
         getattr(capabilities, "response_reasoning_field", None) == "reasoning_content"
         or bool(getattr(capabilities, "reasoning", False))
@@ -15595,7 +15633,16 @@ def _chat_payload_supports_deepseek_extensions() -> bool:
     return bool(adapter_supports_deepseek_reasoning or compat_mode_enabled)
 
 
-def _chat_capability_profile() -> dict[str, Any]:
+def _chat_payload_supports_deepseek_extensions() -> bool:
+    return _provider_chat_payload_supports_deepseek_extensions(_configured_model_provider())
+
+
+def _provider_chat_capability_profile(
+    provider_id: str | None = None,
+    *,
+    adapter: Any | None = None,
+    compat_mode: str | None = None,
+) -> dict[str, Any]:
     """Return the provider chat capability profile used by the payload adapter.
 
     The default for custom/OpenAI-compatible providers is a conservative common
@@ -15603,15 +15650,19 @@ def _chat_capability_profile() -> dict[str, Any]:
     explicit allow/drop/extra env declarations instead of inferred from the
     provider name alone.
     """
-    provider = _configured_model_provider()
-    compat_mode = _chat_payload_compat_mode()
-    supports_deepseek_extensions = _chat_payload_supports_deepseek_extensions()
+    provider = str(provider_id if provider_id is not None else _configured_model_provider()).strip().lower().replace("-", "_")
+    active_compat_mode = compat_mode or _provider_chat_payload_compat_mode(provider)
+    supports_deepseek_extensions = _provider_chat_payload_supports_deepseek_extensions(
+        provider,
+        adapter=adapter,
+        compat_mode=active_compat_mode,
+    )
     explicit_allow = _split_chat_param_list(os.environ.get("COX_CHAT_ALLOW_PARAMS"))
     explicit_drop = _split_chat_param_list(os.environ.get("COX_CHAT_DROP_PARAMS"))
     extra_params = _chat_extra_params_from_env()
     extra_keys = set(extra_params)
 
-    if compat_mode == "deepseek":
+    if active_compat_mode == "deepseek":
         default_allowed: set[str] | None = None
         default_dropped: set[str] = set()
     else:
@@ -15625,17 +15676,14 @@ def _chat_capability_profile() -> dict[str, Any]:
     effective_allowed = None if default_allowed is None else set(default_allowed) | explicit_allow | extra_keys
     effective_drop = set(explicit_drop)
     if default_allowed is None:
-        # DeepSeek mode keeps known DeepSeek extensions unless explicitly dropped.
         effective_drop.update(explicit_drop)
     else:
-        # In allowlist mode, unsupported defaults are excluded by absence from the
-        # allowlist. Explicit allow overrides the default DeepSeek-extension drop.
         effective_drop.update(default_dropped - explicit_allow - extra_keys)
 
     return {
         "provider": provider,
         "base_url_host": _configured_base_url_host(),
-        "chat_compat_mode": compat_mode,
+        "chat_compat_mode": active_compat_mode,
         "supports_deepseek_extensions": supports_deepseek_extensions,
         "allow_all_params": effective_allowed is None,
         "allowed_params": None if effective_allowed is None else sorted(effective_allowed),
@@ -15648,19 +15696,27 @@ def _chat_capability_profile() -> dict[str, Any]:
     }
 
 
-def _chat_capability_profile_for_diagnostics() -> dict[str, Any]:
-    profile = _chat_capability_profile()
+def _chat_capability_profile() -> dict[str, Any]:
+    return _provider_chat_capability_profile(_configured_model_provider())
+
+
+def _chat_capability_profile_for_diagnostics(
+    profile: dict[str, Any] | None = None,
+    *,
+    provider_id: str | None = None,
+) -> dict[str, Any]:
+    active_profile = profile if profile is not None else _provider_chat_capability_profile(provider_id)
     return {
-        "provider": profile["provider"],
-        "base_url_host": profile["base_url_host"],
-        "chat_compat_mode": profile["chat_compat_mode"],
-        "supports_deepseek_extensions": profile["supports_deepseek_extensions"],
-        "allow_all_params": profile["allow_all_params"],
-        "allowed_params": profile["allowed_params"],
-        "allow_params": profile["allow_params"],
-        "drop_params": profile["drop_params"],
-        "explicit_drop_params": profile["explicit_drop_params"],
-        "extra_params": profile["extra_params"],
+        "provider": active_profile["provider"],
+        "base_url_host": active_profile["base_url_host"],
+        "chat_compat_mode": active_profile["chat_compat_mode"],
+        "supports_deepseek_extensions": active_profile["supports_deepseek_extensions"],
+        "allow_all_params": active_profile["allow_all_params"],
+        "allowed_params": active_profile["allowed_params"],
+        "allow_params": active_profile["allow_params"],
+        "drop_params": active_profile["drop_params"],
+        "explicit_drop_params": active_profile["explicit_drop_params"],
+        "extra_params": active_profile["extra_params"],
     }
 
 
@@ -15681,13 +15737,18 @@ def _unsupported_parameter_names_from_body(body: str) -> list[str]:
     return sorted(found)
 
 
-def _apply_chat_capability_profile(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _apply_chat_capability_profile(
+    payload: dict[str, Any],
+    *,
+    provider_id: str | None = None,
+    profile: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(payload, dict):
-        return payload, _chat_capability_profile_for_diagnostics()
-    profile = _chat_capability_profile()
-    allowed_params = None if profile["allowed_params"] is None else set(profile["allowed_params"])
-    drop_params = set(profile["drop_params"])
-    extra_params = dict(profile.get("extra_params_payload") or {})
+        return payload, _chat_capability_profile_for_diagnostics(profile, provider_id=provider_id)
+    active_profile = profile if profile is not None else _provider_chat_capability_profile(provider_id)
+    allowed_params = None if active_profile["allowed_params"] is None else set(active_profile["allowed_params"])
+    drop_params = set(active_profile["drop_params"])
+    extra_params = dict(active_profile.get("extra_params_payload") or {})
 
     cleaned: dict[str, Any] = {}
     dropped_by_allowlist: set[str] = set()
@@ -15707,7 +15768,7 @@ def _apply_chat_capability_profile(payload: dict[str, Any]) -> tuple[dict[str, A
             continue
         cleaned[key] = value
 
-    diagnostics = _chat_capability_profile_for_diagnostics()
+    diagnostics = _chat_capability_profile_for_diagnostics(active_profile)
     diagnostics.update(
         {
             "input_params": sorted(payload),
@@ -15721,13 +15782,18 @@ def _apply_chat_capability_profile(payload: dict[str, Any]) -> tuple[dict[str, A
 
 
 
-def _sanitize_chat_payload_for_upstream(payload: dict[str, Any]) -> dict[str, Any]:
-    try:
-        adapter_cleaned = _configured_provider_adapter().sanitize_chat_payload(payload)
-    except ValueError:
+def _sanitize_provider_chat_payload_for_upstream(provider_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
+    adapter = _chat_profile_provider_adapter(provider_id)
+    if adapter is not None:
+        adapter_cleaned = adapter.sanitize_chat_payload(payload)
+    else:
         adapter_cleaned = payload
-    cleaned, _diagnostics = _apply_chat_capability_profile(adapter_cleaned)
+    cleaned, _diagnostics = _apply_chat_capability_profile(adapter_cleaned, provider_id=provider_id)
     return cleaned
+
+
+def _sanitize_chat_payload_for_upstream(payload: dict[str, Any]) -> dict[str, Any]:
+    return _sanitize_provider_chat_payload_for_upstream(_configured_model_provider(), payload)
 
 
 def _upstream_error_detail(*, status_code: int, body: str) -> dict[str, Any]:
