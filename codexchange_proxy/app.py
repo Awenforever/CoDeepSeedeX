@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.26-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a16-postrelease-closeout-fix-v0425"
+PROXY_PUBLIC_VERSION = "v0.4.27-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a19-provider-tokenizer-candidate-wrapper-v0427"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -17264,38 +17264,118 @@ def _profile_tokenizer_resource_root() -> Path:
     return Path.home() / ".local" / "share" / "codexchange" / "resources" / "tokenizers"
 
 
-def _profile_tokenizer_json_candidates(kind: str) -> list[tuple[Path, str]]:
+def _provider_profile_tokenizer_json_candidates(
+    provider_id: str | None,
+    kind: str,
+) -> list[tuple[Path, str]]:
+    """Return tokenizer JSON candidates for the selected provider.
+
+    Provider adapters receive the first opportunity to resolve their own
+    tokenizer resources. The fallback remains provider-neutral, while the
+    legacy DeepSeek-specific environment variables and resource aliases are
+    enabled only for the DeepSeek compatibility route.
+    """
+    provider_value = str(
+        provider_id
+        or os.environ.get("COX_MODEL_PROVIDER")
+        or "deepseek"
+    ).strip().lower()
+    adapter_provider = (
+        "deepseek"
+        if provider_value in {"deepseek-v3", "deepseek-v4"}
+        else provider_value
+    )
+
     try:
-        adapter = get_provider_adapter("deepseek")
+        adapter = get_provider_adapter(adapter_provider)
         method = getattr(adapter, "tokenizer_json_candidates", None)
         if callable(method):
             return method(
                 kind,
                 resource_root=_profile_tokenizer_resource_root(),
-                package_root=Path(__file__).resolve().parent / "resources" / "tokenizers",
+                package_root=(
+                    Path(__file__).resolve().parent
+                    / "resources"
+                    / "tokenizers"
+                ),
                 env_get=os.environ.get,
             )
     except Exception:
         pass
 
     candidates: list[tuple[Path, str]] = []
-    for name in ["COX_PROFILE_TOKENIZER_JSON", "COX_DEEPSEEK_TOKENIZER_JSON"]:
+
+    env_names = ["COX_PROFILE_TOKENIZER_JSON"]
+    if adapter_provider == "deepseek":
+        env_names.append("COX_DEEPSEEK_TOKENIZER_JSON")
+
+    for name in env_names:
         raw = os.environ.get(name)
         if raw:
-            candidates.append((Path(raw).expanduser(), f"env.{name}"))
+            candidates.append(
+                (
+                    Path(raw).expanduser(),
+                    f"env.{name}",
+                )
+            )
 
     resource_root = _profile_tokenizer_resource_root()
-    candidates.append((resource_root / kind / "tokenizer.json", "managed_resource"))
+    candidates.append(
+        (
+            resource_root / kind / "tokenizer.json",
+            "managed_resource",
+        )
+    )
 
-    if kind == "deepseek_official_current":
-        candidates.append((resource_root / "deepseek_v3" / "tokenizer.json", "legacy_managed_resource"))
+    if (
+        adapter_provider == "deepseek"
+        and kind == "deepseek_official_current"
+    ):
+        candidates.append(
+            (
+                resource_root
+                / "deepseek_v3"
+                / "tokenizer.json",
+                "legacy_managed_resource",
+            )
+        )
 
-    package_root = Path(__file__).resolve().parent / "resources" / "tokenizers"
-    candidates.append((package_root / kind / "tokenizer.json", "package_resource"))
-    if kind == "deepseek_official_current":
-        candidates.append((package_root / "deepseek_v3" / "tokenizer.json", "legacy_package_resource"))
+    package_root = (
+        Path(__file__).resolve().parent
+        / "resources"
+        / "tokenizers"
+    )
+    candidates.append(
+        (
+            package_root / kind / "tokenizer.json",
+            "package_resource",
+        )
+    )
+
+    if (
+        adapter_provider == "deepseek"
+        and kind == "deepseek_official_current"
+    ):
+        candidates.append(
+            (
+                package_root
+                / "deepseek_v3"
+                / "tokenizer.json",
+                "legacy_package_resource",
+            )
+        )
 
     return candidates
+
+
+def _profile_tokenizer_json_candidates(
+    kind: str,
+) -> list[tuple[Path, str]]:
+    """Legacy DeepSeek tokenizer candidate compatibility wrapper."""
+    return _provider_profile_tokenizer_json_candidates(
+        "deepseek",
+        kind,
+    )
 def _profile_tokenizer_contract(model: str | None, provider: str | None = None) -> dict[str, Any]:
     provider_value = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek")
     tokenizers_error: str | None = None
@@ -17337,7 +17417,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
     checked: list[dict[str, Any]] = []
     selected_path: Path | None = None
     selected_source = None
-    for path, source_kind in _profile_tokenizer_json_candidates(kind):
+    for path, source_kind in _provider_profile_tokenizer_json_candidates(provider_value, kind):
         checked.append({"path": str(path), "source_kind": source_kind, "exists": path.is_file()})
         if path.is_file() and selected_path is None:
             selected_path = path
