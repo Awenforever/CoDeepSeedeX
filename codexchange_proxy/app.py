@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.28-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a22-provider-pricing-resource-profile-wrapper-v0428"
+PROXY_PUBLIC_VERSION = "v0.4.29-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a24-provider-pricing-resource-metadata-completion-v0429"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -427,6 +427,9 @@ def _provider_pricing_resource_profile(provider_id: str) -> dict[str, Any]:
         "parser": optional_text(source.get("parser")),
         "currency": optional_text(source.get("currency")),
         "unit": optional_text(source.get("unit")),
+        "unit_legacy": optional_text(source.get("unit_legacy")),
+        "primary_locale": optional_text(source.get("primary_locale")),
+        "fallback_locale": optional_text(source.get("fallback_locale")),
         "cache_scope": "legacy_shared" if supported else None,
         "cache_schema_owner": adapter_provider_id if supported else None,
         "cache_is_provider_scoped": False,

@@ -306,6 +306,9 @@ class DeepSeekProviderAdapter:
             "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
             "currency": "CNY",
             "unit": "per_million_tokens",
+            "unit_legacy": "per_1m_tokens",
+            "primary_locale": "zh-cn",
+            "fallback_locale": "en",
         }
 
     def discount_window_from_pricing_text(self, text: str, *, clean_pricing_html_cell: Any) -> dict[str, Any]:
