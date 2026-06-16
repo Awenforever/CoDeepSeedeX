@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.31-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a28-provider-pricing-cache-path-profile-wrapper-v0431"
+PROXY_PUBLIC_VERSION = "v0.4.32-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a30-provider-pricing-cache-migration-status-wrapper-v0432"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -609,6 +609,353 @@ def _deepseek_pricing_cache_path() -> Path:
     """Legacy DeepSeek pricing-cache path compatibility wrapper."""
     return _provider_pricing_cache_path(
         "deepseek"
+    )
+
+def _pricing_cache_file_snapshot(
+    path: str | Path,
+) -> dict[str, Any]:
+    """Return non-mutating pricing-cache file evidence."""
+    import hashlib as _hashlib
+
+    candidate = Path(path).expanduser()
+    resolved = candidate.resolve(
+        strict=False
+    )
+    exists = candidate.exists()
+    is_file = candidate.is_file()
+    size = None
+    sha256 = None
+    json_valid = False
+    metadata: dict[str, Any] = {}
+    error = None
+
+    if is_file:
+        try:
+            raw = candidate.read_bytes()
+            size = len(raw)
+            sha256 = _hashlib.sha256(
+                raw
+            ).hexdigest()
+
+            try:
+                payload = json.loads(
+                    raw.decode("utf-8")
+                )
+                json_valid = isinstance(
+                    payload,
+                    dict,
+                )
+
+                if json_valid:
+                    raw_metadata = (
+                        payload.get(
+                            "__metadata__"
+                        )
+                    )
+
+                    if isinstance(
+                        raw_metadata,
+                        dict,
+                    ):
+                        metadata = dict(
+                            raw_metadata
+                        )
+            except Exception:
+                json_valid = False
+        except Exception as exc:
+            error = (
+                f"{type(exc).__name__}:"
+                f"{exc}"
+            )
+
+    identity_fields = (
+        "provider",
+        "provider_id",
+        "adapter_provider_id",
+        "family",
+        "cache_scope",
+        "cache_schema_owner",
+        "cache_is_provider_scoped",
+    )
+    provider_identity_keys = [
+        field
+        for field in identity_fields
+        if field in metadata
+    ]
+
+    return {
+        "path": str(candidate),
+        "resolved_path": str(resolved),
+        "exists": exists,
+        "is_file": is_file,
+        "size": size,
+        "sha256": sha256,
+        "json_valid": json_valid,
+        "metadata_present": bool(
+            metadata
+        ),
+        "provider_identity_present": (
+            bool(provider_identity_keys)
+        ),
+        "provider_identity_keys": (
+            provider_identity_keys
+        ),
+        "error": error,
+    }
+
+
+def _provider_pricing_cache_migration_status(
+    provider_id: str,
+    *,
+    provider_path: str | Path,
+    legacy_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Classify cache migration state without modifying either path."""
+    profile = (
+        _provider_pricing_resource_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        profile.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        profile.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    cache_schema_owner = str(
+        profile.get(
+            "cache_schema_owner"
+        )
+        or ""
+    )
+
+    if (
+        profile.get("supported") is not True
+        or not cache_schema_owner
+    ):
+        raise ValueError(
+            "provider_pricing_cache_migration_"
+            "not_supported:"
+            f"{requested_provider}"
+        )
+
+    legacy_candidate = (
+        Path(legacy_path).expanduser()
+        if legacy_path is not None
+        else _pricing_cache_path()
+    )
+    provider_candidate = Path(
+        provider_path
+    ).expanduser()
+
+    legacy_snapshot = (
+        _pricing_cache_file_snapshot(
+            legacy_candidate
+        )
+    )
+    provider_snapshot = (
+        _pricing_cache_file_snapshot(
+            provider_candidate
+        )
+    )
+
+    configured = os.environ.get(
+        "COX_PRICING_PATH",
+        "",
+    ).strip()
+    explicit_path = (
+        Path(configured).expanduser()
+        if configured
+        else None
+    )
+
+    legacy_exists = bool(
+        legacy_snapshot["exists"]
+    )
+    provider_exists = bool(
+        provider_snapshot["exists"]
+    )
+
+    comparison = (
+        "sha256_raw_bytes"
+    )
+    identical = False
+
+    if (
+        legacy_exists
+        and provider_exists
+        and legacy_snapshot["is_file"]
+        and provider_snapshot["is_file"]
+    ):
+        identical = bool(
+            (
+                legacy_snapshot[
+                    "resolved_path"
+                ]
+                == provider_snapshot[
+                    "resolved_path"
+                ]
+            )
+            or (
+                legacy_snapshot["sha256"]
+                and (
+                    legacy_snapshot[
+                        "sha256"
+                    ]
+                    == provider_snapshot[
+                        "sha256"
+                    ]
+                )
+            )
+        )
+
+    if explicit_path is not None:
+        state = (
+            "explicit_pricing_path"
+        )
+        reason = (
+            "explicit_pricing_path_active"
+        )
+        recommended_action = (
+            "keep_external_pricing_path_"
+            "unchanged"
+        )
+    elif (
+        not legacy_exists
+        and not provider_exists
+    ):
+        state = "none"
+        reason = (
+            "no_cache_file_present"
+        )
+        recommended_action = (
+            "no_migration_action"
+        )
+    elif (
+        legacy_exists
+        and not provider_exists
+    ):
+        state = "legacy_only"
+        reason = (
+            "legacy_cache_present_"
+            "provider_cache_absent"
+        )
+        recommended_action = (
+            "manual_review_required_"
+            "before_any_copy"
+        )
+    elif (
+        provider_exists
+        and not legacy_exists
+    ):
+        state = "provider_only"
+        reason = (
+            "provider_cache_present_"
+            "legacy_cache_absent"
+        )
+        recommended_action = (
+            "keep_existing_runtime_"
+            "routing_unchanged"
+        )
+    elif identical:
+        state = "both_identical"
+        reason = (
+            "legacy_and_provider_cache_"
+            "raw_bytes_identical"
+        )
+        recommended_action = (
+            "no_conflict_detected_"
+            "keep_paths_unchanged"
+        )
+    else:
+        state = "both_conflict"
+        reason = (
+            "legacy_and_provider_cache_"
+            "content_conflict"
+        )
+        recommended_action = (
+            "manual_conflict_resolution_"
+            "required"
+        )
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "family": profile.get(
+            "family"
+        ),
+        "cache_schema_owner": (
+            cache_schema_owner
+        ),
+        "state": state,
+        "reason": reason,
+        "recommended_action": (
+            recommended_action
+        ),
+        "comparison": comparison,
+        "content_identical": (
+            identical
+        ),
+        "conflict": (
+            state == "both_conflict"
+        ),
+        "explicit_pricing_path": (
+            str(explicit_path)
+            if explicit_path is not None
+            else None
+        ),
+        "explicit_pricing_path_exists": (
+            explicit_path.exists()
+            if explicit_path is not None
+            else False
+        ),
+        "legacy": legacy_snapshot,
+        "provider_cache": (
+            provider_snapshot
+        ),
+        "legacy_identity_ambiguous": (
+            legacy_exists
+            and not legacy_snapshot[
+                "provider_identity_present"
+            ]
+        ),
+        "automatic_migration_allowed": (
+            False
+        ),
+        "migration_execution_safe": (
+            False
+        ),
+        "copies_files": False,
+        "moves_files": False,
+        "deletes_files": False,
+        "writes_files": False,
+        "switches_reader": False,
+        "switches_writer": False,
+        "changes_config_precedence": (
+            False
+        ),
+    }
+
+
+def _deepseek_pricing_cache_migration_status(
+    *,
+    provider_path: str | Path,
+    legacy_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Legacy DeepSeek wrapper for the read-only migration classifier."""
+    return (
+        _provider_pricing_cache_migration_status(
+            "deepseek",
+            provider_path=provider_path,
+            legacy_path=legacy_path,
+        )
     )
 
 
