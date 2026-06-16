@@ -3926,6 +3926,218 @@ def _pricing(args: argparse.Namespace) -> int:
     print(json.dumps({"status": "error", "error": "unknown_pricing_command"}, ensure_ascii=False, indent=2))
     return 2
 
+def _pricing_refresh_provider_owned_cli_candidate_contract(
+    provider_id: str,
+    *,
+    write_cache: bool,
+    cache_path: str | None,
+    provider_owned: bool,
+    provider_cache_path: str | None,
+) -> dict[str, object]:
+    """Validate a provider-owned CLI candidate without registering or dispatching it."""
+    requested_provider = (
+        _adapter_canonical_provider_id(
+            provider_id or "deepseek"
+        )
+    )
+    legacy_cache_path = (
+        str(cache_path).strip()
+        if cache_path is not None
+        and str(cache_path).strip()
+        else None
+    )
+    explicit_provider_path = (
+        str(provider_cache_path).strip()
+        if provider_cache_path is not None
+        and str(provider_cache_path).strip()
+        else None
+    )
+    candidate_requested = bool(
+        provider_owned
+        or explicit_provider_path
+    )
+
+    base_contract: dict[str, object] = {
+        "capability": (
+            "pricing_refresh_provider_owned_"
+            "cli_candidate"
+        ),
+        "provider": requested_provider,
+        "candidate_source": (
+            "explicit_cli_arguments_only"
+        ),
+        "candidate_requested": (
+            candidate_requested
+        ),
+        "write_cache": bool(
+            write_cache
+        ),
+        "provider_owned": bool(
+            provider_owned
+        ),
+        "legacy_cache_path": (
+            legacy_cache_path
+        ),
+        "provider_cache_path": (
+            explicit_provider_path
+        ),
+        "required_flags": [
+            "--write-cache",
+            "--provider-owned",
+            "--provider-cache-path",
+        ],
+        "legacy_cache_path_semantics_unchanged": (
+            True
+        ),
+        "path_inference": False,
+        "environment_lookup": False,
+        "parser_registered": False,
+        "dispatch_wired": False,
+        "execution_called": False,
+        "runtime_active": False,
+        "runtime_activation_allowed": False,
+        "dual_write": False,
+        "fallback_write": False,
+        "reader_switch": False,
+        "daily_refresh_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "writes_files": False,
+        "creates_directories": False,
+    }
+
+    def rejected(
+        reason: str,
+        action: str,
+    ) -> dict[str, object]:
+        return {
+            "status": "error",
+            "available": False,
+            "reason": reason,
+            "action": action,
+            "candidate_contract_valid": (
+                False
+            ),
+            "selected_mode": None,
+            "dispatch_target": None,
+            "argument_mapping": None,
+            **base_contract,
+        }
+
+    if (
+        explicit_provider_path
+        and not provider_owned
+    ):
+        return rejected(
+            (
+                "provider_cache_path_requires_"
+                "provider_owned"
+            ),
+            (
+                "add --provider-owned together "
+                "with --write-cache and "
+                "--provider-cache-path"
+            ),
+        )
+
+    if not provider_owned:
+        return {
+            "status": "ok",
+            "available": True,
+            "reason": (
+                "legacy_refresh_candidate_"
+                "unchanged"
+            ),
+            "action": (
+                "continue using the existing "
+                "legacy refresh dispatch"
+            ),
+            "candidate_contract_valid": True,
+            "selected_mode": "legacy_shared",
+            "dispatch_target": (
+                "_refresh_provider_pricing_"
+                "from_official_docs"
+            ),
+            "argument_mapping": None,
+            **base_contract,
+        }
+
+    if not write_cache:
+        return rejected(
+            (
+                "provider_owned_requires_"
+                "write_cache"
+            ),
+            (
+                "add --write-cache for an "
+                "explicit provider-owned write"
+            ),
+        )
+
+    if legacy_cache_path:
+        return rejected(
+            (
+                "provider_owned_rejects_"
+                "legacy_cache_path"
+            ),
+            (
+                "remove --cache-path and use "
+                "--provider-cache-path only"
+            ),
+        )
+
+    if not explicit_provider_path:
+        return rejected(
+            (
+                "provider_owned_requires_"
+                "provider_cache_path"
+            ),
+            (
+                "provide --provider-cache-path "
+                "explicitly"
+            ),
+        )
+
+    if requested_provider != "deepseek":
+        return rejected(
+            (
+                "provider_owned_cli_candidate_"
+                "initially_deepseek_only"
+            ),
+            (
+                "add and audit a provider-owned "
+                "pricing writer for this provider "
+                "before enabling its CLI candidate"
+            ),
+        )
+
+    return {
+        "status": "ok",
+        "available": True,
+        "reason": (
+            "provider_owned_cli_candidate_ready"
+        ),
+        "action": (
+            "retain candidate-only state until "
+            "parser registration and dispatch are "
+            "separately audited"
+        ),
+        "candidate_contract_valid": True,
+        "selected_mode": "provider_owned",
+        "dispatch_target": (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        "argument_mapping": {
+            "activate": True,
+            "mode": "provider_owned",
+            "provider_path": (
+                explicit_provider_path
+            ),
+        },
+        **base_contract,
+    }
+
 
 def _post_config_run_self(argv: list[str], *, timeout: float = 20.0) -> dict[str, object]:
     command = [sys.executable, "-m", "codexchange_proxy.cli", *argv]
