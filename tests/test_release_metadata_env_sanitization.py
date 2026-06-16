@@ -23,7 +23,7 @@ def test_cli_version_ignores_stale_release_metadata_env() -> None:
 
     output = result.stdout.strip()
     assert "72e0f77" not in output
-    assert "p3.3a20a24-provider-pricing-resource-metadata-completion-v0429" in output
+    assert "p3.3a20a26-provider-pricing-cache-metadata-builder-v0430" in output
 
 
 def test_install_script_writes_current_release_metadata_env() -> None:

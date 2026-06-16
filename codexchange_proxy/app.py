@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.29-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a24-provider-pricing-resource-metadata-completion-v0429"
+PROXY_PUBLIC_VERSION = "v0.4.30-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a26-provider-pricing-cache-metadata-builder-v0430"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -874,6 +874,90 @@ def _parse_deepseek_official_pricing_html(text: str, *, include_metadata: bool =
         text,
         include_metadata=include_metadata,
     )
+def _build_provider_pricing_cache_metadata(
+    provider_id: str,
+    *,
+    source_url: str,
+    fetched_at: str,
+    ttl_seconds: int,
+) -> dict[str, Any]:
+    """Build provider-owned pricing cache metadata without selecting a cache."""
+    profile = _provider_pricing_resource_profile(provider_id)
+    requested_provider = str(
+        profile.get("provider")
+        or provider_id
+        or ""
+    )
+
+    if (
+        profile.get("supported") is not True
+        or not profile.get("cache_schema_owner")
+    ):
+        raise ValueError(
+            "provider_pricing_cache_metadata_not_supported:"
+            f"{requested_provider}"
+        )
+
+    static_fields = (
+        "source_kind",
+        "unit",
+        "unit_legacy",
+        "currency",
+        "parser",
+        "primary_locale",
+        "fallback_locale",
+    )
+    missing = [
+        field
+        for field in static_fields
+        if not profile.get(field)
+    ]
+
+    if missing:
+        raise ValueError(
+            "provider_pricing_cache_metadata_incomplete:"
+            f"{requested_provider}:"
+            + ",".join(missing)
+        )
+
+    expires_ts = (
+        _pricing_parse_iso_timestamp(fetched_at)
+        or time.time()
+    ) + ttl_seconds
+
+    return {
+        "source_url": source_url,
+        "source_kind": profile["source_kind"],
+        "fetched_at": fetched_at,
+        "updated_at": fetched_at,
+        "expires_at": _pricing_iso_from_timestamp(
+            expires_ts
+        ),
+        "ttl_seconds": ttl_seconds,
+        "unit": profile["unit"],
+        "unit_legacy": profile["unit_legacy"],
+        "currency": profile["currency"],
+        "parser": profile["parser"],
+        "primary_locale": profile["primary_locale"],
+        "fallback_locale": profile["fallback_locale"],
+    }
+
+
+def _build_deepseek_pricing_cache_metadata(
+    *,
+    source_url: str,
+    fetched_at: str,
+    ttl_seconds: int,
+) -> dict[str, Any]:
+    """Legacy DeepSeek pricing cache metadata compatibility wrapper."""
+    return _build_provider_pricing_cache_metadata(
+        "deepseek",
+        source_url=source_url,
+        fetched_at=fetched_at,
+        ttl_seconds=ttl_seconds,
+    )
+
+
 def _write_pricing_cache_atomic(
     prices: dict[str, Any],
     *,
@@ -883,27 +967,35 @@ def _write_pricing_cache_atomic(
     ttl_seconds: int,
 ) -> None:
     path = path.expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    expires_ts = (_pricing_parse_iso_timestamp(fetched_at) or time.time()) + ttl_seconds
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
     payload: dict[str, Any] = {
-        "__metadata__": {
-            "source_url": source_url,
-            "source_kind": "official_docs_html",
-            "fetched_at": fetched_at,
-            "updated_at": fetched_at,
-            "expires_at": _pricing_iso_from_timestamp(expires_ts),
-            "ttl_seconds": ttl_seconds,
-            "unit": "per_million_tokens",
-            "unit_legacy": "per_1m_tokens",
-            "currency": "CNY",
-            "parser": "deepseek_official_docs_html_bilingual_v3_discount_aware",
-            "primary_locale": "zh-cn",
-            "fallback_locale": "en",
-        },
+        "__metadata__": (
+            _build_deepseek_pricing_cache_metadata(
+                source_url=source_url,
+                fetched_at=fetched_at,
+                ttl_seconds=ttl_seconds,
+            )
+        ),
         **prices,
     }
-    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path = path.with_name(
+        f".{path.name}.tmp-"
+        f"{os.getpid()}-"
+        f"{uuid.uuid4().hex}"
+    )
+    tmp_path.write_text(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     os.replace(tmp_path, path)
 
 
