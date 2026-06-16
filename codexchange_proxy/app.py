@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.27-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a19-provider-tokenizer-candidate-wrapper-v0427"
+PROXY_PUBLIC_VERSION = "v0.4.28-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a22-provider-pricing-resource-profile-wrapper-v0428"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -334,6 +334,110 @@ def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
 
 DEEPSEEK_OFFICIAL_PRICING_URL = get_provider_adapter("deepseek").official_pricing_url
 DEEPSEEK_OFFICIAL_PRICING_URL_EN = get_provider_adapter("deepseek").official_pricing_url_en
+
+
+def _provider_pricing_resource_profile(provider_id: str) -> dict[str, Any]:
+    """Return provider-owned pricing resource metadata without changing routing.
+
+    This profile is diagnostic-only. It does not select a cache, refresh pricing,
+    rewrite metadata, or opt a provider into pricing support.
+    """
+    requested_provider = (
+        str(provider_id or "")
+        .strip()
+        .lower()
+        .replace("-", "_")
+    )
+    adapter = get_provider_adapter(requested_provider)
+    adapter_provider_id = str(
+        getattr(adapter, "provider_id", requested_provider)
+        or requested_provider
+    )
+    family = str(
+        getattr(adapter, "family", "")
+        or ""
+    )
+    capabilities = getattr(
+        adapter,
+        "capabilities",
+        None,
+    )
+    supported = bool(
+        getattr(capabilities, "pricing", False)
+    )
+
+    source_method = getattr(
+        adapter,
+        "official_pricing_source",
+        None,
+    )
+    source: dict[str, Any] = {}
+
+    if supported and callable(source_method):
+        raw_source = source_method()
+        if isinstance(raw_source, dict):
+            source = dict(raw_source)
+
+    refresh_method = getattr(
+        adapter,
+        "refresh_pricing_from_official_docs",
+        None,
+    )
+    parser_method = getattr(
+        adapter,
+        "parse_official_pricing_html",
+        None,
+    )
+    official_refresh_supported = bool(
+        supported
+        and callable(refresh_method)
+        and callable(parser_method)
+    )
+
+    reason = None
+    action = None
+
+    if not supported:
+        reason = "provider_pricing_not_supported"
+        action = (
+            "add an audited provider pricing resource profile "
+            "before enabling pricing refresh for this provider"
+        )
+    elif not official_refresh_supported:
+        reason = "provider_official_pricing_refresh_not_implemented"
+        action = (
+            "implement and audit provider-owned pricing parsing "
+            "and refresh methods before enabling automatic refresh"
+        )
+
+    def optional_text(value: Any) -> str | None:
+        normalized = str(value or "").strip()
+        return normalized or None
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": adapter_provider_id,
+        "family": optional_text(family),
+        "supported": supported,
+        "capability": "pricing",
+        "official_refresh_supported": official_refresh_supported,
+        "source_url": optional_text(source.get("source_url")),
+        "source_url_en": optional_text(source.get("source_url_en")),
+        "source_kind": optional_text(source.get("source_kind")),
+        "parser": optional_text(source.get("parser")),
+        "currency": optional_text(source.get("currency")),
+        "unit": optional_text(source.get("unit")),
+        "cache_scope": "legacy_shared" if supported else None,
+        "cache_schema_owner": adapter_provider_id if supported else None,
+        "cache_is_provider_scoped": False,
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _deepseek_pricing_resource_profile() -> dict[str, Any]:
+    """Legacy DeepSeek pricing-resource profile wrapper."""
+    return _provider_pricing_resource_profile("deepseek")
 
 
 def _pricing_project_config_path() -> Path:
