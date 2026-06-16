@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 import re
@@ -861,7 +862,7 @@ def test_installer_excludes_managed_resources_from_git_status() -> None:
 
 def test_installer_latest_release_api_falls_back_to_packaged_public_tag() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.25-alpha}"' in text
+    assert 'COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.26-alpha}"' in text
     assert "Latest Release API fallback used" in text
     assert "falling back to packaged public release tag" in text
 
@@ -1484,3 +1485,62 @@ def test_installer_completion_holds_skip_in_noninteractive_or_ci_mode() -> None:
         snippet = text[start:start + 260]
         assert "cox_should_skip_interactive_hold" in snippet
         assert "return 0" in snippet
+
+def test_p33a20a16_noninteractive_no_codex_wrapper_preserves_explicit_skip(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    install_dir = tmp_path / "install"
+    bin_dir = home / ".local" / "bin"
+    config_dir = home / ".config" / "codexchange"
+
+    home.mkdir(parents=True)
+
+    env = os.environ.copy()
+    for name in list(env):
+        if name.startswith(("COX_", "DEEPSEEK_")):
+            env.pop(name, None)
+
+    env.update(
+        {
+            "HOME": str(home),
+            "COX_LOCALE": "en",
+            "CI": "1",
+            "NO_COLOR": "1",
+        }
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_SH),
+            "--dry-run",
+            "--non-interactive",
+            "--no-codex-profile",
+            "--no-codex-wrapper",
+            "--no-shell-profile",
+            "--repo-url",
+            str(ROOT),
+            "--install-ref",
+            "HEAD",
+            "--install-dir",
+            str(install_dir),
+            "--bin-dir",
+            str(bin_dir),
+            "--config-dir",
+            str(config_dir),
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+
+    output = result.stdout + result.stderr
+
+    assert result.returncode == 0, output
+    assert "Codex wrapper skipped" in output
+    assert "Codex wrapper installed" not in output
+    assert not (bin_dir / "codex").exists()

@@ -5,7 +5,7 @@ INSTALL_DIR="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
 REPO_URL="${COX_REPO_URL:-https://github.com/Awenforever/CoDeepSeedeX.git}"
 LATEST_RELEASE_API_URL="${COX_LATEST_RELEASE_API_URL:-https://api.github.com/repos/Awenforever/CoDeepSeedeX/releases/latest}"
 INSTALL_REF="${COX_INSTALL_REF:-}"
-COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.25-alpha}"
+COX_PUBLIC_RELEASE_TAG="${COX_LATEST_RELEASE_FALLBACK_TAG:-v0.4.26-alpha}"
 BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
@@ -503,7 +503,7 @@ show_install_completion_hold() {
   local detected_public
   local detected_internal
   width="$(ui_terminal_width)"
-  public_version="${COX_PUBLIC_VERSION:-v0.4.25-alpha}"
+  public_version="${COX_PUBLIC_VERSION:-v0.4.26-alpha}"
   internal_version="${COX_INTERNAL_VERSION:-}"
 
   if [ -x "${INSTALL_DIR:-}/.venv/bin/cox" ]; then
@@ -3956,6 +3956,12 @@ while true; do
       guided_step=5
       ;;
     5)
+      # Non-interactive mode must preserve the command-line/default wrapper
+      # decision. Calling the menu helper here returns its default "Y" and
+      # previously overwrote an explicit --no-codex-wrapper selection.
+      if [ "$NON_INTERACTIVE" = "1" ]; then
+        break
+      fi
       COX_NEXT_MENU_DETAIL="After installing, use codex --profile cox. Custom providers can use codex --profile <provider-id>. The wrapper starts or refreshes the local cox backend automatically."
       WRAPPER_CHOICE="$(read_yes_no_menu "Install codex wrapper for cox and provider-backed custom profiles? Recommended." "Y")"
       if [ "$WRAPPER_CHOICE" = "__COX_BACK__" ]; then
