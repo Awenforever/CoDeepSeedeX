@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.35-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a36-provider-pricing-refresh-writer-explicit-activation-contract-v0435"
+PROXY_PUBLIC_VERSION = "v0.4.36-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a38-provider-pricing-refresh-writer-single-write-execution-seam-v0436"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -2139,6 +2139,302 @@ def _deepseek_pricing_refresh_writer_activation_contract(
             activate=activate,
             mode=mode,
             provider_path=provider_path,
+        )
+    )
+
+def _provider_pricing_refresh_writer_single_write_execution(
+    provider_id: str,
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None,
+    model: str | None = None,
+    source_url: str | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """Execute one explicit provider-owned pricing refresh write."""
+    activation = (
+        _provider_pricing_refresh_writer_activation_contract(
+            provider_id,
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+    requested_provider = str(
+        activation.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        activation.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    requested_mode = str(
+        activation.get("requested_mode")
+        or mode
+        or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    base_execution = {
+        "capability": (
+            "pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        "execution_seam": (
+            "function_level_unwired"
+        ),
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "activation_source": (
+            "explicit_arguments_only"
+        ),
+        "activation_requested": bool(
+            activate
+        ),
+        "requested_mode": requested_mode,
+        "provider_owned_only": True,
+        "write_cache_forced": True,
+        "target_count": 1,
+        "legacy_writer_called": False,
+        "legacy_path_written": False,
+        "dual_write": False,
+        "fallback_write": False,
+        "environment_lookup": False,
+        "cli_lookup": False,
+        "reader_switch": False,
+        "daily_refresh_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "existing_refresh_wrapper_modified": (
+            False
+        ),
+        "existing_cli_modified": False,
+    }
+
+    def rejected(
+        reason: str,
+        action: str,
+    ) -> dict[str, Any]:
+        return {
+            "status": "error",
+            "available": False,
+            "reason": reason,
+            "action": action,
+            "writes_cache": False,
+            "cache_path": (
+                activation.get(
+                    "candidate_path"
+                )
+            ),
+            "old_cache_preserved": True,
+            "activation": activation,
+            "execution": {
+                **base_execution,
+                "execution_attempted": False,
+                "execution_allowed": False,
+                "writer": None,
+                "target_path": (
+                    activation.get(
+                        "candidate_path"
+                    )
+                ),
+            },
+        }
+
+    if (
+        activation.get(
+            "activation_ready"
+        )
+        is not True
+        or activation.get(
+            "activation_contract_valid"
+        )
+        is not True
+    ):
+        return rejected(
+            str(
+                activation.get("reason")
+                or (
+                    "provider_pricing_refresh_"
+                    "writer_activation_not_ready"
+                )
+            ),
+            str(
+                activation.get("action")
+                or (
+                    "provide explicit valid "
+                    "activation arguments"
+                )
+            ),
+        )
+
+    if requested_mode != "provider_owned":
+        return rejected(
+            (
+                "provider_pricing_refresh_"
+                "single_write_requires_"
+                "provider_owned_mode"
+            ),
+            (
+                "use mode=provider_owned with "
+                "an explicit provider path"
+            ),
+        )
+
+    if adapter_provider_id != "deepseek":
+        return rejected(
+            (
+                "provider_pricing_refresh_"
+                "single_write_execution_"
+                "not_supported"
+            ),
+            (
+                "add and audit a provider-owned "
+                "writer execution seam for this "
+                "provider first"
+            ),
+        )
+
+    candidate_writer = str(
+        activation.get(
+            "candidate_writer"
+        )
+        or ""
+    )
+    candidate_path = activation.get(
+        "candidate_path"
+    )
+
+    if (
+        candidate_writer
+        != (
+            "_write_deepseek_provider_"
+            "pricing_cache_atomic"
+        )
+        or not candidate_path
+    ):
+        return rejected(
+            (
+                "provider_pricing_refresh_"
+                "single_write_candidate_invalid"
+            ),
+            (
+                "re-run the explicit activation "
+                "contract with a provider-owned "
+                "DeepSeek path"
+            ),
+        )
+
+    target_path = Path(
+        str(candidate_path)
+    ).expanduser()
+    adapter = get_provider_adapter(
+        requested_provider
+    )
+
+    def _parse_provider_html(
+        text: str,
+        *,
+        include_metadata: bool = False,
+    ) -> dict[str, Any]:
+        return (
+            _parse_provider_official_pricing_html(
+                requested_provider,
+                text,
+                include_metadata=include_metadata,
+            )
+        )
+
+    def _provider_target_path() -> Path:
+        return target_path
+
+    result = (
+        adapter.refresh_pricing_from_official_docs(
+            model=model,
+            source_url=source_url,
+            write_cache=True,
+            cache_path=target_path,
+            timeout=timeout,
+            default_model=DEFAULT_MODEL,
+            fetch_text_url=_fetch_text_url,
+            parse_official_pricing_html=(
+                _parse_provider_html
+            ),
+            pricing_cache_path=(
+                _provider_target_path
+            ),
+            pricing_now_iso=(
+                _pricing_now_iso
+            ),
+            pricing_ttl_seconds=(
+                _pricing_ttl_seconds
+            ),
+            pricing_parse_iso_timestamp=(
+                _pricing_parse_iso_timestamp
+            ),
+            pricing_iso_from_timestamp=(
+                _pricing_iso_from_timestamp
+            ),
+            write_pricing_cache_atomic=(
+                _write_deepseek_provider_pricing_cache_atomic
+            ),
+        )
+    )
+
+    payload = (
+        dict(result)
+        if isinstance(result, dict)
+        else {
+            "status": "error",
+            "available": False,
+            "reason": (
+                "provider_pricing_refresh_"
+                "single_write_result_invalid"
+            ),
+            "writes_cache": False,
+            "old_cache_preserved": True,
+        }
+    )
+    payload["activation"] = activation
+    payload["execution"] = {
+        **base_execution,
+        "execution_attempted": True,
+        "execution_allowed": True,
+        "writer": candidate_writer,
+        "target_path": str(
+            target_path
+        ),
+    }
+    return payload
+
+
+def _deepseek_pricing_refresh_writer_single_write_execution(
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None,
+    model: str | None = None,
+    source_url: str | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for explicit provider-owned single-write execution."""
+    return (
+        _provider_pricing_refresh_writer_single_write_execution(
+            "deepseek",
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+            model=model,
+            source_url=source_url,
+            timeout=timeout,
         )
     )
 
