@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.30-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a26-provider-pricing-cache-metadata-builder-v0430"
+PROXY_PUBLIC_VERSION = "v0.4.31-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a28-provider-pricing-cache-path-profile-wrapper-v0431"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -452,6 +452,164 @@ def _pricing_cache_path() -> Path:
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".cache" / "codexchange" / "pricing.json"
+
+def _provider_pricing_cache_path_profile(
+    provider_id: str,
+) -> dict[str, Any]:
+    """Describe a provider pricing-cache path without changing active routing."""
+    resource_profile = _provider_pricing_resource_profile(
+        provider_id
+    )
+    requested_provider = str(
+        resource_profile.get("provider")
+        or provider_id
+        or ""
+    )
+
+    pricing_supported = (
+        resource_profile.get("supported")
+        is True
+    )
+    cache_scope = (
+        str(
+            resource_profile.get(
+                "cache_scope"
+            )
+            or ""
+        ).strip()
+        or None
+    )
+    cache_schema_owner = (
+        str(
+            resource_profile.get(
+                "cache_schema_owner"
+            )
+            or ""
+        ).strip()
+        or None
+    )
+    provider_scoped = bool(
+        resource_profile.get(
+            "cache_is_provider_scoped"
+        )
+    )
+
+    legacy_compatibility_active = bool(
+        pricing_supported
+        and cache_scope == "legacy_shared"
+        and cache_schema_owner
+        and not provider_scoped
+    )
+
+    active_path = (
+        _pricing_cache_path()
+        if legacy_compatibility_active
+        else None
+    )
+
+    reason = None
+    action = None
+
+    if not legacy_compatibility_active:
+        reason = (
+            resource_profile.get("reason")
+            or (
+                "provider_pricing_cache_path_"
+                "not_supported"
+            )
+        )
+        action = (
+            resource_profile.get("action")
+            or (
+                "add and audit a provider-owned "
+                "pricing cache path contract before "
+                "enabling this provider"
+            )
+        )
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            resource_profile.get(
+                "adapter_provider_id"
+            )
+        ),
+        "family": resource_profile.get(
+            "family"
+        ),
+        "supported": (
+            legacy_compatibility_active
+        ),
+        "pricing_supported": (
+            pricing_supported
+        ),
+        "capability": (
+            "pricing_cache_path"
+        ),
+        "cache_scope": cache_scope,
+        "cache_schema_owner": (
+            cache_schema_owner
+        ),
+        "cache_is_provider_scoped": (
+            provider_scoped
+        ),
+        "legacy_compatibility_active": (
+            legacy_compatibility_active
+        ),
+        "override_env": (
+            "COX_PRICING_CACHE_PATH"
+            if legacy_compatibility_active
+            else None
+        ),
+        "path": (
+            str(active_path)
+            if active_path is not None
+            else None
+        ),
+        "legacy_shared_path": (
+            str(active_path)
+            if active_path is not None
+            else None
+        ),
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _provider_pricing_cache_path(
+    provider_id: str,
+) -> Path:
+    """Return an audited provider pricing-cache path or fail explicitly."""
+    profile = (
+        _provider_pricing_cache_path_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        profile.get("provider")
+        or provider_id
+        or ""
+    )
+    raw_path = profile.get("path")
+
+    if (
+        profile.get("supported") is not True
+        or not raw_path
+    ):
+        raise ValueError(
+            "provider_pricing_cache_path_"
+            "not_supported:"
+            f"{requested_provider}"
+        )
+
+    return Path(str(raw_path)).expanduser()
+
+
+def _deepseek_pricing_cache_path() -> Path:
+    """Legacy DeepSeek pricing-cache path compatibility wrapper."""
+    return _provider_pricing_cache_path(
+        "deepseek"
+    )
 
 
 def _pricing_config_path() -> Path:
