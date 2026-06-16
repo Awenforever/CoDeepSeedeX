@@ -26,8 +26,8 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.33-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a32-provider-owned-pricing-cache-writer-wrapper-v0433"
+PROXY_PUBLIC_VERSION = "v0.4.34-alpha"
+PROXY_INTERNAL_VERSION = "p3.3a20a34-provider-pricing-refresh-writer-selection-profile-wrapper-v0434"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -1603,6 +1603,324 @@ def _write_deepseek_provider_pricing_cache_atomic(
         source_url=source_url,
         fetched_at=fetched_at,
         ttl_seconds=ttl_seconds,
+    )
+
+def _provider_pricing_refresh_writer_selection_profile(
+    provider_id: str,
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Describe refresh-writer selection without activating or calling it."""
+    resource_profile = (
+        _provider_pricing_resource_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        resource_profile.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        resource_profile.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    family = str(
+        resource_profile.get("family")
+        or adapter_provider_id
+    )
+    cache_schema_owner = str(
+        resource_profile.get(
+            "cache_schema_owner"
+        )
+        or ""
+    )
+
+    allowed_modes = (
+        "legacy_shared",
+        "provider_owned",
+        "disabled",
+    )
+    requested_mode = str(
+        mode or "legacy_shared"
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    if requested_mode not in allowed_modes:
+        raise ValueError(
+            "provider_pricing_refresh_writer_"
+            "selection_mode_not_supported:"
+            f"{requested_mode}"
+        )
+
+    supported = bool(
+        resource_profile.get("supported")
+        is True
+        and cache_schema_owner
+    )
+
+    if not supported:
+        return {
+            "provider": requested_provider,
+            "adapter_provider_id": (
+                adapter_provider_id
+            ),
+            "family": family,
+            "supported": False,
+            "capability": (
+                "pricing_refresh_writer_selection"
+            ),
+            "requested_mode": requested_mode,
+            "selected_mode": None,
+            "default_mode": (
+                "legacy_shared"
+            ),
+            "allowed_modes": list(
+                allowed_modes
+            ),
+            "provider_owned_available": (
+                False
+            ),
+            "selection_valid": False,
+            "candidate_writer": None,
+            "selected_writer": None,
+            "selected_path": None,
+            "legacy_path": None,
+            "provider_path": None,
+            "current_runtime_mode": None,
+            "current_runtime_writer": None,
+            "current_runtime_path": None,
+            "profile_only": True,
+            "runtime_active": False,
+            "runtime_activation_allowed": (
+                False
+            ),
+            "explicit_activation_required": (
+                True
+            ),
+            "requires_explicit_provider_path": (
+                requested_mode
+                == "provider_owned"
+            ),
+            "explicit_provider_path_present": (
+                False
+            ),
+            "dual_write_supported": False,
+            "fallback_write_supported": (
+                False
+            ),
+            "writes_files": False,
+            "creates_directories": False,
+            "calls_writer": False,
+            "selection_has_side_effects": (
+                False
+            ),
+            "changes_refresh_routing": (
+                False
+            ),
+            "changes_reader_routing": False,
+            "changes_daily_refresh_target": (
+                False
+            ),
+            "reason": (
+                resource_profile.get("reason")
+                or (
+                    "provider_pricing_refresh_"
+                    "writer_selection_not_supported"
+                )
+            ),
+            "action": (
+                resource_profile.get("action")
+                or (
+                    "add and audit provider pricing "
+                    "resource ownership before "
+                    "selecting a refresh writer"
+                )
+            ),
+        }
+
+    legacy_path = (
+        _pricing_cache_path()
+    )
+    provider_candidate = (
+        Path(provider_path).expanduser()
+        if provider_path is not None
+        else None
+    )
+
+    candidate_writer = {
+        "legacy_shared": (
+            "_write_pricing_cache_atomic"
+        ),
+        "provider_owned": (
+            "_write_deepseek_provider_"
+            "pricing_cache_atomic"
+            if adapter_provider_id
+            == "deepseek"
+            else (
+                "_write_provider_pricing_"
+                "cache_atomic"
+            )
+        ),
+        "disabled": None,
+    }[requested_mode]
+
+    if requested_mode == "legacy_shared":
+        selection_valid = True
+        selected_path = legacy_path
+        reason = (
+            "legacy_shared_refresh_writer_"
+            "candidate_selected"
+        )
+        action = (
+            "keep current runtime injection "
+            "unchanged"
+        )
+    elif requested_mode == "provider_owned":
+        selection_valid = (
+            provider_candidate is not None
+        )
+        selected_path = (
+            provider_candidate
+            if selection_valid
+            else None
+        )
+        reason = (
+            "provider_owned_refresh_writer_"
+            "candidate_selected"
+            if selection_valid
+            else (
+                "explicit_provider_path_"
+                "required"
+            )
+        )
+        action = (
+            "retain profile-only state until "
+            "a separate activation audit"
+            if selection_valid
+            else (
+                "provide an explicit provider "
+                "cache path for candidate "
+                "inspection only"
+            )
+        )
+    else:
+        selection_valid = True
+        selected_path = None
+        reason = (
+            "refresh_writer_disabled_"
+            "candidate_selected"
+        )
+        action = (
+            "retain profile-only state; current "
+            "runtime injection remains unchanged"
+        )
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "family": family,
+        "supported": True,
+        "capability": (
+            "pricing_refresh_writer_selection"
+        ),
+        "cache_schema_owner": (
+            cache_schema_owner
+        ),
+        "requested_mode": requested_mode,
+        "selected_mode": (
+            requested_mode
+            if selection_valid
+            else None
+        ),
+        "default_mode": "legacy_shared",
+        "allowed_modes": list(
+            allowed_modes
+        ),
+        "provider_owned_available": True,
+        "selection_valid": (
+            selection_valid
+        ),
+        "candidate_writer": (
+            candidate_writer
+        ),
+        "selected_writer": (
+            candidate_writer
+            if selection_valid
+            else None
+        ),
+        "selected_path": (
+            str(selected_path)
+            if selected_path is not None
+            else None
+        ),
+        "legacy_path": str(
+            legacy_path
+        ),
+        "provider_path": (
+            str(provider_candidate)
+            if provider_candidate is not None
+            else None
+        ),
+        "current_runtime_mode": (
+            "legacy_shared"
+        ),
+        "current_runtime_writer": (
+            "_write_pricing_cache_atomic"
+        ),
+        "current_runtime_path": str(
+            legacy_path
+        ),
+        "profile_only": True,
+        "runtime_active": False,
+        "runtime_activation_allowed": (
+            False
+        ),
+        "explicit_activation_required": (
+            True
+        ),
+        "requires_explicit_provider_path": (
+            requested_mode
+            == "provider_owned"
+        ),
+        "explicit_provider_path_present": (
+            provider_candidate is not None
+        ),
+        "dual_write_supported": False,
+        "fallback_write_supported": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "calls_writer": False,
+        "selection_has_side_effects": False,
+        "changes_refresh_routing": False,
+        "changes_reader_routing": False,
+        "changes_daily_refresh_target": (
+            False
+        ),
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _deepseek_pricing_refresh_writer_selection_profile(
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for the non-activating writer-selection profile."""
+    return (
+        _provider_pricing_refresh_writer_selection_profile(
+            "deepseek",
+            mode=mode,
+            provider_path=provider_path,
+        )
     )
 
 
