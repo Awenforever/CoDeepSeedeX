@@ -953,6 +953,10 @@ def _render_simple_toml_key_values(values: dict[str, object]) -> str:
     order = [
         "model",
         "model_provider",
+        "pricing_provider_id",
+        "pricing_provider_owned",
+        "pricing_mode",
+        "pricing_provider_path",
         "model_context_window",
         "model_auto_compact_token_limit",
         "tool_output_token_limit",
@@ -977,14 +981,22 @@ def _render_simple_toml_key_values(values: dict[str, object]) -> str:
             rendered = str(value)
         else:
             text = str(value)
-            if text.lower() in {"true", "false"} and key == "model_supports_reasoning_summaries":
+            if text.lower() in {"true", "false"} and key in {
+                "model_supports_reasoning_summaries",
+                "pricing_provider_owned",
+            }:
                 rendered = text.lower()
-            elif re.fullmatch(r"-?\d+", text) and key in {"model_context_window", "model_auto_compact_token_limit", "tool_output_token_limit"}:
+            elif re.fullmatch(r"-?\d+", text) and key in {
+                "model_context_window",
+                "model_auto_compact_token_limit",
+                "tool_output_token_limit",
+            }:
                 rendered = text
             else:
                 rendered = _toml_quote(text)
         lines.append(f"{key} = {rendered}")
     return "\n".join(lines).rstrip() + "\n"
+
 
 
 def _remove_top_level_codex_profile_selector(text: str) -> tuple[str, bool]:
@@ -1028,6 +1040,147 @@ def _read_codex_profile_values(config_path: Path, profile_name: str) -> tuple[di
     if legacy:
         return legacy, "legacy_profile_table", profile_path
     return {}, "missing", profile_path
+
+def _profile_pricing_candidate_contract(
+    profile_values: dict[str, object],
+) -> dict[str, object]:
+    """Validate explicit profile pricing fields without activating startup wiring."""
+    field_names = (
+        "pricing_provider_id",
+        "pricing_provider_owned",
+        "pricing_mode",
+        "pricing_provider_path",
+    )
+    present_fields = [
+        name
+        for name in field_names
+        if name in profile_values
+    ]
+    candidate_requested = bool(present_fields)
+
+    base_contract: dict[str, object] = {
+        "capability": "profile_pricing_candidate",
+        "candidate_source": "explicit_profile_fields_only",
+        "candidate_requested": candidate_requested,
+        "present_fields": present_fields,
+        "required_fields": list(field_names),
+        "path_inference": False,
+        "model_provider_inference": False,
+        "environment_lookup": False,
+        "profile_write": False,
+        "wrapper_wired": False,
+        "startup_dispatch_wired": False,
+        "runtime_active": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "legacy_cache_path_reinterpreted": False,
+        "legacy_pricing_path_reinterpreted": False,
+        "reader_switch": False,
+        "daily_refresh_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+    }
+
+    def rejected(reason: str) -> dict[str, object]:
+        return {
+            **base_contract,
+            "status": "error",
+            "available": False,
+            "candidate_contract_valid": False,
+            "reason": reason,
+            "selected_mode": None,
+            "argument_mapping": None,
+        }
+
+    if not candidate_requested:
+        return {
+            **base_contract,
+            "status": "ok",
+            "available": True,
+            "candidate_contract_valid": True,
+            "reason": "legacy_profile_without_pricing_fields",
+            "selected_mode": "legacy_shared",
+            "argument_mapping": None,
+        }
+
+    if set(present_fields) != set(field_names):
+        return rejected("profile_pricing_fields_incomplete")
+
+    provider_id = str(
+        profile_values.get("pricing_provider_id")
+        or ""
+    ).strip().lower().replace("-", "_")
+    mode = str(
+        profile_values.get("pricing_mode")
+        or ""
+    ).strip().lower().replace("-", "_")
+    provider_path_value = str(
+        profile_values.get("pricing_provider_path")
+        or ""
+    ).strip()
+    provider_owned_value = profile_values.get(
+        "pricing_provider_owned"
+    )
+
+    if isinstance(provider_owned_value, bool):
+        provider_owned = provider_owned_value
+    else:
+        provider_owned_text = str(
+            provider_owned_value or ""
+        ).strip().lower()
+        if provider_owned_text == "true":
+            provider_owned = True
+        elif provider_owned_text == "false":
+            provider_owned = False
+        else:
+            return rejected(
+                "pricing_provider_owned_invalid_boolean"
+            )
+
+    if not provider_owned:
+        return rejected(
+            "pricing_provider_owned_must_be_true"
+        )
+    if not provider_id:
+        return rejected(
+            "pricing_provider_id_required"
+        )
+    if mode != "provider_owned":
+        return rejected(
+            "pricing_mode_must_be_provider_owned"
+        )
+    if not provider_path_value:
+        return rejected(
+            "pricing_provider_path_required"
+        )
+
+    provider_path = Path(
+        provider_path_value
+    ).expanduser()
+    if not provider_path.is_absolute():
+        return rejected(
+            "pricing_provider_path_must_be_absolute"
+        )
+    if not provider_path.is_file():
+        return rejected(
+            "pricing_provider_path_not_file"
+        )
+
+    selected_path = str(provider_path)
+    return {
+        **base_contract,
+        "status": "ok",
+        "available": True,
+        "candidate_contract_valid": True,
+        "reason": "explicit_provider_owned_profile_candidate",
+        "selected_mode": "provider_owned",
+        "argument_mapping": {
+            "pricing_provider_id": provider_id,
+            "pricing_provider_owned": True,
+            "pricing_mode": "provider_owned",
+            "pricing_provider_path": selected_path,
+        },
+    }
 
 
 def _write_codex_profile_values(config_path: Path, profile_name: str, values: dict[str, object]) -> Path:
