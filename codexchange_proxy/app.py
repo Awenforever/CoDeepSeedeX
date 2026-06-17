@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.40-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a46-provider-pricing-daily-refresh-target-selection-profile-wrapper-v0440"
+PROXY_INTERNAL_VERSION = "p3.3a20a48-provider-pricing-daily-refresh-target-explicit-activation-contract-v0441"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -2201,6 +2201,266 @@ def _deepseek_pricing_daily_refresh_target_selection_profile(
     return (
         _provider_pricing_daily_refresh_target_selection_profile(
             "deepseek",
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+
+def _provider_pricing_daily_refresh_target_activation_contract(
+    provider_id: str,
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate explicit daily-refresh target activation without executing it."""
+    selection = (
+        _provider_pricing_daily_refresh_target_selection_profile(
+            provider_id,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+    requested_provider = str(
+        selection.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        selection.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    requested_mode = str(
+        selection.get("requested_mode")
+        or mode
+        or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    provider_supported = bool(
+        selection.get("supported")
+        is True
+    )
+    target_selection_valid = bool(
+        selection.get(
+            "target_selection_valid"
+        )
+        is True
+    )
+    explicit_provider_path_present = bool(
+        selection.get(
+            "explicit_provider_path_present"
+        )
+        is True
+    )
+
+    mode_activation_allowed = (
+        requested_mode
+        in {
+            "provider_owned",
+            "disabled",
+        }
+    )
+
+    activation_contract_valid = bool(
+        provider_supported
+        and target_selection_valid
+        and mode_activation_allowed
+    )
+    activation_ready = bool(
+        activate
+        and activation_contract_valid
+    )
+
+    if not activate:
+        reason = (
+            "explicit_daily_refresh_"
+            "activation_not_requested"
+        )
+        action = (
+            "pass activate=True with an explicit "
+            "provider_owned or disabled mode; "
+            "provider_owned also requires an "
+            "explicit provider path"
+        )
+    elif not provider_supported:
+        reason = str(
+            selection.get("reason")
+            or (
+                "provider_pricing_daily_refresh_"
+                "target_activation_not_supported"
+            )
+        )
+        action = str(
+            selection.get("action")
+            or (
+                "add and audit provider pricing "
+                "resource ownership first"
+            )
+        )
+    elif requested_mode == "legacy_shared":
+        reason = (
+            "legacy_shared_daily_refresh_"
+            "activation_not_allowed"
+        )
+        action = (
+            "retain the existing implicit legacy "
+            "daily-refresh default; explicit "
+            "activation is reserved for "
+            "provider_owned or disabled modes"
+        )
+    elif (
+        requested_mode == "provider_owned"
+        and not explicit_provider_path_present
+    ):
+        reason = (
+            "explicit_provider_path_required"
+        )
+        action = (
+            "provide provider_path explicitly; "
+            "path inference remains disabled"
+        )
+    elif not target_selection_valid:
+        reason = str(
+            selection.get("reason")
+            or (
+                "daily_refresh_target_"
+                "selection_invalid"
+            )
+        )
+        action = str(
+            selection.get("action")
+            or (
+                "correct the explicit target "
+                "selection arguments"
+            )
+        )
+    elif requested_mode == "provider_owned":
+        reason = (
+            "provider_owned_daily_refresh_"
+            "activation_contract_ready"
+        )
+        action = (
+            "retain contract-only state until "
+            "the target-to-single-write execution "
+            "composition is separately audited"
+        )
+    else:
+        reason = (
+            "daily_refresh_disabled_"
+            "activation_contract_ready"
+        )
+        action = (
+            "retain contract-only disabled state "
+            "until daily-refresh dispatch is "
+            "separately audited"
+        )
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "family": selection.get(
+            "family"
+        ),
+        "capability": (
+            "pricing_daily_refresh_"
+            "target_activation"
+        ),
+        "activation_source": (
+            "explicit_arguments_only"
+        ),
+        "activation_requested": bool(
+            activate
+        ),
+        "requested_mode": requested_mode,
+        "selected_mode": selection.get(
+            "selected_mode"
+        ),
+        "selected_target_path": (
+            selection.get(
+                "selected_target_path"
+            )
+        ),
+        "target_selection_valid": (
+            target_selection_valid
+        ),
+        "activation_contract_valid": (
+            activation_contract_valid
+        ),
+        "activation_ready": (
+            activation_ready
+        ),
+        "legacy_shared_activation_allowed": (
+            False
+        ),
+        "provider_owned_activation_allowed": (
+            bool(
+                provider_supported
+                and target_selection_valid
+                and requested_mode
+                == "provider_owned"
+                and explicit_provider_path_present
+            )
+        ),
+        "disabled_activation_allowed": (
+            bool(
+                provider_supported
+                and target_selection_valid
+                and requested_mode
+                == "disabled"
+            )
+        ),
+        "provider_path_argument_required": (
+            requested_mode
+            == "provider_owned"
+        ),
+        "explicit_provider_path_present": (
+            explicit_provider_path_present
+        ),
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "calls_target_selection_profile": (
+            True
+        ),
+        "calls_execution": False,
+        "calls_refresh": False,
+        "calls_writer": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "runtime_active": False,
+        "runtime_wired": False,
+        "dual_write": False,
+        "fallback_write": False,
+        "reader_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "changes_daily_refresh_contract": (
+            False
+        ),
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _deepseek_pricing_daily_refresh_target_activation_contract(
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for explicit non-executing target activation."""
+    return (
+        _provider_pricing_daily_refresh_target_activation_contract(
+            "deepseek",
+            activate=activate,
             mode=mode,
             provider_path=provider_path,
         )
