@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a54-provider-pricing-reader-explicit-single-source-contract-v0444"
+PROXY_INTERNAL_VERSION = "p3.3a20a56-provider-pricing-reader-explicit-runtime-entry-wiring-v0445"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -2436,17 +2436,86 @@ def _deepseek_pricing_reader_single_source_execution(
     )
 
 
-def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
-    path = _pricing_config_path()
+def _load_model_pricing_usd_per_1m(
+    *,
+    provider_id: str | None = None,
+    activate: bool = False,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, dict[str, float]]:
+    explicit_runtime_entry = bool(
+        provider_id is not None
+        or activate
+        or mode is not None
+        or provider_path is not None
+    )
 
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return _validate_model_pricing_mapping(data)
-    except FileNotFoundError:
-        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
-    except Exception as exc:
-        print(f"[codexchange] failed to load pricing config {path}: {exc}")
-        return deepcopy(DEFAULT_MODEL_PRICING_USD_PER_1M)
+    if not explicit_runtime_entry:
+        path = _pricing_config_path()
+
+        try:
+            data = json.loads(
+                path.read_text(
+                    encoding="utf-8"
+                )
+            )
+            return (
+                _validate_model_pricing_mapping(
+                    data
+                )
+            )
+        except FileNotFoundError:
+            return deepcopy(
+                DEFAULT_MODEL_PRICING_USD_PER_1M
+            )
+        except Exception as exc:
+            print(
+                "[codexchange] failed to load "
+                f"pricing config {path}: {exc}"
+            )
+            return deepcopy(
+                DEFAULT_MODEL_PRICING_USD_PER_1M
+            )
+
+    requested_provider = str(
+        provider_id or "deepseek"
+    ).strip()
+    requested_mode = str(
+        mode or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    if requested_mode not in {
+        "provider_owned",
+        "disabled",
+    }:
+        return {}
+
+    execution = (
+        _provider_pricing_reader_single_source_execution(
+            requested_provider,
+            activate=activate,
+            mode=requested_mode,
+            provider_path=provider_path,
+        )
+    )
+
+    if (
+        requested_mode == "disabled"
+        or execution.get("status") != "ok"
+    ):
+        return {}
+
+    prices = execution.get("prices")
+
+    if not isinstance(prices, dict):
+        return {}
+
+    return deepcopy(prices)
+
+
 
 
 def _fetch_text_url(url: str, *, timeout: float = 20.0) -> str:

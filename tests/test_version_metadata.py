@@ -41,14 +41,14 @@ def test_public_runtime_version_matches_declared_release_tag() -> None:
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p3.3a20a54-provider-pricing-reader-explicit-single-source-contract-v0444"
+    assert PROXY_INTERNAL_VERSION == "p3.3a20a56-provider-pricing-reader-explicit-runtime-entry-wiring-v0445"
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p3.3a20a54-provider-pricing-reader-explicit-single-source-contract-v0444"
+    assert PROXY_INTERNAL_VERSION == "p3.3a20a56-provider-pricing-reader-explicit-runtime-entry-wiring-v0445"
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:

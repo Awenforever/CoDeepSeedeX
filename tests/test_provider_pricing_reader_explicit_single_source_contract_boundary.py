@@ -609,30 +609,37 @@ def test_reader_contract_signatures_and_source_boundaries() -> None:
         assert name not in execution_source
 
 
-def test_existing_reader_usage_weclaw_and_daily_refresh_remain_unwired() -> None:
-    new_symbols = (
+def test_reader_runtime_entry_is_wired_but_usage_weclaw_and_daily_refresh_remain_unwired() -> None:
+    reader_source = inspect.getsource(
+        app._load_model_pricing_usd_per_1m
+    )
+
+    assert (
+        "_provider_pricing_reader_"
+        "single_source_execution("
+        in reader_source
+    )
+    assert (
+        "_pricing_config_path()"
+        in reader_source
+    )
+
+    frozen_symbols = (
         "_provider_pricing_reader_selection_profile",
         "_provider_pricing_reader_activation_contract",
         "_provider_pricing_reader_single_source_execution",
     )
 
     for function in (
-        app._load_model_pricing_usd_per_1m,
         app._pricing_context_for_usage_event,
         app._weclaw_pricing_contract,
         app._pricing_daily_refresh_contract,
     ):
         source = inspect.getsource(function)
 
-        for symbol in new_symbols:
+        for symbol in frozen_symbols:
             assert symbol not in source
 
-    assert (
-        "_pricing_config_path()"
-        in inspect.getsource(
-            app._load_model_pricing_usd_per_1m
-        )
-    )
     assert (
         "_pricing_config_path()"
         in inspect.getsource(
