@@ -183,7 +183,7 @@ async def test_explicit_provider_owned_chat_usage_round_trip(
     assert event["estimated_cost_usd"] == 0.0
 
 
-def test_five_production_callers_remain_legacy_unwired() -> None:
+def test_five_production_callers_forward_explicit_pricing_entry() -> None:
     source = inspect.getsource(app)
     tree = ast.parse(source)
     scopes: list[str] = []
@@ -222,4 +222,4 @@ def test_five_production_callers_remain_legacy_unwired() -> None:
         "_run_chat_with_tool_bridge",
     }
     for call in calls:
-        assert PRICING_KEYWORDS.isdisjoint(call["keywords"])
+        assert PRICING_KEYWORDS.issubset(call["keywords"])

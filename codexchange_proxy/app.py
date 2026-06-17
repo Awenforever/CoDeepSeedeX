@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = 'p3.3a20a62-provider-pricing-chat-usage-explicit-runtime-entry-wiring-v0448'
+PROXY_INTERNAL_VERSION = 'p3.3a20a64-provider-pricing-chat-usage-production-explicit-propagation-v0449'
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -12503,6 +12503,10 @@ async def _compact_chat_history_for_codex_like_persistence(
     response_id: str | None = None,
     usage_call_counter: dict[str, int] | None = None,
     session_id: str | None = None,
+    pricing_provider_id: str | None = None,
+    pricing_activate: bool = False,
+    pricing_mode: str | None = None,
+    pricing_provider_path: str | Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     config = _context_compaction_env_config()
     before_chars = _json_char_size({"messages": messages})
@@ -12651,6 +12655,10 @@ async def _compact_chat_history_for_codex_like_persistence(
             thinking_enabled=_thinking_enabled(),
             call_counter=usage_call_counter,
             session_id=session_id,
+            pricing_provider_id=pricing_provider_id,
+            pricing_activate=pricing_activate,
+            pricing_mode=pricing_mode,
+            pricing_provider_path=pricing_provider_path,
         )
         summary_text = _extract_deepseek_message_text(deepseek_response)
         report["summary_source"] = "deepseek"
@@ -18279,6 +18287,10 @@ async def _judge_agent_liveness_with_llm(
     requested_model: str | None = None,
     usage_call_counter: dict[str, int] | None = None,
     session_id: str | None = None,
+    pricing_provider_id: str | None = None,
+    pricing_activate: bool = False,
+    pricing_mode: str | None = None,
+    pricing_provider_path: str | Path | None = None,
 ) -> dict[str, Any]:
     config = _agent_liveness_judge_env_config()
     report: dict[str, Any] = {
@@ -18362,6 +18374,11 @@ async def _judge_agent_liveness_with_llm(
             requested_model=requested_model,
             thinking_enabled=False,
             call_counter=usage_call_counter,
+            session_id=session_id,
+            pricing_provider_id=pricing_provider_id,
+            pricing_activate=pricing_activate,
+            pricing_mode=pricing_mode,
+            pricing_provider_path=pricing_provider_path,
         )
         judge_text = _extract_deepseek_message_text(judge_response)
         parsed = _parse_agent_liveness_judge_json(judge_text)
@@ -18415,6 +18432,10 @@ async def _run_chat_with_tool_bridge(
     usage_call_counter: dict[str, int] | None = None,
     user_tool_control_policy_report: dict[str, Any] | None = None,
     managed_tool_routing_report: dict[str, Any] | None = None,
+    pricing_provider_id: str | None = None,
+    pricing_activate: bool = False,
+    pricing_mode: str | None = None,
+    pricing_provider_path: str | Path | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     session_id = _session_id_from_request_payload(request_payload)
     deepseek_response = await _chat_completions_with_usage(
@@ -18429,6 +18450,10 @@ async def _run_chat_with_tool_bridge(
         thinking_enabled=_thinking_enabled(),
         call_counter=usage_call_counter,
         session_id=session_id,
+        pricing_provider_id=pricing_provider_id,
+        pricing_activate=pricing_activate,
+        pricing_mode=pricing_mode,
+        pricing_provider_path=pricing_provider_path,
     )
 
     if not _env_bool("COX_TOOL_BRIDGE", True):
@@ -18512,6 +18537,10 @@ async def _run_chat_with_tool_bridge(
                     requested_model=request_payload.get("model"),
                     usage_call_counter=usage_call_counter,
                     session_id=session_id,
+                    pricing_provider_id=pricing_provider_id,
+                    pricing_activate=pricing_activate,
+                    pricing_mode=pricing_mode,
+                    pricing_provider_path=pricing_provider_path,
                 )
                 liveness_report.setdefault("judge_attempts", []).append(judge_report)
                 judge_decision = str(judge_report.get("decision") or "ambiguous")
@@ -18590,6 +18619,10 @@ async def _run_chat_with_tool_bridge(
                 thinking_enabled=_thinking_enabled(),
                 call_counter=usage_call_counter,
                 session_id=session_id,
+                pricing_provider_id=pricing_provider_id,
+                pricing_activate=pricing_activate,
+                pricing_mode=pricing_mode,
+                pricing_provider_path=pricing_provider_path,
             )
             choices = deepseek_response.get("choices") or []
             if not choices:
@@ -18788,6 +18821,11 @@ async def _run_chat_with_tool_bridge(
             requested_model=request_payload.get("model"),
             thinking_enabled=_thinking_enabled(),
             call_counter=usage_call_counter,
+            session_id=session_id,
+            pricing_provider_id=pricing_provider_id,
+            pricing_activate=pricing_activate,
+            pricing_mode=pricing_mode,
+            pricing_provider_path=pricing_provider_path,
         )
 
     liveness_report["guard_reason"] = "max_tool_bridge_rounds_reached"
@@ -24860,6 +24898,10 @@ def create_app(
     *,
     deepseek_client: DeepSeekClient | None = None,
     store: InMemoryResponseStore | None = None,
+    pricing_provider_id: str | None = None,
+    pricing_activate: bool = False,
+    pricing_mode: str | None = None,
+    pricing_provider_path: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.state.deepseek_client = deepseek_client or DeepSeekClient()
@@ -25326,6 +25368,10 @@ def create_app(
             response_id=response_id,
             usage_call_counter=usage_call_counter,
             session_id=_session_id_from_request_payload(payload),
+            pricing_provider_id=pricing_provider_id,
+            pricing_activate=pricing_activate,
+            pricing_mode=pricing_mode,
+            pricing_provider_path=pricing_provider_path,
         )
         context_compaction_report["observed_at"] = _runtime_payload_guard_observed_at()
         context_compaction_report["source"] = "runtime_context_builder"
@@ -25489,6 +25535,10 @@ def create_app(
                 usage_call_counter=usage_call_counter,
                 user_tool_control_policy_report=user_tool_control_policy_report,
                 managed_tool_routing_report=managed_tool_routing_report,
+                pricing_provider_id=pricing_provider_id,
+                pricing_activate=pricing_activate,
+                pricing_mode=pricing_mode,
+                pricing_provider_path=pricing_provider_path,
             )
             _refresh_managed_tool_routing_diagnostics(
                 managed_tool_routing_report,
