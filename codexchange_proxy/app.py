@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a51-provider-pricing-daily-refresh-explicit-runtime-entry-wiring-v0443"
+PROXY_INTERNAL_VERSION = "p3.3a20a54-provider-pricing-reader-explicit-single-source-contract-v0444"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -1638,6 +1638,802 @@ def _validate_model_pricing_mapping(data: Any) -> dict[str, dict[str, float]]:
     if not pricing:
         raise ValueError("pricing root does not contain valid model pricing entries")
     return pricing
+
+
+def _provider_pricing_reader_selection_profile(
+    provider_id: str,
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Describe an explicit pricing-reader source without reading it."""
+    resource_profile = (
+        _provider_pricing_resource_profile(
+            provider_id
+        )
+    )
+    requested_provider = str(
+        resource_profile.get("provider")
+        or provider_id
+        or ""
+    )
+    adapter_provider_id = str(
+        resource_profile.get(
+            "adapter_provider_id"
+        )
+        or requested_provider
+    )
+    family = str(
+        resource_profile.get("family")
+        or adapter_provider_id
+    )
+    cache_schema_owner = str(
+        resource_profile.get(
+            "cache_schema_owner"
+        )
+        or ""
+    )
+
+    allowed_modes = (
+        "legacy_shared",
+        "provider_owned",
+        "disabled",
+    )
+    requested_mode = str(
+        mode or "legacy_shared"
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    if requested_mode not in allowed_modes:
+        raise ValueError(
+            "provider_pricing_reader_"
+            "selection_mode_not_supported:"
+            f"{requested_mode}"
+        )
+
+    supported = bool(
+        resource_profile.get("supported")
+        is True
+        and cache_schema_owner
+    )
+    provider_candidate = (
+        Path(provider_path).expanduser()
+        if provider_path is not None
+        else None
+    )
+    legacy_path = (
+        _pricing_config_path()
+        if (
+            supported
+            and requested_mode
+            == "legacy_shared"
+        )
+        else None
+    )
+
+    base: dict[str, Any] = {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            adapter_provider_id
+        ),
+        "family": family,
+        "supported": supported,
+        "capability": (
+            "pricing_reader_selection"
+        ),
+        "cache_schema_owner": (
+            cache_schema_owner
+            or None
+        ),
+        "requested_mode": requested_mode,
+        "default_mode": "legacy_shared",
+        "allowed_modes": list(
+            allowed_modes
+        ),
+        "legacy_path": (
+            str(legacy_path)
+            if legacy_path is not None
+            else None
+        ),
+        "provider_path": (
+            str(provider_candidate)
+            if (
+                supported
+                and provider_candidate
+                is not None
+            )
+            else None
+        ),
+        "current_runtime_mode": (
+            "legacy_shared"
+            if supported
+            else None
+        ),
+        "current_runtime_provider": (
+            "deepseek"
+            if supported
+            else None
+        ),
+        "current_runtime_reader": (
+            "_load_model_pricing_usd_per_1m"
+            if supported
+            else None
+        ),
+        "profile_only": True,
+        "runtime_active": False,
+        "runtime_wired": False,
+        "explicit_activation_required": True,
+        "requires_explicit_provider_path": (
+            requested_mode
+            == "provider_owned"
+        ),
+        "explicit_provider_path_present": (
+            provider_candidate is not None
+        ),
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "reads_pricing_file": False,
+        "read_count": 0,
+        "calls_legacy_reader": False,
+        "calls_usage_context": False,
+        "calls_weclaw": False,
+        "calls_daily_refresh": False,
+        "calls_writer": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "fallback_read_supported": False,
+        "default_price_fallback_supported": False,
+        "changes_reader_routing": False,
+        "changes_usage_source": False,
+        "changes_weclaw_source": False,
+        "changes_daily_refresh_contract": False,
+        "changes_cli": False,
+    }
+
+    if not supported:
+        return {
+            **base,
+            "selected_mode": None,
+            "selected_source_path": None,
+            "selection_valid": False,
+            "reason": (
+                resource_profile.get("reason")
+                or (
+                    "provider_pricing_reader_"
+                    "selection_not_supported"
+                )
+            ),
+            "action": (
+                resource_profile.get("action")
+                or (
+                    "add and audit provider pricing "
+                    "resource ownership before "
+                    "selecting a reader source"
+                )
+            ),
+        }
+
+    if requested_mode == "legacy_shared":
+        selection_valid = True
+        selected_source = legacy_path
+        reason = (
+            "legacy_shared_pricing_reader_"
+            "source_selected"
+        )
+        action = (
+            "keep the existing implicit legacy "
+            "reader unchanged"
+        )
+    elif requested_mode == "provider_owned":
+        selection_valid = (
+            provider_candidate is not None
+        )
+        selected_source = (
+            provider_candidate
+            if selection_valid
+            else None
+        )
+        reason = (
+            "provider_owned_pricing_reader_"
+            "source_selected"
+            if selection_valid
+            else (
+                "explicit_provider_path_required"
+            )
+        )
+        action = (
+            "retain explicit candidate state "
+            "until activation is requested"
+            if selection_valid
+            else (
+                "provide provider_path explicitly; "
+                "path inference remains disabled"
+            )
+        )
+    else:
+        selection_valid = True
+        selected_source = None
+        reason = (
+            "pricing_reader_disabled_"
+            "source_selected"
+        )
+        action = (
+            "retain explicit disabled state"
+        )
+
+    return {
+        **base,
+        "selected_mode": (
+            requested_mode
+            if selection_valid
+            else None
+        ),
+        "selected_source_path": (
+            str(selected_source)
+            if selected_source is not None
+            else None
+        ),
+        "selection_valid": (
+            selection_valid
+        ),
+        "reason": reason,
+        "action": action,
+    }
+
+
+def _deepseek_pricing_reader_selection_profile(
+    *,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek compatibility wrapper for reader selection."""
+    return (
+        _provider_pricing_reader_selection_profile(
+            "deepseek",
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+
+def _provider_pricing_reader_activation_contract(
+    provider_id: str,
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate explicit reader activation without reading a file."""
+    selection = (
+        _provider_pricing_reader_selection_profile(
+            provider_id,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+    requested_provider = str(
+        selection.get("provider")
+        or provider_id
+        or ""
+    )
+    requested_mode = str(
+        selection.get("requested_mode")
+        or mode
+        or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+    supported = bool(
+        selection.get("supported")
+        is True
+    )
+    selection_valid = bool(
+        selection.get("selection_valid")
+        is True
+    )
+    explicit_path_present = bool(
+        selection.get(
+            "explicit_provider_path_present"
+        )
+        is True
+    )
+    mode_activation_allowed = (
+        requested_mode
+        in {
+            "provider_owned",
+            "disabled",
+        }
+    )
+    activation_contract_valid = bool(
+        supported
+        and selection_valid
+        and mode_activation_allowed
+    )
+    activation_ready = bool(
+        activate
+        and activation_contract_valid
+    )
+
+    if not activate:
+        reason = (
+            "explicit_pricing_reader_"
+            "activation_not_requested"
+        )
+        action = (
+            "pass activate=True with "
+            "provider_owned or disabled mode"
+        )
+    elif not supported:
+        reason = str(
+            selection.get("reason")
+            or (
+                "provider_pricing_reader_"
+                "activation_not_supported"
+            )
+        )
+        action = str(
+            selection.get("action")
+            or (
+                "add audited pricing support "
+                "for this provider first"
+            )
+        )
+    elif requested_mode == "legacy_shared":
+        reason = (
+            "legacy_shared_pricing_reader_"
+            "activation_not_allowed"
+        )
+        action = (
+            "retain the existing implicit "
+            "legacy reader; explicit activation "
+            "is reserved for provider_owned "
+            "or disabled mode"
+        )
+    elif (
+        requested_mode == "provider_owned"
+        and not explicit_path_present
+    ):
+        reason = (
+            "explicit_provider_path_required"
+        )
+        action = (
+            "provide provider_path explicitly; "
+            "path inference remains disabled"
+        )
+    elif not selection_valid:
+        reason = str(
+            selection.get("reason")
+            or (
+                "pricing_reader_selection_invalid"
+            )
+        )
+        action = str(
+            selection.get("action")
+            or (
+                "correct the explicit reader "
+                "selection arguments"
+            )
+        )
+    elif requested_mode == "provider_owned":
+        reason = (
+            "provider_owned_pricing_reader_"
+            "activation_ready"
+        )
+        action = (
+            "execute the explicit single-source "
+            "reader seam when required"
+        )
+    else:
+        reason = (
+            "pricing_reader_disabled_"
+            "activation_ready"
+        )
+        action = (
+            "perform no pricing-file read"
+        )
+
+    return {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            selection.get(
+                "adapter_provider_id"
+            )
+        ),
+        "family": selection.get("family"),
+        "capability": (
+            "pricing_reader_activation"
+        ),
+        "activation_source": (
+            "explicit_arguments_only"
+        ),
+        "activation_requested": bool(
+            activate
+        ),
+        "requested_mode": requested_mode,
+        "selected_mode": (
+            selection.get("selected_mode")
+        ),
+        "selected_source_path": (
+            selection.get(
+                "selected_source_path"
+            )
+        ),
+        "selection_valid": (
+            selection_valid
+        ),
+        "activation_contract_valid": (
+            activation_contract_valid
+        ),
+        "activation_ready": (
+            activation_ready
+        ),
+        "legacy_shared_activation_allowed": False,
+        "provider_owned_activation_allowed": (
+            bool(
+                supported
+                and selection_valid
+                and requested_mode
+                == "provider_owned"
+                and explicit_path_present
+            )
+        ),
+        "disabled_activation_allowed": (
+            bool(
+                supported
+                and selection_valid
+                and requested_mode
+                == "disabled"
+            )
+        ),
+        "provider_path_argument_required": (
+            requested_mode
+            == "provider_owned"
+        ),
+        "explicit_provider_path_present": (
+            explicit_path_present
+        ),
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "calls_selection_profile": True,
+        "calls_execution": False,
+        "reads_pricing_file": False,
+        "read_count": 0,
+        "calls_legacy_reader": False,
+        "calls_usage_context": False,
+        "calls_weclaw": False,
+        "calls_daily_refresh": False,
+        "calls_writer": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "runtime_active": False,
+        "runtime_wired": False,
+        "fallback_read": False,
+        "default_prices_used": False,
+        "reader_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "daily_refresh_switch": False,
+        "cli_switch": False,
+        "reason": reason,
+        "action": action,
+        "selection": selection,
+    }
+
+
+def _deepseek_pricing_reader_activation_contract(
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for explicit reader activation."""
+    return (
+        _provider_pricing_reader_activation_contract(
+            "deepseek",
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+
+def _provider_pricing_reader_single_source_execution(
+    provider_id: str,
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Read exactly one explicit provider-owned pricing source."""
+    activation = (
+        _provider_pricing_reader_activation_contract(
+            provider_id,
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+    requested_provider = str(
+        activation.get("provider")
+        or provider_id
+        or ""
+    )
+    requested_mode = str(
+        activation.get("requested_mode")
+        or mode
+        or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+    selected_source_path = (
+        activation.get(
+            "selected_source_path"
+        )
+    )
+
+    base: dict[str, Any] = {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            activation.get(
+                "adapter_provider_id"
+            )
+        ),
+        "family": activation.get("family"),
+        "capability": (
+            "pricing_reader_single_source_execution"
+        ),
+        "execution_source": (
+            "explicit_arguments_only"
+        ),
+        "activation": activation,
+        "selected_mode": (
+            activation.get("selected_mode")
+        ),
+        "selected_source_path": (
+            selected_source_path
+        ),
+        "provider_owned_only": True,
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "automatic_activation": False,
+        "calls_legacy_reader": False,
+        "legacy_path_read": False,
+        "fallback_read": False,
+        "default_prices_used": False,
+        "calls_usage_context": False,
+        "calls_weclaw": False,
+        "calls_daily_refresh": False,
+        "calls_writer": False,
+        "writes_files": False,
+        "creates_directories": False,
+        "reader_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "daily_refresh_switch": False,
+        "cli_switch": False,
+        "existing_reader_modified": False,
+        "existing_usage_context_modified": False,
+        "existing_weclaw_modified": False,
+    }
+
+    if activation.get(
+        "activation_ready"
+    ) is not True:
+        return {
+            **base,
+            "status": "error",
+            "available": False,
+            "reason": (
+                activation.get("reason")
+                or (
+                    "pricing_reader_activation_"
+                    "not_ready"
+                )
+            ),
+            "action": activation.get("action"),
+            "reads_pricing_file": False,
+            "read_count": 0,
+            "prices": {},
+            "models": [],
+            "model_count": 0,
+        }
+
+    if requested_mode == "disabled":
+        return {
+            **base,
+            "status": "disabled",
+            "available": False,
+            "reason": (
+                "pricing_reader_disabled_by_"
+                "explicit_activation"
+            ),
+            "action": (
+                "do not read a pricing source"
+            ),
+            "reads_pricing_file": False,
+            "read_count": 0,
+            "prices": {},
+            "models": [],
+            "model_count": 0,
+        }
+
+    if (
+        requested_mode != "provider_owned"
+        or not selected_source_path
+    ):
+        return {
+            **base,
+            "status": "error",
+            "available": False,
+            "reason": (
+                "provider_owned_pricing_reader_"
+                "source_not_ready"
+            ),
+            "action": (
+                "provide activate=True, "
+                "mode=provider_owned and an "
+                "explicit provider_path"
+            ),
+            "reads_pricing_file": False,
+            "read_count": 0,
+            "prices": {},
+            "models": [],
+            "model_count": 0,
+        }
+
+    target_path = Path(
+        str(selected_source_path)
+    ).expanduser()
+
+    if not target_path.is_file():
+        return {
+            **base,
+            "status": "error",
+            "available": False,
+            "reason": (
+                "provider_pricing_reader_"
+                "source_missing"
+            ),
+            "action": (
+                "create or refresh the explicit "
+                "provider-owned pricing file first"
+            ),
+            "source_path": str(target_path),
+            "reads_pricing_file": False,
+            "read_count": 0,
+            "prices": {},
+            "models": [],
+            "model_count": 0,
+        }
+
+    try:
+        text = target_path.read_text(
+            encoding="utf-8"
+        )
+        raw_document = json.loads(text)
+
+        if not isinstance(
+            raw_document,
+            dict,
+        ):
+            raise ValueError(
+                "pricing_document_must_be_object"
+            )
+
+        prices = (
+            _validate_model_pricing_mapping(
+                raw_document
+            )
+        )
+    except Exception as exc:
+        return {
+            **base,
+            "status": "error",
+            "available": False,
+            "reason": (
+                "provider_pricing_reader_"
+                "source_invalid"
+            ),
+            "action": (
+                "replace the explicit provider "
+                "pricing source with a valid "
+                "audited pricing document"
+            ),
+            "source_path": str(target_path),
+            "reads_pricing_file": True,
+            "read_count": 1,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "prices": {},
+            "models": [],
+            "model_count": 0,
+        }
+
+    metadata: dict[str, Any] = {}
+    embedded_metadata = raw_document.get(
+        "__pricing_metadata__"
+    )
+
+    if isinstance(
+        embedded_metadata,
+        dict,
+    ):
+        metadata.update(
+            embedded_metadata
+        )
+
+    for key in (
+        "provider",
+        "adapter_provider_id",
+        "family",
+        "cache_scope",
+        "cache_schema_owner",
+        "cache_is_provider_scoped",
+        "source_kind",
+        "source_url",
+        "currency",
+        "unit",
+        "unit_legacy",
+        "fetched_at",
+        "snapshot_created_at",
+        "updated_at",
+        "expires_at",
+        "ttl_seconds",
+    ):
+        if key in raw_document:
+            metadata[key] = (
+                raw_document.get(key)
+            )
+
+    models = sorted(
+        key
+        for key in prices
+        if (
+            isinstance(key, str)
+            and not key.startswith("__")
+        )
+    )
+
+    return {
+        **base,
+        "status": "ok",
+        "available": bool(models),
+        "reason": None,
+        "action": None,
+        "source_path": str(target_path),
+        "source_size_bytes": len(
+            text.encode("utf-8")
+        ),
+        "reads_pricing_file": True,
+        "read_count": 1,
+        "prices": prices,
+        "models": models,
+        "model_count": len(models),
+        "metadata": metadata,
+    }
+
+
+def _deepseek_pricing_reader_single_source_execution(
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for explicit single-source pricing reads."""
+    return (
+        _provider_pricing_reader_single_source_execution(
+            "deepseek",
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
 
 
 def _load_model_pricing_usd_per_1m() -> dict[str, dict[str, float]]:
