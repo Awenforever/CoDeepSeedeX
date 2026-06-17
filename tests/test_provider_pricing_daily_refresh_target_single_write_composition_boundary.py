@@ -510,37 +510,43 @@ def test_composition_signatures_require_explicit_fields() -> None:
     ]
 
 
-def test_daily_refresh_runtime_remains_unwired() -> None:
+def test_daily_refresh_runtime_wires_composition_without_direct_writer() -> None:
     source = inspect.getsource(
         app._pricing_daily_refresh_contract
     )
 
     assert (
         "_provider_pricing_daily_refresh_"
-        "target_single_write_execution"
-        not in source
-    )
-    assert (
-        "_deepseek_pricing_daily_refresh_"
-        "target_single_write_execution"
-        not in source
+        "target_activation_contract("
+        in source
     )
     assert (
         "_provider_pricing_daily_refresh_"
-        "target_activation_contract"
-        not in source
+        "target_single_write_execution("
+        in source
     )
     assert (
         "_provider_pricing_refresh_writer_"
-        "single_write_execution"
+        "single_write_execution("
         not in source
     )
     assert (
-        "_refresh_provider_pricing_from_official_docs("
+        "_write_provider_pricing_cache_atomic"
+        not in source
+    )
+    assert (
+        "_write_deepseek_provider_"
+        "pricing_cache_atomic"
+        not in source
+    )
+    assert (
+        "_refresh_provider_pricing_"
+        "from_official_docs("
         in source
     )
     assert '"deepseek"' in source
     assert "_pricing_cache_path()" in source
+
 
 
 def test_composition_has_no_hidden_activation_input() -> None:

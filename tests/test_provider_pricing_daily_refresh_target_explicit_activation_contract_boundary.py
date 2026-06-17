@@ -350,12 +350,35 @@ def test_deepseek_wrapper_delegates(
     ]
 
 
-def test_existing_daily_refresh_runtime_remains_unwired() -> None:
+def test_daily_refresh_runtime_wires_only_explicit_target_entry() -> None:
     signature = inspect.signature(
         app._pricing_daily_refresh_contract
     )
 
-    assert list(signature.parameters) == ["model"]
+    assert list(
+        signature.parameters
+    ) == [
+        "model",
+        "provider_id",
+        "activate",
+        "mode",
+        "provider_path",
+        "source_url",
+        "timeout",
+    ]
+
+    for name in (
+        "provider_id",
+        "activate",
+        "mode",
+        "provider_path",
+        "source_url",
+        "timeout",
+    ):
+        assert (
+            signature.parameters[name].kind
+            is inspect.Parameter.KEYWORD_ONLY
+        )
 
     source = inspect.getsource(
         app._pricing_daily_refresh_contract
@@ -363,30 +386,35 @@ def test_existing_daily_refresh_runtime_remains_unwired() -> None:
 
     assert (
         "_provider_pricing_daily_refresh_"
-        "target_activation_contract"
-        not in source
-    )
-    assert (
-        "_deepseek_pricing_daily_refresh_"
-        "target_activation_contract"
-        not in source
+        "target_activation_contract("
+        in source
     )
     assert (
         "_provider_pricing_daily_refresh_"
-        "target_selection_profile"
-        not in source
+        "target_single_write_execution("
+        in source
     )
     assert (
         "_provider_pricing_refresh_writer_"
-        "single_write_execution"
+        "single_write_execution("
         not in source
     )
     assert (
-        '_refresh_provider_pricing_from_official_docs('
+        "_refresh_provider_pricing_"
+        "from_official_docs("
         in source
     )
     assert '"deepseek"' in source
     assert "_pricing_cache_path()" in source
+
+    for name in (
+        "COX_PRICING_PROVIDER_OWNED",
+        "COX_PRICING_PROVIDER_CACHE_PATH",
+        "COX_PRICING_DAILY_REFRESH_MODE",
+        "COX_PRICING_DAILY_REFRESH_PATH",
+    ):
+        assert name not in source
+
 
 
 def test_activation_contract_source_has_no_hidden_input() -> None:

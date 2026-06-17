@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.40-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a49-provider-pricing-daily-refresh-target-single-write-composition-v0442"
+PROXY_INTERNAL_VERSION = "p3.3a20a51-provider-pricing-daily-refresh-explicit-runtime-entry-wiring-v0443"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -1127,100 +1127,487 @@ def _pricing_refresh_result_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _pricing_daily_refresh_contract(model: str | None = None) -> dict[str, Any]:
-    configured = os.environ.get("COX_PRICING_PATH", "").strip()
-    active_path = _pricing_config_path()
-    source_info = _pricing_source_info(active_path)
-    metadata = _pricing_metadata_from_path(active_path) if active_path.exists() else {}
-    source_kind = str(metadata.get("source_kind") or source_info.get("source_kind") or "")
-    refresh_target_path = active_path if configured else _pricing_cache_path()
-    current_day = _pricing_current_local_day()
-    last_successful_refresh_day = _pricing_local_day_from_timestamp(
-        metadata.get("fetched_at")
-        or metadata.get("updated_at")
-        or metadata.get("snapshot_created_at")
+def _pricing_daily_refresh_contract(
+    model: str | None = None,
+    *,
+    provider_id: str | None = None,
+    activate: bool = False,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+    source_url: str | None = None,
+    timeout: float | None = None,
+) -> dict[str, Any]:
+    explicit_runtime_entry = bool(
+        provider_id is not None
+        or activate
+        or mode is not None
+        or provider_path is not None
+        or source_url is not None
+        or timeout is not None
     )
+
+    if not explicit_runtime_entry:
+        configured = os.environ.get("COX_PRICING_PATH", "").strip()
+        active_path = _pricing_config_path()
+        source_info = _pricing_source_info(active_path)
+        metadata = _pricing_metadata_from_path(active_path) if active_path.exists() else {}
+        source_kind = str(metadata.get("source_kind") or source_info.get("source_kind") or "")
+        refresh_target_path = active_path if configured else _pricing_cache_path()
+        current_day = _pricing_current_local_day()
+        last_successful_refresh_day = _pricing_local_day_from_timestamp(
+            metadata.get("fetched_at")
+            or metadata.get("updated_at")
+            or metadata.get("snapshot_created_at")
+        )
+
+        base: dict[str, Any] = {
+            "available": True,
+            "policy": "daily_after_local_midnight",
+            "current_local_day": current_day,
+            "last_successful_refresh_day": last_successful_refresh_day,
+            "source_kind": source_kind,
+            "active_path": str(active_path),
+            "cache_path": str(refresh_target_path),
+            "refresh_target_path": str(refresh_target_path),
+            "official_source_url": get_provider_adapter("deepseek").official_pricing_url,
+            "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
+            "configured_pricing_path_managed_by_cox": bool(configured),
+            "external_config_user_managed": False,
+            "checked_at": _pricing_now_iso(),
+        }
+
+        required = _pricing_daily_refresh_required(metadata, source_kind=source_kind)
+        base["requires_refresh"] = required
+
+        if not required:
+            base.update(
+                {
+                    "status": "official_daily_refresh_current",
+                    "reason": None,
+                    "refresh_recommended": False,
+                    "refreshed": False,
+                    "action": None,
+                }
+            )
+            return base
+
+        if not _pricing_auto_refresh_enabled():
+            base.update(
+                {
+                    "status": "official_daily_refresh_required",
+                    "reason": "pricing_source_older_than_current_local_day",
+                    "refresh_recommended": False,
+                    "refreshed": False,
+                    "action": "enable COX_PRICING_AUTO_REFRESH=1 or run cox pricing refresh --write-cache --json against the managed pricing path, then re-check cox status --weclaw-json",
+                }
+            )
+            return base
+
+        result = _refresh_provider_pricing_from_official_docs(
+            "deepseek",
+            model=model,
+            write_cache=True,
+            cache_path=refresh_target_path,
+            timeout=float(os.environ.get("COX_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
+        )
+        summary = _pricing_refresh_result_summary(result)
+        base["refresh_result"] = summary
+        if result.get("status") == "ok" and result.get("writes_cache") is True:
+            base.update(
+                {
+                    "status": "official_daily_refresh_succeeded",
+                    "reason": None,
+                    "requires_refresh": False,
+                    "refresh_recommended": False,
+                    "refreshed": True,
+                    "updated_at": result.get("updated_at") or result.get("fetched_at"),
+                    "expires_at": result.get("expires_at"),
+                    "ttl_seconds": result.get("ttl_seconds"),
+                    "action": None,
+                }
+            )
+            return base
+
+        base.update(
+            {
+                "status": "official_daily_refresh_failed_using_previous_prices",
+                "reason": result.get("reason") or "official_pricing_daily_refresh_failed",
+                "requires_refresh": True,
+                "refresh_recommended": False,
+                "refreshed": False,
+                "old_cache_preserved": True,
+                "action": "retry cox pricing refresh --write-cache --json; previous pricing file or bundled snapshot was preserved",
+            }
+        )
+        return base
+
+    requested_provider = str(
+        provider_id or "deepseek"
+    ).strip()
+    requested_mode = str(
+        mode or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+    reader_path = _pricing_config_path()
+    configured = bool(
+        os.environ.get(
+            "COX_PRICING_PATH",
+            "",
+        ).strip()
+    )
+    current_day = _pricing_current_local_day()
 
     base: dict[str, Any] = {
         "available": True,
         "policy": "daily_after_local_midnight",
+        "runtime_entry": (
+            "explicit_arguments_only"
+        ),
+        "runtime_entry_wired": True,
+        "automatic_activation": False,
+        "provider": requested_provider,
+        "requested_mode": requested_mode or None,
+        "selected_mode": None,
         "current_local_day": current_day,
-        "last_successful_refresh_day": last_successful_refresh_day,
-        "source_kind": source_kind,
-        "active_path": str(active_path),
-        "cache_path": str(refresh_target_path),
-        "refresh_target_path": str(refresh_target_path),
-        "official_source_url": get_provider_adapter("deepseek").official_pricing_url,
-        "auto_refresh_enabled": _pricing_auto_refresh_enabled(),
-        "configured_pricing_path_managed_by_cox": bool(configured),
+        "last_successful_refresh_day": None,
+        "source_kind": "",
+        "active_path": str(reader_path),
+        "reader_path": str(reader_path),
+        "reader_path_unchanged": True,
+        "cache_path": None,
+        "refresh_target_path": None,
+        "official_source_url": source_url,
+        "auto_refresh_enabled": (
+            _pricing_auto_refresh_enabled()
+        ),
+        "configured_pricing_path_managed_by_cox": (
+            configured
+        ),
         "external_config_user_managed": False,
+        "provider_path_inferred": False,
+        "environment_activation": False,
+        "legacy_cache_path_reinterpreted": False,
+        "legacy_writer_called": False,
+        "legacy_path_written": False,
+        "provider_owned_execution_called": False,
+        "dual_write": False,
+        "fallback_write": False,
+        "reader_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
         "checked_at": _pricing_now_iso(),
     }
 
-    required = _pricing_daily_refresh_required(metadata, source_kind=source_kind)
-    base["requires_refresh"] = required
-
-    if not required:
-        base.update(
-            {
-                "status": "official_daily_refresh_current",
-                "reason": None,
-                "refresh_recommended": False,
-                "refreshed": False,
-                "action": None,
-            }
-        )
-        return base
-
-    if not _pricing_auto_refresh_enabled():
-        base.update(
-            {
-                "status": "official_daily_refresh_required",
-                "reason": "pricing_source_older_than_current_local_day",
-                "refresh_recommended": False,
-                "refreshed": False,
-                "action": "enable COX_PRICING_AUTO_REFRESH=1 or run cox pricing refresh --write-cache --json against the managed pricing path, then re-check cox status --weclaw-json",
-            }
-        )
-        return base
-
-    result = _refresh_provider_pricing_from_official_docs(
-        "deepseek",
-        model=model,
-        write_cache=True,
-        cache_path=refresh_target_path,
-        timeout=float(os.environ.get("COX_PRICING_AUTO_REFRESH_TIMEOUT_SECONDS", "10")),
-    )
-    summary = _pricing_refresh_result_summary(result)
-    base["refresh_result"] = summary
-    if result.get("status") == "ok" and result.get("writes_cache") is True:
-        base.update(
-            {
-                "status": "official_daily_refresh_succeeded",
-                "reason": None,
-                "requires_refresh": False,
-                "refresh_recommended": False,
-                "refreshed": True,
-                "updated_at": result.get("updated_at") or result.get("fetched_at"),
-                "expires_at": result.get("expires_at"),
-                "ttl_seconds": result.get("ttl_seconds"),
-                "action": None,
-            }
-        )
-        return base
-
-    base.update(
-        {
-            "status": "official_daily_refresh_failed_using_previous_prices",
-            "reason": result.get("reason") or "official_pricing_daily_refresh_failed",
-            "requires_refresh": True,
+    if requested_mode not in {
+        "provider_owned",
+        "disabled",
+    }:
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_"
+                "explicit_target_rejected"
+            ),
+            "reason": (
+                "explicit_daily_refresh_mode_required"
+                if not requested_mode
+                else (
+                    "explicit_daily_refresh_mode_"
+                    "not_supported:"
+                    f"{requested_mode}"
+                )
+            ),
+            "requires_refresh": False,
             "refresh_recommended": False,
             "refreshed": False,
             "old_cache_preserved": True,
-            "action": "retry cox pricing refresh --write-cache --json; previous pricing file or bundled snapshot was preserved",
+            "action": (
+                "use mode=provider_owned with "
+                "activate=True and an explicit "
+                "provider_path, or use "
+                "mode=disabled"
+            ),
+        }
+
+    activation = (
+        _provider_pricing_daily_refresh_target_activation_contract(
+            requested_provider,
+            activate=activate,
+            mode=requested_mode,
+            provider_path=provider_path,
+        )
+    )
+
+    selected_target_path = activation.get(
+        "selected_target_path"
+    )
+    adapter = get_provider_adapter(
+        requested_provider
+    )
+
+    base.update(
+        {
+            "provider": (
+                activation.get("provider")
+                or requested_provider
+            ),
+            "adapter_provider_id": (
+                activation.get(
+                    "adapter_provider_id"
+                )
+            ),
+            "family": activation.get(
+                "family"
+            ),
+            "selected_mode": activation.get(
+                "selected_mode"
+            ),
+            "cache_path": (
+                selected_target_path
+            ),
+            "refresh_target_path": (
+                selected_target_path
+            ),
+            "official_source_url": (
+                source_url
+                or adapter.official_pricing_url
+            ),
+            "activation": activation,
         }
     )
-    return base
+
+    if activation.get(
+        "activation_ready"
+    ) is not True:
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_"
+                "explicit_target_rejected"
+            ),
+            "reason": (
+                activation.get("reason")
+                or (
+                    "daily_refresh_target_"
+                    "activation_not_ready"
+                )
+            ),
+            "requires_refresh": False,
+            "refresh_recommended": False,
+            "refreshed": False,
+            "old_cache_preserved": True,
+            "action": activation.get(
+                "action"
+            ),
+        }
+
+    if requested_mode == "disabled":
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_"
+                "disabled_explicitly"
+            ),
+            "reason": (
+                "daily_refresh_disabled_by_"
+                "explicit_activation"
+            ),
+            "requires_refresh": False,
+            "refresh_recommended": False,
+            "refreshed": False,
+            "action": None,
+        }
+
+    if not selected_target_path:
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_"
+                "explicit_target_rejected"
+            ),
+            "reason": (
+                "explicit_provider_path_required"
+            ),
+            "requires_refresh": False,
+            "refresh_recommended": False,
+            "refreshed": False,
+            "old_cache_preserved": True,
+            "action": (
+                "provide provider_path explicitly; "
+                "path inference remains disabled"
+            ),
+        }
+
+    target_path = Path(
+        str(selected_target_path)
+    ).expanduser()
+    metadata = (
+        _pricing_metadata_from_path(
+            target_path
+        )
+        if target_path.exists()
+        else {}
+    )
+    source_kind = str(
+        metadata.get("source_kind")
+        or ""
+    )
+    last_successful_refresh_day = (
+        _pricing_local_day_from_timestamp(
+            metadata.get("fetched_at")
+            or metadata.get("updated_at")
+            or metadata.get(
+                "snapshot_created_at"
+            )
+        )
+    )
+
+    base.update(
+        {
+            "source_kind": source_kind,
+            "last_successful_refresh_day": (
+                last_successful_refresh_day
+            ),
+            "cache_path": str(target_path),
+            "refresh_target_path": (
+                str(target_path)
+            ),
+        }
+    )
+
+    required = _pricing_daily_refresh_required(
+        metadata,
+        source_kind=source_kind,
+    )
+    base["requires_refresh"] = required
+
+    if not required:
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_current"
+            ),
+            "reason": None,
+            "refresh_recommended": False,
+            "refreshed": False,
+            "action": None,
+        }
+
+    if not _pricing_auto_refresh_enabled():
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_required"
+            ),
+            "reason": (
+                "pricing_source_older_than_"
+                "current_local_day"
+            ),
+            "refresh_recommended": False,
+            "refreshed": False,
+            "action": (
+                "enable COX_PRICING_AUTO_REFRESH=1 "
+                "or run cox pricing refresh "
+                "--write-cache --provider-owned "
+                "--provider-cache-path against the "
+                "same explicit provider path"
+            ),
+        }
+
+    execution_timeout = float(
+        timeout
+        if timeout is not None
+        else os.environ.get(
+            "COX_PRICING_AUTO_REFRESH_"
+            "TIMEOUT_SECONDS",
+            "10",
+        )
+    )
+
+    execution_result = (
+        _provider_pricing_daily_refresh_target_single_write_execution(
+            requested_provider,
+            activate=True,
+            mode="provider_owned",
+            provider_path=target_path,
+            model=model,
+            source_url=source_url,
+            timeout=execution_timeout,
+        )
+    )
+    summary = _pricing_refresh_result_summary(
+        execution_result
+    )
+
+    base["provider_owned_execution_called"] = True
+    base["refresh_result"] = summary
+
+    if (
+        execution_result.get("status") == "ok"
+        and execution_result.get(
+            "writes_cache"
+        )
+        is True
+    ):
+        return {
+            **base,
+            "status": (
+                "official_daily_refresh_succeeded"
+            ),
+            "reason": None,
+            "requires_refresh": False,
+            "refresh_recommended": False,
+            "refreshed": True,
+            "updated_at": (
+                execution_result.get(
+                    "updated_at"
+                )
+                or execution_result.get(
+                    "fetched_at"
+                )
+            ),
+            "expires_at": (
+                execution_result.get(
+                    "expires_at"
+                )
+            ),
+            "ttl_seconds": (
+                execution_result.get(
+                    "ttl_seconds"
+                )
+            ),
+            "action": None,
+        }
+
+    return {
+        **base,
+        "status": (
+            "official_daily_refresh_"
+            "failed_using_previous_prices"
+        ),
+        "reason": (
+            execution_result.get("reason")
+            or (
+                "official_pricing_daily_"
+                "refresh_failed"
+            )
+        ),
+        "requires_refresh": True,
+        "refresh_recommended": False,
+        "refreshed": False,
+        "old_cache_preserved": True,
+        "action": (
+            "retry the explicit provider-owned "
+            "daily refresh or run cox pricing "
+            "refresh --write-cache "
+            "--provider-owned "
+            "--provider-cache-path; no legacy "
+            "fallback write was attempted"
+        ),
+    }
+
 
 def _validate_model_pricing_mapping(data: Any) -> dict[str, dict[str, float]]:
     if not isinstance(data, dict):

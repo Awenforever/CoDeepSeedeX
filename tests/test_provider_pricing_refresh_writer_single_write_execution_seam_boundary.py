@@ -544,7 +544,7 @@ def test_execution_signatures_require_explicit_activation_fields() -> None:
             )
 
 
-def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution_only() -> None:
+def test_runtime_wiring_is_limited_to_daily_entry_and_cli_provider_execution() -> None:
     provider_execution_name = (
         "_provider_pricing_refresh_writer_"
         "single_write_execution"
@@ -553,18 +553,20 @@ def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution
         "_deepseek_pricing_refresh_writer_"
         "single_write_execution"
     )
+    daily_composition_name = (
+        "_provider_pricing_daily_refresh_"
+        "target_single_write_execution"
+    )
     execution_names = (
         provider_execution_name,
         deepseek_execution_name,
     )
 
-    # Existing application refresh wrappers, automatic refresh,
-    # readers, usage pricing and WeClaw remain disconnected from
-    # the provider-owned execution seam.
+    # Refresh wrappers, readers, usage pricing and WeClaw
+    # remain disconnected from provider-owned execution.
     for function in (
         app._refresh_provider_pricing_from_official_docs,
         app._refresh_deepseek_pricing_from_official_docs,
-        app._pricing_daily_refresh_contract,
         app._load_model_pricing_usd_per_1m,
         app._pricing_context_for_usage_event,
         app._weclaw_pricing_contract,
@@ -575,6 +577,22 @@ def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution
 
         for name in execution_names:
             assert name not in source
+
+        assert daily_composition_name not in source
+
+    daily_source = inspect.getsource(
+        app._pricing_daily_refresh_contract
+    )
+
+    assert daily_composition_name in daily_source
+    assert (
+        f"{provider_execution_name}("
+        not in daily_source
+    )
+    assert (
+        f"{deepseek_execution_name}("
+        not in daily_source
+    )
 
     refresh_source = inspect.getsource(
         app
@@ -612,12 +630,6 @@ def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution
         ._provider_pricing_refresh_writer_single_write_execution
     )
 
-    # p3.3a20a44 intentionally wires only the generic provider
-    # execution seam into the explicit CLI candidate branch.
-    assert provider_execution_name in cli_source
-    assert deepseek_execution_name not in cli_source
-
-    # Candidate validation must occur before execution.
     candidate_call = (
         "_pricing_refresh_provider_owned_"
         "cli_candidate_contract("
@@ -635,21 +647,15 @@ def test_existing_refresh_readers_remain_unwired_and_cli_uses_provider_execution
             provider_execution_call
         )
     )
-
-    # The unchanged legacy refresh route remains present.
     assert (
         "_refresh_provider_pricing_"
         "from_official_docs("
         in cli_source
     )
 
-    # The candidate contract itself remains validation-only and
-    # never invokes either execution implementation.
     for name in execution_names:
         assert f"{name}(" not in candidate_source
 
-    # The application seam remains function-level and unchanged;
-    # CLI output performs the outward metadata normalization.
     assert (
         "function_level_unwired"
         in execution_source
