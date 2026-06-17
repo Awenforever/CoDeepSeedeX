@@ -3137,9 +3137,100 @@ def _move_stale_pid_file(pid_path: Path, *, pid: int | None, port: int, reason: 
     }
 
 
+def _start_pricing_runtime_contract(args: argparse.Namespace) -> dict[str, object]:
+    provider_value = getattr(args, "pricing_provider_id", None)
+    provider_id = str(provider_value or "").strip() or None
+    provider_owned = bool(getattr(args, "pricing_provider_owned", False))
+    mode_value = getattr(args, "pricing_mode", None)
+    requested_mode = str(mode_value or "").strip().lower().replace("-", "_") or None
+    path_value = getattr(args, "pricing_provider_path", None)
+    provider_path = str(path_value or "").strip() or None
+
+    explicit = bool(
+        provider_id is not None
+        or provider_owned
+        or requested_mode is not None
+        or provider_path is not None
+    )
+
+    if not explicit:
+        return {
+            "explicit": False,
+            "provider_id": None,
+            "activate": False,
+            "mode": None,
+            "provider_path": None,
+        }
+
+    if provider_owned:
+        if requested_mode not in {None, "provider_owned"}:
+            raise ValueError(
+                "--pricing-provider-owned conflicts with "
+                f"--pricing-mode {requested_mode}"
+            )
+        requested_mode = "provider_owned"
+
+    if requested_mode not in {"provider_owned", "disabled"}:
+        raise ValueError(
+            "explicit pricing startup requires --pricing-mode "
+            "provider-owned or disabled, or --pricing-provider-owned"
+        )
+
+    if provider_id is None:
+        raise ValueError(
+            "explicit pricing startup requires --pricing-provider-id"
+        )
+
+    selected_path: str | None = None
+
+    if requested_mode == "provider_owned":
+        if provider_path is None:
+            raise ValueError(
+                "provider-owned pricing startup requires "
+                "--pricing-provider-path"
+            )
+        target = Path(provider_path).expanduser()
+        if not target.is_file():
+            raise ValueError(
+                "explicit provider-owned pricing file does not exist: "
+                f"{target}"
+            )
+        selected_path = str(target)
+    elif provider_path is not None:
+        raise ValueError(
+            "--pricing-provider-path is valid only with provider-owned mode"
+        )
+
+    return {
+        "explicit": True,
+        "provider_id": provider_id,
+        "activate": True,
+        "mode": requested_mode,
+        "provider_path": selected_path,
+    }
+
+
 def _start_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
     port = _port_for(thinking, args.port)
+
+    try:
+        pricing_runtime = _start_pricing_runtime_contract(args)
+    except ValueError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "invalid_start_pricing_runtime",
+                    "reason": str(exc),
+                    "provider_path_inferred": False,
+                    "activation_source": "explicit_arguments_only",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)
     _maybe_print_startup_release_update_notice()
@@ -3252,16 +3343,39 @@ def _start_proxy(args: argparse.Namespace) -> int:
             "12000",
         )
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "codexchange_proxy.app:app",
-        "--host",
-        DEFAULT_HOST,
-        "--port",
-        str(port),
-    ]
+    if pricing_runtime["explicit"]:
+        cmd = [
+            sys.executable,
+            "-m",
+            "codexchange_proxy.runtime_app",
+            "--host",
+            DEFAULT_HOST,
+            "--port",
+            str(port),
+            "--pricing-provider-id",
+            str(pricing_runtime["provider_id"]),
+            "--pricing-activate",
+            "--pricing-mode",
+            str(pricing_runtime["mode"]),
+        ]
+        if pricing_runtime["provider_path"] is not None:
+            cmd.extend(
+                [
+                    "--pricing-provider-path",
+                    str(pricing_runtime["provider_path"]),
+                ]
+            )
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "codexchange_proxy.app:app",
+            "--host",
+            DEFAULT_HOST,
+            "--port",
+            str(port),
+        ]
 
     log_handle = log_path.open("ab")
     process = subprocess.Popen(
@@ -3278,6 +3392,13 @@ def _start_proxy(args: argparse.Namespace) -> int:
     print(f"log={log_path}")
     print(f"pid_file={pid_path}")
     print(f"db={db_path}")
+    if pricing_runtime["explicit"]:
+        print(
+            "pricing_runtime="
+            f"{pricing_runtime['mode']} "
+            f"provider={pricing_runtime['provider_id']} "
+            "source=explicit_arguments_only"
+        )
 
     for _ in range(20):
         if process.poll() is not None:
@@ -3368,6 +3489,7 @@ def _cmdline_for_pid(pid: int) -> str:
 def _pid_looks_like_proxy(pid: int) -> bool:
     cmdline = _cmdline_for_pid(pid)
     markers = [
+        "codexchange_proxy.runtime_app",
         "codexchange_proxy.app:app",
         "codexchange_proxy",
         "codexchange",
@@ -9139,6 +9261,24 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--pid-file")
     start.add_argument("--log-file")
     start.add_argument("--db-path")
+    start.add_argument(
+        "--pricing-provider-id",
+        help="explicit provider id for startup usage pricing; never inferred from COX_MODEL_PROVIDER",
+    )
+    start.add_argument(
+        "--pricing-provider-owned",
+        action="store_true",
+        help="explicitly activate provider-owned usage pricing; requires provider id and provider path",
+    )
+    start.add_argument(
+        "--pricing-mode",
+        choices=["provider-owned", "provider_owned", "disabled"],
+        help="explicit usage pricing mode; omitted keeps the legacy shared reader",
+    )
+    start.add_argument(
+        "--pricing-provider-path",
+        help="explicit provider-owned pricing file; never inferred and does not change --cache-path semantics",
+    )
     start.set_defaults(func=_start_proxy)
 
     stop = sub.add_parser("stop", help="stop the local proxy")
