@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a56-provider-pricing-reader-explicit-runtime-entry-wiring-v0445"
+PROXY_INTERNAL_VERSION = "p3.3a20a58-provider-pricing-usage-context-explicit-runtime-entry-wiring-v0446"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -2356,16 +2356,29 @@ def _provider_pricing_reader_single_source_execution(
         }
 
     metadata: dict[str, Any] = {}
-    embedded_metadata = raw_document.get(
+
+    compatibility_metadata = raw_document.get(
         "__pricing_metadata__"
     )
 
     if isinstance(
-        embedded_metadata,
+        compatibility_metadata,
         dict,
     ):
         metadata.update(
-            embedded_metadata
+            compatibility_metadata
+        )
+
+    canonical_metadata = raw_document.get(
+        "__metadata__"
+    )
+
+    if isinstance(
+        canonical_metadata,
+        dict,
+    ):
+        metadata.update(
+            canonical_metadata
         )
 
     for key in (
@@ -23774,24 +23787,178 @@ def _pricing_money_amount(
     }
 
 
-def _pricing_context_for_usage_event(model: str) -> dict[str, Any]:
-    pricing_path = _pricing_config_path()
-    metadata = _pricing_metadata_from_path(pricing_path) if pricing_path.exists() else {}
-    source_info = _pricing_source_info(pricing_path)
-    prices = _load_model_pricing_usd_per_1m().get(model) or {}
-    source_currency = str(metadata.get("currency") or "CNY").upper()
+def _pricing_context_for_usage_event(
+    model: str,
+    *,
+    provider_id: str | None = None,
+    activate: bool = False,
+    mode: str | None = None,
+    provider_path: str | Path | None = None,
+) -> dict[str, Any]:
+    explicit_runtime_entry = bool(
+        provider_id is not None
+        or activate
+        or mode is not None
+        or provider_path is not None
+    )
+
+    if not explicit_runtime_entry:
+        pricing_path = _pricing_config_path()
+        metadata = _pricing_metadata_from_path(pricing_path) if pricing_path.exists() else {}
+        source_info = _pricing_source_info(pricing_path)
+        prices = _load_model_pricing_usd_per_1m().get(model) or {}
+        source_currency = str(metadata.get("currency") or "CNY").upper()
+        return {
+            "pricing_model": model,
+            "pricing_currency": source_currency,
+            "pricing_unit": str(metadata.get("unit") or "per_million_tokens"),
+            "pricing_source": source_info.get("source"),
+            "pricing_source_kind": metadata.get("source_kind") or source_info.get("source_kind"),
+            "pricing_updated_at": metadata.get("fetched_at") or metadata.get("snapshot_created_at") or metadata.get("updated_at"),
+            "pricing_source_url": metadata.get("source_url") or DEEPSEEK_OFFICIAL_PRICING_URL,
+            "pricing_input_cache_hit": float(prices.get("input_cache_hit") or 0.0),
+            "pricing_input_cache_miss": float(prices.get("input_cache_miss") or 0.0),
+            "pricing_output": float(prices.get("output") or 0.0),
+        }
+
+    requested_provider = str(
+        provider_id or "deepseek"
+    ).strip()
+    requested_mode = str(
+        mode or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+
+    if requested_mode not in {
+        "provider_owned",
+        "disabled",
+    }:
+        return {
+            "pricing_model": model,
+            "pricing_currency": (
+                "CNY"
+                if requested_provider == "deepseek"
+                else "USD"
+            ),
+            "pricing_unit": "per_million_tokens",
+            "pricing_source": None,
+            "pricing_source_kind": None,
+            "pricing_updated_at": None,
+            "pricing_source_url": None,
+            "pricing_input_cache_hit": 0.0,
+            "pricing_input_cache_miss": 0.0,
+            "pricing_output": 0.0,
+        }
+
+    execution = (
+        _provider_pricing_reader_single_source_execution(
+            requested_provider,
+            activate=activate,
+            mode=requested_mode,
+            provider_path=provider_path,
+        )
+    )
+
+    execution_provider = str(
+        execution.get("provider")
+        or requested_provider
+    )
+    metadata_value = execution.get("metadata")
+    metadata = (
+        metadata_value
+        if isinstance(metadata_value, dict)
+        else {}
+    )
+    source_path = (
+        execution.get("source_path")
+        or execution.get(
+            "selected_source_path"
+        )
+    )
+    source_currency = str(
+        metadata.get("currency")
+        or (
+            "CNY"
+            if execution_provider == "deepseek"
+            else "USD"
+        )
+    ).upper()
+    source_url = metadata.get("source_url")
+
+    if (
+        not source_url
+        and execution_provider == "deepseek"
+        and requested_mode == "provider_owned"
+    ):
+        source_url = (
+            DEEPSEEK_OFFICIAL_PRICING_URL
+        )
+
+    all_prices_value = execution.get("prices")
+    all_prices = (
+        all_prices_value
+        if isinstance(all_prices_value, dict)
+        else {}
+    )
+    prices = (
+        all_prices.get(model)
+        if execution.get("status") == "ok"
+        else {}
+    )
+
+    if not isinstance(prices, dict):
+        prices = {}
+
+    if requested_mode == "disabled":
+        pricing_source = (
+            "provider_owned_reader_disabled"
+        )
+        source_kind = "disabled"
+        source_url = None
+    else:
+        pricing_source = (
+            "provider_owned_explicit_path"
+            if source_path
+            else None
+        )
+        source_kind = metadata.get(
+            "source_kind"
+        )
+
     return {
         "pricing_model": model,
         "pricing_currency": source_currency,
-        "pricing_unit": str(metadata.get("unit") or "per_million_tokens"),
-        "pricing_source": source_info.get("source"),
-        "pricing_source_kind": metadata.get("source_kind") or source_info.get("source_kind"),
-        "pricing_updated_at": metadata.get("fetched_at") or metadata.get("snapshot_created_at") or metadata.get("updated_at"),
-        "pricing_source_url": metadata.get("source_url") or DEEPSEEK_OFFICIAL_PRICING_URL,
-        "pricing_input_cache_hit": float(prices.get("input_cache_hit") or 0.0),
-        "pricing_input_cache_miss": float(prices.get("input_cache_miss") or 0.0),
-        "pricing_output": float(prices.get("output") or 0.0),
+        "pricing_unit": str(
+            metadata.get("unit")
+            or "per_million_tokens"
+        ),
+        "pricing_source": pricing_source,
+        "pricing_source_kind": source_kind,
+        "pricing_updated_at": (
+            metadata.get("fetched_at")
+            or metadata.get(
+                "snapshot_created_at"
+            )
+            or metadata.get("updated_at")
+        ),
+        "pricing_source_url": source_url,
+        "pricing_input_cache_hit": float(
+            prices.get("input_cache_hit")
+            or 0.0
+        ),
+        "pricing_input_cache_miss": float(
+            prices.get("input_cache_miss")
+            or 0.0
+        ),
+        "pricing_output": float(
+            prices.get("output")
+            or 0.0
+        ),
     }
+
+
 
 
 def _cost_ledger_event_summary(event: dict[str, Any], *, display_currency: str) -> dict[str, Any]:

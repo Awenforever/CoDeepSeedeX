@@ -609,9 +609,12 @@ def test_reader_contract_signatures_and_source_boundaries() -> None:
         assert name not in execution_source
 
 
-def test_reader_runtime_entry_is_wired_but_usage_weclaw_and_daily_refresh_remain_unwired() -> None:
+def test_reader_and_usage_runtime_entries_are_wired_but_weclaw_and_daily_refresh_remain_unwired() -> None:
     reader_source = inspect.getsource(
         app._load_model_pricing_usd_per_1m
+    )
+    usage_source = inspect.getsource(
+        app._pricing_context_for_usage_event
     )
 
     assert (
@@ -620,8 +623,17 @@ def test_reader_runtime_entry_is_wired_but_usage_weclaw_and_daily_refresh_remain
         in reader_source
     )
     assert (
+        "_provider_pricing_reader_"
+        "single_source_execution("
+        in usage_source
+    )
+    assert (
         "_pricing_config_path()"
         in reader_source
+    )
+    assert (
+        "_pricing_config_path()"
+        in usage_source
     )
 
     frozen_symbols = (
@@ -631,7 +643,6 @@ def test_reader_runtime_entry_is_wired_but_usage_weclaw_and_daily_refresh_remain
     )
 
     for function in (
-        app._pricing_context_for_usage_event,
         app._weclaw_pricing_contract,
         app._pricing_daily_refresh_contract,
     ):
@@ -639,16 +650,3 @@ def test_reader_runtime_entry_is_wired_but_usage_weclaw_and_daily_refresh_remain
 
         for symbol in frozen_symbols:
             assert symbol not in source
-
-    assert (
-        "_pricing_config_path()"
-        in inspect.getsource(
-            app._pricing_context_for_usage_event
-        )
-    )
-    assert (
-        "_pricing_config_path()"
-        in inspect.getsource(
-            app._weclaw_pricing_contract
-        )
-    )

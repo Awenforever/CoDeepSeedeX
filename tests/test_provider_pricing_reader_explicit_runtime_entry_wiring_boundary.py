@@ -434,7 +434,21 @@ def test_existing_production_callers_remain_legacy_no_argument_calls() -> None:
         )
 
 
-def test_usage_weclaw_daily_refresh_and_cli_boundaries_remain_frozen() -> None:
+def test_usage_context_is_explicitly_wired_while_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
+    usage_source = inspect.getsource(
+        app._pricing_context_for_usage_event
+    )
+
+    assert (
+        "_provider_pricing_reader_"
+        "single_source_execution("
+        in usage_source
+    )
+    assert (
+        "_pricing_config_path()"
+        in usage_source
+    )
+
     reader_symbols = (
         "_provider_pricing_reader_selection_profile",
         "_provider_pricing_reader_activation_contract",
@@ -442,7 +456,6 @@ def test_usage_weclaw_daily_refresh_and_cli_boundaries_remain_frozen() -> None:
     )
 
     for function in (
-        app._pricing_context_for_usage_event,
         app._weclaw_pricing_contract,
         app._pricing_daily_refresh_contract,
     ):
