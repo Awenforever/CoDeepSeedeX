@@ -301,28 +301,19 @@ def test_estimate_signature_and_boundary() -> None:
         assert forbidden not in source
 
 
+
 def test_chat_passes_same_context_to_estimate() -> None:
-    source = inspect.getsource(
-        app._chat_completions_with_usage
-    )
+    source = inspect.getsource(app._chat_completions_with_usage)
 
-    context_index = source.index(
-        "pricing_context = "
-        "_pricing_context_for_usage_event("
-    )
-    estimate_index = source.index(
-        "estimated_cost_source_amount = "
-        "_estimate_cost_usd("
-    )
+    explicit_index = source.index("explicit_pricing_runtime_entry = bool(")
+    legacy_index = source.index("_pricing_context_for_usage_event(effective_model)")
+    estimate_index = source.index("estimated_cost_source_amount = _estimate_cost_usd(")
 
-    assert context_index < estimate_index
-    assert (
-        "pricing_context=pricing_context"
-        in source[
-            estimate_index:
-            estimate_index + 320
-        ]
-    )
+    assert explicit_index < legacy_index < estimate_index
+    assert "provider_id=pricing_provider_id" in source
+    assert "pricing_context=pricing_context" in source[estimate_index:estimate_index + 320]
+
+
 
 
 @pytest.mark.asyncio

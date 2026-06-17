@@ -706,50 +706,45 @@ def _usage_call_contracts() -> list[
     )
 
 
-def test_existing_production_callers_remain_positional_legacy_calls() -> None:
-    assert _usage_call_contracts() == [
-        {
-            "scope": (
-                "SQLiteResponseStore.record_usage"
-            ),
-            "positional_count": 1,
-            "keywords": [],
-        },
-        {
-            "scope": (
-                "_chat_completions_with_usage"
-            ),
-            "positional_count": 1,
-            "keywords": [],
-        },
-    ]
+
+def test_usage_context_callers_preserve_legacy_and_add_explicit_chat_branch() -> None:
+    contracts = _usage_call_contracts()
+
+    assert {
+        "scope": "SQLiteResponseStore.record_usage",
+        "positional_count": 1,
+        "keywords": [],
+    } in contracts
+    assert {
+        "scope": "_chat_completions_with_usage",
+        "positional_count": 1,
+        "keywords": [],
+    } in contracts
+    assert {
+        "scope": "_chat_completions_with_usage",
+        "positional_count": 1,
+        "keywords": [
+            "provider_id",
+            "activate",
+            "mode",
+            "provider_path",
+        ],
+    } in contracts
+    assert len(contracts) == 3
+
+
+
 
 
 def test_cost_composition_is_single_source_while_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
-    estimate_source = inspect.getsource(
-        app._estimate_cost_usd
-    )
-    chat_source = inspect.getsource(
-        app._chat_completions_with_usage
-    )
-    record_source = inspect.getsource(
-        app.SQLiteResponseStore.record_usage
-    )
-    weclaw_source = inspect.getsource(
-        app._weclaw_pricing_contract
-    )
-    daily_source = inspect.getsource(
-        app._pricing_daily_refresh_contract
-    )
+    estimate_source = inspect.getsource(app._estimate_cost_usd)
+    chat_source = inspect.getsource(app._chat_completions_with_usage)
+    record_source = inspect.getsource(app.SQLiteResponseStore.record_usage)
+    weclaw_source = inspect.getsource(app._weclaw_pricing_contract)
+    daily_source = inspect.getsource(app._pricing_daily_refresh_contract)
 
-    assert (
-        "_load_model_pricing_usd_per_1m()"
-        in estimate_source
-    )
-    assert (
-        "pricing_context is None"
-        in estimate_source
-    )
+    assert "_load_model_pricing_usd_per_1m()" in estimate_source
+    assert "pricing_context is None" in estimate_source
 
     for marker in (
         "pricing_input_cache_hit",
@@ -758,44 +753,21 @@ def test_cost_composition_is_single_source_while_weclaw_daily_refresh_and_cli_re
     ):
         assert marker in estimate_source
 
-    assert (
-        "_pricing_context_for_usage_event("
-        "effective_model)"
-        in chat_source
-    )
-    assert (
-        "pricing_context=pricing_context"
-        in chat_source
-    )
-    assert (
-        "_pricing_context_for_usage_event("
-        "normalized_effective_model)"
-        in record_source
-    )
-
-    for source in (
-        chat_source,
-        record_source,
-        weclaw_source,
-        daily_source,
+    assert "_pricing_context_for_usage_event(effective_model)" in chat_source
+    for marker in (
+        "provider_id=pricing_provider_id",
+        "activate=pricing_activate",
+        "mode=pricing_mode",
+        "provider_path=pricing_provider_path",
+        "pricing_context=pricing_context",
     ):
-        assert (
-            "_pricing_context_for_usage_event("
-            "effective_model,"
-            not in source
-        )
-        assert (
-            "_pricing_context_for_usage_event("
-            "normalized_effective_model,"
-            not in source
-        )
+        assert marker in chat_source
 
-    for source in (
-        weclaw_source,
-        daily_source,
-    ):
-        assert (
-            "_provider_pricing_reader_"
-            "single_source_execution("
-            not in source
-        )
+    assert "_pricing_context_for_usage_event(normalized_effective_model)" in record_source
+
+    for source in (record_source, weclaw_source, daily_source):
+        assert "_pricing_context_for_usage_event(effective_model," not in source
+        assert "_pricing_context_for_usage_event(normalized_effective_model," not in source
+
+    for source in (weclaw_source, daily_source):
+        assert "_provider_pricing_reader_single_source_execution(" not in source

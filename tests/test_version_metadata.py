@@ -41,14 +41,14 @@ def test_public_runtime_version_matches_declared_release_tag() -> None:
 
 
 def test_internal_runtime_version_metadata_is_not_unknown() -> None:
-    assert PROXY_INTERNAL_VERSION == "p3.3a20a60-provider-pricing-usage-cost-single-source-composition-v0447"
+    assert PROXY_INTERNAL_VERSION == 'p3.3a20a62-provider-pricing-chat-usage-explicit-runtime-entry-wiring-v0448'
     assert PROXY_INTERNAL_COMMIT != "unknown"
     assert PROXY_VERSION == PROXY_PUBLIC_VERSION
 
 
 def test_internal_runtime_version_uses_p_tag_namespace() -> None:
     assert PROXY_INTERNAL_VERSION.startswith("p")
-    assert PROXY_INTERNAL_VERSION == "p3.3a20a60-provider-pricing-usage-cost-single-source-composition-v0447"
+    assert PROXY_INTERNAL_VERSION == 'p3.3a20a62-provider-pricing-chat-usage-explicit-runtime-entry-wiring-v0448'
 
 
 def test_pyproject_version_is_pep440_equivalent_to_public_release_tag() -> None:

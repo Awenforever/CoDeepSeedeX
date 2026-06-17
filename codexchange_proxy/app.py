@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a60-provider-pricing-usage-cost-single-source-composition-v0447"
+PROXY_INTERNAL_VERSION = 'p3.3a20a62-provider-pricing-chat-usage-explicit-runtime-entry-wiring-v0448'
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -13054,6 +13054,10 @@ async def _chat_completions_with_usage(
     thinking_enabled: bool,
     call_counter: dict[str, int] | None = None,
     session_id: str | None = None,
+    pricing_provider_id: str | None = None,
+    pricing_activate: bool = False,
+    pricing_mode: str | None = None,
+    pricing_provider_path: str | Path | None = None,
 ) -> dict[str, Any]:
     effective_model = str(payload.get("model") or DEFAULT_MODEL)
     call_index = _next_usage_call_index(call_counter)
@@ -13113,7 +13117,23 @@ async def _chat_completions_with_usage(
         raise
 
     usage_numbers = _extract_usage_numbers(deepseek_response)
-    pricing_context = _pricing_context_for_usage_event(effective_model)
+    explicit_pricing_runtime_entry = bool(
+        pricing_provider_id is not None
+        or pricing_activate
+        or pricing_mode is not None
+        or pricing_provider_path is not None
+    )
+
+    if explicit_pricing_runtime_entry:
+        pricing_context = _pricing_context_for_usage_event(
+            effective_model,
+            provider_id=pricing_provider_id,
+            activate=pricing_activate,
+            mode=pricing_mode,
+            provider_path=pricing_provider_path,
+        )
+    else:
+        pricing_context = _pricing_context_for_usage_event(effective_model)
     estimated_cost_source_amount = _estimate_cost_usd(
         effective_model,
         usage_numbers,
@@ -13187,6 +13207,8 @@ async def _chat_completions_with_usage(
         )
 
     return deepseek_response
+
+
 
 
 def _mcp_readonly_tool_names() -> set[str]:
