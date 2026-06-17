@@ -2414,6 +2414,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     env_values = _read_env_exports(env_path)
     sections = _parse_simple_toml_sections(codex_path)
     profile_section, profile_source, profile_path = _read_codex_profile_values(codex_path, profile_name)
+    pricing_contract = _profile_pricing_candidate_contract(profile_section)
     profile_layout = "legacy_profile_tables" if profile_source == "legacy_profile_table" else "split_profile_files"
     profile_config_path = codex_path if profile_source == "legacy_profile_table" else profile_path
     provider_name = profile_section.get("model_provider") or f"{profile_name}-proxy"
@@ -2472,9 +2473,15 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
     warnings = list(health["warnings"])
     if bool(model_contract.get("model_conflict")):
         warnings.append("codex_profile_model_differs_from_effective_upstream_model")
+    pricing_invalid = bool(
+        pricing_contract.get("candidate_requested")
+        and not pricing_contract.get("candidate_contract_valid")
+    )
+    if pricing_invalid:
+        warnings.append("profile_pricing_candidate_invalid")
 
     payload = {
-        "status": "ok" if not profile_invalid and health["codex_config_loadable"] else "error",
+        "status": "ok" if not profile_invalid and health["codex_config_loadable"] and not pricing_invalid else "error",
         "profile": profile_name,
         "profile_source": profile_source,
         "codex_profile_layout": profile_layout,
@@ -2495,6 +2502,7 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "normalized": codex_effort == expected_codex_effort,
             "capability": effort_capability,
         },
+        "pricing": pricing_contract,
         "thinking": _profile_thinking_status(profile_name, provider_section, env_values),
         "context_window": context_contract,
         "health": {
@@ -2504,10 +2512,13 @@ def _profile_status_payload(profile_name: str, *, env_file: Path | None = None, 
             "legacy_profile_tables_present": health.get("legacy_profile_tables_present"),
             "legacy_profile_tables": health.get("legacy_profile_tables"),
             "legacy_profile_selectors_present": health.get("legacy_profile_selectors_present"),
+            "pricing_candidate_valid": not pricing_invalid,
         },
     }
     payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
     return payload
+
+
 
 def _post_config_apply_for_args(args: argparse.Namespace) -> dict[str, object]:
     if not bool(getattr(args, "no_refresh", False)):
@@ -2889,6 +2900,261 @@ def _managed_profile_route_preflight_or_error(*, reason: str) -> dict[str, objec
     return None
 
 
+def _profile_pricing_configuration_result(
+    *,
+    action: str,
+    profile_name: str,
+    codex_path: Path,
+    profile_path: Path,
+    profile_source: str,
+    before_values: dict[str, str],
+    after_values: dict[str, object],
+    pricing_contract: dict[str, object],
+    dry_run: bool,
+    changed: bool,
+    cleanup: dict[str, bool] | None = None,
+) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "operation": f"profile_pricing_{action}",
+        "profile": profile_name,
+        "codex_config": str(codex_path),
+        "codex_profile_config": str(profile_path),
+        "profile_source_before": profile_source,
+        "dry_run": dry_run,
+        "changed": changed,
+        "pricing": pricing_contract,
+        "pricing_fields_before": {
+            key: before_values.get(key)
+            for key in (
+                "pricing_provider_id",
+                "pricing_provider_owned",
+                "pricing_mode",
+                "pricing_provider_path",
+            )
+            if key in before_values
+        },
+        "pricing_fields_after": {
+            key: after_values.get(key)
+            for key in (
+                "pricing_provider_id",
+                "pricing_provider_owned",
+                "pricing_mode",
+                "pricing_provider_path",
+            )
+            if key in after_values
+        },
+        "legacy_profile_table_removed": bool(
+            (cleanup or {}).get("legacy_profile_table_removed")
+        ),
+        "legacy_profile_selector_removed": bool(
+            (cleanup or {}).get("legacy_profile_selector_removed")
+        ),
+        "runtime_activation": False,
+        "runtime_restart": False,
+        "activation_boundary": "next_profile_autostart",
+        "environment_activation": False,
+        "model_provider_inference": False,
+        "legacy_cache_path_reinterpreted": False,
+        "legacy_pricing_path_reinterpreted": False,
+    }
+
+
+def _write_codex_profile_values_and_cleanup_legacy(
+    config_path: Path,
+    profile_name: str,
+    values: dict[str, object],
+) -> tuple[Path, dict[str, bool]]:
+    profile_path = _write_codex_profile_values(
+        config_path,
+        profile_name,
+        values,
+    )
+    original = (
+        config_path.read_text(encoding="utf-8")
+        if config_path.exists()
+        else ""
+    )
+    cleaned, cleanup = _cleanup_main_codex_config_for_profile(
+        original,
+        profile_name,
+    )
+    if (
+        cleanup["legacy_profile_table_removed"]
+        or cleanup["legacy_profile_selector_removed"]
+    ):
+        config_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        config_path.write_text(
+            cleaned,
+            encoding="utf-8",
+        )
+    return profile_path, cleanup
+
+
+def _set_profile_pricing_contract(args: argparse.Namespace) -> int:
+    codex_path = (
+        Path(args.codex_config).expanduser()
+        if getattr(args, "codex_config", None)
+        else default_codex_config_path()
+    )
+    profile_name = str(args.profile).strip()
+    values, profile_source, profile_path = _read_codex_profile_values(
+        codex_path,
+        profile_name,
+    )
+    if profile_source == "missing":
+        print(json.dumps({
+            "status": "error",
+            "error": "codex_profile_not_found",
+            "profile": profile_name,
+            "codex_config": str(codex_path),
+            "codex_profile_config": str(profile_path),
+            "runtime_activation": False,
+        }, ensure_ascii=False, indent=2))
+        return 2
+
+    provider_id = str(args.provider_id or "").strip().lower().replace("-", "_")
+    provider_path_value = str(args.provider_path or "").strip()
+    provider_path = Path(provider_path_value).expanduser()
+    if not provider_path.is_absolute():
+        print(json.dumps({
+            "status": "error",
+            "error": "pricing_provider_path_must_be_absolute",
+            "profile": profile_name,
+            "pricing_provider_path": provider_path_value,
+            "runtime_activation": False,
+        }, ensure_ascii=False, indent=2))
+        return 2
+    if not provider_path.is_file():
+        print(json.dumps({
+            "status": "error",
+            "error": "pricing_provider_path_not_file",
+            "profile": profile_name,
+            "pricing_provider_path": str(provider_path),
+            "runtime_activation": False,
+        }, ensure_ascii=False, indent=2))
+        return 2
+
+    after_values: dict[str, object] = dict(values)
+    after_values.update({
+        "pricing_provider_id": provider_id,
+        "pricing_provider_owned": True,
+        "pricing_mode": "provider_owned",
+        "pricing_provider_path": str(provider_path),
+    })
+    pricing_contract = _profile_pricing_candidate_contract(after_values)
+    if not bool(pricing_contract.get("candidate_contract_valid")):
+        print(json.dumps({
+            "status": "error",
+            "error": "profile_pricing_candidate_invalid",
+            "profile": profile_name,
+            "pricing": pricing_contract,
+            "runtime_activation": False,
+        }, ensure_ascii=False, indent=2))
+        return 2
+
+    changed = _render_simple_toml_key_values(values) != _render_simple_toml_key_values(after_values)
+    dry_run = bool(getattr(args, "dry_run", False))
+    cleanup: dict[str, bool] = {
+        "legacy_profile_table_removed": False,
+        "legacy_profile_selector_removed": False,
+    }
+    if not dry_run:
+        profile_path, cleanup = _write_codex_profile_values_and_cleanup_legacy(
+            codex_path,
+            profile_name,
+            after_values,
+        )
+
+    output = _profile_pricing_configuration_result(
+        action="set",
+        profile_name=profile_name,
+        codex_path=codex_path,
+        profile_path=profile_path,
+        profile_source=profile_source,
+        before_values=values,
+        after_values=after_values,
+        pricing_contract=pricing_contract,
+        dry_run=dry_run,
+        changed=changed,
+        cleanup=cleanup,
+    )
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _clear_profile_pricing_contract(args: argparse.Namespace) -> int:
+    codex_path = (
+        Path(args.codex_config).expanduser()
+        if getattr(args, "codex_config", None)
+        else default_codex_config_path()
+    )
+    profile_name = str(args.profile).strip()
+    values, profile_source, profile_path = _read_codex_profile_values(
+        codex_path,
+        profile_name,
+    )
+    if profile_source == "missing":
+        print(json.dumps({
+            "status": "error",
+            "error": "codex_profile_not_found",
+            "profile": profile_name,
+            "codex_config": str(codex_path),
+            "codex_profile_config": str(profile_path),
+            "runtime_activation": False,
+        }, ensure_ascii=False, indent=2))
+        return 2
+
+    pricing_fields = (
+        "pricing_provider_id",
+        "pricing_provider_owned",
+        "pricing_mode",
+        "pricing_provider_path",
+    )
+    after_values: dict[str, object] = dict(values)
+    present_fields = [
+        key
+        for key in pricing_fields
+        if key in after_values
+    ]
+    for key in pricing_fields:
+        after_values.pop(key, None)
+
+    pricing_contract = _profile_pricing_candidate_contract(after_values)
+    changed = bool(present_fields)
+    dry_run = bool(getattr(args, "dry_run", False))
+    cleanup: dict[str, bool] = {
+        "legacy_profile_table_removed": False,
+        "legacy_profile_selector_removed": False,
+    }
+    if not dry_run and changed:
+        profile_path, cleanup = _write_codex_profile_values_and_cleanup_legacy(
+            codex_path,
+            profile_name,
+            after_values,
+        )
+
+    output = _profile_pricing_configuration_result(
+        action="clear",
+        profile_name=profile_name,
+        codex_path=codex_path,
+        profile_path=profile_path,
+        profile_source=profile_source,
+        before_values=values,
+        after_values=after_values,
+        pricing_contract=pricing_contract,
+        dry_run=dry_run,
+        changed=changed,
+        cleanup=cleanup,
+    )
+    output["cleared_fields"] = present_fields
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _profile(args: argparse.Namespace) -> int:
     env_file = Path(args.env_file).expanduser() if getattr(args, "env_file", None) else default_env_file_path()
     if args.profile_command == "status":
@@ -2896,6 +3162,10 @@ def _profile(args: argparse.Namespace) -> int:
         payload = _profile_status_payload(args.profile, env_file=env_file, codex_config=codex_path)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if payload.get("status") == "ok" else 1
+    if args.profile_command == "set-pricing":
+        return _set_profile_pricing_contract(args)
+    if args.profile_command == "clear-pricing":
+        return _clear_profile_pricing_contract(args)
     if args.profile_command == "set-effort":
         return _set_effort_contract(args, env_file, explicit_profiles=[args.profile])
     if args.profile_command == "repair":
@@ -2904,6 +3174,8 @@ def _profile(args: argparse.Namespace) -> int:
         return _refresh_codex_wrapper(args)
     print(json.dumps({"status": "error", "error": "unknown_profile_command"}, ensure_ascii=False, indent=2))
     return 2
+
+
 
 
 def _cli_compaction_audit_metadata_from_runtime_status(runtime_status: dict[str, object] | None) -> dict[str, object]:
@@ -9681,6 +9953,22 @@ def build_parser() -> argparse.ArgumentParser:
     profile_status.add_argument("--codex-config")
     profile_status.set_defaults(func=_profile)
 
+    profile_set_pricing = profile_sub.add_parser("set-pricing", help="write or update explicit provider-owned pricing fields for one existing Codex profile")
+    profile_set_pricing.add_argument("profile")
+    profile_set_pricing.add_argument("--provider-id", required=True, help="explicit pricing provider id; normalized to lowercase underscore form")
+    profile_set_pricing.add_argument("--provider-path", required=True, help="absolute path to an existing provider-owned pricing JSON file")
+    profile_set_pricing.add_argument("--codex-config")
+    profile_set_pricing.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_set_pricing.add_argument("--dry-run", action="store_true", help="validate and preview without writing profile files")
+    profile_set_pricing.set_defaults(func=_profile)
+
+    profile_clear_pricing = profile_sub.add_parser("clear-pricing", help="remove all explicit pricing fields from one existing Codex profile")
+    profile_clear_pricing.add_argument("profile")
+    profile_clear_pricing.add_argument("--codex-config")
+    profile_clear_pricing.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
+    profile_clear_pricing.add_argument("--dry-run", action="store_true", help="preview removal without writing profile files")
+    profile_clear_pricing.set_defaults(func=_profile)
+
     profile_set_effort = profile_sub.add_parser("set-effort", help="set one managed Codex profile effort through the cox contract")
     profile_set_effort.add_argument("profile")
     profile_set_effort.add_argument("effort")
@@ -9804,6 +10092,7 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall_profile.set_defaults(func=_uninstall_codex_profile)
 
     return parser
+
 
 
 def main(argv: list[str] | None = None) -> int:
