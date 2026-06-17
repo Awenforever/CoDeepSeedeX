@@ -26,7 +26,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
-PROXY_PUBLIC_VERSION = "v0.4.39-alpha"
+PROXY_PUBLIC_VERSION = "v0.4.40-alpha"
 PROXY_INTERNAL_VERSION = "p3.3a20a46-provider-pricing-daily-refresh-target-selection-profile-wrapper-v0440"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",

@@ -108,8 +108,8 @@ def test_readme_current_latest_release_is_not_described_as_current_prerelease_ch
 
     assert "Explicit pre-release channel, currently `v0.4.39-alpha`" not in en
     assert "显式pre-release通道，当前为`v0.4.39-alpha`" not in zh
-    assert "Pinned current Latest Release tag (`v0.4.39-alpha`)" in en
-    assert "固定当前Latest Release tag（`v0.4.39-alpha`）" in zh
+    assert "Pinned current Latest Release tag (`v0.4.40-alpha`)" in en
+    assert "固定当前Latest Release tag（`v0.4.40-alpha`）" in zh
     assert "If WeClaw integration is used with CodeXchange `v0.4.39-alpha`, `v0.4.0-alpha`, or `v0.3.9-alpha`" not in en
     assert "如果WeClaw联动使用CodeXchange `v0.4.39-alpha`、`v0.4.0-alpha`或`v0.3.9-alpha`" not in zh
 
