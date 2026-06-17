@@ -40,11 +40,42 @@ __codexchange_toml_value() {
   file="$1"; key="$2"
   [ -f "$file" ] || return 1
   awk -v k="$key" '
+    function decode_basic_string(value, out, i, ch, escaped) {
+      out=""
+      escaped=0
+      for (i=2; i<=length(value); i++) {
+        ch=substr(value, i, 1)
+        if (escaped) {
+          if (ch == "\\" || ch == "\"") {
+            out=out ch
+          } else {
+            out=out "\\" ch
+          }
+          escaped=0
+          continue
+        }
+        if (ch == "\\") {
+          escaped=1
+          continue
+        }
+        if (ch == "\"") {
+          return out
+        }
+        out=out ch
+      }
+      if (escaped) {
+        out=out "\\"
+      }
+      return out
+    }
+
     $0 ~ "^[[:space:]]*" k "[[:space:]]*=" {
       line=$0
       sub(/^[^=]*=/, "", line)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-      if (line ~ /^"/) { sub(/^"/, "", line); sub(/".*$/, "", line) }
+      if (substr(line, 1, 1) == "\"") {
+        line=decode_basic_string(line)
+      }
       print line
       found=1
       exit
