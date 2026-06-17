@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a58-provider-pricing-usage-context-explicit-runtime-entry-wiring-v0446"
+PROXY_INTERNAL_VERSION = "p3.3a20a60-provider-pricing-usage-cost-single-source-composition-v0447"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -4537,22 +4537,130 @@ def _refresh_deepseek_pricing_from_official_docs(
         cache_path=cache_path,
         timeout=timeout,
     )
-def _estimate_cost_usd(model: str, usage_numbers: dict[str, int]) -> float:
-    pricing = _load_model_pricing_usd_per_1m().get(model)
-    if pricing is None:
+def _estimate_cost_usd(
+    model: str,
+    usage_numbers: dict[str, int],
+    *,
+    pricing_context: dict[str, Any] | None = None,
+) -> float:
+    if pricing_context is None:
+        pricing = _load_model_pricing_usd_per_1m().get(model)
+        if pricing is None:
+            return 0.0
+
+        prompt_tokens = usage_numbers["prompt_tokens"]
+        cached_tokens = int(usage_numbers.get("prompt_cache_hit_tokens", usage_numbers.get("cached_tokens", 0)))
+        cache_miss_tokens = usage_numbers.get("prompt_cache_miss_tokens")
+        if cache_miss_tokens is None:
+            cache_miss_tokens = max(0, prompt_tokens - cached_tokens)
+        completion_tokens = usage_numbers["completion_tokens"]
+
+        cost = (
+            cached_tokens * pricing["input_cache_hit"]
+            + cache_miss_tokens * pricing["input_cache_miss"]
+            + completion_tokens * pricing["output"]
+        ) / 1_000_000
+
+        return float(cost)
+
+    if not isinstance(
+        pricing_context,
+        dict,
+    ):
         return 0.0
 
-    prompt_tokens = usage_numbers["prompt_tokens"]
-    cached_tokens = int(usage_numbers.get("prompt_cache_hit_tokens", usage_numbers.get("cached_tokens", 0)))
-    cache_miss_tokens = usage_numbers.get("prompt_cache_miss_tokens")
+    context_model = str(
+        pricing_context.get(
+            "pricing_model"
+        )
+        or ""
+    ).strip()
+
+    if context_model != str(model):
+        return 0.0
+
+    if (
+        str(
+            pricing_context.get(
+                "pricing_unit"
+            )
+            or ""
+        )
+        != "per_million_tokens"
+    ):
+        return 0.0
+
+    rates: dict[str, float] = {}
+
+    for context_key, rate_key in (
+        (
+            "pricing_input_cache_hit",
+            "input_cache_hit",
+        ),
+        (
+            "pricing_input_cache_miss",
+            "input_cache_miss",
+        ),
+        (
+            "pricing_output",
+            "output",
+        ),
+    ):
+        try:
+            rate = float(
+                pricing_context.get(
+                    context_key
+                )
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return 0.0
+
+        if not (
+            rate >= 0.0
+            and rate < float("inf")
+        ):
+            return 0.0
+
+        rates[rate_key] = rate
+
+    prompt_tokens = usage_numbers[
+        "prompt_tokens"
+    ]
+    cached_tokens = int(
+        usage_numbers.get(
+            "prompt_cache_hit_tokens",
+            usage_numbers.get(
+                "cached_tokens",
+                0,
+            ),
+        )
+    )
+    cache_miss_tokens = (
+        usage_numbers.get(
+            "prompt_cache_miss_tokens"
+        )
+    )
+
     if cache_miss_tokens is None:
-        cache_miss_tokens = max(0, prompt_tokens - cached_tokens)
-    completion_tokens = usage_numbers["completion_tokens"]
+        cache_miss_tokens = max(
+            0,
+            prompt_tokens - cached_tokens,
+        )
+
+    completion_tokens = usage_numbers[
+        "completion_tokens"
+    ]
 
     cost = (
-        cached_tokens * pricing["input_cache_hit"]
-        + cache_miss_tokens * pricing["input_cache_miss"]
-        + completion_tokens * pricing["output"]
+        cached_tokens
+        * rates["input_cache_hit"]
+        + cache_miss_tokens
+        * rates["input_cache_miss"]
+        + completion_tokens
+        * rates["output"]
     ) / 1_000_000
 
     return float(cost)
@@ -13006,7 +13114,11 @@ async def _chat_completions_with_usage(
 
     usage_numbers = _extract_usage_numbers(deepseek_response)
     pricing_context = _pricing_context_for_usage_event(effective_model)
-    estimated_cost_source_amount = _estimate_cost_usd(effective_model, usage_numbers)
+    estimated_cost_source_amount = _estimate_cost_usd(
+        effective_model,
+        usage_numbers,
+        pricing_context=pricing_context,
+    )
     estimated_cost_source_currency = str(pricing_context.get("pricing_currency") or "CNY").upper()
     estimated_cost_usd = estimated_cost_source_amount if estimated_cost_source_currency == "USD" else 0.0
     trimming_report = getattr(deepseek_client, "last_context_trimming_report", None)

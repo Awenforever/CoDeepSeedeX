@@ -725,7 +725,7 @@ def test_existing_production_callers_remain_positional_legacy_calls() -> None:
     ]
 
 
-def test_cost_persistence_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
+def test_cost_composition_is_single_source_while_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
     estimate_source = inspect.getsource(
         app._estimate_cost_usd
     )
@@ -747,8 +747,24 @@ def test_cost_persistence_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
         in estimate_source
     )
     assert (
+        "pricing_context is None"
+        in estimate_source
+    )
+
+    for marker in (
+        "pricing_input_cache_hit",
+        "pricing_input_cache_miss",
+        "pricing_output",
+    ):
+        assert marker in estimate_source
+
+    assert (
         "_pricing_context_for_usage_event("
         "effective_model)"
+        in chat_source
+    )
+    assert (
+        "pricing_context=pricing_context"
         in chat_source
     )
     assert (
@@ -760,7 +776,6 @@ def test_cost_persistence_weclaw_daily_refresh_and_cli_remain_frozen() -> None:
     for source in (
         chat_source,
         record_source,
-        estimate_source,
         weclaw_source,
         daily_source,
     ):
