@@ -218,7 +218,7 @@ def test_runtime_app_factory_forwards_only_explicit_arguments(
     }
 
 
-def test_startup_factory_has_no_pricing_environment_activation_and_legacy_entry_stays_static() -> None:
+def test_startup_factory_has_no_pricing_environment_activation_and_module_entry_stays_static() -> None:
     runtime_text = (ROOT / "codexchange_proxy" / "runtime_app.py").read_text(encoding="utf-8")
     runtime_tree = ast.parse(runtime_text)
     imported_modules = {
@@ -259,10 +259,18 @@ def test_startup_factory_has_no_pricing_environment_activation_and_legacy_entry_
     for relative in (
         "scripts/cox-start",
         "scripts/cox-start-reasoning",
-        "scripts/codex-wrapper.bash",
     ):
         text = (ROOT / relative).read_text(encoding="utf-8")
         assert "codexchange_proxy.app:app" in text
         assert "codexchange_proxy.runtime_app" not in text
         assert "--pricing-provider-id" not in text
         assert "--pricing-provider-path" not in text
+
+    wrapper_text = (ROOT / "scripts/codex-wrapper.bash").read_text(encoding="utf-8")
+    assert "codexchange_proxy.app:app" in wrapper_text
+    assert "codexchange_proxy.runtime_app" in wrapper_text
+    assert "--pricing-provider-id" in wrapper_text
+    assert "--pricing-activate" in wrapper_text
+    assert "--pricing-mode" in wrapper_text
+    assert "--pricing-provider-path" in wrapper_text
+    assert PRICING_ENV_NAMES.isdisjoint(set(wrapper_text.split()))

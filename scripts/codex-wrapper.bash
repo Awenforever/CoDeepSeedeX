@@ -53,6 +53,89 @@ __codexchange_toml_value() {
   ' "$file"
 }
 
+__codexchange_toml_has_key() {
+  local file key
+  file="$1"; key="$2"
+  [ -f "$file" ] || return 1
+  awk -v k="$key" '
+    $0 ~ "^[[:space:]]*" k "[[:space:]]*=" { found=1; exit }
+    END { if (!found) exit 1 }
+  ' "$file"
+}
+
+__codexchange_profile_pricing_candidate() {
+  local profile_file key present provider_id provider_owned mode provider_path
+  profile_file="$1"
+  __codexchange_profile_pricing_explicit=0
+  __codexchange_profile_pricing_provider_id=""
+  __codexchange_profile_pricing_mode=""
+  __codexchange_profile_pricing_provider_path=""
+
+  present=0
+  for key in \
+    pricing_provider_id \
+    pricing_provider_owned \
+    pricing_mode \
+    pricing_provider_path; do
+    if __codexchange_toml_has_key "$profile_file" "$key"; then
+      present=$((present + 1))
+    fi
+  done
+
+  [ "$present" -eq 0 ] && return 0
+  if [ "$present" -ne 4 ]; then
+    echo "CodeXchange: profile pricing fields are incomplete; require pricing_provider_id, pricing_provider_owned, pricing_mode, and pricing_provider_path." >&2
+    return 70
+  fi
+
+  provider_id="$(__codexchange_toml_value "$profile_file" pricing_provider_id 2>/dev/null || true)"
+  provider_owned="$(__codexchange_toml_value "$profile_file" pricing_provider_owned 2>/dev/null || true)"
+  mode="$(__codexchange_toml_value "$profile_file" pricing_mode 2>/dev/null || true)"
+  provider_path="$(__codexchange_toml_value "$profile_file" pricing_provider_path 2>/dev/null || true)"
+
+  provider_id="$(printf '%s' "$provider_id" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
+  mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
+  provider_owned="$(printf '%s' "$provider_owned" | tr '[:upper:]' '[:lower:]')"
+
+  if [ "$provider_owned" != "true" ]; then
+    echo "CodeXchange: pricing_provider_owned must be true for explicit profile pricing." >&2
+    return 70
+  fi
+  if [ -z "$provider_id" ]; then
+    echo "CodeXchange: pricing_provider_id is required for explicit profile pricing." >&2
+    return 70
+  fi
+  if [ "$mode" != "provider_owned" ]; then
+    echo "CodeXchange: pricing_mode must be provider_owned for explicit profile pricing." >&2
+    return 70
+  fi
+  if [ -z "$provider_path" ]; then
+    echo "CodeXchange: pricing_provider_path is required for explicit profile pricing." >&2
+    return 70
+  fi
+
+  case "$provider_path" in
+    ~/*) provider_path="$HOME/${provider_path#~/}" ;;
+  esac
+  case "$provider_path" in
+    /*) ;;
+    *)
+      echo "CodeXchange: pricing_provider_path must be absolute after home expansion." >&2
+      return 70
+      ;;
+  esac
+  if [ ! -f "$provider_path" ]; then
+    echo "CodeXchange: explicit profile pricing file does not exist: $provider_path" >&2
+    return 70
+  fi
+
+  __codexchange_profile_pricing_explicit=1
+  __codexchange_profile_pricing_provider_id="$provider_id"
+  __codexchange_profile_pricing_mode="provider_owned"
+  __codexchange_profile_pricing_provider_path="$provider_path"
+  return 0
+}
+
 __codexchange_provider_base_url() {
   local provider file
   provider="$1"; shift || true
@@ -134,13 +217,17 @@ __codexchange_source_env_file() {
 }
 
 __codexchange_start_local_proxy() {
-  local port profile model provider install_dir python_bin log_dir log_file i
+  local port profile model provider pricing_provider_id pricing_mode pricing_provider_path
+  local install_dir python_bin log_dir log_file i
   port="$1"; profile="$2"; model="$3"; provider="$4"
+  pricing_provider_id="${5:-}"
+  pricing_mode="${6:-}"
+  pricing_provider_path="${7:-}"
   __codexchange_source_env_file
   export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,::1}"
   export no_proxy="${no_proxy:-$NO_PROXY}"
   export COX_PORT="$port"
-  [ -n "$model" ] && export COX_MODEL="$model" && export COX_MODEL="$model"
+  [ -n "$model" ] && export COX_MODEL="$model"
   export COX_FORCE_MODEL="${COX_FORCE_MODEL:-1}"
   export COX_TOOL_MAX_ROUNDS="${COX_TOOL_MAX_ROUNDS:-6}"
   export COX_COMPACT_POLICY="${COX_COMPACT_POLICY:-adaptive}"
@@ -177,11 +264,25 @@ __codexchange_start_local_proxy() {
   log_dir="${COX_LOG_DIR:-$HOME/.cache/codexchange}"
   mkdir -p "$log_dir"
   log_file="${log_dir}/codex-profile-${profile:-default}-proxy-${port}.log"
-  (
-    cd "$install_dir" 2>/dev/null || cd "$PWD"
-    exec "$python_bin" -m uvicorn codexchange_proxy.app:app --host 127.0.0.1 --port "$port"
-  ) >>"$log_file" 2>&1 &
-  echo "CodeXchange: starting local Responses proxy for profile '${profile}' on 127.0.0.1:${port}" >&2
+  if [ -n "$pricing_provider_id" ]; then
+    (
+      cd "$install_dir" 2>/dev/null || cd "$PWD"
+      exec "$python_bin" -m codexchange_proxy.runtime_app \
+        --host 127.0.0.1 \
+        --port "$port" \
+        --pricing-provider-id "$pricing_provider_id" \
+        --pricing-activate \
+        --pricing-mode "$pricing_mode" \
+        --pricing-provider-path "$pricing_provider_path"
+    ) >>"$log_file" 2>&1 &
+    echo "CodeXchange: starting local Responses proxy with explicit profile pricing for profile '${profile}' on 127.0.0.1:${port}" >&2
+  else
+    (
+      cd "$install_dir" 2>/dev/null || cd "$PWD"
+      exec "$python_bin" -m uvicorn codexchange_proxy.app:app --host 127.0.0.1 --port "$port"
+    ) >>"$log_file" 2>&1 &
+    echo "CodeXchange: starting local Responses proxy for profile '${profile}' on 127.0.0.1:${port}" >&2
+  fi
   echo "CodeXchange: proxy log: ${log_file}" >&2
   i=0
   while [ "$i" -lt 40 ]; do
@@ -204,6 +305,7 @@ __codexchange_profile_runtime_autostart() {
   model="$(__codexchange_toml_value "$profile_file" model 2>/dev/null || true)"
   provider="$(__codexchange_toml_value "$profile_file" model_provider 2>/dev/null || true)"
   [ -n "$provider" ] || return 0
+  __codexchange_profile_pricing_candidate "$profile_file" || return $?
   base_url="$(__codexchange_provider_base_url "$provider" "$profile_file" "$config_file" 2>/dev/null || true)"
   [ -n "$base_url" ] || return 0
   port="$(__codexchange_local_proxy_port_from_base_url "$base_url" 2>/dev/null || true)"
@@ -214,9 +316,15 @@ __codexchange_profile_runtime_autostart() {
     echo "CodeXchange: refusing to enter Codex to avoid stream disconnected failures." >&2
     return 70
   fi
-  __codexchange_start_local_proxy "$port" "$profile" "$model" "$provider"
+  __codexchange_start_local_proxy \
+    "$port" \
+    "$profile" \
+    "$model" \
+    "$provider" \
+    "${__codexchange_profile_pricing_provider_id:-}" \
+    "${__codexchange_profile_pricing_mode:-}" \
+    "${__codexchange_profile_pricing_provider_path:-}"
 }
-# END COX PROFILE-AGNOSTIC RUNTIME AUTOSTART
 
 codex() {
   __codexchange_profile_runtime_autostart "$@" || return $?
