@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.40-alpha"
-PROXY_INTERNAL_VERSION = "p3.3a20a48-provider-pricing-daily-refresh-target-explicit-activation-contract-v0441"
+PROXY_INTERNAL_VERSION = "p3.3a20a49-provider-pricing-daily-refresh-target-single-write-composition-v0442"
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -2463,6 +2463,240 @@ def _deepseek_pricing_daily_refresh_target_activation_contract(
             activate=activate,
             mode=mode,
             provider_path=provider_path,
+        )
+    )
+
+
+def _provider_pricing_daily_refresh_target_single_write_execution(
+    provider_id: str,
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None,
+    model: str | None = None,
+    source_url: str | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """Compose explicit daily-refresh activation with one provider-owned write."""
+    activation = (
+        _provider_pricing_daily_refresh_target_activation_contract(
+            provider_id,
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+        )
+    )
+
+    requested_provider = str(
+        activation.get("provider")
+        or provider_id
+        or ""
+    )
+    requested_mode = str(
+        activation.get("requested_mode")
+        or mode
+        or ""
+    ).strip().lower().replace(
+        "-",
+        "_",
+    )
+    selected_target_path = (
+        activation.get(
+            "selected_target_path"
+        )
+    )
+
+    base: dict[str, Any] = {
+        "provider": requested_provider,
+        "adapter_provider_id": (
+            activation.get(
+                "adapter_provider_id"
+            )
+        ),
+        "family": activation.get(
+            "family"
+        ),
+        "capability": (
+            "pricing_daily_refresh_target_"
+            "single_write_execution"
+        ),
+        "execution_source": (
+            "explicit_arguments_only"
+        ),
+        "activation": activation,
+        "selected_mode": activation.get(
+            "selected_mode"
+        ),
+        "selected_target_path": (
+            selected_target_path
+        ),
+        "provider_path_inferred": False,
+        "reads_activation_env": False,
+        "automatic_activation": False,
+        "runtime_wired": False,
+        "changes_daily_refresh_contract": False,
+        "reader_switch": False,
+        "usage_source_switch": False,
+        "weclaw_source_switch": False,
+        "dual_write": False,
+        "fallback_write": False,
+    }
+
+    if activation.get(
+        "activation_ready"
+    ) is not True:
+        return {
+            **base,
+            "status": "error",
+            "reason": (
+                activation.get("reason")
+                or (
+                    "daily_refresh_target_"
+                    "activation_not_ready"
+                )
+            ),
+            "action": activation.get(
+                "action"
+            ),
+            "writes_cache": False,
+            "execution": {
+                "execution_attempted": False,
+                "dispatch_target": None,
+                "target_count": 0,
+                "selected_mode": (
+                    activation.get(
+                        "selected_mode"
+                    )
+                ),
+            },
+        }
+
+    if requested_mode == "disabled":
+        return {
+            **base,
+            "status": "disabled",
+            "reason": (
+                "daily_refresh_disabled_by_"
+                "explicit_activation"
+            ),
+            "action": (
+                "do not fetch pricing or write "
+                "a pricing cache"
+            ),
+            "writes_cache": False,
+            "execution": {
+                "execution_attempted": False,
+                "dispatch_target": None,
+                "target_count": 0,
+                "selected_mode": "disabled",
+            },
+        }
+
+    if (
+        requested_mode != "provider_owned"
+        or not selected_target_path
+    ):
+        return {
+            **base,
+            "status": "error",
+            "reason": (
+                "provider_owned_daily_refresh_"
+                "target_not_ready"
+            ),
+            "action": (
+                "provide explicit activation, "
+                "provider_owned mode, and an "
+                "explicit provider path"
+            ),
+            "writes_cache": False,
+            "execution": {
+                "execution_attempted": False,
+                "dispatch_target": None,
+                "target_count": 0,
+                "selected_mode": (
+                    activation.get(
+                        "selected_mode"
+                    )
+                ),
+            },
+        }
+
+    execution_result = dict(
+        _provider_pricing_refresh_writer_single_write_execution(
+            provider_id,
+            activate=True,
+            mode="provider_owned",
+            provider_path=selected_target_path,
+            model=model,
+            source_url=source_url,
+            timeout=timeout,
+        )
+    )
+
+    execution_result[
+        "daily_refresh_target_activation"
+    ] = activation
+    execution_result[
+        "daily_refresh_target_execution"
+    ] = {
+        "execution_attempted": True,
+        "dispatch_target": (
+            "_provider_pricing_refresh_writer_"
+            "single_write_execution"
+        ),
+        "target_count": 1,
+        "selected_mode": "provider_owned",
+        "selected_target_path": (
+            selected_target_path
+        ),
+        "explicit_arguments_only": True,
+        "provider_path_inferred": False,
+        "automatic_activation": False,
+    }
+    execution_result[
+        "runtime_wired"
+    ] = False
+    execution_result[
+        "changes_daily_refresh_contract"
+    ] = False
+    execution_result[
+        "reader_switch"
+    ] = False
+    execution_result[
+        "usage_source_switch"
+    ] = False
+    execution_result[
+        "weclaw_source_switch"
+    ] = False
+    execution_result[
+        "dual_write"
+    ] = False
+    execution_result[
+        "fallback_write"
+    ] = False
+
+    return execution_result
+
+
+def _deepseek_pricing_daily_refresh_target_single_write_execution(
+    *,
+    activate: bool,
+    mode: str,
+    provider_path: str | Path | None,
+    model: str | None = None,
+    source_url: str | None = None,
+    timeout: float = 20.0,
+) -> dict[str, Any]:
+    """DeepSeek wrapper for explicit daily-refresh target execution."""
+    return (
+        _provider_pricing_daily_refresh_target_single_write_execution(
+            "deepseek",
+            activate=activate,
+            mode=mode,
+            provider_path=provider_path,
+            model=model,
+            source_url=source_url,
+            timeout=timeout,
         )
     )
 
