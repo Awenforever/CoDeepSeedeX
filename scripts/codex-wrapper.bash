@@ -237,6 +237,88 @@ with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/models", timeout=3) as 
 PY_COX_MODELS_OK
 }
 
+__codexchange_proxy_runtime_identity_matches() {
+  local port expected_provider_id expected_mode expected_provider_path payload python_bin
+  port="$1"
+  expected_provider_id="$2"
+  expected_mode="$3"
+  expected_provider_path="$4"
+  python_bin="$(command -v python3 || true)"
+  [ -n "$python_bin" ] || return 1
+
+  if command -v curl >/dev/null 2>&1; then
+    payload="$(curl -fsS -m 3 "http://127.0.0.1:${port}/v1/proxy/status" 2>/dev/null)" || return 1
+    "$python_bin" -c '
+import json
+import sys
+
+expected_provider_id, expected_mode, expected_path = sys.argv[1:4]
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+identity = payload.get("runtime_identity") if isinstance(payload, dict) else None
+if not isinstance(identity, dict):
+    raise SystemExit(1)
+normalize = lambda value: str(value or "").strip().lower().replace("-", "_")
+actual = (
+    str(identity.get("contract") or ""),
+    normalize(identity.get("pricing_provider_id")),
+    identity.get("pricing_activate") is True,
+    normalize(identity.get("pricing_mode")),
+    str(identity.get("pricing_provider_path") or ""),
+)
+expected = (
+    "provider_pricing_runtime_identity_v1",
+    normalize(expected_provider_id),
+    True,
+    normalize(expected_mode),
+    expected_path,
+)
+raise SystemExit(0 if actual == expected else 1)
+' "$expected_provider_id" "$expected_mode" "$expected_provider_path" <<<"$payload"
+    return $?
+  fi
+
+  "$python_bin" - "$port" "$expected_provider_id" "$expected_mode" "$expected_provider_path" <<'PY_COX_RUNTIME_IDENTITY'
+import json
+import sys
+import urllib.request
+
+port, expected_provider_id, expected_mode, expected_path = sys.argv[1:5]
+try:
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{int(port)}/v1/proxy/status",
+        timeout=3,
+    ) as response:
+        if response.status != 200:
+            raise SystemExit(1)
+        payload = json.load(response)
+except Exception:
+    raise SystemExit(1)
+identity = payload.get("runtime_identity") if isinstance(payload, dict) else None
+if not isinstance(identity, dict):
+    raise SystemExit(1)
+normalize = lambda value: str(value or "").strip().lower().replace("-", "_")
+actual = (
+    str(identity.get("contract") or ""),
+    normalize(identity.get("pricing_provider_id")),
+    identity.get("pricing_activate") is True,
+    normalize(identity.get("pricing_mode")),
+    str(identity.get("pricing_provider_path") or ""),
+)
+expected = (
+    "provider_pricing_runtime_identity_v1",
+    normalize(expected_provider_id),
+    True,
+    normalize(expected_mode),
+    expected_path,
+)
+raise SystemExit(0 if actual == expected else 1)
+PY_COX_RUNTIME_IDENTITY
+}
+
+
 __codexchange_source_env_file() {
   local env_file
   env_file="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
@@ -317,7 +399,15 @@ __codexchange_start_local_proxy() {
   echo "CodeXchange: proxy log: ${log_file}" >&2
   i=0
   while [ "$i" -lt 40 ]; do
-    if __codexchange_proxy_models_ok "$port"; then return 0; fi
+    if __codexchange_proxy_models_ok "$port"; then
+      if [ -z "$pricing_provider_id" ] || __codexchange_proxy_runtime_identity_matches \
+        "$port" \
+        "$pricing_provider_id" \
+        "$pricing_mode" \
+        "$pricing_provider_path"; then
+        return 0
+      fi
+    fi
     i=$((i + 1)); sleep 0.25
   done
   echo "CodeXchange: local proxy failed readiness check for profile '${profile}' on 127.0.0.1:${port}" >&2
@@ -341,7 +431,22 @@ __codexchange_profile_runtime_autostart() {
   [ -n "$base_url" ] || return 0
   port="$(__codexchange_local_proxy_port_from_base_url "$base_url" 2>/dev/null || true)"
   [ -n "$port" ] || return 0
-  if __codexchange_proxy_models_ok "$port"; then return 0; fi
+  if __codexchange_proxy_models_ok "$port"; then
+    if [ "${__codexchange_profile_pricing_explicit:-0}" -ne 1 ]; then
+      return 0
+    fi
+    if __codexchange_proxy_runtime_identity_matches \
+      "$port" \
+      "${__codexchange_profile_pricing_provider_id:-}" \
+      "${__codexchange_profile_pricing_mode:-}" \
+      "${__codexchange_profile_pricing_provider_path:-}"; then
+      return 0
+    fi
+    echo "CodeXchange: healthy local proxy runtime pricing identity does not match explicit profile '${profile}'." >&2
+    echo "CodeXchange: stop the proxy on 127.0.0.1:${port} and retry so the requested pricing runtime can start." >&2
+    echo "CodeXchange: refusing to enter Codex to avoid silently using the wrong pricing source." >&2
+    return 70
+  fi
   if __codexchange_port_open "$port"; then
     echo "CodeXchange: 127.0.0.1:${port} is open but /v1/models is not healthy for profile '${profile}'." >&2
     echo "CodeXchange: refusing to enter Codex to avoid stream disconnected failures." >&2

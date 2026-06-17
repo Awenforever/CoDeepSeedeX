@@ -27,7 +27,7 @@ from .providers import ProviderAdapter, get_provider_adapter
 
 DEFAULT_MODEL = os.environ.get("COX_MODEL", "deepseek-v4-pro").strip() or "deepseek-v4-pro"
 PROXY_PUBLIC_VERSION = "v0.4.41-alpha"
-PROXY_INTERNAL_VERSION = 'p3.3a20a72-provider-pricing-profile-toml-value-roundtrip-fix-v0454'
+PROXY_INTERNAL_VERSION = 'p3.3a20a74-provider-pricing-runtime-identity-exposure-and-reconciliation-v0455'
 _RELEASE_METADATA_COMMIT_ENV_NAMES = {
     "COX_PUBLIC_COMMIT",
     "COX_INTERNAL_COMMIT",
@@ -24894,6 +24894,42 @@ def _runtime_weclaw_status(
     payload["diagnostics"] = _weclaw_diagnostics_contract(payload)
     return _token_only_public_runtime_contract(payload)
 
+def _runtime_pricing_identity(
+    *,
+    pricing_provider_id: str | None,
+    pricing_activate: bool,
+    pricing_mode: str | None,
+    pricing_provider_path: str | Path | None,
+) -> dict[str, Any]:
+    active = bool(pricing_activate)
+    if not active:
+        return {
+            "contract": "provider_pricing_runtime_identity_v1",
+            "source": "legacy_shared_app",
+            "pricing_provider_id": None,
+            "pricing_activate": False,
+            "pricing_provider_owned": False,
+            "pricing_mode": "legacy_shared",
+            "pricing_provider_path": None,
+        }
+
+    provider_id = str(pricing_provider_id or "").strip().lower().replace("-", "_")
+    mode = str(pricing_mode or "").strip().lower().replace("-", "_")
+    provider_path = (
+        str(Path(pricing_provider_path).expanduser())
+        if pricing_provider_path is not None
+        else None
+    )
+    return {
+        "contract": "provider_pricing_runtime_identity_v1",
+        "source": "explicit_runtime_arguments",
+        "pricing_provider_id": provider_id or None,
+        "pricing_activate": True,
+        "pricing_provider_owned": mode == "provider_owned",
+        "pricing_mode": mode or None,
+        "pricing_provider_path": provider_path,
+    }
+
 def create_app(
     *,
     deepseek_client: DeepSeekClient | None = None,
@@ -24906,6 +24942,12 @@ def create_app(
     app = FastAPI()
     app.state.deepseek_client = deepseek_client or DeepSeekClient()
     app.state.store = store or SQLiteResponseStore()
+    app.state.runtime_pricing_identity = _runtime_pricing_identity(
+        pricing_provider_id=pricing_provider_id,
+        pricing_activate=pricing_activate,
+        pricing_mode=pricing_mode,
+        pricing_provider_path=pricing_provider_path,
+    )
     app.state.started_at = _now()
     app.state.repair_count = 0
     app.state.last_context_compaction_report = None
@@ -24926,6 +24968,7 @@ def create_app(
         return {
             "status": "ok",
             "version": PROXY_VERSION,
+            "runtime_identity": dict(app.state.runtime_pricing_identity),
             "model_default": DEFAULT_MODEL,
             "thinking": _deepseek_thinking_config(),
             "thinking_enabled": _thinking_enabled(),
