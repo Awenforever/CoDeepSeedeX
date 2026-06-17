@@ -33,16 +33,16 @@ Default channel, using the GitHub Latest Release asset:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-Pinned current Latest Release tag (`v0.4.40-alpha`):
+Pinned current Latest Release tag (`v0.4.41-alpha`):
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.40-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.40-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.41-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.41-alpha
 ```
 
 Fallback downloader for unstable GitHub Release assets, raw GitHub, or CDN routing:
 
 ```bash
-tag="v0.4.40-alpha"
+tag="v0.4.41-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -227,7 +227,7 @@ cox upgrade --alpha
 Explicit tag or ref:
 
 ```bash
-cox upgrade --tag v0.4.40-alpha
+cox upgrade --tag v0.4.41-alpha
 ```
 
 Do not combine `--alpha` and `--tag`.
@@ -345,7 +345,11 @@ Current WeClaw-facing fields include:
 
 WeClaw clients should consume the structured JSON fields and should not recalculate token categories, currency conversion, or session cost locally.
 
-### v0.4.40-alpha
+### v0.4.41-alpha
+
+- Adds an explicit provider-owned daily-refresh runtime entry that requires explicit provider, activation, mode, and cache path arguments.
+- Preserves the no-argument DeepSeek legacy shared refresh path.
+- Keeps reader, usage, WeClaw, CLI, dual-write, fallback-write, environment activation, and path inference boundaries unchanged.
 
 The current public release improves custom OpenAI-compatible provider support, fixes custom reasoning-only responses, and keeps image payloads from being compacted or trimmed.
 

@@ -36,7 +36,7 @@ def _expected_public_commit() -> str:
     return PROXY_PUBLIC_COMMIT
 
 def test_public_runtime_version_matches_declared_release_tag() -> None:
-    assert PROXY_PUBLIC_VERSION == "v0.4.40-alpha"
+    assert PROXY_PUBLIC_VERSION == "v0.4.41-alpha"
     assert PROXY_PUBLIC_COMMIT == _expected_public_commit()
 
 
@@ -71,7 +71,7 @@ def test_cli_version_output_includes_public_and_internal_versions() -> None:
         check=True,
     )
     output = result.stdout.strip()
-    assert "public version: v0.4.40-alpha |" in output
+    assert "public version: v0.4.41-alpha |" in output
     assert "internal version: p" in output
 
 
@@ -92,7 +92,7 @@ def test_version_metadata_formatter_shape() -> None:
 
 def test_version_metadata_reports_public_release_and_head_commit() -> None:
     data = _version_metadata()
-    assert data["public_version"] == "v0.4.40-alpha"
+    assert data["public_version"] == "v0.4.41-alpha"
     assert data["public_commit"] == _expected_public_commit()
     assert data["internal_version"].startswith("p")
     assert len(data["internal_commit"]) >= 7

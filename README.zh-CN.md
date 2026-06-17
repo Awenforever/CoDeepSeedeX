@@ -33,16 +33,16 @@ npm install -g @openai/codex
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
-固定当前Latest Release tag（`v0.4.40-alpha`）：
+固定当前Latest Release tag（`v0.4.41-alpha`）：
 
 ```bash
-curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.40-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.40-alpha
+curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/download/v0.4.41-alpha/bootstrap.sh | bash -s -- --install-ref v0.4.41-alpha
 ```
 
 如果GitHub Release资产、raw GitHub或CDN路由不稳定，使用备用下载命令：
 
 ```bash
-tag="v0.4.40-alpha"
+tag="v0.4.41-alpha"
 tmp="$(mktemp -d)"
 bs="$tmp/bootstrap.sh"
 (
@@ -227,7 +227,7 @@ cox upgrade --alpha
 显式指定tag或ref：
 
 ```bash
-cox upgrade --tag v0.4.40-alpha
+cox upgrade --tag v0.4.41-alpha
 ```
 
 不要同时使用`--alpha`和`--tag`。
@@ -345,7 +345,11 @@ CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状
 
 WeClaw应消费cox提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。
 
-### v0.4.40-alpha
+### v0.4.41-alpha
+
+- 新增显式provider-owned每日刷新运行时入口，要求显式传入provider、激活开关、mode和缓存路径。
+- 无参数调用继续使用DeepSeek legacy shared刷新路径。
+- reader、usage、WeClaw、CLI、双写、fallback写入、环境变量隐式激活和路径推断边界均保持不变。
 
 当前公开版本改进了自定义 OpenAI-compatible provider 支持，修复 custom reasoning-only 响应映射，并保护图片 payload 不再被 compact 或 trim。
 
