@@ -4,6 +4,8 @@ from .providers import get_provider_adapter
 from .env_file import quote_env_value as _quote_env_value_data, read_env_exports as _read_env_exports_data, write_env_exports as _write_env_exports_data
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import io
 import json
@@ -3439,21 +3441,248 @@ def _pid_environment_value(pid: int, name: str) -> str | None:
     return None
 
 
-def _read_lifecycle_record(pid_path: Path) -> dict[str, object] | None:
+class LifecycleStorageError(OSError):
+    """Raised when lifecycle owner storage violates its private integrity contract."""
+
+
+def _lifecycle_path_lexists(path: Path) -> bool:
     try:
-        text = pid_path.read_text(encoding="utf-8").strip()
-    except OSError:
+        os.lstat(path)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _current_process_uid() -> int | None:
+    getter = getattr(os, "getuid", None)
+    return int(getter()) if callable(getter) else None
+
+
+def _require_lifecycle_owner(metadata: os.stat_result, path: Path, *, kind: str) -> None:
+    current_uid = _current_process_uid()
+    if current_uid is not None and metadata.st_uid != current_uid:
+        raise LifecycleStorageError(f"{kind} must be owned by the current user: {path}")
+
+
+def _require_lifecycle_directory_stat(path: Path, metadata: os.stat_result) -> None:
+    if stat.S_ISLNK(metadata.st_mode):
+        raise LifecycleStorageError(f"lifecycle state directory must not be a symbolic link: {path}")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise LifecycleStorageError(f"lifecycle state directory must be a directory: {path}")
+    _require_lifecycle_owner(metadata, path, kind="lifecycle state directory")
+
+
+def _ensure_lifecycle_state_directory(
+    path: Path,
+    *,
+    create: bool,
+    repair_permissions: bool = False,
+) -> None:
+    if create:
+        try:
+            path.mkdir(parents=True, mode=0o700, exist_ok=True)
+        except OSError as exc:
+            raise LifecycleStorageError(f"cannot create lifecycle state directory: {path}") from exc
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        raise LifecycleStorageError(f"lifecycle state directory does not exist: {path}")
+    except OSError as exc:
+        raise LifecycleStorageError(f"cannot inspect lifecycle state directory: {path}") from exc
+    _require_lifecycle_directory_stat(path, metadata)
+    mode = stat.S_IMODE(metadata.st_mode)
+    if mode != 0o700:
+        if not repair_permissions:
+            raise LifecycleStorageError(
+                f"lifecycle state directory must have mode 0700, found {mode:04o}: {path}"
+            )
+        try:
+            os.chmod(path, 0o700, follow_symlinks=False)
+        except OSError as exc:
+            raise LifecycleStorageError(
+                f"cannot repair lifecycle state directory permissions: {path}"
+            ) from exc
+        metadata = os.lstat(path)
+        _require_lifecycle_directory_stat(path, metadata)
+        if stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise LifecycleStorageError(
+                f"lifecycle state directory permission repair did not reach 0700: {path}"
+            )
+
+
+def _require_lifecycle_regular_stat(
+    path: Path,
+    metadata: os.stat_result,
+    *,
+    kind: str,
+    require_private: bool,
+) -> None:
+    if not stat.S_ISREG(metadata.st_mode):
+        raise LifecycleStorageError(f"{kind} must be a regular file: {path}")
+    if metadata.st_nlink != 1:
+        raise LifecycleStorageError(f"{kind} must have exactly one hard link: {path}")
+    _require_lifecycle_owner(metadata, path, kind=kind)
+    if require_private and stat.S_IMODE(metadata.st_mode) != 0o600:
+        raise LifecycleStorageError(
+            f"{kind} must have mode 0600, found {stat.S_IMODE(metadata.st_mode):04o}: {path}"
+        )
+
+
+def _lifecycle_lock_path(directory: Path) -> Path:
+    return directory / ".codexchange-lifecycle-owner.lock"
+
+
+def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    return left.st_dev == right.st_dev and left.st_ino == right.st_ino
+
+
+@contextlib.contextmanager
+def _exclusive_lifecycle_directory_lock(
+    directory: Path,
+    *,
+    create: bool,
+    repair_permissions: bool = False,
+):
+    _ensure_lifecycle_state_directory(
+        directory,
+        create=create,
+        repair_permissions=repair_permissions,
+    )
+    lock_path = _lifecycle_lock_path(directory)
+    flags = (
+        os.O_RDWR
+        | os.O_CREAT
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise LifecycleStorageError(f"cannot safely open lifecycle lock: {lock_path}") from exc
+    try:
+        metadata = os.fstat(fd)
+        _require_lifecycle_regular_stat(
+            lock_path,
+            metadata,
+            kind="lifecycle lock",
+            require_private=False,
+        )
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        metadata = os.fstat(fd)
+        _require_lifecycle_regular_stat(
+            lock_path,
+            metadata,
+            kind="lifecycle lock",
+            require_private=True,
+        )
+        try:
+            path_metadata = os.lstat(lock_path)
+        except OSError as exc:
+            raise LifecycleStorageError(
+                f"cannot revalidate lifecycle lock path: {lock_path}"
+            ) from exc
+        _require_lifecycle_regular_stat(
+            lock_path,
+            path_metadata,
+            kind="lifecycle lock",
+            require_private=True,
+        )
+        if not _same_file_identity(metadata, path_metadata):
+            raise LifecycleStorageError(f"lifecycle lock path changed during acquisition: {lock_path}")
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _validate_existing_lifecycle_target(path: Path, *, require_private: bool) -> None:
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise LifecycleStorageError(f"cannot inspect lifecycle owner record: {path}") from exc
+    if stat.S_ISLNK(metadata.st_mode):
+        raise LifecycleStorageError(f"lifecycle owner record must not be a symbolic link: {path}")
+    _require_lifecycle_regular_stat(
+        path,
+        metadata,
+        kind="lifecycle owner record",
+        require_private=require_private,
+    )
+
+
+def _secure_read_lifecycle_text_unlocked(
+    pid_path: Path,
+) -> tuple[str, os.stat_result] | None:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(pid_path, flags)
+    except FileNotFoundError:
         return None
-    if not text:
+    except OSError as exc:
+        raise LifecycleStorageError(
+            f"cannot safely open lifecycle owner record: {pid_path}"
+        ) from exc
+    try:
+        metadata = os.fstat(fd)
+        _require_lifecycle_regular_stat(
+            pid_path,
+            metadata,
+            kind="lifecycle owner record",
+            require_private=False,
+        )
+        try:
+            path_metadata = os.lstat(pid_path)
+        except OSError as exc:
+            raise LifecycleStorageError(
+                f"cannot revalidate lifecycle owner record path: {pid_path}"
+            ) from exc
+        if stat.S_ISLNK(path_metadata.st_mode):
+            raise LifecycleStorageError(
+                f"lifecycle owner record must not be a symbolic link: {pid_path}"
+            )
+        _require_lifecycle_regular_stat(
+            pid_path,
+            path_metadata,
+            kind="lifecycle owner record",
+            require_private=False,
+        )
+        if not _same_file_identity(metadata, path_metadata):
+            raise LifecycleStorageError(
+                f"lifecycle owner record path changed during read: {pid_path}"
+            )
+        with os.fdopen(fd, "r", encoding="utf-8", closefd=False) as stream:
+            return stream.read(), metadata
+    finally:
+        os.close(fd)
+
+
+def _parse_lifecycle_record_text(
+    pid_path: Path,
+    text: str,
+    metadata: os.stat_result,
+) -> dict[str, object] | None:
+    stripped = text.strip()
+    if not stripped:
         return None
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(stripped)
     except json.JSONDecodeError:
         parsed = None
     if isinstance(parsed, dict):
+        _require_lifecycle_regular_stat(
+            pid_path,
+            metadata,
+            kind="lifecycle owner record",
+            require_private=True,
+        )
         return dict(parsed)
     try:
-        pid = int(text)
+        pid = int(stripped)
     except ValueError:
         return None
     return {
@@ -3464,16 +3693,98 @@ def _read_lifecycle_record(pid_path: Path) -> dict[str, object] | None:
     }
 
 
-def _write_lifecycle_record(pid_path: Path, record: dict[str, object]) -> None:
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    temporary = pid_path.with_name(f".{pid_path.name}.tmp-{os.getpid()}-{time.time_ns()}")
-    temporary.write_text(payload, encoding="utf-8")
+def _read_lifecycle_record_unlocked(pid_path: Path) -> dict[str, object] | None:
+    result = _secure_read_lifecycle_text_unlocked(pid_path)
+    if result is None:
+        return None
+    text, metadata = result
+    return _parse_lifecycle_record_text(pid_path, text, metadata)
+
+
+def _fsync_lifecycle_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
-        temporary.chmod(0o600)
-    except OSError:
-        pass
-    temporary.replace(pid_path)
+        fd = os.open(directory, flags)
+    except OSError as exc:
+        raise LifecycleStorageError(
+            f"cannot open lifecycle state directory for fsync: {directory}"
+        ) from exc
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _write_lifecycle_record_unlocked(pid_path: Path, record: dict[str, object]) -> None:
+    _validate_existing_lifecycle_target(pid_path, require_private=True)
+    payload = json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    try:
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=f".{pid_path.name}.tmp-",
+            dir=pid_path.parent,
+        )
+    except OSError as exc:
+        raise LifecycleStorageError(
+            f"cannot create private lifecycle temporary file in {pid_path.parent}"
+        ) from exc
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        metadata = os.fstat(fd)
+        _require_lifecycle_regular_stat(
+            temporary,
+            metadata,
+            kind="lifecycle temporary file",
+            require_private=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        fd = -1
+        _validate_existing_lifecycle_target(pid_path, require_private=True)
+        os.replace(temporary, pid_path)
+        os.chmod(pid_path, 0o600, follow_symlinks=False)
+        final_metadata = os.lstat(pid_path)
+        _require_lifecycle_regular_stat(
+            pid_path,
+            final_metadata,
+            kind="lifecycle owner record",
+            require_private=True,
+        )
+        _fsync_lifecycle_directory(pid_path.parent)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _unlink_lifecycle_record_unlocked(pid_path: Path) -> bool:
+    _validate_existing_lifecycle_target(pid_path, require_private=False)
+    try:
+        pid_path.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise LifecycleStorageError(f"cannot remove lifecycle owner record: {pid_path}") from exc
+    _fsync_lifecycle_directory(pid_path.parent)
+    return True
+
+
+def _read_lifecycle_record(pid_path: Path) -> dict[str, object] | None:
+    if not _lifecycle_path_lexists(pid_path.parent):
+        return None
+    with _exclusive_lifecycle_directory_lock(pid_path.parent, create=False):
+        return _read_lifecycle_record_unlocked(pid_path)
+
+
+def _write_lifecycle_record(pid_path: Path, record: dict[str, object]) -> None:
+    with _exclusive_lifecycle_directory_lock(pid_path.parent, create=True):
+        _write_lifecycle_record_unlocked(pid_path, record)
+
 
 
 def _lifecycle_record_payload(
@@ -3597,7 +3908,8 @@ def _validate_lifecycle_owner_record(
     }
 
 
-def _adopt_running_proxy_owner(
+
+def _adopt_running_proxy_owner_unlocked(
     pid_path: Path,
     *,
     port: int,
@@ -3637,7 +3949,7 @@ def _adopt_running_proxy_owner(
             "reason": "process_start_identity_unavailable",
             "listener_pids": listener_pids,
         }
-    _write_lifecycle_record(pid_path, record)
+    _write_lifecycle_record_unlocked(pid_path, record)
     validation = _validate_lifecycle_owner_record(
         record,
         port=port,
@@ -3646,15 +3958,14 @@ def _adopt_running_proxy_owner(
         require_runtime_identity=True,
     )
     if not validation["valid"]:
-        try:
-            pid_path.unlink()
-        except OSError:
-            pass
+        _unlink_lifecycle_record_unlocked(pid_path)
         return False, {
             "reason": "adopted_owner_validation_failed",
             "validation": validation,
         }
     return True, record
+
+
 
 
 def _read_pid(pid_path: Path) -> int | None:
@@ -3665,6 +3976,7 @@ def _read_pid(pid_path: Path) -> int | None:
         return int(record.get("pid"))
     except (TypeError, ValueError):
         return None
+
 
 
 
@@ -3681,16 +3993,46 @@ def _pid_alive(pid: int | None) -> bool:
 
 
 
-def _move_stale_pid_file(
+
+def _move_stale_pid_file_unlocked(
     pid_path: Path,
     *,
     pid: int | None,
     port: int,
     reason: str,
 ) -> dict[str, object]:
-    stale_path = pid_path.with_name(f"{pid_path.name}.stale-{int(time.time())}")
     try:
-        pid_path.replace(stale_path)
+        _validate_existing_lifecycle_target(pid_path, require_private=False)
+        if not _lifecycle_path_lexists(pid_path):
+            return {
+                "pid": pid,
+                "port": port,
+                "pid_file": str(pid_path),
+                "stale_pid_file": str(pid_path),
+                "stale_pid_moved": False,
+                "reason": reason,
+                "error": "FileNotFoundError: lifecycle owner record is missing",
+            }
+        for _ in range(32):
+            stale_path = pid_path.with_name(
+                f"{pid_path.name}.stale-{int(time.time())}-{secrets.token_hex(6)}"
+            )
+            if not _lifecycle_path_lexists(stale_path):
+                break
+        else:
+            raise LifecycleStorageError(
+                f"cannot allocate a unique stale lifecycle record path beside {pid_path}"
+            )
+        os.replace(pid_path, stale_path)
+        os.chmod(stale_path, 0o600, follow_symlinks=False)
+        stale_metadata = os.lstat(stale_path)
+        _require_lifecycle_regular_stat(
+            stale_path,
+            stale_metadata,
+            kind="stale lifecycle owner record",
+            require_private=True,
+        )
+        _fsync_lifecycle_directory(pid_path.parent)
         moved = True
         error = None
     except Exception as exc:
@@ -3706,6 +4048,33 @@ def _move_stale_pid_file(
         "reason": reason,
         "error": error,
     }
+
+
+def _move_stale_pid_file(
+    pid_path: Path,
+    *,
+    pid: int | None,
+    port: int,
+    reason: str,
+) -> dict[str, object]:
+    if not _lifecycle_path_lexists(pid_path.parent):
+        return {
+            "pid": pid,
+            "port": port,
+            "pid_file": str(pid_path),
+            "stale_pid_file": str(pid_path),
+            "stale_pid_moved": False,
+            "reason": reason,
+            "error": "FileNotFoundError: lifecycle state directory is missing",
+        }
+    with _exclusive_lifecycle_directory_lock(pid_path.parent, create=False):
+        return _move_stale_pid_file_unlocked(
+            pid_path,
+            pid=pid,
+            port=port,
+            reason=reason,
+        )
+
 
 
 
@@ -3783,6 +4152,7 @@ def _start_pricing_runtime_contract(args: argparse.Namespace) -> dict[str, objec
 
 
 
+
 def _start_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
     route = _lifecycle_route_name(thinking)
@@ -3809,7 +4179,27 @@ def _start_proxy(args: argparse.Namespace) -> int:
 
     expected_runtime_identity = _runtime_identity_from_pricing_contract(pricing_runtime)
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
-    state_dir.mkdir(parents=True, exist_ok=True)
+    managed_state_dir = getattr(args, "state_dir", None) is None
+    try:
+        _ensure_lifecycle_state_directory(
+            state_dir,
+            create=True,
+            repair_permissions=managed_state_dir,
+        )
+    except LifecycleStorageError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "lifecycle_storage_integrity_error",
+                    "operation": "prepare_state_directory",
+                    "state_dir": str(state_dir),
+                    "reason": str(exc),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
     _maybe_print_startup_release_update_notice()
 
     profile_preflight_error = _managed_profile_route_preflight_or_error(reason="cox_start_preflight")
@@ -3820,9 +4210,65 @@ def _start_proxy(args: argparse.Namespace) -> int:
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
     log_path = Path(args.log_file).expanduser() if args.log_file else state_dir / ("proxy-thinking.log" if thinking else "proxy.log")
     db_path = Path(args.db_path).expanduser() if args.db_path else state_dir / ("responses-thinking.sqlite3" if thinking else "responses.sqlite3")
+    repair_pid_parent = bool(
+        managed_state_dir
+        and getattr(args, "pid_file", None) is None
+        and pid_path.parent == state_dir
+    )
+    try:
+        with _exclusive_lifecycle_directory_lock(
+            pid_path.parent,
+            create=True,
+            repair_permissions=repair_pid_parent,
+        ):
+            return _start_proxy_locked(
+                args=args,
+                thinking=thinking,
+                route=route,
+                port=port,
+                owner_profile=owner_profile,
+                pricing_runtime=pricing_runtime,
+                expected_runtime_identity=expected_runtime_identity,
+                pid_path=pid_path,
+                log_path=log_path,
+                db_path=db_path,
+            )
+    except OSError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "lifecycle_storage_integrity_error",
+                    "operation": "start",
+                    "pid_file": str(pid_path),
+                    "reason": str(exc),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
 
-    existing_record = _read_lifecycle_record(pid_path)
-    existing_pid = _read_pid(pid_path)
+
+def _start_proxy_locked(
+    *,
+    args: argparse.Namespace,
+    thinking: bool,
+    route: str,
+    port: int,
+    owner_profile: str | None,
+    pricing_runtime: dict[str, object],
+    expected_runtime_identity: dict[str, object],
+    pid_path: Path,
+    log_path: Path,
+    db_path: Path,
+) -> int:
+    existing_record = _read_lifecycle_record_unlocked(pid_path)
+    existing_pid = None
+    if isinstance(existing_record, dict):
+        try:
+            existing_pid = int(existing_record.get("pid"))
+        except (TypeError, ValueError):
+            existing_pid = None
     if isinstance(existing_record, dict) and existing_record.get("contract") == "legacy_plain_pid_v0":
         legacy_pid_on_target = bool(
             existing_pid is not None
@@ -3845,13 +4291,15 @@ def _start_proxy(args: argparse.Namespace) -> int:
                 )
             )
             return 1
-        moved = _move_stale_pid_file(
+        moved = _move_stale_pid_file_unlocked(
             pid_path,
             pid=existing_pid,
             port=port,
             reason="legacy_pid_not_bound_to_target_port",
         )
         print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+        if not moved.get("stale_pid_moved"):
+            return 1
         existing_record = None
 
     if existing_record is not None:
@@ -3909,13 +4357,15 @@ def _start_proxy(args: argparse.Namespace) -> int:
         }
         reasons = set(str(item) for item in validation.get("reasons", []))
         if reasons and reasons.issubset(recoverable_reasons):
-            moved = _move_stale_pid_file(
+            moved = _move_stale_pid_file_unlocked(
                 pid_path,
                 pid=existing_pid,
                 port=port,
                 reason=",".join(sorted(reasons)),
             )
             print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+            if not moved.get("stale_pid_moved"):
+                return 1
         else:
             print(
                 json.dumps(
@@ -3963,7 +4413,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
                 )
                 return 1
 
-            adopted, adoption = _adopt_running_proxy_owner(
+            adopted, adoption = _adopt_running_proxy_owner_unlocked(
                 pid_path,
                 port=port,
                 route=route,
@@ -4105,7 +4555,16 @@ def _start_proxy(args: argparse.Namespace) -> int:
         owner_token=owner_token,
         ownership_source="cox_cli_spawn_v1",
     )
-    _write_lifecycle_record(pid_path, record)
+    try:
+        _write_lifecycle_record_unlocked(pid_path, record)
+    except OSError as exc:
+        cleanup_succeeded = _terminate_pid(
+            process.pid,
+            label="reason=lifecycle_record_write_failed",
+        )
+        raise LifecycleStorageError(
+            f"{exc}; spawned_process_cleanup_succeeded={str(cleanup_succeeded).lower()}"
+        ) from exc
 
     print(f"started pid={process.pid} port={port}")
     print(f"log={log_path}")
@@ -4122,7 +4581,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
 
     for _ in range(20):
         if process.poll() is not None:
-            moved = _move_stale_pid_file(
+            moved = _move_stale_pid_file_unlocked(
                 pid_path,
                 pid=process.pid,
                 port=port,
@@ -4202,6 +4661,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
         )
     )
     return 1
+
 
 
 
@@ -4372,62 +4832,40 @@ def _default_stop_port(args: argparse.Namespace) -> int:
 
 
 
-def _stop_by_port_discovery(
+
+def _stop_by_port_discovery_locked(
     port: int,
     *,
-    state_dir: Path | None = None,
-    pid_path: Path | None = None,
+    state_root: Path,
+    candidate_paths: list[Path],
 ) -> bool:
-    if not _port_status_looks_like_proxy(port):
-        return False
-
-    state_root = state_dir or _default_state_dir()
-    candidate_paths: list[Path] = []
-    if pid_path is not None and pid_path.exists():
-        candidate_paths.append(pid_path)
-    elif state_root.exists():
-        candidate_paths.extend(sorted(state_root.glob("*.pid")))
-
-    matching: list[tuple[Path, dict[str, object]]] = []
+    matching: list[tuple[Path, dict[str, object], dict[str, object]]] = []
+    storage_errors: list[dict[str, str]] = []
     for path in candidate_paths:
-        record = _read_lifecycle_record(path)
+        try:
+            record = _read_lifecycle_record_unlocked(path)
+        except LifecycleStorageError as exc:
+            storage_errors.append({"pid_file": str(path), "reason": str(exc)})
+            continue
         if not isinstance(record, dict):
             continue
         try:
             recorded_port = int(record.get("port"))
         except (TypeError, ValueError):
             continue
-        if recorded_port == int(port):
-            matching.append((path, record))
-
-    if not matching:
-        print(
-            json.dumps(
-                {
-                    "error": "refused_to_kill_unowned_proxy",
-                    "port": port,
-                    "state_dir": str(state_root),
-                    "reason": "no_versioned_lifecycle_owner_record",
-                    "automatic_termination": False,
-                },
-                ensure_ascii=False,
-            )
-        )
-        return False
-
-    live_matching: list[tuple[Path, dict[str, object], dict[str, object]]] = []
-    for path, record in matching:
+        if recorded_port != int(port):
+            continue
         validation = _validate_lifecycle_owner_record(
             record,
             port=port,
             require_runtime_identity=True,
         )
         if validation["valid"]:
-            live_matching.append((path, record, validation))
+            matching.append((path, record, validation))
             continue
         reasons = set(str(item) for item in validation.get("reasons", []))
         if "process_not_alive" in reasons:
-            moved = _move_stale_pid_file(
+            moved = _move_stale_pid_file_unlocked(
                 path,
                 pid=validation.get("pid") if isinstance(validation.get("pid"), int) else None,
                 port=port,
@@ -4448,18 +4886,49 @@ def _stop_by_port_discovery(
                 )
             )
 
+    if storage_errors:
+        print(
+            json.dumps(
+                {
+                    "error": "lifecycle_storage_integrity_error",
+                    "operation": "stop_by_port_discovery",
+                    "port": port,
+                    "state_dir": str(state_root),
+                    "records": storage_errors,
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return False
+
+    if not matching:
+        print(
+            json.dumps(
+                {
+                    "error": "refused_to_kill_unowned_proxy",
+                    "port": port,
+                    "state_dir": str(state_root),
+                    "reason": "no_versioned_lifecycle_owner_record",
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return False
+
     unique_pids = {
         int(record["pid"])
-        for _path, record, _validation in live_matching
+        for _path, record, _validation in matching
         if isinstance(record.get("pid"), int)
     }
-    if len(live_matching) != 1 or len(unique_pids) != 1:
+    if len(matching) != 1 or len(unique_pids) != 1:
         print(
             json.dumps(
                 {
                     "error": "refused_to_kill_ambiguous_lifecycle_owner",
                     "port": port,
-                    "valid_record_count": len(live_matching),
+                    "valid_record_count": len(matching),
                     "valid_pids": sorted(unique_pids),
                     "automatic_termination": False,
                 },
@@ -4468,18 +4937,82 @@ def _stop_by_port_discovery(
         )
         return False
 
-    path, record, _validation = live_matching[0]
+    path, record, _validation = matching[0]
     pid = int(record["pid"])
     stopped = _terminate_pid(
         pid,
         label=f"port={port} source=versioned_lifecycle_owner pid_file={path}",
     )
     if stopped:
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        _unlink_lifecycle_record_unlocked(path)
     return stopped
+
+
+def _stop_by_port_discovery(
+    port: int,
+    *,
+    state_dir: Path | None = None,
+    pid_path: Path | None = None,
+    repair_state_permissions: bool = False,
+) -> bool:
+    if not _port_status_looks_like_proxy(port):
+        return False
+
+    state_root = state_dir or _default_state_dir()
+    lock_root = pid_path.parent if pid_path is not None else state_root
+    if not _lifecycle_path_lexists(lock_root):
+        print(
+            json.dumps(
+                {
+                    "error": "refused_to_kill_unowned_proxy",
+                    "port": port,
+                    "state_dir": str(state_root),
+                    "reason": "lifecycle_state_directory_missing",
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return False
+    repair_permissions = bool(
+        repair_state_permissions and lock_root == state_root and pid_path is None
+    )
+    try:
+        with _exclusive_lifecycle_directory_lock(
+            lock_root,
+            create=False,
+            repair_permissions=repair_permissions,
+        ):
+            if pid_path is not None:
+                candidate_paths = [pid_path]
+            else:
+                candidate_paths = sorted(
+                    entry
+                    for entry in state_root.iterdir()
+                    if entry.name.endswith(".pid")
+                )
+            return _stop_by_port_discovery_locked(
+                port,
+                state_root=state_root,
+                candidate_paths=candidate_paths,
+            )
+    except OSError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "lifecycle_storage_integrity_error",
+                    "operation": "stop_by_port_discovery",
+                    "port": port,
+                    "state_dir": str(state_root),
+                    "reason": str(exc),
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return False
+
+
 
 
 
@@ -4490,12 +5023,14 @@ def _stop_proxy(args: argparse.Namespace) -> int:
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
     port = _default_stop_port(args)
     explicit_port = getattr(args, "port", None) is not None
+    managed_state_dir = getattr(args, "state_dir", None) is None
 
     if explicit_port:
         stopped = _stop_by_port_discovery(
             port,
             state_dir=state_dir,
             pid_path=pid_path if getattr(args, "pid_file", None) else None,
+            repair_state_permissions=managed_state_dir,
         )
         if stopped:
             return 0
@@ -4504,36 +5039,78 @@ def _stop_proxy(args: argparse.Namespace) -> int:
         print(f"not_running port={port}")
         return 0
 
-    if not pid_path.exists():
+    if not _lifecycle_path_lexists(pid_path.parent):
         print(f"not_running pid_file={pid_path} port={port}")
         return 0
-
-    record = _read_lifecycle_record(pid_path)
-    validation = _validate_lifecycle_owner_record(
-        record,
-        port=port,
-        route=route,
-        require_runtime_identity=True,
+    repair_pid_parent = bool(
+        managed_state_dir
+        and getattr(args, "pid_file", None) is None
+        and pid_path.parent == state_dir
     )
-    if not validation["valid"]:
-        reasons = set(str(item) for item in validation.get("reasons", []))
-        if "process_not_alive" in reasons:
-            moved = _move_stale_pid_file(
-                pid_path,
-                pid=validation.get("pid") if isinstance(validation.get("pid"), int) else None,
+    try:
+        with _exclusive_lifecycle_directory_lock(
+            pid_path.parent,
+            create=False,
+            repair_permissions=repair_pid_parent,
+        ):
+            record = _read_lifecycle_record_unlocked(pid_path)
+            if record is None:
+                print(f"not_running pid_file={pid_path} port={port}")
+                return 0
+            validation = _validate_lifecycle_owner_record(
+                record,
                 port=port,
-                reason="process_not_alive",
+                route=route,
+                require_runtime_identity=True,
             )
-            print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+            if not validation["valid"]:
+                reasons = set(str(item) for item in validation.get("reasons", []))
+                if "process_not_alive" in reasons:
+                    moved = _move_stale_pid_file_unlocked(
+                        pid_path,
+                        pid=validation.get("pid") if isinstance(validation.get("pid"), int) else None,
+                        port=port,
+                        reason="process_not_alive",
+                    )
+                    print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+                    return 0
+                print(
+                    json.dumps(
+                        {
+                            "error": "refused_to_kill_owner_validation_failed",
+                            "port": port,
+                            "pid_file": str(pid_path),
+                            "validation": validation,
+                            "recovery_command": f"cox stop --port {port}",
+                            "automatic_termination": False,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return 1
+
+            pid = int(record["pid"]) if isinstance(record, dict) else None
+            if pid is None:
+                return 1
+            stopped = _terminate_pid(
+                pid,
+                label=f"pid_file={pid_path} source=versioned_lifecycle_owner",
+            )
+            if not stopped:
+                print(f"failed_to_stop pid={pid} pid_file={pid_path} port={port}")
+                return 1
+            _unlink_lifecycle_record_unlocked(pid_path)
             return 0
+    except OSError as exc:
         print(
             json.dumps(
                 {
-                    "error": "refused_to_kill_owner_validation_failed",
+                    "error": "lifecycle_storage_integrity_error",
+                    "operation": "stop",
                     "port": port,
                     "pid_file": str(pid_path),
-                    "validation": validation,
-                    "recovery_command": f"cox stop --port {port}",
+                    "reason": str(exc),
                     "automatic_termination": False,
                 },
                 ensure_ascii=False,
@@ -4542,21 +5119,6 @@ def _stop_proxy(args: argparse.Namespace) -> int:
         )
         return 1
 
-    pid = int(record["pid"]) if isinstance(record, dict) else None
-    if pid is None:
-        return 1
-    stopped = _terminate_pid(
-        pid,
-        label=f"pid_file={pid_path} source=versioned_lifecycle_owner",
-    )
-    if not stopped:
-        print(f"failed_to_stop pid={pid} pid_file={pid_path} port={port}")
-        return 1
-    try:
-        pid_path.unlink()
-    except OSError:
-        pass
-    return 0
 
 
 def _status(args: argparse.Namespace) -> int:
