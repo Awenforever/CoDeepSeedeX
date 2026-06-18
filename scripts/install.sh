@@ -2083,13 +2083,21 @@ apply_custom_provider_from_registry() {
   local mode="$1"
   local provider_name="$2"
   local model_name="${3:-}"
-  local assign_file
-  assign_file="/tmp/codexchange-custom-provider-registry-assign-$$.sh"
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$assign_file" <<'PYCOX_APPLY_CUSTOM_PROVIDER_P219A2'
+  local data_file key value
+  local parsed_model_provider="" parsed_custom_provider_name="" parsed_model_base_url=""
+  local parsed_model_name="" parsed_api_key=""
+  local seen_model_provider=0 seen_custom_provider_name=0 seen_model_base_url=0
+  local seen_model_name=0 seen_api_key=0
+
+  if ! data_file="$(umask 077; mktemp "${TMPDIR:-/tmp}/codexchange-custom-provider-registry-data.XXXXXX")"; then
+    warn "Cannot create secure custom provider registry data state."
+    return 70
+  fi
+
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$data_file" <<'PYCOX_APPLY_CUSTOM_PROVIDER_P219A2'
 import json
 import os
 import re
-import shlex
 import sys
 from pathlib import Path
 
@@ -2144,26 +2152,91 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 os.chmod(path, 0o600)
 
-assignments = {
-    "PROMPTED_MODEL_PROVIDER": "custom",
-    "PROMPTED_CUSTOM_PROVIDER_NAME": str(entry.get("display_name") or provider_name),
-    "PROMPTED_MODEL_BASE_URL": str(entry.get("base_url") or ""),
-    "PROMPTED_MODEL_NAME": str(entry.get("active_model") or active_model),
-}
-api_key = str(entry.get("api_key") or "")
-if api_key:
-    assignments["PROMPTED_API_KEY"] = api_key
-for key, value in assignments.items():
-    print(f"{key}={shlex.quote(value)}")
+assignments = [
+    ("PROMPTED_MODEL_PROVIDER", "custom"),
+    ("PROMPTED_CUSTOM_PROVIDER_NAME", str(entry.get("display_name") or provider_name)),
+    ("PROMPTED_MODEL_BASE_URL", str(entry.get("base_url") or "")),
+    ("PROMPTED_MODEL_NAME", str(entry.get("active_model") or active_model)),
+    ("PROMPTED_API_KEY", str(entry.get("api_key") or "")),
+]
+payload = bytearray()
+for key, value in assignments:
+    if "\x00" in value:
+        raise SystemExit(5)
+    payload.extend(key.encode("utf-8"))
+    payload.append(0)
+    payload.extend(value.encode("utf-8"))
+    payload.append(0)
+sys.stdout.buffer.write(payload)
 PYCOX_APPLY_CUSTOM_PROVIDER_P219A2
   local rc=$?
   if [ "$rc" -ne 0 ]; then
-    rm -f "$assign_file"
+    rm -f -- "$data_file"
     return "$rc"
   fi
-  # shellcheck disable=SC1090
-  . "$assign_file"
-  rm -f "$assign_file"
+
+  while IFS= read -r -d '' key; do
+    if ! IFS= read -r -d '' value; then
+      rm -f -- "$data_file"
+      warn "Custom provider registry data payload is truncated."
+      return 70
+    fi
+    case "$key" in
+      PROMPTED_MODEL_PROVIDER)
+        [ "$seen_model_provider" -eq 0 ] || { rm -f -- "$data_file"; warn "Duplicate custom provider registry data field."; return 70; }
+        parsed_model_provider="$value"
+        seen_model_provider=1
+        ;;
+      PROMPTED_CUSTOM_PROVIDER_NAME)
+        [ "$seen_custom_provider_name" -eq 0 ] || { rm -f -- "$data_file"; warn "Duplicate custom provider registry data field."; return 70; }
+        parsed_custom_provider_name="$value"
+        seen_custom_provider_name=1
+        ;;
+      PROMPTED_MODEL_BASE_URL)
+        [ "$seen_model_base_url" -eq 0 ] || { rm -f -- "$data_file"; warn "Duplicate custom provider registry data field."; return 70; }
+        parsed_model_base_url="$value"
+        seen_model_base_url=1
+        ;;
+      PROMPTED_MODEL_NAME)
+        [ "$seen_model_name" -eq 0 ] || { rm -f -- "$data_file"; warn "Duplicate custom provider registry data field."; return 70; }
+        parsed_model_name="$value"
+        seen_model_name=1
+        ;;
+      PROMPTED_API_KEY)
+        [ "$seen_api_key" -eq 0 ] || { rm -f -- "$data_file"; warn "Duplicate custom provider registry data field."; return 70; }
+        parsed_api_key="$value"
+        seen_api_key=1
+        ;;
+      *)
+        rm -f -- "$data_file"
+        warn "Unknown custom provider registry data field."
+        return 70
+        ;;
+    esac
+  done < "$data_file"
+  rm -f -- "$data_file"
+
+  if [ "$seen_model_provider" -ne 1 ] \
+    || [ "$seen_custom_provider_name" -ne 1 ] \
+    || [ "$seen_model_base_url" -ne 1 ] \
+    || [ "$seen_model_name" -ne 1 ] \
+    || [ "$seen_api_key" -ne 1 ]; then
+    warn "Custom provider registry data payload is incomplete."
+    return 70
+  fi
+  if [ "$parsed_model_provider" != "custom" ] \
+    || [ -z "$parsed_custom_provider_name" ] \
+    || [ -z "$parsed_model_base_url" ] \
+    || [ -z "$parsed_model_name" ]; then
+    warn "Custom provider registry data payload is invalid."
+    return 70
+  fi
+
+  PROMPTED_MODEL_PROVIDER="$parsed_model_provider"
+  PROMPTED_CUSTOM_PROVIDER_NAME="$parsed_custom_provider_name"
+  PROMPTED_MODEL_BASE_URL="$parsed_model_base_url"
+  PROMPTED_MODEL_NAME="$parsed_model_name"
+  PROMPTED_API_KEY="$parsed_api_key"
   record_model_api_validation_summary "registry_selected"
   return 0
 }
