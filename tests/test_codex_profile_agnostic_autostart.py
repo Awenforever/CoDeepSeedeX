@@ -11,7 +11,8 @@ def test_codex_wrapper_has_profile_agnostic_runtime_autostart_contract():
     assert "codex --profile <name>" in WRAPPER
     assert "__codexchange_profile_arg" in WRAPPER
     assert "--profile=*" in WRAPPER
-    assert "--profile)" in WRAPPER
+    assert "--profile|-p)" in WRAPPER
+    assert "UNIFIED INVOCATION-MODE DISPATCH" in WRAPPER
 
 
 def test_codex_wrapper_autostarts_only_local_responses_proxy_routes():
@@ -33,11 +34,21 @@ def test_codex_wrapper_sets_profile_specific_runtime_environment():
 
 def test_codex_wrapper_fail_closed_before_native_codex_on_unhealthy_local_port():
     assert "refusing to enter Codex" in WRAPPER
-    assert (
-        '__codexchange_profile_runtime_autostart "$@" || return $?' in WRAPPER
-        or '__codexchange_profile_runtime_autostart "$@" || exit $?' in WRAPPER
-    )
+    assert '__codexchange_profile_runtime_autostart "$@" || return $?' in WRAPPER
+    assert '__codexchange_profile_runtime_autostart "$@" || exit $?' in WRAPPER
     assert not WRAPPER.rstrip().endswith('__codexchange_profile_runtime_autostart "$@" || exit $?')
+
+
+def test_codex_wrapper_sourced_dispatch_is_single_preflight_and_mutation_free():
+    dispatch = WRAPPER[
+        WRAPPER.index("# BEGIN COX UNIFIED INVOCATION-MODE DISPATCH") :
+        WRAPPER.index("# END COX UNIFIED INVOCATION-MODE DISPATCH")
+    ]
+    assert dispatch.count('__codexchange_profile_runtime_autostart "$@"') == 1
+    assert 'command codex "$@"' in dispatch
+    assert "cox start thinking" not in dispatch
+    assert "custom-provider use" not in dispatch
+    assert "provider install-profile" not in dispatch
 
 
 def test_codex_wrapper_is_also_valid_executable_dispatcher():

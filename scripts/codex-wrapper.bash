@@ -6,7 +6,7 @@
 #
 # Behavior:
 # - codex --profile cox starts the thinking proxy on port 8001.
-# - codex --profile <custom-provider-id> activates that configured provider and starts the thinking proxy.
+# - codex --profile <custom-provider-id> uses its pre-generated split profile and starts the required proxy.
 # - codex --profile deepseek is deprecated and fails closed.
 
 # BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART
@@ -19,7 +19,7 @@ __codexchange_profile_arg() {
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
-      --profile)
+      --profile|-p)
         shift || true
         [ "$#" -gt 0 ] && printf '%s\n' "$1"
         return 0
@@ -338,7 +338,6 @@ __codexchange_start_local_proxy() {
   pricing_provider_id="${5:-}"
   pricing_mode="${6:-}"
   pricing_provider_path="${7:-}"
-  __codexchange_source_env_file
   export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,::1}"
   export no_proxy="${no_proxy:-$NO_PROXY}"
   export COX_PORT="$port"
@@ -426,10 +425,18 @@ __codexchange_profile_runtime_autostart() {
   local profile codex_dir profile_file config_file model provider base_url port
   profile="$(__codexchange_profile_arg "$@")"
   [ -n "$profile" ] || return 0
+  if [ "$profile" = "deepseek" ]; then
+    printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
+    return 2
+  fi
   codex_dir="${CODEX_HOME:-$HOME/.codex}"
   config_file="${CODEX_CONFIG_FILE:-$codex_dir/config.toml}"
   profile_file="$codex_dir/${profile}.config.toml"
-  [ -f "$profile_file" ] || return 0
+  if [ ! -f "$profile_file" ]; then
+    printf 'CodeXchange error: unknown Codex profile "%s". No split profile file was found.\n' "$profile" >&2
+    printf 'Add/sync it first: cox provider install-profile --name %s --profile-name %s\n' "$profile" "$profile" >&2
+    return 2
+  fi
   model="$(__codexchange_toml_value "$profile_file" model 2>/dev/null || true)"
   provider="$(__codexchange_toml_value "$profile_file" model_provider 2>/dev/null || true)"
   [ -n "$provider" ] || return 0
@@ -438,6 +445,9 @@ __codexchange_profile_runtime_autostart() {
   [ -n "$base_url" ] || return 0
   port="$(__codexchange_local_proxy_port_from_base_url "$base_url" 2>/dev/null || true)"
   [ -n "$port" ] || return 0
+  __codexchange_source_env_file
+  export NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}"
+  export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
   if __codexchange_proxy_models_ok "$port"; then
     if [ "${__codexchange_profile_pricing_explicit:-0}" -ne 1 ]; then
       return 0
@@ -470,64 +480,12 @@ __codexchange_profile_runtime_autostart() {
     "${__codexchange_profile_pricing_provider_path:-}"
 }
 
+# BEGIN COX UNIFIED INVOCATION-MODE DISPATCH
 codex() {
   __codexchange_profile_runtime_autostart "$@" || return $?
-  local selected_profile=""
-  local arg
-  local next_is_profile=0
-
-  for arg in "$@"; do
-    if [ "$next_is_profile" = "1" ]; then
-      selected_profile="$arg"
-      next_is_profile=0
-      continue
-    fi
-
-    case "$arg" in
-      --profile|-p)
-        next_is_profile=1
-        ;;
-      --profile=*)
-        selected_profile="${arg#--profile=}"
-        ;;
-    esac
-  done
-
-  export NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}"
-  export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
-
-  case "$selected_profile" in
-    deepseek)
-      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
-      return 2
-      ;;
-    cox)
-      source "$HOME/.config/codexchange/env"
-      cox start thinking
-      COX_MODEL_API_KEY="$COX_MODEL_API_KEY" command codex "$@"
-      ;;
-    "")
-      command codex "$@"
-      ;;
-    *)
-      source "$HOME/.config/codexchange/env"
-      if cox config custom-provider use --name "$selected_profile" --no-profile-sync >/dev/null 2>&1; then
-        if ! cox provider install-profile --name "$selected_profile" --profile-name "$selected_profile" >/dev/null 2>&1; then
-          printf 'CodeXchange error: failed to sync custom provider profile "%s".\n' "$selected_profile" >&2
-          return 2
-        fi
-        cox start thinking
-        COX_MODEL_API_KEY="$COX_MODEL_API_KEY" command codex "$@"
-      elif [ -f "$HOME/.codex/${selected_profile}.config.toml" ]; then
-        command codex "$@"
-      else
-        printf 'CodeXchange error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$selected_profile" >&2
-        printf 'Add/sync it first: cox provider install-profile --name %s --profile-name %s\n' "$selected_profile" "$selected_profile" >&2
-        return 2
-      fi
-      ;;
-  esac
+  command codex "$@"
 }
+# END COX UNIFIED INVOCATION-MODE DISPATCH
 
 # BEGIN COX EXECUTABLE WRAPPER DISPATCHER
 # When this file is sourced, it only defines the codex() shell function.
