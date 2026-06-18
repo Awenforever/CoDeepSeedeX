@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import secrets
 import signal
 import shlex
 import shutil
@@ -28,6 +29,8 @@ from .providers import canonical_provider_id as _adapter_canonical_provider_id, 
 
 
 APP_NAME = "codexchange"
+LIFECYCLE_OWNER_CONTRACT = "codexchange_lifecycle_owner_v1"
+LIFECYCLE_OWNER_SCHEMA_VERSION = 1
 CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"
 CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"
 
@@ -3523,12 +3526,341 @@ def _uninstall_codex_profile(args: argparse.Namespace) -> int:
     return 0
 
 
-def _read_pid(pid_path: Path) -> int | None:
+
+def _normalize_runtime_pricing_identity(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    provider_value = str(value.get("pricing_provider_id") or "").strip().lower().replace("-", "_")
+    mode_value = str(value.get("pricing_mode") or "").strip().lower().replace("-", "_")
+    path_value = value.get("pricing_provider_path")
+    provider_path = str(Path(str(path_value)).expanduser()) if path_value not in {None, ""} else None
+    return {
+        "contract": str(value.get("contract") or ""),
+        "pricing_provider_id": provider_value or None,
+        "pricing_activate": value.get("pricing_activate") is True,
+        "pricing_mode": mode_value or None,
+        "pricing_provider_path": provider_path,
+    }
+
+
+def _runtime_identity_from_pricing_contract(pricing_runtime: dict[str, object]) -> dict[str, object]:
+    if bool(pricing_runtime.get("explicit")):
+        return {
+            "contract": "provider_pricing_runtime_identity_v1",
+            "pricing_provider_id": str(pricing_runtime.get("provider_id") or "").strip().lower().replace("-", "_") or None,
+            "pricing_activate": True,
+            "pricing_mode": str(pricing_runtime.get("mode") or "").strip().lower().replace("-", "_") or None,
+            "pricing_provider_path": (
+                str(Path(str(pricing_runtime["provider_path"])).expanduser())
+                if pricing_runtime.get("provider_path") not in {None, ""}
+                else None
+            ),
+        }
+    return {
+        "contract": "provider_pricing_runtime_identity_v1",
+        "pricing_provider_id": None,
+        "pricing_activate": False,
+        "pricing_mode": "legacy_shared",
+        "pricing_provider_path": None,
+    }
+
+
+def _runtime_pricing_identity_for_port(
+    port: int,
+    *,
+    timeout: float = 1.0,
+) -> tuple[int | None, dict[str, object] | None, str | None]:
+    status, data, error = _http_json(
+        f"http://{DEFAULT_HOST}:{port}/v1/proxy/status",
+        timeout=timeout,
+    )
+    identity = _normalize_runtime_pricing_identity(
+        data.get("runtime_identity") if isinstance(data, dict) else None
+    )
+    return status, identity, error
+
+
+def _runtime_pricing_identity_matches(
+    port: int,
+    expected: dict[str, object],
+    *,
+    timeout: float = 1.0,
+) -> tuple[bool, dict[str, object] | None, str | None]:
+    status, actual, error = _runtime_pricing_identity_for_port(port, timeout=timeout)
+    normalized_expected = _normalize_runtime_pricing_identity(expected)
+    return status == 200 and actual == normalized_expected, actual, error
+
+
+def _lifecycle_route_name(thinking: bool) -> str:
+    return "reasoning" if thinking else "standard"
+
+
+def _process_start_identity(pid: int) -> str | None:
+    stat_path = Path(f"/proc/{pid}/stat")
     try:
-        text = pid_path.read_text(encoding="utf-8").strip()
-        return int(text) if text else None
+        raw = stat_path.read_text(encoding="utf-8")
+        tail = raw.rsplit(")", 1)[1].strip().split()
+        start_ticks = tail[19]
+        boot_id_path = Path("/proc/sys/kernel/random/boot_id")
+        boot_id = boot_id_path.read_text(encoding="utf-8").strip() if boot_id_path.exists() else "unknown-boot"
+        return f"linux-proc-start:{boot_id}:{start_ticks}"
+    except (OSError, IndexError, ValueError):
+        pass
+
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        value = result.stdout.strip()
+        return f"ps-lstart:{value}" if value else None
     except Exception:
         return None
+
+
+def _pid_environment_value(pid: int, name: str) -> str | None:
+    environ_path = Path(f"/proc/{pid}/environ")
+    try:
+        for item in environ_path.read_bytes().split(b"\x00"):
+            key, separator, value = item.partition(b"=")
+            if separator and key.decode("utf-8", errors="replace") == name:
+                return value.decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    return None
+
+
+def _read_lifecycle_record(pid_path: Path) -> dict[str, object] | None:
+    try:
+        text = pid_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return dict(parsed)
+    try:
+        pid = int(text)
+    except ValueError:
+        return None
+    return {
+        "contract": "legacy_plain_pid_v0",
+        "schema_version": 0,
+        "pid": pid,
+        "ownership_source": "legacy_plain_pid_file",
+    }
+
+
+def _write_lifecycle_record(pid_path: Path, record: dict[str, object]) -> None:
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    temporary = pid_path.with_name(f".{pid_path.name}.tmp-{os.getpid()}-{time.time_ns()}")
+    temporary.write_text(payload, encoding="utf-8")
+    try:
+        temporary.chmod(0o600)
+    except OSError:
+        pass
+    temporary.replace(pid_path)
+
+
+def _lifecycle_record_payload(
+    *,
+    pid: int,
+    port: int,
+    route: str,
+    profile: str | None,
+    runtime_identity: dict[str, object],
+    owner_token: str | None,
+    ownership_source: str,
+) -> dict[str, object]:
+    start_identity: str | None = None
+    cmdline = ""
+    for _ in range(20):
+        start_identity = _process_start_identity(pid)
+        cmdline = _cmdline_for_pid(pid)
+        if start_identity and cmdline:
+            break
+        time.sleep(0.01)
+    return {
+        "contract": LIFECYCLE_OWNER_CONTRACT,
+        "schema_version": LIFECYCLE_OWNER_SCHEMA_VERSION,
+        "pid": pid,
+        "process_start_identity": start_identity,
+        "host": DEFAULT_HOST,
+        "port": int(port),
+        "route": route,
+        "profile": profile,
+        "runtime_identity": _normalize_runtime_pricing_identity(runtime_identity),
+        "owner_token": owner_token,
+        "command_sha256": hashlib.sha256(cmdline.encode("utf-8")).hexdigest() if cmdline else None,
+        "ownership_source": ownership_source,
+        "created_at_unix": time.time(),
+    }
+
+
+
+def _validate_lifecycle_owner_record(
+    record: dict[str, object] | None,
+    *,
+    port: int,
+    route: str | None = None,
+    profile: str | None = None,
+    require_runtime_identity: bool = True,
+) -> dict[str, object]:
+    reasons: list[str] = []
+    if not isinstance(record, dict):
+        return {"valid": False, "reasons": ["record_missing"], "pid": None}
+    if record.get("contract") != LIFECYCLE_OWNER_CONTRACT:
+        reasons.append("untrusted_record_contract")
+    try:
+        pid = int(record.get("pid"))
+    except (TypeError, ValueError):
+        pid = None
+        reasons.append("invalid_pid")
+    try:
+        recorded_port = int(record.get("port"))
+    except (TypeError, ValueError):
+        recorded_port = None
+        reasons.append("invalid_recorded_port")
+    if recorded_port != int(port):
+        reasons.append("record_port_mismatch")
+    if route is not None and str(record.get("route") or "") != route:
+        reasons.append("record_route_mismatch")
+    if profile is not None and str(record.get("profile") or "") != profile:
+        reasons.append("record_profile_mismatch")
+
+    if pid is not None:
+        if not _pid_alive(pid):
+            reasons.append("process_not_alive")
+        else:
+            expected_start = str(record.get("process_start_identity") or "")
+            actual_start = _process_start_identity(pid)
+            if not expected_start or actual_start != expected_start:
+                reasons.append("process_start_identity_mismatch")
+            listener_pids = _listen_pids_for_local_port(port)
+            if pid not in listener_pids:
+                reasons.append("pid_not_listening_on_target_port")
+            if not _pid_looks_like_proxy(pid):
+                reasons.append("process_command_not_codexchange_proxy")
+            expected_command_hash = str(record.get("command_sha256") or "")
+            current_cmdline = _cmdline_for_pid(pid)
+            current_command_hash = (
+                hashlib.sha256(current_cmdline.encode("utf-8")).hexdigest()
+                if current_cmdline
+                else ""
+            )
+            if expected_command_hash and current_command_hash != expected_command_hash:
+                reasons.append("process_command_identity_mismatch")
+            owner_token = str(record.get("owner_token") or "")
+            if owner_token:
+                observed_token = _pid_environment_value(pid, "COX_LIFECYCLE_OWNER_TOKEN")
+                if observed_token != owner_token:
+                    reasons.append("owner_token_mismatch")
+
+    if require_runtime_identity and not reasons:
+        if not _port_status_looks_like_proxy(port):
+            reasons.append("target_port_not_codexchange_proxy")
+        expected_runtime = _normalize_runtime_pricing_identity(record.get("runtime_identity"))
+        matched, actual_runtime, _error = _runtime_pricing_identity_matches(
+            port,
+            expected_runtime or {},
+            timeout=1.0,
+        )
+        if not matched:
+            reasons.append("runtime_identity_mismatch")
+    else:
+        actual_runtime = None
+
+    return {
+        "valid": not reasons,
+        "reasons": reasons,
+        "pid": pid,
+        "port": recorded_port,
+        "route": record.get("route"),
+        "profile": record.get("profile"),
+        "runtime_identity": record.get("runtime_identity"),
+        "actual_runtime_identity": actual_runtime,
+        "ownership_source": record.get("ownership_source"),
+    }
+
+
+def _adopt_running_proxy_owner(
+    pid_path: Path,
+    *,
+    port: int,
+    route: str,
+    profile: str | None,
+    runtime_identity: dict[str, object],
+) -> tuple[bool, dict[str, object]]:
+    listener_pids = _listen_pids_for_local_port(port)
+    if len(listener_pids) != 1:
+        return False, {
+            "reason": "listener_pid_not_unique",
+            "listener_pids": listener_pids,
+        }
+    pid = listener_pids[0]
+    if not _pid_looks_like_proxy(pid):
+        return False, {
+            "reason": "listener_command_not_codexchange_proxy",
+            "listener_pids": listener_pids,
+        }
+    start_identity = _process_start_identity(pid)
+    if not start_identity:
+        return False, {
+            "reason": "process_start_identity_unavailable",
+            "listener_pids": listener_pids,
+        }
+    record = _lifecycle_record_payload(
+        pid=pid,
+        port=port,
+        route=route,
+        profile=profile,
+        runtime_identity=runtime_identity,
+        owner_token=None,
+        ownership_source="adopted_running_proxy_v1",
+    )
+    if not record.get("process_start_identity"):
+        return False, {
+            "reason": "process_start_identity_unavailable",
+            "listener_pids": listener_pids,
+        }
+    _write_lifecycle_record(pid_path, record)
+    validation = _validate_lifecycle_owner_record(
+        record,
+        port=port,
+        route=route,
+        profile=profile,
+        require_runtime_identity=True,
+    )
+    if not validation["valid"]:
+        try:
+            pid_path.unlink()
+        except OSError:
+            pass
+        return False, {
+            "reason": "adopted_owner_validation_failed",
+            "validation": validation,
+        }
+    return True, record
+
+
+def _read_pid(pid_path: Path) -> int | None:
+    record = _read_lifecycle_record(pid_path)
+    if not isinstance(record, dict):
+        return None
+    try:
+        return int(record.get("pid"))
+    except (TypeError, ValueError):
+        return None
+
+
 
 
 def _pid_alive(pid: int | None) -> bool:
@@ -3537,11 +3869,19 @@ def _pid_alive(pid: int | None) -> bool:
     try:
         os.kill(pid, 0)
         return True
-    except OSError:
+    except (OSError, TypeError):
         return False
 
 
-def _move_stale_pid_file(pid_path: Path, *, pid: int | None, port: int, reason: str) -> dict[str, object]:
+
+
+def _move_stale_pid_file(
+    pid_path: Path,
+    *,
+    pid: int | None,
+    port: int,
+    reason: str,
+) -> dict[str, object]:
     stale_path = pid_path.with_name(f"{pid_path.name}.stale-{int(time.time())}")
     try:
         pid_path.replace(stale_path)
@@ -3560,6 +3900,7 @@ def _move_stale_pid_file(pid_path: Path, *, pid: int | None, port: int, reason: 
         "reason": reason,
         "error": error,
     }
+
 
 
 def _start_pricing_runtime_contract(args: argparse.Namespace) -> dict[str, object]:
@@ -3635,9 +3976,13 @@ def _start_pricing_runtime_contract(args: argparse.Namespace) -> dict[str, objec
     }
 
 
+
 def _start_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
+    route = _lifecycle_route_name(thinking)
     port = _port_for(thinking, args.port)
+    owner_profile_value = getattr(args, "owner_profile", None)
+    owner_profile = str(owner_profile_value or "").strip() or None
 
     try:
         pricing_runtime = _start_pricing_runtime_contract(args)
@@ -3656,6 +4001,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
         )
         return 1
 
+    expected_runtime_identity = _runtime_identity_from_pricing_contract(pricing_runtime)
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)
     _maybe_print_startup_release_update_notice()
@@ -3669,35 +4015,110 @@ def _start_proxy(args: argparse.Namespace) -> int:
     log_path = Path(args.log_file).expanduser() if args.log_file else state_dir / ("proxy-thinking.log" if thinking else "proxy.log")
     db_path = Path(args.db_path).expanduser() if args.db_path else state_dir / ("responses-thinking.sqlite3" if thinking else "responses.sqlite3")
 
+    existing_record = _read_lifecycle_record(pid_path)
     existing_pid = _read_pid(pid_path)
-    if _pid_alive(existing_pid):
-        status, data, error = _healthz_for_port(port, timeout=1.0)
-        running_version = _version_from_healthz(data)
-        if status == 200 and running_version == PROXY_VERSION:
-            print(f"already_running pid={existing_pid} port={port} version={running_version} pid_file={pid_path}")
-            return 0
-        listen_pids = _listen_pids_for_local_port(port)
-        if existing_pid not in listen_pids:
+    if isinstance(existing_record, dict) and existing_record.get("contract") == "legacy_plain_pid_v0":
+        legacy_pid_on_target = bool(
+            existing_pid is not None
+            and _pid_alive(existing_pid)
+            and existing_pid in _listen_pids_for_local_port(port)
+        )
+        if legacy_pid_on_target:
+            print(
+                json.dumps(
+                    {
+                        "error": "legacy_pid_owner_untrusted",
+                        "pid": existing_pid,
+                        "port": port,
+                        "pid_file": str(pid_path),
+                        "recovery_command": f"cox stop --port {port}",
+                        "automatic_termination": False,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
+        moved = _move_stale_pid_file(
+            pid_path,
+            pid=existing_pid,
+            port=port,
+            reason="legacy_pid_not_bound_to_target_port",
+        )
+        print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+        existing_record = None
+
+    if existing_record is not None:
+        validation = _validate_lifecycle_owner_record(
+            existing_record,
+            port=port,
+            route=route,
+            profile=owner_profile,
+            require_runtime_identity=True,
+        )
+        if validation["valid"]:
+            status, data, error = _healthz_for_port(port, timeout=1.0)
+            running_version = _version_from_healthz(data)
+            identity_matches, actual_identity, identity_error = _runtime_pricing_identity_matches(
+                port,
+                expected_runtime_identity,
+                timeout=1.0,
+            )
+            if status == 200 and running_version == PROXY_VERSION and identity_matches:
+                print(
+                    f"already_running pid={existing_pid} port={port} version={running_version} "
+                    f"pid_file={pid_path} owner_contract={LIFECYCLE_OWNER_CONTRACT}"
+                )
+                return 0
+            print(
+                json.dumps(
+                    {
+                        "error": "recorded_proxy_runtime_mismatch",
+                        "pid": existing_pid,
+                        "port": port,
+                        "expected_version": PROXY_VERSION,
+                        "running_version": running_version,
+                        "healthz_status": status,
+                        "healthz_error": error,
+                        "expected_runtime_identity": expected_runtime_identity,
+                        "actual_runtime_identity": actual_identity,
+                        "runtime_identity_error": identity_error,
+                        "pid_file": str(pid_path),
+                        "recovery_command": f"cox stop --port {port}",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
+
+        recoverable_reasons = {
+            "process_not_alive",
+            "process_start_identity_mismatch",
+            "pid_not_listening_on_target_port",
+            "record_port_mismatch",
+            "record_route_mismatch",
+            "record_profile_mismatch",
+            "untrusted_record_contract",
+        }
+        reasons = set(str(item) for item in validation.get("reasons", []))
+        if reasons and reasons.issubset(recoverable_reasons):
             moved = _move_stale_pid_file(
                 pid_path,
                 pid=existing_pid,
                 port=port,
-                reason="pid_file_alive_but_not_listening_on_target_port",
+                reason=",".join(sorted(reasons)),
             )
             print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
         else:
             print(
                 json.dumps(
                     {
-                        "error": "pid_file_points_to_different_or_unhealthy_service",
-                        "pid": existing_pid,
+                        "error": "lifecycle_owner_validation_failed",
                         "port": port,
-                        "expected_version": PROXY_VERSION,
-                        "running_version": running_version,
-                        "http_status": status,
-                        "healthz_error": error,
                         "pid_file": str(pid_path),
-                        "listen_pids": listen_pids,
+                        "validation": validation,
+                        "recovery_command": f"cox stop --port {port}",
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -3709,7 +4130,58 @@ def _start_proxy(args: argparse.Namespace) -> int:
     running_version = _version_from_healthz(data)
     if status == 200:
         if running_version == PROXY_VERSION:
-            print(f"already_running port={port} version={running_version}")
+            identity_matches = True
+            actual_identity = None
+            identity_error = None
+            if pricing_runtime["explicit"] or owner_profile is not None:
+                identity_matches, actual_identity, identity_error = _runtime_pricing_identity_matches(
+                    port,
+                    expected_runtime_identity,
+                    timeout=1.0,
+                )
+            if not identity_matches:
+                print(
+                    json.dumps(
+                        {
+                            "error": "running_proxy_pricing_identity_mismatch",
+                            "port": port,
+                            "expected_runtime_identity": expected_runtime_identity,
+                            "actual_runtime_identity": actual_identity,
+                            "runtime_identity_error": identity_error,
+                            "recovery_command": f"cox stop --port {port}",
+                            "automatic_termination": False,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return 1
+
+            adopted, adoption = _adopt_running_proxy_owner(
+                pid_path,
+                port=port,
+                route=route,
+                profile=owner_profile,
+                runtime_identity=expected_runtime_identity,
+            )
+            if not adopted and (pricing_runtime["explicit"] or owner_profile is not None):
+                print(
+                    json.dumps(
+                        {
+                            "error": "running_proxy_owner_unverified",
+                            "port": port,
+                            "pid_file": str(pid_path),
+                            "adoption": adoption,
+                            "recovery_command": f"cox stop --port {port}",
+                            "automatic_termination": False,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return 1
+            suffix = f" pid_file={pid_path}" if adopted else ""
+            print(f"already_running port={port} version={running_version}{suffix}")
             return 0
         print(
             json.dumps(
@@ -3757,6 +4229,12 @@ def _start_proxy(args: argparse.Namespace) -> int:
     env["COX_AGENT_LIVENESS_JUDGE_ENABLED"] = env.get("COX_AGENT_LIVENESS_JUDGE_ENABLED", "1")
     env["COX_AGENT_LIVENESS_JUDGE_MODEL"] = env.get("COX_AGENT_LIVENESS_JUDGE_MODEL", "v4-flash-no-thinking")
     env["COX_CODEX_TOOL_PROTOCOL_INSTRUCTION"] = env.get("COX_CODEX_TOOL_PROTOCOL_INSTRUCTION", "1")
+    owner_token = secrets.token_urlsafe(24)
+    env["COX_LIFECYCLE_OWNER_TOKEN"] = owner_token
+    if owner_profile is not None:
+        env["COX_LIFECYCLE_OWNER_PROFILE"] = owner_profile
+    env["COX_LIFECYCLE_OWNER_ROUTE"] = route
+    env["COX_LIFECYCLE_OWNER_PORT"] = str(port)
     if thinking:
         env["COX_REASONING"] = "enabled"
         env["COX_TOOL_OUTPUT_TRIM_MODE"] = env.get(
@@ -3802,6 +4280,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
             str(port),
         ]
 
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     log_handle = log_path.open("ab")
     process = subprocess.Popen(
         cmd,
@@ -3811,11 +4290,21 @@ def _start_proxy(args: argparse.Namespace) -> int:
         stderr=subprocess.STDOUT,
         start_new_session=True,
     )
-    pid_path.write_text(str(process.pid), encoding="utf-8")
+    record = _lifecycle_record_payload(
+        pid=process.pid,
+        port=port,
+        route=route,
+        profile=owner_profile,
+        runtime_identity=expected_runtime_identity,
+        owner_token=owner_token,
+        ownership_source="cox_cli_spawn_v1",
+    )
+    _write_lifecycle_record(pid_path, record)
 
     print(f"started pid={process.pid} port={port}")
     print(f"log={log_path}")
     print(f"pid_file={pid_path}")
+    print(f"owner_contract={LIFECYCLE_OWNER_CONTRACT}")
     print(f"db={db_path}")
     if pricing_runtime["explicit"]:
         print(
@@ -3827,6 +4316,12 @@ def _start_proxy(args: argparse.Namespace) -> int:
 
     for _ in range(20):
         if process.poll() is not None:
+            moved = _move_stale_pid_file(
+                pid_path,
+                pid=process.pid,
+                port=port,
+                reason="process_exited_before_ready",
+            )
             print(
                 json.dumps(
                     {
@@ -3834,6 +4329,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
                         "exit_code": process.returncode,
                         "port": port,
                         "log": str(log_path),
+                        "lifecycle_record": moved,
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -3844,6 +4340,29 @@ def _start_proxy(args: argparse.Namespace) -> int:
         status, data, _error = _healthz_for_port(port, timeout=1.0)
         running_version = _version_from_healthz(data)
         if status == 200 and running_version == PROXY_VERSION:
+            if pricing_runtime["explicit"]:
+                identity_matches, actual_identity, identity_error = _runtime_pricing_identity_matches(
+                    port,
+                    expected_runtime_identity,
+                    timeout=1.0,
+                )
+                if not identity_matches:
+                    print(
+                        json.dumps(
+                            {
+                                "error": "started_runtime_pricing_identity_mismatch",
+                                "port": port,
+                                "expected_runtime_identity": expected_runtime_identity,
+                                "actual_runtime_identity": actual_identity,
+                                "runtime_identity_error": identity_error,
+                                "recovery_command": f"cox stop --port {port}",
+                                "automatic_termination": False,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    )
+                    return 1
             print(f"ready version={running_version}")
             return 0
         if status == 200 and running_version and running_version != PROXY_VERSION:
@@ -3870,6 +4389,7 @@ def _start_proxy(args: argparse.Namespace) -> int:
                 "port": port,
                 "expected_version": PROXY_VERSION,
                 "log": str(log_path),
+                "recovery_command": f"cox stop --port {port}",
             },
             ensure_ascii=False,
             indent=2,
@@ -3879,14 +4399,9 @@ def _start_proxy(args: argparse.Namespace) -> int:
 
 
 
-def _pid_alive(pid: int | None) -> bool:
-    if pid is None:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, TypeError):
-        return False
+
+
+
 
 
 def _cmdline_for_pid(pid: int) -> str:
@@ -3911,18 +4426,20 @@ def _cmdline_for_pid(pid: int) -> str:
         return ""
 
 
+
 def _pid_looks_like_proxy(pid: int) -> bool:
     cmdline = _cmdline_for_pid(pid)
-    markers = [
-        "codexchange_proxy.runtime_app",
-        "codexchange_proxy.app:app",
-        "codexchange_proxy",
-        "codexchange",
-    ]
-    return any(marker in cmdline for marker in markers)
+    if not cmdline:
+        return False
+    if "codexchange_proxy.runtime_app" in cmdline:
+        return True
+    return "uvicorn" in cmdline and "codexchange_proxy.app:app" in cmdline
+
+
 
 
 def _listen_pids_for_local_port(port: int) -> list[int]:
+    pids: set[int] = set()
     try:
         result = subprocess.run(
             ["ss", "-ltnp"],
@@ -3932,20 +4449,42 @@ def _listen_pids_for_local_port(port: int) -> list[int]:
             check=False,
         )
     except Exception:
-        return []
+        result = None
 
-    pids: set[int] = set()
-    for line in result.stdout.splitlines():
-        if f":{port}" not in line:
-            continue
-        if "127.0.0.1:" not in line and "[::1]:" not in line and "localhost:" not in line:
-            continue
-        for match in re.finditer(r"pid=(\d+)", line):
-            try:
-                pids.add(int(match.group(1)))
-            except ValueError:
-                pass
+    if result is not None:
+        local_pattern = re.compile(
+            rf"(?:127\.0\.0\.1|localhost|\[::1\]):{int(port)}(?:\s|$)"
+        )
+        for line in result.stdout.splitlines():
+            if not local_pattern.search(line):
+                continue
+            for match in re.finditer(r"pid=(\d+)", line):
+                try:
+                    pids.add(int(match.group(1)))
+                except ValueError:
+                    pass
+
+    if pids:
+        return sorted(pids)
+
+    try:
+        fallback = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{int(port)}", "-sTCP:LISTEN", "-t"],
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return []
+    for raw in fallback.stdout.splitlines():
+        try:
+            pids.add(int(raw.strip()))
+        except ValueError:
+            pass
     return sorted(pids)
+
+
 
 
 def _port_status_looks_like_proxy(port: int) -> bool:
@@ -3960,6 +4499,7 @@ def _port_status_looks_like_proxy(port: int) -> bool:
         return False
 
     proxy_markers = {
+        "runtime_identity",
         "model_default",
         "thinking",
         "thinking_enabled",
@@ -3969,10 +4509,8 @@ def _port_status_looks_like_proxy(port: int) -> bool:
         "agent_liveness",
         "context",
     }
-    if any(key in data for key in proxy_markers):
-        return True
+    return any(key in data for key in proxy_markers)
 
-    return data.get("status") == "ok"
 
 
 def _terminate_pid(pid: int, *, label: str) -> bool:
@@ -4027,74 +4565,193 @@ def _default_stop_port(args: argparse.Namespace) -> int:
     return 8001 if thinking else 8000
 
 
-def _stop_by_port_discovery(port: int) -> bool:
+
+def _stop_by_port_discovery(
+    port: int,
+    *,
+    state_dir: Path | None = None,
+    pid_path: Path | None = None,
+) -> bool:
     if not _port_status_looks_like_proxy(port):
         return False
 
-    pids = _listen_pids_for_local_port(port)
-    if not pids:
-        print(f"proxy_running_but_pid_not_found port={port}")
+    state_root = state_dir or _default_state_dir()
+    candidate_paths: list[Path] = []
+    if pid_path is not None and pid_path.exists():
+        candidate_paths.append(pid_path)
+    elif state_root.exists():
+        candidate_paths.extend(sorted(state_root.glob("*.pid")))
+
+    matching: list[tuple[Path, dict[str, object]]] = []
+    for path in candidate_paths:
+        record = _read_lifecycle_record(path)
+        if not isinstance(record, dict):
+            continue
+        try:
+            recorded_port = int(record.get("port"))
+        except (TypeError, ValueError):
+            continue
+        if recorded_port == int(port):
+            matching.append((path, record))
+
+    if not matching:
+        print(
+            json.dumps(
+                {
+                    "error": "refused_to_kill_unowned_proxy",
+                    "port": port,
+                    "state_dir": str(state_root),
+                    "reason": "no_versioned_lifecycle_owner_record",
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
         return False
 
-    stopped_any = False
-    refused: list[int] = []
-    for pid in pids:
-        if _pid_looks_like_proxy(pid):
-            stopped_any = _terminate_pid(pid, label=f"port={port} source=port_discovery") or stopped_any
+    live_matching: list[tuple[Path, dict[str, object], dict[str, object]]] = []
+    for path, record in matching:
+        validation = _validate_lifecycle_owner_record(
+            record,
+            port=port,
+            require_runtime_identity=True,
+        )
+        if validation["valid"]:
+            live_matching.append((path, record, validation))
+            continue
+        reasons = set(str(item) for item in validation.get("reasons", []))
+        if "process_not_alive" in reasons:
+            moved = _move_stale_pid_file(
+                path,
+                pid=validation.get("pid") if isinstance(validation.get("pid"), int) else None,
+                port=port,
+                reason="process_not_alive",
+            )
+            print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
         else:
-            refused.append(pid)
+            print(
+                json.dumps(
+                    {
+                        "error": "refused_to_kill_owner_validation_failed",
+                        "port": port,
+                        "pid_file": str(path),
+                        "validation": validation,
+                        "automatic_termination": False,
+                    },
+                    ensure_ascii=False,
+                )
+            )
 
-    if refused:
-        refused_text = ",".join(str(pid) for pid in refused)
-        print(f"refused_to_kill_non_proxy_service port={port} pids={refused_text}")
+    unique_pids = {
+        int(record["pid"])
+        for _path, record, _validation in live_matching
+        if isinstance(record.get("pid"), int)
+    }
+    if len(live_matching) != 1 or len(unique_pids) != 1:
+        print(
+            json.dumps(
+                {
+                    "error": "refused_to_kill_ambiguous_lifecycle_owner",
+                    "port": port,
+                    "valid_record_count": len(live_matching),
+                    "valid_pids": sorted(unique_pids),
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return False
 
-    return stopped_any
+    path, record, _validation = live_matching[0]
+    pid = int(record["pid"])
+    stopped = _terminate_pid(
+        pid,
+        label=f"port={port} source=versioned_lifecycle_owner pid_file={path}",
+    )
+    if stopped:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    return stopped
+
+
 
 def _stop_proxy(args: argparse.Namespace) -> int:
     thinking = bool(args.thinking)
+    route = _lifecycle_route_name(thinking)
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else _default_state_dir()
     pid_path = Path(args.pid_file).expanduser() if args.pid_file else state_dir / ("proxy-thinking.pid" if thinking else "proxy.pid")
     port = _default_stop_port(args)
-
-    stopped_any = False
     explicit_port = getattr(args, "port", None) is not None
 
-    # If the user explicitly gives --port, respect the port first. Do not kill a
-    # stale/default pid-file process that may belong to another instance.
     if explicit_port:
-        stopped_any = _stop_by_port_discovery(port)
-        if not stopped_any:
-            print(f"not_running port={port}")
+        stopped = _stop_by_port_discovery(
+            port,
+            state_dir=state_dir,
+            pid_path=pid_path if getattr(args, "pid_file", None) else None,
+        )
+        if stopped:
+            return 0
+        if _port_status_looks_like_proxy(port):
+            return 1
+        print(f"not_running port={port}")
         return 0
 
-    if pid_path.exists():
-        try:
-            pid = int(pid_path.read_text(encoding="utf-8").strip())
-        except Exception:
-            pid = None
-
-        if pid is not None and _pid_alive(pid):
-            if _pid_looks_like_proxy(pid):
-                stopped_any = _terminate_pid(pid, label=f"pid_file={pid_path}") or stopped_any
-            else:
-                print(f"refused_to_kill_non_proxy_pid_file pid={pid} pid_file={pid_path}")
-        else:
-            print(f"stale_pid_file pid_file={pid_path}")
-
-        try:
-            pid_path.unlink()
-        except OSError:
-            pass
-
-    # Fallback: if no valid pid file existed, or if the port still responds as
-    # CodeXchange, discover the listener by port and stop it safely.
-    if _port_status_looks_like_proxy(port):
-        stopped_any = _stop_by_port_discovery(port) or stopped_any
-
-    if not stopped_any:
+    if not pid_path.exists():
         print(f"not_running pid_file={pid_path} port={port}")
+        return 0
 
+    record = _read_lifecycle_record(pid_path)
+    validation = _validate_lifecycle_owner_record(
+        record,
+        port=port,
+        route=route,
+        require_runtime_identity=True,
+    )
+    if not validation["valid"]:
+        reasons = set(str(item) for item in validation.get("reasons", []))
+        if "process_not_alive" in reasons:
+            moved = _move_stale_pid_file(
+                pid_path,
+                pid=validation.get("pid") if isinstance(validation.get("pid"), int) else None,
+                port=port,
+                reason="process_not_alive",
+            )
+            print(json.dumps({"status": "recovered_stale_pid_file", **moved}, ensure_ascii=False))
+            return 0
+        print(
+            json.dumps(
+                {
+                    "error": "refused_to_kill_owner_validation_failed",
+                    "port": port,
+                    "pid_file": str(pid_path),
+                    "validation": validation,
+                    "recovery_command": f"cox stop --port {port}",
+                    "automatic_termination": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
+    pid = int(record["pid"]) if isinstance(record, dict) else None
+    if pid is None:
+        return 1
+    stopped = _terminate_pid(
+        pid,
+        label=f"pid_file={pid_path} source=versioned_lifecycle_owner",
+    )
+    if not stopped:
+        print(f"failed_to_stop pid={pid} pid_file={pid_path} port={port}")
+        return 1
+    try:
+        pid_path.unlink()
+    except OSError:
+        pass
     return 0
+
 
 def _status(args: argparse.Namespace) -> int:
     profile_preflight_error = _managed_profile_route_preflight_or_error(reason="cox_status_preflight")
@@ -9684,6 +10341,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--port", type=int)
     start.add_argument("--state-dir")
     start.add_argument("--pid-file")
+    start.add_argument("--owner-profile", help=argparse.SUPPRESS)
     start.add_argument("--log-file")
     start.add_argument("--db-path")
     start.add_argument(
@@ -9711,7 +10369,7 @@ def build_parser() -> argparse.ArgumentParser:
     stop.add_argument("--thinking", action="store_true")
     stop.add_argument("--state-dir")
     stop.add_argument("--pid-file")
-    stop.add_argument("--port", type=int, help="accepted for consistency with start/status; stop uses the recorded pid file")
+    stop.add_argument("--port", type=int, help="stop the verified CodeXchange lifecycle owner bound to this local port")
     stop.set_defaults(func=_stop_proxy)
 
     status = sub.add_parser("status", help="print /v1/proxy/status")

@@ -151,6 +151,31 @@ def test_start_proxy_uses_dedicated_runtime_module_only_for_explicit_pricing(
         return FakeProcess()
 
     monkeypatch.setattr(cli, "_healthz_for_port", fake_healthz)
+
+    def fake_runtime_identity(port, *, timeout=1.0):
+        if port == 8765:
+            return 200, {
+                "contract": "provider_pricing_runtime_identity_v1",
+                "pricing_provider_id": "deepseek",
+                "pricing_activate": True,
+                "pricing_mode": "provider_owned",
+                "pricing_provider_path": str(target),
+            }, None
+        return 200, {
+            "contract": "provider_pricing_runtime_identity_v1",
+            "pricing_provider_id": None,
+            "pricing_activate": False,
+            "pricing_mode": "legacy_shared",
+            "pricing_provider_path": None,
+        }, None
+
+    monkeypatch.setattr(cli, "_runtime_pricing_identity_for_port", fake_runtime_identity)
+    monkeypatch.setattr(cli, "_process_start_identity", lambda pid: f"test-start:{pid}")
+    monkeypatch.setattr(
+        cli,
+        "_cmdline_for_pid",
+        lambda pid: "python -m codexchange_proxy.runtime_app --port 8765",
+    )
     monkeypatch.setattr(cli.subprocess, "Popen", fake_popen)
 
     explicit_args = _namespace(
@@ -267,10 +292,11 @@ def test_startup_factory_has_no_pricing_environment_activation_and_module_entry_
         assert "--pricing-provider-path" not in text
 
     wrapper_text = (ROOT / "scripts/codex-wrapper.bash").read_text(encoding="utf-8")
-    assert "codexchange_proxy.app:app" in wrapper_text
-    assert "codexchange_proxy.runtime_app" in wrapper_text
+    assert "-m codexchange_proxy.cli" in wrapper_text
+    assert "exec \"$python_bin\" -m codexchange_proxy.app:app" not in wrapper_text
+    assert "exec \"$python_bin\" -m codexchange_proxy.runtime_app" not in wrapper_text
     assert "--pricing-provider-id" in wrapper_text
-    assert "--pricing-activate" in wrapper_text
     assert "--pricing-mode" in wrapper_text
     assert "--pricing-provider-path" in wrapper_text
+    assert "--owner-profile" in wrapper_text
     assert PRICING_ENV_NAMES.isdisjoint(set(wrapper_text.split()))

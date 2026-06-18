@@ -331,7 +331,8 @@ __codexchange_source_env_file() {
 
 __codexchange_start_local_proxy() {
   local port profile model provider pricing_provider_id pricing_mode pricing_provider_path
-  local install_dir python_bin log_dir log_file i
+  local install_dir python_bin log_dir log_file state_dir pid_file safe_profile route i
+  local start_args=()
   port="$1"; profile="$2"; model="$3"; provider="$4"
   pricing_provider_id="${5:-}"
   pricing_mode="${6:-}"
@@ -349,8 +350,10 @@ __codexchange_start_local_proxy() {
   export COX_AGENT_LIVENESS_JUDGE_MODEL="${COX_AGENT_LIVENESS_JUDGE_MODEL:-v4-flash-no-thinking}"
   export COX_CODEX_TOOL_PROTOCOL_INSTRUCTION="${COX_CODEX_TOOL_PROTOCOL_INSTRUCTION:-1}"
   export COX_TOOL_BRIDGE="${COX_TOOL_BRIDGE:-1}"
+  route="standard"
   case "$profile:$provider:$port" in
     *thinking*|*:cox*:*|*:*:8001)
+      route="reasoning"
       export COX_REASONING=enabled
       export COX_TOOL_OUTPUT_TRIM_MODE="${COX_TOOL_OUTPUT_TRIM_MODE:-enabled}"
       export COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS="${COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS:-12000}"
@@ -375,30 +378,32 @@ __codexchange_start_local_proxy() {
   fi
   export PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}"
   log_dir="${COX_LOG_DIR:-$HOME/.cache/codexchange}"
-  mkdir -p "$log_dir"
-  log_file="${log_dir}/codex-profile-${profile:-default}-proxy-${port}.log"
+  state_dir="${COX_STATE_DIR:-$HOME/.local/state/codexchange}"
+  mkdir -p "$log_dir" "$state_dir"
+  safe_profile="$(printf '%s' "${profile:-default}" | tr -c 'A-Za-z0-9._-' '_')"
+  log_file="${log_dir}/codex-profile-${safe_profile}-proxy-${port}.log"
+  pid_file="${state_dir}/profile-${safe_profile}-proxy-${port}.pid"
+  start_args=(start "$route" --port "$port" --state-dir "$state_dir" --pid-file "$pid_file" --log-file "$log_file" --owner-profile "${profile:-default}")
   if [ -n "$pricing_provider_id" ]; then
-    (
-      cd "$install_dir" 2>/dev/null || cd "$PWD"
-      exec "$python_bin" -m codexchange_proxy.runtime_app \
-        --host 127.0.0.1 \
-        --port "$port" \
-        --pricing-provider-id "$pricing_provider_id" \
-        --pricing-activate \
-        --pricing-mode "$pricing_mode" \
-        --pricing-provider-path "$pricing_provider_path"
-    ) >>"$log_file" 2>&1 &
-    echo "CodeXchange: starting local Responses proxy with explicit profile pricing for profile '${profile}' on 127.0.0.1:${port}" >&2
-  else
-    (
-      cd "$install_dir" 2>/dev/null || cd "$PWD"
-      exec "$python_bin" -m uvicorn codexchange_proxy.app:app --host 127.0.0.1 --port "$port"
-    ) >>"$log_file" 2>&1 &
-    echo "CodeXchange: starting local Responses proxy for profile '${profile}' on 127.0.0.1:${port}" >&2
+    start_args+=(
+      --pricing-provider-id "$pricing_provider_id"
+      --pricing-mode "$pricing_mode"
+      --pricing-provider-path "$pricing_provider_path"
+    )
   fi
+  if ! (
+    cd "$install_dir" 2>/dev/null || cd "$PWD"
+    "$python_bin" -m codexchange_proxy.cli "${start_args[@]}"
+  ) >>"$log_file" 2>&1; then
+    echo "CodeXchange: lifecycle-aware proxy start failed for profile '${profile}' on 127.0.0.1:${port}" >&2
+    echo "CodeXchange: inspect log: ${log_file}" >&2
+    echo "CodeXchange: recovery command: cox stop --port ${port}" >&2
+    return 70
+  fi
+  echo "CodeXchange: lifecycle-aware local Responses proxy is available for profile '${profile}' on 127.0.0.1:${port}" >&2
   echo "CodeXchange: proxy log: ${log_file}" >&2
   i=0
-  while [ "$i" -lt 40 ]; do
+  while [ "$i" -lt 8 ]; do
     if __codexchange_proxy_models_ok "$port"; then
       if [ -z "$pricing_provider_id" ] || __codexchange_proxy_runtime_identity_matches \
         "$port" \
@@ -412,6 +417,7 @@ __codexchange_start_local_proxy() {
   done
   echo "CodeXchange: local proxy failed readiness check for profile '${profile}' on 127.0.0.1:${port}" >&2
   echo "CodeXchange: inspect log: ${log_file}" >&2
+  echo "CodeXchange: recovery command: cox stop --port ${port}" >&2
   return 70
 }
 
@@ -444,6 +450,7 @@ __codexchange_profile_runtime_autostart() {
     fi
     echo "CodeXchange: healthy local proxy runtime pricing identity does not match explicit profile '${profile}'." >&2
     echo "CodeXchange: stop the proxy on 127.0.0.1:${port} and retry so the requested pricing runtime can start." >&2
+    echo "CodeXchange: recovery command: cox stop --port ${port}" >&2
     echo "CodeXchange: refusing to enter Codex to avoid silently using the wrong pricing source." >&2
     return 70
   fi

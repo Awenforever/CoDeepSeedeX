@@ -166,53 +166,70 @@ def test_start_function_selects_static_or_explicit_runtime_from_arguments(tmp_pa
     python_bin.chmod(0o755)
     pricing = tmp_path / "pricing.json"
     pricing.write_text("{}\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    log_dir = tmp_path / "logs"
 
     legacy_capture = tmp_path / "legacy.txt"
     legacy_script = f'''
 source {WRAPPER!s}
 __codexchange_proxy_models_ok() {{ return 0; }}
 COX_INSTALL_DIR={install_dir!s}
-COX_LOG_DIR={tmp_path!s}/logs
+COX_LOG_DIR={log_dir!s}
+COX_STATE_DIR={state_dir!s}
 COX_CAPTURE={legacy_capture!s}
 export COX_CAPTURE
 __codexchange_start_local_proxy 8123 sample example-model sample-proxy
-sleep 0.2
 '''
     legacy = _run_bash(legacy_script)
     assert legacy.returncode == 0, legacy.stderr
     assert legacy_capture.read_text(encoding="utf-8").splitlines() == [
         "-m",
-        "uvicorn",
-        "codexchange_proxy.app:app",
-        "--host",
-        "127.0.0.1",
+        "codexchange_proxy.cli",
+        "start",
+        "standard",
         "--port",
         "8123",
+        "--state-dir",
+        str(state_dir),
+        "--pid-file",
+        str(state_dir / "profile-sample-proxy-8123.pid"),
+        "--log-file",
+        str(log_dir / "codex-profile-sample-proxy-8123.log"),
+        "--owner-profile",
+        "sample",
     ]
 
     explicit_capture = tmp_path / "explicit.txt"
     explicit_script = f'''
 source {WRAPPER!s}
 __codexchange_proxy_models_ok() {{ return 0; }}
+__codexchange_proxy_runtime_identity_matches() {{ return 0; }}
 COX_INSTALL_DIR={install_dir!s}
-COX_LOG_DIR={tmp_path!s}/logs
+COX_LOG_DIR={log_dir!s}
+COX_STATE_DIR={state_dir!s}
 COX_CAPTURE={explicit_capture!s}
 export COX_CAPTURE
 __codexchange_start_local_proxy 8123 sample example-model sample-proxy example_provider provider_owned {pricing!s}
-sleep 0.2
 '''
     explicit = _run_bash(explicit_script)
     assert explicit.returncode == 0, explicit.stderr
     assert explicit_capture.read_text(encoding="utf-8").splitlines() == [
         "-m",
-        "codexchange_proxy.runtime_app",
-        "--host",
-        "127.0.0.1",
+        "codexchange_proxy.cli",
+        "start",
+        "standard",
         "--port",
         "8123",
+        "--state-dir",
+        str(state_dir),
+        "--pid-file",
+        str(state_dir / "profile-sample-proxy-8123.pid"),
+        "--log-file",
+        str(log_dir / "codex-profile-sample-proxy-8123.log"),
+        "--owner-profile",
+        "sample",
         "--pricing-provider-id",
         "example_provider",
-        "--pricing-activate",
         "--pricing-mode",
         "provider_owned",
         "--pricing-provider-path",
@@ -222,8 +239,10 @@ sleep 0.2
 
 def test_wrapper_consumption_has_no_pricing_environment_activation() -> None:
     text = WRAPPER.read_text(encoding="utf-8")
-    assert "codexchange_proxy.app:app" in text
-    assert "codexchange_proxy.runtime_app" in text
+    function_body = text.split("__codexchange_start_local_proxy() {", 1)[1].split("\n}", 1)[0]
+    assert '"$python_bin" -m codexchange_proxy.cli "${start_args[@]}"' in function_body
+    assert "codexchange_proxy.app:app" not in function_body
+    assert "codexchange_proxy.runtime_app" not in function_body
     assert "COX_PRICING_PROVIDER_ID" not in text
     assert "COX_PRICING_PROVIDER_OWNED" not in text
     assert "COX_PRICING_MODE" not in text

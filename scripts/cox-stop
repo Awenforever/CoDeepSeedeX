@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
-PROJECT="${COX_PROJECT:-$HOME/projects/codexchange}"
-PID_FILE="$PROJECT/proxy.pid"
+__codexchange_stop_main() {
+  local install_dir python_bin
+  if command -v cox >/dev/null 2>&1; then
+    exec cox stop "$@"
+  fi
 
-if [ ! -f "$PID_FILE" ]; then
-  echo "No running DeepSeek proxy found."
-  exit 0
-fi
+  install_dir="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
+  python_bin="${install_dir}/.venv/bin/python"
+  if [ ! -x "$python_bin" ]; then
+    python_bin="$(command -v python3 || true)"
+  fi
+  if [ -z "$python_bin" ]; then
+    printf 'CodeXchange: cannot run lifecycle-aware stop; cox/python3 not found.\n' >&2
+    return 127
+  fi
+  export PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$python_bin" -m codexchange_proxy.cli stop "$@"
+}
 
-pid="$(cat "$PID_FILE")"
-if kill "$pid" >/dev/null 2>&1; then
-  rm -f "$PID_FILE"
-  echo "DeepSeek proxy stopped."
-else
-  rm -f "$PID_FILE"
-  echo "No running DeepSeek proxy found."
-fi
+__codexchange_stop_main "$@"

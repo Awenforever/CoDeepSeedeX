@@ -4571,5 +4571,14 @@ def test_p222a1_start_thinking_moves_alive_stale_pid_not_listening_on_target_por
     output = capsys.readouterr().out
     assert "recovered_stale_pid_file" in output
     assert "started pid=54321 port=8002" in output
-    assert pid_file.read_text(encoding="utf-8") == "54321"
-    assert list(tmp_path.glob("proxy-thinking.pid.stale-*"))
+    stale_files = list(tmp_path.glob("proxy-thinking.pid.stale-*"))
+    assert stale_files
+    lifecycle_records = []
+    for stale_file in stale_files:
+        try:
+            parsed = json.loads(stale_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(parsed, dict) and parsed.get("contract") == cli_module.LIFECYCLE_OWNER_CONTRACT:
+            lifecycle_records.append(parsed)
+    assert any(record.get("pid") == 54321 and record.get("port") == 8002 for record in lifecycle_records)
