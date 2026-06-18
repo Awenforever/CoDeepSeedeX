@@ -10,6 +10,7 @@ BIN_DIR="${COX_BIN_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${COX_CONFIG_DIR:-$HOME/.config/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$CONFIG_DIR/env}"
 MANIFEST_FILE="${COX_MANIFEST_FILE:-$CONFIG_DIR/install-manifest.env}"
+SHELL_PROFILE_STATE_FILE="${COX_SHELL_PROFILE_STATE_FILE:-$CONFIG_DIR/shell-profiles.list}"
 INSTALL_LOG="${COX_INSTALL_LOG:-/tmp/codexchange-install-$(date +%Y%m%d_%H%M%S).log}"
 BOOTSTRAP_LOG="${COX_BOOTSTRAP_LOG:-}"
 LOCAL_BACKUP_DIR="${COX_BACKUP_DIR:-/tmp/codexchange-install-backups-$(date +%Y%m%d_%H%M%S)}"
@@ -81,7 +82,7 @@ Options:
   --python-bin PATH     Python interpreter for venv, default: $COX_PYTHON_BIN or python3
   --no-codex-profile     Skip Codex profile installation
   --no-codex-wrapper     Skip safe codex wrapper installation
-  --no-shell-profile    Do not update shell startup files for PATH/env loading
+  --no-shell-profile    Do not update shell startup files with the minimal PATH bootstrap
   --uninstall            Remove profiles and wrappers installed by CodeXchange
   --remove-files         With --uninstall, also remove install dir and env files
   -h, -H, --help         Show help
@@ -2977,37 +2978,221 @@ choose_shell_profile_file() {
   esac
 }
 
-ensure_one_shell_profile_integration() {
+render_shell_profile_without_codexchange_blocks() {
   local profile_file="$1"
-  local label="$2"
+  local output_file="$2"
 
-  if [ -z "$profile_file" ]; then
+  if [ ! -f "$profile_file" ]; then
+    : > "$output_file"
     return 0
   fi
 
-  mkdir -p "$(dirname "$profile_file")"
-  touch "$profile_file"
+  awk '
+    function reset_buffer(  i) {
+      for (i = 1; i <= buffered; i++) {
+        delete buffer[i]
+      }
+      buffered = 0
+    }
+    function flush_buffer(  i) {
+      for (i = 1; i <= buffered; i++) {
+        print buffer[i]
+      }
+      reset_buffer()
+    }
+    BEGIN {
+      mode = ""
+      legacy_fi_count = 0
+      buffered = 0
+    }
+    {
+      if (mode == "managed") {
+        buffer[++buffered] = $0
+        if ($0 == "# <<< CodeXchange managed PATH <<<") {
+          mode = ""
+          reset_buffer()
+        }
+        next
+      }
+      if (mode == "legacy") {
+        buffer[++buffered] = $0
+        if ($0 ~ /^[[:space:]]*fi[[:space:]]*$/) {
+          legacy_fi_count++
+          if (legacy_fi_count >= 2) {
+            mode = ""
+            legacy_fi_count = 0
+            reset_buffer()
+          }
+        }
+        next
+      }
+      if ($0 == "# >>> CodeXchange managed PATH >>>") {
+        mode = "managed"
+        buffer[++buffered] = $0
+        next
+      }
+      if ($0 == "# CodeXchange environment") {
+        mode = "legacy"
+        legacy_fi_count = 0
+        buffer[++buffered] = $0
+        next
+      }
+      print
+    }
+    END {
+      if (mode != "") {
+        flush_buffer()
+      }
+    }
+  ' "$profile_file" > "$output_file"
+}
 
-  if grep -q "CodeXchange environment" "$profile_file" 2>/dev/null && grep -Fq "$BIN_DIR" "$profile_file" 2>/dev/null; then
-    ok "Shell profile already contains CodeXchange environment: $label"
-    return 0
+append_minimal_shell_profile_block() {
+  local target_file="$1"
+  local last_char=""
+
+  if [ -s "$target_file" ]; then
+    last_char="$(tail -c 1 "$target_file" 2>/dev/null || true)"
+    if [ -n "$last_char" ]; then
+      printf '\n' >> "$target_file"
+    fi
   fi
 
-  cat >> "$profile_file" <<EOF
-
-# CodeXchange environment
+  cat >> "$target_file" <<EOF
+# >>> CodeXchange managed PATH >>>
+# Minimal shell bootstrap only. Secrets and runtime state are loaded on demand
+# by the cox command or the isolated local-proxy subprocess.
 if [ -d "$BIN_DIR" ]; then
   case ":\$PATH:" in
     *:"$BIN_DIR":*) ;;
     *) export PATH="$BIN_DIR:\$PATH" ;;
   esac
 fi
-if [ -f "$ENV_FILE" ]; then
-  . "$ENV_FILE"
-fi
+# <<< CodeXchange managed PATH <<<
 EOF
+}
 
-  ok "Shell profile updated: $profile_file"
+record_shell_profile_path() {
+  local profile_file="$1"
+
+  [ -n "$profile_file" ] || return 0
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ record managed shell profile %q in %q\n' "$profile_file" "$SHELL_PROFILE_STATE_FILE" >> "$INSTALL_LOG"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$SHELL_PROFILE_STATE_FILE")"
+  touch "$SHELL_PROFILE_STATE_FILE"
+  if ! grep -Fxq "$profile_file" "$SHELL_PROFILE_STATE_FILE" 2>/dev/null; then
+    printf '%s\n' "$profile_file" >> "$SHELL_PROFILE_STATE_FILE"
+  fi
+  chmod 600 "$SHELL_PROFILE_STATE_FILE" 2>/dev/null || true
+}
+
+ensure_one_shell_profile_integration() {
+  local profile_file="$1"
+  local label="$2"
+  local cleaned=""
+  local candidate=""
+
+  if [ -z "$profile_file" ]; then
+    return 0
+  fi
+
+  cleaned="$(mktemp /tmp/codexchange-shell-profile-cleaned-XXXXXX)"
+  candidate="$(mktemp /tmp/codexchange-shell-profile-candidate-XXXXXX)"
+  render_shell_profile_without_codexchange_blocks "$profile_file" "$cleaned"
+  cp "$cleaned" "$candidate"
+  append_minimal_shell_profile_block "$candidate"
+
+  if [ -f "$profile_file" ] && cmp -s "$profile_file" "$candidate"; then
+    rm -f "$cleaned" "$candidate"
+    record_shell_profile_path "$profile_file"
+    ok "Shell profile already contains the minimal CodeXchange PATH bootstrap: $label"
+    return 0
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ replace CodeXchange shell block in %q with PATH-only bootstrap\n' "$profile_file" >> "$INSTALL_LOG"
+    rm -f "$cleaned" "$candidate"
+    record_shell_profile_path "$profile_file"
+    ok "Shell profile would be updated: $profile_file"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$profile_file")"
+  if [ -f "$profile_file" ]; then
+    backup_local_file_before_overwrite "$profile_file" "shell profile"
+  fi
+  cat "$candidate" > "$profile_file"
+  rm -f "$cleaned" "$candidate"
+  record_shell_profile_path "$profile_file"
+  ok "Shell profile updated with minimal PATH bootstrap: $profile_file"
+}
+
+remove_one_shell_profile_integration() {
+  local profile_file="$1"
+  local cleaned=""
+
+  [ -n "$profile_file" ] || return 0
+  [ -f "$profile_file" ] || return 0
+  cleaned="$(mktemp /tmp/codexchange-shell-profile-remove-XXXXXX)"
+  render_shell_profile_without_codexchange_blocks "$profile_file" "$cleaned"
+
+  if cmp -s "$profile_file" "$cleaned"; then
+    rm -f "$cleaned"
+    return 0
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    printf '+ remove managed CodeXchange shell block from %q\n' "$profile_file" >> "$INSTALL_LOG"
+    rm -f "$cleaned"
+    return 0
+  fi
+
+  backup_local_file_before_overwrite "$profile_file" "shell profile"
+  cat "$cleaned" > "$profile_file"
+  rm -f "$cleaned"
+  ok "CodeXchange shell bootstrap removed: $profile_file"
+}
+
+remove_shell_profile_integrations() {
+  local selected=""
+  local profile_file=""
+  local seen=$'\n'
+  local candidates=()
+
+  selected="$(choose_shell_profile_file)"
+  candidates+=(
+    "$selected"
+    "${SHELL_PROFILE_FILE:-}"
+    "${COX_SHELL_PROFILE:-}"
+    "$HOME/.profile"
+    "$HOME/.bashrc"
+    "$HOME/.zshrc"
+  )
+  if [ -f "$SHELL_PROFILE_STATE_FILE" ]; then
+    while IFS= read -r profile_file; do
+      [ -n "$profile_file" ] && candidates+=("$profile_file")
+    done < "$SHELL_PROFILE_STATE_FILE"
+  fi
+
+  for profile_file in "${candidates[@]}"; do
+    [ -n "$profile_file" ] || continue
+    case "$seen" in
+      *$'\n'"$profile_file"$'\n'*) continue ;;
+    esac
+    seen+="$profile_file"$'\n'
+    remove_one_shell_profile_integration "$profile_file"
+  done
+
+  if [ -f "$SHELL_PROFILE_STATE_FILE" ]; then
+    if [ "$DRY_RUN" = "1" ]; then
+      printf '+ remove managed shell profile state %q\n' "$SHELL_PROFILE_STATE_FILE" >> "$INSTALL_LOG"
+    else
+      rm -f "$SHELL_PROFILE_STATE_FILE"
+    fi
+  fi
 }
 
 ensure_shell_profile_integration() {
@@ -3032,10 +3217,6 @@ ensure_shell_profile_integration() {
     *:"$BIN_DIR":*) ;;
     *) export PATH="$BIN_DIR:$PATH" ;;
   esac
-  if [ -f "$ENV_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-  fi
 }
 
 post_install_entrypoint_diagnostics() {
@@ -3465,6 +3646,8 @@ REAL_CODEX="$real_codex"
 ENV_FILE="$ENV_FILE"
 INSTALL_DIR="$INSTALL_DIR"
 BIN_DIR="$BIN_DIR"
+SHELL_PROFILE_FILE="$SHELL_PROFILE_FILE"
+SHELL_PROFILE_STATE_FILE="$SHELL_PROFILE_STATE_FILE"
 STABLE_PORT="$stable_port"
 THINKING_PORT="$thinking_port"
 EOF
@@ -3491,6 +3674,8 @@ uninstall() {
     run_quiet "Codex profile removed: deepseek" "$INSTALL_DIR/.venv/bin/cox" uninstall-codex-profile --name deepseek --no-backup || true
     run_quiet "Codex profile removed: cox" "$INSTALL_DIR/.venv/bin/cox" uninstall-codex-profile --name cox --no-backup || true
   fi
+
+  remove_shell_profile_integrations
 
   if [ -f "$wrapper_path" ] && grep -q "CodeXchange codex wrapper" "$wrapper_path" 2>/dev/null; then
     if [ "$DRY_RUN" = "1" ]; then
@@ -3526,6 +3711,7 @@ uninstall() {
       rm -rf "$INSTALL_DIR"
       rm -f "$ENV_FILE"
       rm -f "$MANIFEST_FILE"
+      rm -f "$SHELL_PROFILE_STATE_FILE"
     fi
     ok "Install files removed"
   fi
@@ -3542,7 +3728,7 @@ while [ "$#" -gt 0 ]; do
     --repo-url) REPO_URL="$2"; shift ;;
     --install-ref) INSTALL_REF="$2"; shift ;;
     --bin-dir) BIN_DIR="$2"; shift ;;
-    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; MODEL_PROVIDER_REGISTRY_FILE="${COX_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
+    --config-dir) CONFIG_DIR="$2"; ENV_FILE="$CONFIG_DIR/env"; MANIFEST_FILE="$CONFIG_DIR/install-manifest.env"; if [ -z "${COX_SHELL_PROFILE_STATE_FILE:-}" ]; then SHELL_PROFILE_STATE_FILE="$CONFIG_DIR/shell-profiles.list"; fi; MODEL_PROVIDER_REGISTRY_FILE="${COX_MODEL_PROVIDER_REGISTRY:-$CONFIG_DIR/model-providers.json}"; shift ;;
     --python-bin) PYTHON_BIN="$2"; PYTHON_BIN_EXPLICIT=1; shift ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --no-codex-profile) INSTALL_CODEX_PROFILE=0 ;;
