@@ -137,6 +137,7 @@ def test_cli_written_provider_path_roundtrips_into_wrapper_autostart(
         "example_provider",
         "provider_owned",
         str(pricing_path),
+        str(profile_path),
     ]
 
 
@@ -191,6 +192,7 @@ def test_clear_pricing_returns_to_exact_legacy_autostart_arguments(
         "",
         "",
         "",
+        str(profile_path),
     ]
 
 

@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -25,6 +26,14 @@ def _write_profile(codex_home: Path, *, name: str, model: str, provider: str, po
         f'model_provider = "{provider}"\n'
         f'[model_providers.{provider}]\n'
         f'base_url = "http://127.0.0.1:{port}/v1"\n',
+        encoding="utf-8",
+    )
+
+
+def _write_registry(path: Path, entries: dict[str, dict[str, object]], *, active: str | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"version": 1, "active_provider": active, "providers": entries}, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -57,9 +66,11 @@ def test_p82_static_contract_uses_native_dispatch_and_isolated_runtime_environme
     assert "__codexchange_start_local_proxy() (" in start
     assert "__codexchange_profile_runtime_autostart() (" in WRAPPER_TEXT
     assert "__codexchange_source_env_file" in start
-    assert 'export COX_MODEL_PROVIDER=custom' in start
-    assert 'export COX_CUSTOM_PROVIDER_NAME="${provider%-proxy}"' in start
-    assert '${COX_CUSTOM_PROVIDER_NAME:-${provider%-proxy}}' not in start
+    assert '__codexchange_bind_custom_provider_registry_entry' in start
+    assert 'custom_provider_registry_entry_not_found' in WRAPPER_TEXT
+    assert 'COX_MODEL_API_KEY' in WRAPPER_TEXT
+    assert 'COX_MODEL_BASE_URL' in WRAPPER_TEXT
+    assert 'active_provider' not in start
     assert "unset COX_REASONING COX_TOOL_OUTPUT_TRIM_MODE" in start
     assert 'grep -q "# CodeXchange codex wrapper"' in WRAPPER_TEXT
 
@@ -124,10 +135,35 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
     proxy_env_log = tmp_path / "proxy-env.tsv"
     native_env_log = tmp_path / "native-env.tsv"
     env_file = tmp_path / "cox-env"
+    registry = tmp_path / "model-providers.json"
     native = tool_bin / "native-codex"
 
     _write_profile(codex_home, name="alpha", model="alpha-model", provider="alpha-proxy", port=8001)
     _write_profile(codex_home, name="beta", model="beta-model", provider="beta-proxy", port=8002)
+    _write_registry(
+        registry,
+        {
+            "alpha": {
+                "id": "alpha",
+                "type": "custom_openai_compatible",
+                "display_name": "Alpha",
+                "base_url": "https://alpha.example.invalid/v1",
+                "api_key": "alpha-secret",
+                "active_model": "alpha-model",
+                "models": ["alpha-model"],
+            },
+            "beta": {
+                "id": "beta",
+                "type": "custom_openai_compatible",
+                "display_name": "Beta",
+                "base_url": "https://beta.example.invalid/v1",
+                "api_key": "beta-secret",
+                "active_model": "beta-model",
+                "models": ["beta-model"],
+            },
+        },
+        active="alpha",
+    )
     started_dir.mkdir(parents=True, exist_ok=True)
     env_file.write_text(
         "export COX_MODEL=stale-model\n"
@@ -135,7 +171,9 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
         "export COX_CUSTOM_PROVIDER_NAME=stale-provider\n"
         "export COX_REASONING=enabled\n"
         "export COX_TOOL_OUTPUT_TRIM_MODE=enabled\n"
-        "export COX_MODEL_API_KEY=test-secret\n",
+        "export COX_MODEL_API_KEY=stale-secret\n"
+        "export COX_MODEL_BASE_URL=https://stale.example.invalid/v1\n"
+        f"export COX_MODEL_PROVIDER_REGISTRY={registry}\n",
         encoding="utf-8",
     )
 
@@ -150,13 +188,20 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
     )
     _write_executable(
         install_dir / ".venv" / "bin" / "python",
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "
-        '"${COX_PORT-__UNSET__}" "${COX_MODEL-__UNSET__}" '
-        '"${COX_MODEL_PROVIDER-__UNSET__}" "${COX_CUSTOM_PROVIDER_NAME-__UNSET__}" '
-        '"${COX_REASONING-__UNSET__}" "${PYTHONPATH-__UNSET__}" '
-        '"${COX_MODEL_API_KEY-__UNSET__}" >>"$PROXY_ENV_LOG"\n'
-        ': >"$STARTED_DIR/$COX_PORT"\n',
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == '-':\n"
+        "    code = sys.stdin.read()\n"
+        "    sys.argv = sys.argv[1:]\n"
+        "    namespace = {'__name__': '__main__'}\n"
+        "    exec(compile(code, '<stdin>', 'exec'), namespace, namespace)\n"
+        "else:\n"
+        "    keys=['COX_PORT','COX_MODEL','COX_MODEL_PROVIDER','COX_CUSTOM_PROVIDER_NAME','COX_REASONING','PYTHONPATH','COX_MODEL_API_KEY','COX_MODEL_BASE_URL']\n"
+        "    row = '\\t'.join(os.environ.get(key, '__UNSET__') for key in keys)\n"
+        "    with open(os.environ['PROXY_ENV_LOG'], 'a', encoding='utf-8') as handle:\n"
+        "        handle.write(row + '\\n')\n"
+        "    Path(os.environ['STARTED_DIR'], os.environ['COX_PORT']).touch()\n",
     )
 
     env = os.environ.copy()
@@ -181,6 +226,7 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
             "PROXY_ENV_LOG": str(proxy_env_log),
             "NATIVE_ENV_LOG": str(native_env_log),
             "PATH": f"{tool_bin}:/usr/bin:/bin",
+            "REAL_PYTHON": sys.executable,
         }
     )
     tracked = "COX_PORT COX_MODEL COX_MODEL_PROVIDER COX_CUSTOM_PROVIDER_NAME COX_REASONING PYTHONPATH"
@@ -200,8 +246,8 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
 
     proxy_rows = [line.split("\t") for line in proxy_env_log.read_text(encoding="utf-8").splitlines()]
     assert proxy_rows == [
-        ["8001", "alpha-model", "custom", "alpha", "enabled", str(install_dir), "test-secret"],
-        ["8002", "beta-model", "custom", "beta", "__UNSET__", str(install_dir), "test-secret"],
+        ["8001", "alpha-model", "custom", "alpha", "enabled", str(install_dir), "alpha-secret", "https://alpha.example.invalid/v1"],
+        ["8002", "beta-model", "custom", "beta", "__UNSET__", str(install_dir), "beta-secret", "https://beta.example.invalid/v1"],
     ]
 
     native_rows = [line.split("\t") for line in native_env_log.read_text(encoding="utf-8").splitlines()]

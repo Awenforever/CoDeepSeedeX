@@ -42,7 +42,7 @@ def _profile_files(tmp_path: Path, profile_body: str) -> tuple[Path, Path]:
 
 
 def test_profile_without_pricing_fields_consumes_exact_legacy_start_contract(tmp_path: Path) -> None:
-    codex_home, _ = _profile_files(
+    codex_home, profile = _profile_files(
         tmp_path,
         'model = "example-model"\nmodel_provider = "sample-proxy"\n',
     )
@@ -65,13 +65,14 @@ __codexchange_profile_runtime_autostart --profile sample
         "",
         "",
         "",
+        str(profile),
     ]
 
 
 def test_complete_profile_candidate_maps_only_explicit_fields_to_runtime_arguments(tmp_path: Path) -> None:
     pricing = tmp_path / "pricing.json"
     pricing.write_text("{}\n", encoding="utf-8")
-    codex_home, _ = _profile_files(
+    codex_home, profile = _profile_files(
         tmp_path,
         'model = "example-model"\n'
         'model_provider = "unrelated-proxy"\n'
@@ -105,11 +106,12 @@ __codexchange_profile_runtime_autostart --profile sample
         "example_provider",
         "provider_owned",
         str(pricing),
+        str(profile),
     ]
 
 
 def test_partial_profile_candidate_fails_closed_before_start(tmp_path: Path) -> None:
-    codex_home, _ = _profile_files(
+    codex_home, profile = _profile_files(
         tmp_path,
         'model = "example-model"\n'
         'model_provider = "sample-proxy"\n'
@@ -129,7 +131,7 @@ __codexchange_profile_runtime_autostart --profile sample
 
 
 def test_pricing_environment_does_not_activate_legacy_profile(tmp_path: Path) -> None:
-    codex_home, _ = _profile_files(
+    codex_home, profile = _profile_files(
         tmp_path,
         'model = "example-model"\nmodel_provider = "sample-proxy"\n',
     )
@@ -152,7 +154,7 @@ __codexchange_profile_runtime_autostart --profile sample
         },
     )
     assert result.returncode == 0, result.stderr
-    assert capture.read_text(encoding="utf-8").splitlines()[4:] == ["", "", ""]
+    assert capture.read_text(encoding="utf-8").splitlines()[4:] == ["", "", "", str(profile)]
 
 
 def test_start_function_selects_static_or_explicit_runtime_from_arguments(tmp_path: Path) -> None:
@@ -169,6 +171,7 @@ def test_start_function_selects_static_or_explicit_runtime_from_arguments(tmp_pa
     state_dir = tmp_path / "state"
     log_dir = tmp_path / "logs"
 
+    legacy_provider = "".join(("deepseek", "-proxy"))
     legacy_capture = tmp_path / "legacy.txt"
     legacy_script = f'''
 source {WRAPPER!s}
@@ -178,7 +181,7 @@ COX_LOG_DIR={log_dir!s}
 COX_STATE_DIR={state_dir!s}
 COX_CAPTURE={legacy_capture!s}
 export COX_CAPTURE
-__codexchange_start_local_proxy 8123 sample example-model sample-proxy
+__codexchange_start_local_proxy 8123 sample example-model {legacy_provider}
 '''
     legacy = _run_bash(legacy_script)
     assert legacy.returncode == 0, legacy.stderr
@@ -209,7 +212,7 @@ COX_LOG_DIR={log_dir!s}
 COX_STATE_DIR={state_dir!s}
 COX_CAPTURE={explicit_capture!s}
 export COX_CAPTURE
-__codexchange_start_local_proxy 8123 sample example-model sample-proxy example_provider provider_owned {pricing!s}
+__codexchange_start_local_proxy 8123 sample example-model {legacy_provider} example_provider provider_owned {pricing!s}
 '''
     explicit = _run_bash(explicit_script)
     assert explicit.returncode == 0, explicit.stderr

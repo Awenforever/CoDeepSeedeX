@@ -30,7 +30,10 @@ def test_codex_wrapper_sets_profile_specific_runtime_environment_in_isolated_sta
     assert 'export COX_PORT="$port"' in WRAPPER
     assert 'export COX_MODEL="$model"' in WRAPPER
     assert "COX_REASONING=enabled" in WRAPPER
-    assert 'export COX_CUSTOM_PROVIDER_NAME="${provider%-proxy}"' in WRAPPER
+    assert "__codexchange_bind_custom_provider_registry_entry" in WRAPPER
+    assert "custom_provider_registry_entry_not_found" in WRAPPER
+    assert "COX_MODEL_API_KEY" in WRAPPER
+    assert "COX_MODEL_BASE_URL" in WRAPPER
     assert "unset COX_REASONING COX_TOOL_OUTPUT_TRIM_MODE" in WRAPPER
     assert "COX_INSTALL_DIR" in WRAPPER
 

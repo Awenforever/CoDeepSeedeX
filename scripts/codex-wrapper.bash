@@ -330,18 +330,219 @@ __codexchange_source_env_file() {
   set +a
 }
 
+__codexchange_custom_provider_registry_path() {
+  local env_file
+  env_file="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
+  if [ -n "${COX_MODEL_PROVIDER_REGISTRY:-}" ]; then
+    printf '%s\n' "$COX_MODEL_PROVIDER_REGISTRY"
+    return 0
+  fi
+  printf '%s/model-providers.json\n' "$(dirname "$env_file")"
+}
+
+__codexchange_bind_custom_provider_registry_entry() {
+  local python_bin profile_file profile provider model registry_path binding_file
+  local key value seen_provider=0 seen_name=0 seen_base_url=0 seen_api_key=0 seen_model=0 seen_registry=0
+  python_bin="$1"; profile_file="$2"; profile="$3"; provider="$4"; model="$5"
+  registry_path="$(__codexchange_custom_provider_registry_path)"
+
+  if ! binding_file="$(umask 077; mktemp "${TMPDIR:-/tmp}/cox-custom-provider-binding.XXXXXX")"; then
+    echo "CodeXchange: cannot create secure custom provider binding state for profile '${profile}'." >&2
+    return 70
+  fi
+
+  if ! "$python_bin" - "$registry_path" "$profile_file" "$profile" "$provider" "$model" "$binding_file" <<'PY_COX_CUSTOM_PROVIDER_REGISTRY_BINDING'
+import json
+import re
+import sys
+from pathlib import Path
+
+registry_path = Path(sys.argv[1]).expanduser()
+profile_path = Path(sys.argv[2]).expanduser()
+profile_name = sys.argv[3]
+provider_name = sys.argv[4]
+selected_model = sys.argv[5]
+output_path = Path(sys.argv[6])
+
+
+def slug(value: str) -> str:
+    result = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip().lower()).strip("-._")
+    return result or "custom-provider"
+
+
+def fail(code: str, detail: str = "") -> None:
+    suffix = f":{detail}" if detail else ""
+    print(f"CodeXchange: {code}{suffix}", file=sys.stderr)
+    raise SystemExit(70)
+
+
+if not registry_path.is_file():
+    fail("custom_provider_registry_missing", str(registry_path))
+try:
+    registry = json.loads(registry_path.read_text(encoding="utf-8") or "{}")
+except Exception:
+    fail("custom_provider_registry_invalid", str(registry_path))
+providers = registry.get("providers") if isinstance(registry, dict) else None
+if not isinstance(providers, dict):
+    fail("custom_provider_registry_invalid", str(registry_path))
+
+candidate_ids: list[tuple[str, str]] = []
+try:
+    import tomllib
+
+    profile_data = tomllib.loads(profile_path.read_text(encoding="utf-8"))
+except Exception:
+    profile_data = {}
+catalog_value = profile_data.get("model_catalog_json") if isinstance(profile_data, dict) else None
+if isinstance(catalog_value, str) and catalog_value.strip():
+    catalog_path = Path(catalog_value).expanduser()
+    if not catalog_path.is_absolute():
+        catalog_path = profile_path.parent / catalog_path
+    if catalog_path.is_file():
+        try:
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8") or "{}")
+        except Exception:
+            fail("custom_provider_model_catalog_invalid", str(catalog_path))
+        catalog_ids: set[str] = set()
+        for item in catalog.get("models", []) if isinstance(catalog, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            item_model = str(item.get("id") or item.get("model") or item.get("name") or item.get("slug") or "").strip()
+            if item_model != selected_model:
+                continue
+            provider_id = str(item.get("provider_id") or "").strip()
+            if provider_id:
+                catalog_ids.add(slug(provider_id))
+        if len(catalog_ids) > 1:
+            fail("custom_provider_registry_binding_ambiguous", "model_catalog")
+        for provider_id in sorted(catalog_ids):
+            candidate_ids.append(("model_catalog", provider_id))
+
+candidate_ids.extend(
+    [
+        ("profile", slug(profile_name)),
+        ("provider", slug(provider_name.removesuffix("-proxy"))),
+    ]
+)
+matched: dict[str, dict] = {}
+for _source, provider_id in candidate_ids:
+    entry = providers.get(provider_id)
+    if isinstance(entry, dict):
+        matched[provider_id] = entry
+
+if not matched:
+    fail("custom_provider_registry_entry_not_found", slug(profile_name))
+if len(matched) > 1:
+    fail("custom_provider_registry_binding_ambiguous", ",".join(sorted(matched)))
+provider_id, entry = next(iter(matched.items()))
+entry_type = str(entry.get("type") or "custom_openai_compatible").strip()
+if entry_type != "custom_openai_compatible":
+    fail("custom_provider_registry_entry_type_invalid", provider_id)
+base_url = str(entry.get("base_url") or "").strip().rstrip("/")
+api_key = str(entry.get("api_key") or "")
+if not base_url:
+    fail("custom_provider_registry_base_url_missing", provider_id)
+if not api_key:
+    fail("custom_provider_registry_api_key_missing", provider_id)
+if not selected_model:
+    fail("custom_provider_profile_model_missing", provider_id)
+registered_models = {
+    str(value).strip()
+    for value in entry.get("models", [])
+    if isinstance(value, str) and value.strip()
+} if isinstance(entry.get("models"), list) else set()
+active_model = str(entry.get("active_model") or "").strip()
+if selected_model not in registered_models and selected_model != active_model:
+    fail("custom_provider_profile_model_not_registered", provider_id)
+
+values = (
+    ("COX_MODEL_PROVIDER", "custom"),
+    ("COX_CUSTOM_PROVIDER_NAME", provider_id),
+    ("COX_MODEL_BASE_URL", base_url),
+    ("COX_MODEL_API_KEY", api_key),
+    ("COX_MODEL", selected_model),
+    ("COX_MODEL_PROVIDER_REGISTRY", str(registry_path)),
+)
+payload = bytearray()
+for key, value in values:
+    if "\x00" in value:
+        fail("custom_provider_registry_value_invalid", key)
+    payload.extend(key.encode("utf-8"))
+    payload.append(0)
+    payload.extend(value.encode("utf-8"))
+    payload.append(0)
+try:
+    output_path.write_bytes(bytes(payload))
+except Exception:
+    fail("custom_provider_registry_binding_state_write_failed", str(output_path))
+PY_COX_CUSTOM_PROVIDER_REGISTRY_BINDING
+  then
+    rm -f -- "$binding_file"
+    echo "CodeXchange: custom provider registry binding failed for profile '${profile}'." >&2
+    echo "CodeXchange: repair or reinstall the profile before retrying." >&2
+    return 70
+  fi
+
+  while IFS= read -r -d '' key; do
+    if ! IFS= read -r -d '' value; then
+      rm -f -- "$binding_file"
+      echo "CodeXchange: custom provider registry binding state was truncated for profile '${profile}'." >&2
+      return 70
+    fi
+    case "$key" in
+      COX_MODEL_PROVIDER)
+        [ "$seen_provider" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_MODEL_PROVIDER="$value"; seen_provider=1
+        ;;
+      COX_CUSTOM_PROVIDER_NAME)
+        [ "$seen_name" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_CUSTOM_PROVIDER_NAME="$value"; seen_name=1
+        ;;
+      COX_MODEL_BASE_URL)
+        [ "$seen_base_url" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_MODEL_BASE_URL="$value"; seen_base_url=1
+        ;;
+      COX_MODEL_API_KEY)
+        [ "$seen_api_key" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_MODEL_API_KEY="$value"; seen_api_key=1
+        ;;
+      COX_MODEL)
+        [ "$seen_model" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_MODEL="$value"; seen_model=1
+        ;;
+      COX_MODEL_PROVIDER_REGISTRY)
+        [ "$seen_registry" -eq 0 ] || { rm -f -- "$binding_file"; echo "CodeXchange: duplicate custom provider binding field." >&2; return 70; }
+        export COX_MODEL_PROVIDER_REGISTRY="$value"; seen_registry=1
+        ;;
+      *)
+        rm -f -- "$binding_file"
+        echo "CodeXchange: custom provider registry binding returned an unsupported field." >&2
+        return 70
+        ;;
+    esac
+  done <"$binding_file"
+  rm -f -- "$binding_file"
+
+  if [ "$seen_provider" -ne 1 ] || [ "$seen_name" -ne 1 ] || [ "$seen_base_url" -ne 1 ] \
+    || [ "$seen_api_key" -ne 1 ] || [ "$seen_model" -ne 1 ] || [ "$seen_registry" -ne 1 ]; then
+    echo "CodeXchange: custom provider registry binding was incomplete for profile '${profile}'." >&2
+    return 70
+  fi
+}
+
 __codexchange_start_local_proxy() (
-  local port profile model provider pricing_provider_id pricing_mode pricing_provider_path
+  local port profile model provider pricing_provider_id pricing_mode pricing_provider_path profile_file
   local install_dir python_bin log_dir log_file state_dir pid_file safe_profile route i
   local start_args=()
   port="$1"; profile="$2"; model="$3"; provider="$4"
   pricing_provider_id="${5:-}"
   pricing_mode="${6:-}"
   pricing_provider_path="${7:-}"
+  profile_file="${8:-}"
 
-  # Load configured proxy secrets and defaults only inside this isolated
-  # startup subprocess. Profile-specific runtime identity below overrides any
-  # stale active-profile values from the shared environment file.
+  # Load configured proxy defaults only inside this isolated startup
+  # subprocess. Custom-provider credentials are rebound from the selected
+  # profile's registry entry below and never depend on global activation.
   __codexchange_source_env_file
   export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,::1}"
   export no_proxy="${no_proxy:-$NO_PROXY}"
@@ -371,17 +572,6 @@ __codexchange_start_local_proxy() (
       ;;
   esac
 
-  if [ -n "$provider" ] && [ "${provider%deepseek*}" = "$provider" ]; then
-    export COX_MODEL_PROVIDER=custom
-    case "$provider" in
-      *-proxy) export COX_CUSTOM_PROVIDER_NAME="${provider%-proxy}" ;;
-      *) export COX_CUSTOM_PROVIDER_NAME="$provider" ;;
-    esac
-  else
-    export COX_MODEL_PROVIDER=deepseek
-    unset COX_CUSTOM_PROVIDER_NAME
-  fi
-
   install_dir="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
   python_bin="${install_dir}/.venv/bin/python"
   if [ ! -x "$python_bin" ]; then
@@ -395,6 +585,24 @@ __codexchange_start_local_proxy() (
     echo "CodeXchange: cannot start local proxy; python3 not found" >&2
     return 70
   fi
+
+  if [ -z "$provider" ] || [ "${provider%deepseek*}" != "$provider" ]; then
+    export COX_MODEL_PROVIDER=deepseek
+    unset COX_CUSTOM_PROVIDER_NAME
+  elif [ "$provider" = "cox-proxy" ]; then
+    # The managed cox profile intentionally follows the provider explicitly
+    # activated in the shared env. Named custom-provider profiles use their
+    # own provider alias and are rebound from the registry below.
+    :
+  else
+    if [ -z "$profile_file" ] || [ ! -f "$profile_file" ]; then
+      echo "CodeXchange: custom provider profile file is missing for profile '${profile}'." >&2
+      return 70
+    fi
+    __codexchange_bind_custom_provider_registry_entry \
+      "$python_bin" "$profile_file" "$profile" "$provider" "$model" || return $?
+  fi
+
   export PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}"
   log_dir="${COX_LOG_DIR:-$HOME/.cache/codexchange}"
   state_dir="${COX_STATE_DIR:-$HOME/.local/state/codexchange}"
@@ -495,7 +703,8 @@ __codexchange_profile_runtime_autostart() (
     "$provider" \
     "${__codexchange_profile_pricing_provider_id:-}" \
     "${__codexchange_profile_pricing_mode:-}" \
-    "${__codexchange_profile_pricing_provider_path:-}"
+    "${__codexchange_profile_pricing_provider_path:-}" \
+    "$profile_file"
 )
 
 # BEGIN COX UNIFIED INVOCATION-MODE DISPATCH
