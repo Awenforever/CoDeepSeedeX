@@ -198,7 +198,7 @@ def test_wrapper_delegates_isolated_startup_to_cli_and_emits_exact_recovery_comm
     assert "exec \"$python_bin\" -m uvicorn" not in function_body
     assert "--owner-profile" in function_body
     assert "profile-${safe_profile}-proxy-${port}.pid" in function_body
-    assert "__codexchange_source_env_file" in function_body
+    assert "__codexchange_load_env_file_data" in function_body
     assert "recovery command: cox stop --port ${port}" in text
 
 

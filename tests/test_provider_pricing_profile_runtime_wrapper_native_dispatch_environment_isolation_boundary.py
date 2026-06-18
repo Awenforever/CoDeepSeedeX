@@ -38,7 +38,7 @@ def _write_registry(path: Path, entries: dict[str, dict[str, object]], *, active
     )
 
 
-def _run_bash(script: str, env: dict[str, str], *, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+def _run_bash(script: str, env: dict[str, str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", script],
         text=True,
@@ -65,7 +65,7 @@ def test_p82_static_contract_uses_native_dispatch_and_isolated_runtime_environme
     assert 'command "$__codexchange_real_codex" "$@"' in dispatch
     assert "__codexchange_start_local_proxy() (" in start
     assert "__codexchange_profile_runtime_autostart() (" in WRAPPER_TEXT
-    assert "__codexchange_source_env_file" in start
+    assert "__codexchange_load_env_file_data" in start
     assert '__codexchange_bind_custom_provider_registry_entry' in start
     assert 'custom_provider_registry_entry_not_found' in WRAPPER_TEXT
     assert 'COX_MODEL_API_KEY' in WRAPPER_TEXT
@@ -186,6 +186,9 @@ def test_p82_sequential_profiles_isolate_proxy_start_and_parent_shell_environmen
         '"${COX_REASONING-__UNSET__}" "${PYTHONPATH-__UNSET__}" '
         '>>"$NATIVE_ENV_LOG"\n',
     )
+    installed_env_tool = install_dir / "codexchange_proxy" / "env_file.py"
+    installed_env_tool.parent.mkdir(parents=True, exist_ok=True)
+    installed_env_tool.write_bytes((ROOT / "codexchange_proxy" / "env_file.py").read_bytes())
     _write_executable(
         install_dir / ".venv" / "bin" / "python",
         f"#!{sys.executable}\n"

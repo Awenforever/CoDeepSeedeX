@@ -3555,10 +3555,8 @@ write_cox_wrapper() {
   cat > "$BIN_DIR/cox" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-ENV_FILE="\${COX_ENV_FILE:-$ENV_FILE}"
-if [ -f "\$ENV_FILE" ]; then
-  source "\$ENV_FILE"
-fi
+# The Python CLI reads the CodeXchange env file strictly as data. The launcher
+# must never source or evaluate configuration before entering the CLI.
 exec "$INSTALL_DIR/.venv/bin/cox" "\$@"
 EOF
 

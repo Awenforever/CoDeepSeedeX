@@ -6,6 +6,36 @@ export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
 
 PROJECT="${COX_PROJECT:-$HOME/projects/codexchange}"
 ENV_FILE="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
+
+
+load_env_file_data() {
+  local python_bin payload_file key value
+  python_bin="$PROJECT/.venv/bin/python"
+  if [ ! -x "$python_bin" ]; then
+    echo "ERROR: missing CodeXchange Python runtime: $python_bin" >&2
+    return 1
+  fi
+  if ! payload_file="$(umask 077; mktemp "${TMPDIR:-/tmp}/cox-env-data.XXXXXX")"; then
+    echo "ERROR: cannot create secure env data state" >&2
+    return 1
+  fi
+  if ! PYTHONPATH="$PROJECT${PYTHONPATH:+:$PYTHONPATH}" \
+    "$python_bin" "$PROJECT/codexchange_proxy/env_file.py" emit-runtime-nul "$ENV_FILE" >"$payload_file"; then
+    rm -f "$payload_file"
+    echo "ERROR: env file is not valid inert configuration data: $ENV_FILE" >&2
+    return 1
+  fi
+  while IFS= read -r -d '' key; do
+    if ! IFS= read -r -d '' value; then
+      rm -f "$payload_file"
+      echo "ERROR: truncated env data payload" >&2
+      return 1
+    fi
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done <"$payload_file"
+  rm -f "$payload_file"
+}
 LOG_FILE="$PROJECT/proxy.log"
 PID_FILE="$PROJECT/proxy.pid"
 PORT="8000"
@@ -19,7 +49,7 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-source "$ENV_FILE"
+load_env_file_data
 
 cd "$PROJECT"
 mkdir -p .tmp

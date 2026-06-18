@@ -320,14 +320,58 @@ PY_COX_RUNTIME_IDENTITY
 }
 
 
-__codexchange_source_env_file() {
-  local env_file
+__codexchange_load_env_file_data() {
+  local python_bin install_dir env_file payload_file key value
+  python_bin="$1"
+  install_dir="$2"
   env_file="${COX_ENV_FILE:-$HOME/.config/codexchange/env}"
   [ -f "$env_file" ] || return 0
-  set -a
-  # shellcheck disable=SC1090
-  . "$env_file"
-  set +a
+
+  if ! payload_file="$(umask 077; mktemp "${TMPDIR:-/tmp}/cox-env-data.XXXXXX")"; then
+    echo "CodeXchange: cannot create secure env data state." >&2
+    return 70
+  fi
+  if ! PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}" \
+    "$python_bin" - "$install_dir/codexchange_proxy/env_file.py" "$env_file" >"$payload_file" <<'PY_COX_ENV_FILE_DATA_LOADER'
+import importlib.util
+import sys
+from pathlib import Path
+
+module_path = Path(sys.argv[1])
+env_path = Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("codexchange_env_file_data", module_path)
+if spec is None or spec.loader is None:
+    print("CodeXchange: env data parser is unavailable", file=sys.stderr)
+    raise SystemExit(70)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+try:
+    module.emit_runtime_nul(env_path)
+except module.EnvFileParseError as exc:
+    print(f"CodeXchange: invalid env data at line {exc.line_number}", file=sys.stderr)
+    raise SystemExit(70)
+except OSError as exc:
+    print(f"CodeXchange: cannot read env data: {exc}", file=sys.stderr)
+    raise SystemExit(70)
+PY_COX_ENV_FILE_DATA_LOADER
+  then
+    rm -f "$payload_file"
+    echo "CodeXchange: env file is not valid inert configuration data: ${env_file}" >&2
+    return 70
+  fi
+
+  while IFS= read -r -d '' key; do
+    if ! IFS= read -r -d '' value; then
+      rm -f "$payload_file"
+      echo "CodeXchange: truncated env data payload." >&2
+      return 70
+    fi
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done <"$payload_file"
+  rm -f "$payload_file"
+  return 0
 }
 
 __codexchange_custom_provider_registry_path() {
@@ -540,10 +584,26 @@ __codexchange_start_local_proxy() (
   pricing_provider_path="${7:-}"
   profile_file="${8:-}"
 
+  install_dir="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
+  python_bin="${install_dir}/.venv/bin/python"
+  if [ ! -x "$python_bin" ]; then
+    if [ -x "$PWD/.venv/bin/python" ] && [ -d "$PWD/codexchange_proxy" ]; then
+      python_bin="$PWD/.venv/bin/python"; install_dir="$PWD"
+    else
+      python_bin="$(command -v python3 || true)"
+    fi
+  fi
+  if [ -z "$python_bin" ]; then
+    echo "CodeXchange: cannot start local proxy; python3 not found" >&2
+    return 70
+  fi
+  export PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}"
+
   # Load configured proxy defaults only inside this isolated startup
-  # subprocess. Custom-provider credentials are rebound from the selected
-  # profile's registry entry below and never depend on global activation.
-  __codexchange_source_env_file
+  # subprocess, using the Python data parser rather than shell evaluation.
+  # Custom-provider credentials are rebound from the selected profile's
+  # registry entry below and never depend on global activation.
+  __codexchange_load_env_file_data "$python_bin" "$install_dir" || return $?
   export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,::1}"
   export no_proxy="${no_proxy:-$NO_PROXY}"
   export COX_PORT="$port"
@@ -572,20 +632,6 @@ __codexchange_start_local_proxy() (
       ;;
   esac
 
-  install_dir="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
-  python_bin="${install_dir}/.venv/bin/python"
-  if [ ! -x "$python_bin" ]; then
-    if [ -x "$PWD/.venv/bin/python" ] && [ -d "$PWD/codexchange_proxy" ]; then
-      python_bin="$PWD/.venv/bin/python"; install_dir="$PWD"
-    else
-      python_bin="$(command -v python3 || true)"
-    fi
-  fi
-  if [ -z "$python_bin" ]; then
-    echo "CodeXchange: cannot start local proxy; python3 not found" >&2
-    return 70
-  fi
-
   if [ -z "$provider" ] || [ "${provider%deepseek*}" != "$provider" ]; then
     export COX_MODEL_PROVIDER=deepseek
     unset COX_CUSTOM_PROVIDER_NAME
@@ -603,7 +649,6 @@ __codexchange_start_local_proxy() (
       "$python_bin" "$profile_file" "$profile" "$provider" "$model" || return $?
   fi
 
-  export PYTHONPATH="${install_dir}${PYTHONPATH:+:$PYTHONPATH}"
   log_dir="${COX_LOG_DIR:-$HOME/.cache/codexchange}"
   state_dir="${COX_STATE_DIR:-$HOME/.local/state/codexchange}"
   mkdir -p "$log_dir" "$state_dir"

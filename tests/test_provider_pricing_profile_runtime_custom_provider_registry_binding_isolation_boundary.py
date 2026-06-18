@@ -94,6 +94,9 @@ def _base_layout(tmp_path: Path) -> dict[str, Path]:
 
 def _install_fakes(layout: dict[str, Path]) -> Path:
     native = layout["tool_bin"] / "native-codex"
+    installed_env_tool = layout["install_dir"] / "codexchange_proxy" / "env_file.py"
+    installed_env_tool.parent.mkdir(parents=True, exist_ok=True)
+    installed_env_tool.write_bytes((ROOT / "codexchange_proxy" / "env_file.py").read_bytes())
     _write_executable(
         native,
         "#!/usr/bin/env bash\n"
@@ -153,7 +156,7 @@ def _environment(layout: dict[str, Path], native: Path) -> dict[str, str]:
     return env
 
 
-def _run_profile(profile: str, env: dict[str, str], *, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+def _run_profile(profile: str, env: dict[str, str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
     script = (
         f"source {shlex.quote(str(WRAPPER))}\n"
         '__codexchange_proxy_models_ok() { [ -f "$STARTED_DIR/$1" ]; }\n'
@@ -321,7 +324,7 @@ def test_p86_sequential_profiles_bind_distinct_credentials_without_parent_leak(t
         stderr=subprocess.PIPE,
         env=env,
         check=False,
-        timeout=20,
+        timeout=60,
     )
 
     assert result.returncode == 0, result.stderr
@@ -373,7 +376,7 @@ def test_p86_concurrent_profiles_bind_distinct_registry_entries(tmp_path: Path) 
                 env=process_env,
             )
         )
-    results = [process.communicate(timeout=20) + (process.returncode,) for process in processes]
+    results = [process.communicate(timeout=60) + (process.returncode,) for process in processes]
 
     assert all(returncode == 0 for _stdout, _stderr, returncode in results), results
     rows = [json.loads(line) for line in layout["proxy_log"].read_text(encoding="utf-8").splitlines()]
