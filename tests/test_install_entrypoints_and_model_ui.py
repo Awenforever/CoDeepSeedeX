@@ -1042,9 +1042,20 @@ def test_p219a1_installer_custom_provider_registry_contract() -> None:
     assert "Custom Provider · Provider name" in text
     assert "Provider name is only for your display and switching; it is not sent upstream." in text
 
+    assert "custom_provider_registry_transaction()" in text
     assert "write_model_provider_registry()" in text
     assert "model-providers.json" in text
     assert "custom_openai_compatible" in text
+    assert 'path.with_name(f".{path.name}.lock")' in text
+    assert "fcntl.flock(lock_fd, fcntl.LOCK_EX)" in text
+    assert "tempfile.mkstemp" in text
+    assert "os.fchmod(fd, 0o600)" in text
+    assert "os.replace(temporary, path)" in text
+    registry_start = text.index("custom_provider_registry_transaction() {")
+    registry_end = text.index("\nmodel_api_key_state_label() {", registry_start)
+    registry_contract = text[registry_start:registry_end]
+    assert "path.write_text(json.dumps(data" not in registry_contract
+    assert "os.chmod(path, 0o600)" not in registry_contract
     assert "COX_CUSTOM_PROVIDER_NAME" in text
     assert "COX_MODEL_PROVIDER_REGISTRY" in text
 

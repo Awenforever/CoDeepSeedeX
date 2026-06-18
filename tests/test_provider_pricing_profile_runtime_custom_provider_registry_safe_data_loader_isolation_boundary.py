@@ -14,7 +14,7 @@ INSTALLER = ROOT / "scripts" / "install.sh"
 
 def _function_text() -> str:
     text = INSTALLER.read_text(encoding="utf-8")
-    start = text.index("apply_custom_provider_from_registry() {")
+    start = text.index("custom_provider_registry_transaction() {")
     end = text.index("\nprompt_custom_provider_name_field() {", start)
     return text[start:end]
 

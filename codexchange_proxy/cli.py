@@ -14,6 +14,7 @@ import signal
 import shlex
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -7005,13 +7006,16 @@ def _custom_provider_registry_slug(value: str) -> str:
     return slug or "custom-provider"
 
 
-def _read_custom_provider_registry(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"version": 1, "active_provider": None, "providers": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8") or "{}")
-    except Exception:
-        data = {}
+
+class _CustomProviderRegistryStorageError(ValueError):
+    pass
+
+
+def _custom_provider_registry_default() -> dict[str, Any]:
+    return {"version": 1, "active_provider": None, "providers": {}}
+
+
+def _custom_provider_registry_normalize(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     providers = data.get("providers")
@@ -7023,13 +7027,206 @@ def _read_custom_provider_registry(path: Path) -> dict[str, Any]:
     return data
 
 
-def _write_custom_provider_registry(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def _custom_provider_registry_lock_path(path: Path) -> Path:
+    return path.with_name(f".{path.name}.lock")
+
+
+def _custom_provider_registry_open_regular(path: Path) -> int:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
-        path.chmod(0o600)
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise _CustomProviderRegistryStorageError(
+            f"custom_provider_registry_open_failed:{type(exc).__name__}"
+        ) from exc
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_not_regular_file"
+            )
+        if metadata.st_nlink != 1:
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_multiple_links_not_allowed"
+            )
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def _custom_provider_registry_read_unlocked(
+    path: Path,
+    *,
+    strict: bool,
+) -> dict[str, Any]:
+    try:
+        fd = _custom_provider_registry_open_regular(path)
+    except FileNotFoundError:
+        return _custom_provider_registry_default()
+    try:
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        raise _CustomProviderRegistryStorageError(
+            f"custom_provider_registry_read_failed:{type(exc).__name__}"
+        ) from exc
+    try:
+        data = json.loads(raw or "{}")
+    except Exception as exc:
+        if strict:
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_invalid_json"
+            ) from exc
+        return _custom_provider_registry_default()
+    return _custom_provider_registry_normalize(data)
+
+
+def _custom_provider_registry_lock_exclusive(fd: int) -> None:
+    try:
+        import fcntl
+    except ImportError as exc:  # pragma: no cover - supported installer targets are POSIX
+        raise _CustomProviderRegistryStorageError(
+            "custom_provider_registry_locking_unavailable"
+        ) from exc
+    fcntl.flock(fd, fcntl.LOCK_EX)
+
+
+def _custom_provider_registry_unlock(fd: int) -> None:
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover
+        return
+    fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _custom_provider_registry_acquire_lock(path: Path) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = _custom_provider_registry_lock_path(path)
+    flags = os.O_RDWR | os.O_CREAT
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise _CustomProviderRegistryStorageError(
+            f"custom_provider_registry_lock_open_failed:{type(exc).__name__}"
+        ) from exc
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_lock_not_regular_file"
+            )
+        if metadata.st_nlink != 1:
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_lock_multiple_links_not_allowed"
+            )
+        os.fchmod(fd, 0o600)
+        _custom_provider_registry_lock_exclusive(fd)
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def _custom_provider_registry_fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
     except OSError:
         pass
+    finally:
+        os.close(fd)
+
+
+def _custom_provider_registry_atomic_write_unlocked(
+    path: Path,
+    data: dict[str, Any],
+) -> None:
+    payload = (
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
+    fd = -1
+    temporary: str | None = None
+    try:
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{path.name}.tmp-",
+            dir=str(path.parent),
+        )
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb", closefd=True) as handle:
+            fd = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            current = path.lstat()
+        except FileNotFoundError:
+            current = None
+        if current is not None and (
+            not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+        ):
+            raise _CustomProviderRegistryStorageError(
+                "custom_provider_registry_target_not_private_regular_file"
+            )
+        os.replace(temporary, path)
+        temporary = None
+        _custom_provider_registry_fsync_directory(path.parent)
+    except _CustomProviderRegistryStorageError:
+        raise
+    except OSError as exc:
+        raise _CustomProviderRegistryStorageError(
+            f"custom_provider_registry_atomic_write_failed:{type(exc).__name__}"
+        ) from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
+def _update_custom_provider_registry(
+    path: Path,
+    updater: Any,
+) -> dict[str, Any]:
+    expanded = path.expanduser()
+    lock_fd = _custom_provider_registry_acquire_lock(expanded)
+    try:
+        data = _custom_provider_registry_read_unlocked(expanded, strict=True)
+        updated = updater(data)
+        if updated is None:
+            updated = data
+        normalized = _custom_provider_registry_normalize(updated)
+        _custom_provider_registry_atomic_write_unlocked(expanded, normalized)
+        return normalized
+    finally:
+        _custom_provider_registry_unlock(lock_fd)
+        os.close(lock_fd)
+
+
+def _read_custom_provider_registry(path: Path) -> dict[str, Any]:
+    return _custom_provider_registry_read_unlocked(path.expanduser(), strict=False)
+
+
+
+
+def _write_custom_provider_registry(path: Path, data: dict[str, Any]) -> None:
+    snapshot = _custom_provider_registry_normalize(data)
+    _update_custom_provider_registry(path, lambda _current: snapshot)
+
 
 
 def _redact_custom_provider_registry(data: dict[str, Any]) -> dict[str, Any]:
@@ -7049,6 +7246,7 @@ def _redact_custom_provider_registry(data: dict[str, Any]) -> dict[str, Any]:
     return redacted
 
 
+
 def _upsert_custom_provider_registry_entry(
     path: Path,
     *,
@@ -7062,38 +7260,41 @@ def _upsert_custom_provider_registry_entry(
     base_url = _normalize_openai_base_url_value(base_url or "")
     model = _clean_wizard_input_value(model or "")
     provider_id = _custom_provider_registry_slug(display_name)
-    data = _read_custom_provider_registry(path)
-    providers = data.setdefault("providers", {})
-    entry = providers.get(provider_id)
-    if not isinstance(entry, dict):
-        entry = {}
-    models = entry.get("models")
-    if not isinstance(models, list):
-        models = []
-    if model and model not in models:
-        models.append(model)
-    capabilities = entry.get("capabilities")
-    if not isinstance(capabilities, dict):
-        capabilities = {}
-    capabilities.setdefault("reasoning_effort", ["high"])
-    capabilities.setdefault("reasoning_effort_max", False)
-    entry.update({
-        "id": provider_id,
-        "type": "custom_openai_compatible",
-        "display_name": display_name,
-        "base_url": base_url,
-        "active_model": model,
-        "models": models,
-        "capabilities": capabilities,
-    })
-    if api_key:
-        entry["api_key"] = api_key
-    providers[provider_id] = entry
-    data["version"] = 1
-    if make_active:
-        data["active_provider"] = provider_id
-    _write_custom_provider_registry(path, data)
-    return data
+
+    def updater(data: dict[str, Any]) -> dict[str, Any]:
+        providers = data.setdefault("providers", {})
+        entry = providers.get(provider_id)
+        if not isinstance(entry, dict):
+            entry = {}
+        models = entry.get("models")
+        if not isinstance(models, list):
+            models = []
+        if model and model not in models:
+            models.append(model)
+        capabilities = entry.get("capabilities")
+        if not isinstance(capabilities, dict):
+            capabilities = {}
+        capabilities.setdefault("reasoning_effort", ["high"])
+        capabilities.setdefault("reasoning_effort_max", False)
+        entry.update({
+            "id": provider_id,
+            "type": "custom_openai_compatible",
+            "display_name": display_name,
+            "base_url": base_url,
+            "active_model": model,
+            "models": models,
+            "capabilities": capabilities,
+        })
+        if api_key:
+            entry["api_key"] = api_key
+        providers[provider_id] = entry
+        data["version"] = 1
+        if make_active:
+            data["active_provider"] = provider_id
+        return data
+
+    return _update_custom_provider_registry(path, updater)
+
 
 
 def _custom_provider_registry_status(env_file: Path, values: dict[str, str]) -> dict[str, Any]:
@@ -7368,6 +7569,7 @@ def _remove_custom_provider_codex_profile(
         "legacy_profile_selector_removed": cleanup["legacy_profile_selector_removed"],
     }
 
+
 def _apply_custom_provider_registry_entry(
     env_file: Path,
     *,
@@ -7378,20 +7580,37 @@ def _apply_custom_provider_registry_entry(
     sync_profile: bool = True,
 ) -> dict[str, Any]:
     path = _model_provider_registry_path(env_file)
-    data = _read_custom_provider_registry(path)
     provider_id = _custom_provider_registry_slug(provider_name)
+    requested_model = _clean_wizard_input_value(model or "")
+
+    def updater(data: dict[str, Any]) -> dict[str, Any]:
+        providers = data.setdefault("providers", {})
+        entry = providers.get(provider_id)
+        if not isinstance(entry, dict):
+            raise ValueError(f"custom_provider_not_found:{provider_name}")
+        selected_model = _clean_wizard_input_value(
+            requested_model or entry.get("active_model") or ""
+        )
+        if not selected_model:
+            raise ValueError(f"custom_provider_model_missing:{provider_name}")
+        models = entry.get("models")
+        if not isinstance(models, list):
+            models = []
+        if selected_model not in models:
+            models.append(selected_model)
+        entry["models"] = models
+        entry["active_model"] = selected_model
+        providers[provider_id] = entry
+        data["active_provider"] = provider_id
+        data["version"] = 1
+        return data
+
+    data = _update_custom_provider_registry(path, updater)
     entry = (data.get("providers") or {}).get(provider_id)
     if not isinstance(entry, dict):
         raise ValueError(f"custom_provider_not_found:{provider_name}")
-    selected_model = _clean_wizard_input_value(model or entry.get("active_model") or "")
-    if not selected_model:
-        raise ValueError(f"custom_provider_model_missing:{provider_name}")
-    models = entry.setdefault("models", [])
-    if selected_model not in models:
-        models.append(selected_model)
-    entry["active_model"] = selected_model
-    data["active_provider"] = provider_id
-    _write_custom_provider_registry(path, data)
+    selected_model = _clean_wizard_input_value(entry.get("active_model") or "")
+    models = entry.get("models") if isinstance(entry.get("models"), list) else []
 
     values = _read_env_exports(env_file)
     values["COX_MODEL_PROVIDER"] = "custom"
@@ -7437,21 +7656,22 @@ def _apply_custom_provider_registry_entry(
             "status": "skipped",
             "reason": "custom_provider_profiles_are_provider_backed",
             "target_profiles": [],
-            "deprecated_legacy_profiles": list(COX_LEGACY_CODEX_PROFILES),
         }
     else:
-        output["codex_profile_sync"] = {
-            "status": "skipped",
-            "reason": "non_default_env_file_without_codex_config" if codex_config is None else "profile_sync_disabled",
-            "env_file": str(env_file),
-        }
-        output["managed_codex_profile_sync"] = {
+        output["provider_codex_profile_sync"] = {
             "status": "skipped",
             "reason": "profile_sync_disabled",
             "target_profiles": [],
             "deprecated_legacy_profiles": list(COX_LEGACY_CODEX_PROFILES),
         }
+        output["codex_profile_sync"] = output["provider_codex_profile_sync"]
+        output["managed_codex_profile_sync"] = {
+            "status": "skipped",
+            "reason": "custom_provider_profiles_are_provider_backed",
+            "target_profiles": [],
+        }
     return output
+
 
 
 def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) -> int:
@@ -7459,7 +7679,15 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
     action = getattr(args, "custom_provider_action", "list")
     name = (getattr(args, "name", "") or "").strip()
     provider_id = _custom_provider_registry_slug(name)
-    data = _read_custom_provider_registry(path)
+    try:
+        data = _read_custom_provider_registry(path)
+    except _CustomProviderRegistryStorageError as exc:
+        print(json.dumps({
+            "status": "error",
+            "error": str(exc),
+            "registry_path": str(path),
+        }, ensure_ascii=False, indent=2))
+        return 1
     providers = data.setdefault("providers", {})
     entry = providers.get(provider_id) if name else None
 
@@ -7560,12 +7788,28 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
         if not isinstance(entry, dict):
             print(json.dumps({"status": "error", "error": "custom_provider_not_found", "provider_name": name}, ensure_ascii=False, indent=2))
             return 1
-        models = entry.setdefault("models", [])
-        if model not in models:
-            models.append(model)
-        if getattr(args, "use", False):
-            entry["active_model"] = model
-        _write_custom_provider_registry(path, data)
+        use_model = bool(getattr(args, "use", False))
+
+        def add_model_updater(current: dict[str, Any]) -> dict[str, Any]:
+            current_providers = current.setdefault("providers", {})
+            current_entry = current_providers.get(provider_id)
+            if not isinstance(current_entry, dict):
+                raise ValueError(f"custom_provider_not_found:{name}")
+            current_models = current_entry.get("models")
+            if not isinstance(current_models, list):
+                current_models = []
+            if model not in current_models:
+                current_models.append(model)
+            current_entry["models"] = current_models
+            if use_model:
+                current_entry["active_model"] = model
+                current["active_provider"] = provider_id
+            current_providers[provider_id] = current_entry
+            return current
+
+        data = _update_custom_provider_registry(path, add_model_updater)
+        entry = (data.get("providers") or {}).get(provider_id, {})
+        models = entry.get("models", []) if isinstance(entry, dict) else []
         output = {"status": "ok", "registry_path": str(path), "provider_id": provider_id, "provider_name": entry.get("display_name") or name, "models": models, "active_model": entry.get("active_model")}
         if getattr(args, "use", False):
             output["activated"] = _apply_custom_provider_registry_entry(env_file, provider_name=name, model=model, profile_name=getattr(args, "profile_name", None), codex_config=getattr(args, "codex_config", None), sync_profile=not bool(getattr(args, "no_profile_sync", False)))
@@ -7580,17 +7824,33 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
         if not isinstance(entry, dict):
             print(json.dumps({"status": "error", "error": "custom_provider_not_found", "provider_name": name}, ensure_ascii=False, indent=2))
             return 1
-        models = [m for m in entry.get("models", []) if m != model]
-        if len(models) == len(entry.get("models", [])):
-            print(json.dumps({"status": "error", "error": "model_not_found", "provider_name": name, "model": model}, ensure_ascii=False, indent=2))
+        def remove_model_updater(current: dict[str, Any]) -> dict[str, Any]:
+            current_providers = current.setdefault("providers", {})
+            current_entry = current_providers.get(provider_id)
+            if not isinstance(current_entry, dict):
+                raise ValueError(f"custom_provider_not_found:{name}")
+            before_models = current_entry.get("models")
+            if not isinstance(before_models, list):
+                before_models = []
+            current_models = [item for item in before_models if item != model]
+            if len(current_models) == len(before_models):
+                raise ValueError("model_not_found")
+            if not current_models:
+                raise ValueError("cannot_remove_last_model_use_remove_provider")
+            current_entry["models"] = current_models
+            if current_entry.get("active_model") == model:
+                current_entry["active_model"] = current_models[0]
+            current_providers[provider_id] = current_entry
+            return current
+
+        try:
+            data = _update_custom_provider_registry(path, remove_model_updater)
+        except ValueError as exc:
+            error = str(exc)
+            print(json.dumps({"status": "error", "error": error, "provider_name": name, "model": model}, ensure_ascii=False, indent=2))
             return 1
-        if not models:
-            print(json.dumps({"status": "error", "error": "cannot_remove_last_model_use_remove_provider", "provider_name": name, "model": model}, ensure_ascii=False, indent=2))
-            return 1
-        entry["models"] = models
-        if entry.get("active_model") == model:
-            entry["active_model"] = models[0]
-        _write_custom_provider_registry(path, data)
+        entry = (data.get("providers") or {}).get(provider_id, {})
+        models = entry.get("models", []) if isinstance(entry, dict) else []
         print(json.dumps({"status": "ok", "registry_path": str(path), "provider_id": provider_id, "provider_name": entry.get("display_name") or name, "removed_model": model, "models": models, "active_model": entry.get("active_model")}, ensure_ascii=False, indent=2))
         return 0
 
@@ -7629,11 +7889,21 @@ def _custom_provider_config_command(args: argparse.Namespace, env_file: Path) ->
         if not name or not isinstance(entry, dict):
             print(json.dumps({"status": "error", "error": "custom_provider_not_found", "provider_name": name}, ensure_ascii=False, indent=2))
             return 1
-        removed = dict(entry)
-        providers.pop(provider_id, None)
-        if data.get("active_provider") == provider_id:
-            data["active_provider"] = None
-        _write_custom_provider_registry(path, data)
+        removed_holder: dict[str, Any] = {}
+
+        def remove_provider_updater(current: dict[str, Any]) -> dict[str, Any]:
+            current_providers = current.setdefault("providers", {})
+            current_entry = current_providers.get(provider_id)
+            if not isinstance(current_entry, dict):
+                raise ValueError(f"custom_provider_not_found:{name}")
+            removed_holder.update(current_entry)
+            current_providers.pop(provider_id, None)
+            if current.get("active_provider") == provider_id:
+                current["active_provider"] = None
+            return current
+
+        data = _update_custom_provider_registry(path, remove_provider_updater)
+        removed = dict(removed_holder)
         profile_remove = None
         if not bool(getattr(args, "no_profile_sync", False)):
             profile_remove = _remove_custom_provider_codex_profile(provider_id=provider_id, profile_name=getattr(args, "profile_name", None), codex_config=getattr(args, "codex_config", None))

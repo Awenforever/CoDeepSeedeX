@@ -1795,6 +1795,252 @@ model_api_provider_type_label() {
   esac
 }
 
+custom_provider_registry_transaction() {
+  local operation="$1"
+  shift
+
+  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$operation" "$@" <<'PYCOX_CUSTOM_PROVIDER_REGISTRY_TRANSACTION_P33A20A94'
+import json
+import os
+import re
+import stat
+import sys
+import tempfile
+from pathlib import Path
+
+try:
+    import fcntl
+except ImportError as exc:
+    print("custom_provider_registry_storage_error:locking_unavailable", file=sys.stderr)
+    raise SystemExit(70) from exc
+
+path = Path(sys.argv[1]).expanduser()
+operation = sys.argv[2]
+arguments = sys.argv[3:]
+
+
+def fail(code: str, status: int = 70) -> None:
+    print(f"custom_provider_registry_storage_error:{code}", file=sys.stderr)
+    raise SystemExit(status)
+
+
+def slug(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-._")
+    return text or "custom-provider"
+
+
+def default_registry() -> dict:
+    return {"version": 1, "active_provider": None, "providers": {}}
+
+
+def normalize(data: object) -> dict:
+    if not isinstance(data, dict):
+        fail("invalid_root")
+    providers = data.get("providers")
+    if providers is None:
+        providers = {}
+    elif not isinstance(providers, dict):
+        fail("invalid_providers")
+    data["providers"] = providers
+    data.setdefault("version", 1)
+    data.setdefault("active_provider", None)
+    return data
+
+
+def open_regular(candidate: Path) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(candidate, flags)
+    except FileNotFoundError:
+        raise
+    except OSError:
+        fail("open_failed")
+    metadata = os.fstat(fd)
+    if not stat.S_ISREG(metadata.st_mode):
+        os.close(fd)
+        fail("not_regular_file")
+    if metadata.st_nlink != 1:
+        os.close(fd)
+        fail("multiple_links_not_allowed")
+    return fd
+
+
+def read_unlocked() -> dict:
+    try:
+        fd = open_regular(path)
+    except FileNotFoundError:
+        return default_registry()
+    try:
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError:
+        fail("read_failed")
+    try:
+        return normalize(json.loads(raw or "{}"))
+    except json.JSONDecodeError:
+        fail("invalid_json")
+
+
+def fsync_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def atomic_write(data: dict) -> None:
+    payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    fd = -1
+    temporary = None
+    try:
+        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=str(path.parent))
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb", closefd=True) as handle:
+            fd = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            current = path.lstat()
+        except FileNotFoundError:
+            current = None
+        if current is not None and (
+            not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+        ):
+            fail("target_not_private_regular_file")
+        os.replace(temporary, path)
+        temporary = None
+        fsync_directory(path.parent)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
+path.parent.mkdir(parents=True, exist_ok=True)
+lock_path = path.with_name(f".{path.name}.lock")
+lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+try:
+    lock_fd = os.open(lock_path, lock_flags, 0o600)
+except OSError:
+    fail("lock_open_failed")
+try:
+    lock_metadata = os.fstat(lock_fd)
+    if not stat.S_ISREG(lock_metadata.st_mode):
+        fail("lock_not_regular_file")
+    if lock_metadata.st_nlink != 1:
+        fail("lock_multiple_links_not_allowed")
+    os.fchmod(lock_fd, 0o600)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    data = read_unlocked()
+    providers = data.setdefault("providers", {})
+
+    assignments = None
+    if operation == "upsert":
+        if len(arguments) != 4:
+            fail("invalid_upsert_arguments")
+        display_name = arguments[0].strip() or "Custom Provider"
+        base_url = arguments[1].strip().rstrip("/")
+        model_name = arguments[2].strip()
+        api_key = arguments[3]
+        provider_id = slug(display_name)
+        entry = providers.get(provider_id)
+        if not isinstance(entry, dict):
+            entry = {}
+        models = entry.get("models")
+        if not isinstance(models, list):
+            models = []
+        if model_name and model_name not in models:
+            models.append(model_name)
+        entry.update({
+            "id": provider_id,
+            "type": "custom_openai_compatible",
+            "display_name": display_name,
+            "base_url": base_url,
+            "active_model": model_name,
+            "models": models,
+        })
+        if api_key:
+            entry["api_key"] = api_key
+        providers[provider_id] = entry
+        data["version"] = 1
+        data["active_provider"] = provider_id
+    elif operation == "select":
+        if len(arguments) != 3:
+            fail("invalid_select_arguments")
+        mode = arguments[0]
+        provider_name = arguments[1].strip()
+        model_name = arguments[2].strip()
+        provider_id = slug(provider_name)
+        entry = providers.get(provider_id)
+        if not isinstance(entry, dict):
+            raise SystemExit(2)
+        models = entry.get("models")
+        if not isinstance(models, list):
+            models = []
+        entry["models"] = models
+        if mode in {"add_model", "switch_model"}:
+            if not model_name:
+                raise SystemExit(3)
+            if model_name not in models:
+                models.append(model_name)
+            entry["active_model"] = model_name
+        elif mode == "use":
+            if model_name:
+                if model_name not in models:
+                    models.append(model_name)
+                entry["active_model"] = model_name
+        else:
+            fail("unsupported_select_mode")
+        active_model = entry.get("active_model") or (models[0] if models else "")
+        if not active_model:
+            raise SystemExit(4)
+        entry["active_model"] = active_model
+        providers[provider_id] = entry
+        data["active_provider"] = provider_id
+        data["version"] = 1
+        assignments = [
+            ("PROMPTED_MODEL_PROVIDER", "custom"),
+            ("PROMPTED_CUSTOM_PROVIDER_NAME", str(entry.get("display_name") or provider_name)),
+            ("PROMPTED_MODEL_BASE_URL", str(entry.get("base_url") or "")),
+            ("PROMPTED_MODEL_NAME", str(active_model)),
+            ("PROMPTED_API_KEY", str(entry.get("api_key") or "")),
+        ]
+    else:
+        fail("unsupported_operation")
+
+    data["providers"] = providers
+    atomic_write(data)
+finally:
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
+
+if assignments is not None:
+    payload = bytearray()
+    for key, value in assignments:
+        if "\x00" in value:
+            fail("nul_value")
+        payload.extend(key.encode("utf-8"))
+        payload.append(0)
+        payload.extend(value.encode("utf-8"))
+        payload.append(0)
+    sys.stdout.buffer.write(payload)
+PYCOX_CUSTOM_PROVIDER_REGISTRY_TRANSACTION_P33A20A94
+}
+
 write_model_provider_registry() {
   local provider="$1"
   local display_name="$2"
@@ -1810,70 +2056,16 @@ write_model_provider_registry() {
   fi
 
   if [ "$DRY_RUN" = "1" ]; then
-    printf '+ write %q with custom provider registry entry for %q\n' "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" >> "$INSTALL_LOG"
+    printf '+ atomically update %q under registry lock for %q\n' "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" >> "$INSTALL_LOG"
     return 0
   fi
 
-  mkdir -p "$(dirname "$MODEL_PROVIDER_REGISTRY_FILE")"
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$display_name" "$base_url" "$model_name" "$api_key" <<'PYCOX_MODEL_PROVIDER_REGISTRY_P219A1'
-import json
-import os
-import re
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-display_name = sys.argv[2].strip() or "Custom Provider"
-base_url = sys.argv[3].strip().rstrip("/")
-model_name = sys.argv[4].strip()
-api_key = sys.argv[5]
-
-def slug(value: str) -> str:
-    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-._")
-    return text or "custom-provider"
-
-provider_id = slug(display_name)
-if path.exists():
-    try:
-        data = json.loads(path.read_text(encoding="utf-8") or "{}")
-    except Exception:
-        data = {}
-else:
-    data = {}
-
-if not isinstance(data, dict):
-    data = {}
-providers = data.setdefault("providers", {})
-if not isinstance(providers, dict):
-    providers = {}
-    data["providers"] = providers
-
-entry = providers.get(provider_id)
-if not isinstance(entry, dict):
-    entry = {}
-models = entry.get("models")
-if not isinstance(models, list):
-    models = []
-if model_name and model_name not in models:
-    models.append(model_name)
-
-entry.update({
-    "id": provider_id,
-    "type": "custom_openai_compatible",
-    "display_name": display_name,
-    "base_url": base_url,
-    "active_model": model_name,
-    "models": models,
-})
-if api_key:
-    entry["api_key"] = api_key
-
-providers[provider_id] = entry
-data["version"] = 1
-data["active_provider"] = provider_id
-path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-os.chmod(path, 0o600)
-PYCOX_MODEL_PROVIDER_REGISTRY_P219A1
+  custom_provider_registry_transaction \
+    "upsert" \
+    "$display_name" \
+    "$base_url" \
+    "$model_name" \
+    "$api_key"
 }
 
 model_api_key_state_label() {
@@ -2094,83 +2286,15 @@ apply_custom_provider_from_registry() {
     return 70
   fi
 
-  "$PYTHON_BIN" - "$MODEL_PROVIDER_REGISTRY_FILE" "$mode" "$provider_name" "$model_name" > "$data_file" <<'PYCOX_APPLY_CUSTOM_PROVIDER_P219A2'
-import json
-import os
-import re
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-mode = sys.argv[2]
-provider_name = (sys.argv[3] or "").strip()
-model_name = (sys.argv[4] or "").strip()
-
-def slug(value: str) -> str:
-    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower()).strip("-._")
-    return text or "custom-provider"
-
-try:
-    data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
-except Exception:
-    data = {}
-providers = data.get("providers") if isinstance(data, dict) else {}
-if not isinstance(providers, dict):
-    providers = {}
-
-provider_id = slug(provider_name)
-entry = providers.get(provider_id)
-if not isinstance(entry, dict):
-    raise SystemExit(2)
-
-models = entry.get("models")
-if not isinstance(models, list):
-    models = []
-entry["models"] = models
-
-if mode in {"add_model", "switch_model"}:
-    if not model_name:
-        raise SystemExit(3)
-    if model_name not in models:
-        models.append(model_name)
-    entry["active_model"] = model_name
-elif mode == "use":
-    if model_name:
-        if model_name not in models:
-            models.append(model_name)
-        entry["active_model"] = model_name
-
-active_model = entry.get("active_model") or (models[0] if models else "")
-if not active_model:
-    raise SystemExit(4)
-entry["active_model"] = active_model
-data["active_provider"] = provider_id
-data["version"] = 1
-providers[provider_id] = entry
-data["providers"] = providers
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-os.chmod(path, 0o600)
-
-assignments = [
-    ("PROMPTED_MODEL_PROVIDER", "custom"),
-    ("PROMPTED_CUSTOM_PROVIDER_NAME", str(entry.get("display_name") or provider_name)),
-    ("PROMPTED_MODEL_BASE_URL", str(entry.get("base_url") or "")),
-    ("PROMPTED_MODEL_NAME", str(entry.get("active_model") or active_model)),
-    ("PROMPTED_API_KEY", str(entry.get("api_key") or "")),
-]
-payload = bytearray()
-for key, value in assignments:
-    if "\x00" in value:
-        raise SystemExit(5)
-    payload.extend(key.encode("utf-8"))
-    payload.append(0)
-    payload.extend(value.encode("utf-8"))
-    payload.append(0)
-sys.stdout.buffer.write(payload)
-PYCOX_APPLY_CUSTOM_PROVIDER_P219A2
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if custom_provider_registry_transaction \
+    "select" \
+    "$mode" \
+    "$provider_name" \
+    "$model_name" \
+    > "$data_file"; then
+    :
+  else
+    local rc=$?
     rm -f -- "$data_file"
     return "$rc"
   fi
