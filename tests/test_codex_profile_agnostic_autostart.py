@@ -24,11 +24,14 @@ def test_codex_wrapper_autostarts_only_local_responses_proxy_routes():
     assert "127.0.0.1:${port}/v1/models" in WRAPPER
 
 
-def test_codex_wrapper_sets_profile_specific_runtime_environment():
+def test_codex_wrapper_sets_profile_specific_runtime_environment_in_isolated_startup():
+    assert "__codexchange_start_local_proxy() (" in WRAPPER
+    assert "__codexchange_profile_runtime_autostart() (" in WRAPPER
     assert 'export COX_PORT="$port"' in WRAPPER
     assert 'export COX_MODEL="$model"' in WRAPPER
     assert "COX_REASONING=enabled" in WRAPPER
-    assert "COX_CUSTOM_PROVIDER_NAME" in WRAPPER
+    assert 'export COX_CUSTOM_PROVIDER_NAME="${provider%-proxy}"' in WRAPPER
+    assert "unset COX_REASONING COX_TOOL_OUTPUT_TRIM_MODE" in WRAPPER
     assert "COX_INSTALL_DIR" in WRAPPER
 
 
@@ -45,7 +48,9 @@ def test_codex_wrapper_sourced_dispatch_is_single_preflight_and_mutation_free():
         WRAPPER.index("# END COX UNIFIED INVOCATION-MODE DISPATCH")
     ]
     assert dispatch.count('__codexchange_profile_runtime_autostart "$@"') == 1
-    assert 'command codex "$@"' in dispatch
+    assert 'command codex "$@"' not in dispatch
+    assert '__codexchange_resolve_real_codex' in dispatch
+    assert 'command "$__codexchange_real_codex" "$@"' in dispatch
     assert "cox start thinking" not in dispatch
     assert "custom-provider use" not in dispatch
     assert "provider install-profile" not in dispatch

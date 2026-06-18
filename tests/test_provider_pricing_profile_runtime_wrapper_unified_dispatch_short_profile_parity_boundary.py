@@ -117,7 +117,9 @@ def test_p80_sourced_and_executable_modes_have_one_common_preflight_and_no_launc
 
     assert sourced.count('__codexchange_profile_runtime_autostart "$@"') == 1
     assert executable.count('__codexchange_profile_runtime_autostart "$@"') == 1
-    assert 'command codex "$@"' in sourced
+    assert 'command codex "$@"' not in sourced
+    assert '__codexchange_resolve_real_codex' in sourced
+    assert 'command "$__codexchange_real_codex" "$@"' in sourced
     assert 'exec "$__codexchange_real_codex" "$@"' in executable
     for forbidden in (
         "cox start thinking",

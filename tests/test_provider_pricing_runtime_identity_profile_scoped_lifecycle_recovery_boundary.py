@@ -187,14 +187,18 @@ def test_explicit_pricing_start_does_not_reuse_wrong_identity(
     assert queried == [8124]
 
 
-def test_wrapper_delegates_startup_to_cli_and_emits_exact_recovery_command() -> None:
+def test_wrapper_delegates_isolated_startup_to_cli_and_emits_exact_recovery_command() -> None:
     text = WRAPPER.read_text(encoding="utf-8")
-    function_body = text.split("__codexchange_start_local_proxy() {", 1)[1].split("\n}", 1)[0]
+    function_body = text[
+        text.index("__codexchange_start_local_proxy() (") :
+        text.index("__codexchange_profile_runtime_autostart() (")
+    ]
     assert '-m codexchange_proxy.cli "${start_args[@]}"' in function_body
     assert "exec \"$python_bin\" -m codexchange_proxy.runtime_app" not in function_body
     assert "exec \"$python_bin\" -m uvicorn" not in function_body
     assert "--owner-profile" in function_body
     assert "profile-${safe_profile}-proxy-${port}.pid" in function_body
+    assert "__codexchange_source_env_file" in function_body
     assert "recovery command: cox stop --port ${port}" in text
 
 

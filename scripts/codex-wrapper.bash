@@ -330,7 +330,7 @@ __codexchange_source_env_file() {
   set +a
 }
 
-__codexchange_start_local_proxy() {
+__codexchange_start_local_proxy() (
   local port profile model provider pricing_provider_id pricing_mode pricing_provider_path
   local install_dir python_bin log_dir log_file state_dir pid_file safe_profile route i
   local start_args=()
@@ -338,10 +338,19 @@ __codexchange_start_local_proxy() {
   pricing_provider_id="${5:-}"
   pricing_mode="${6:-}"
   pricing_provider_path="${7:-}"
+
+  # Load configured proxy secrets and defaults only inside this isolated
+  # startup subprocess. Profile-specific runtime identity below overrides any
+  # stale active-profile values from the shared environment file.
+  __codexchange_source_env_file
   export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,::1}"
   export no_proxy="${no_proxy:-$NO_PROXY}"
   export COX_PORT="$port"
-  [ -n "$model" ] && export COX_MODEL="$model"
+  if [ -n "$model" ]; then
+    export COX_MODEL="$model"
+  else
+    unset COX_MODEL
+  fi
   export COX_FORCE_MODEL="${COX_FORCE_MODEL:-1}"
   export COX_TOOL_MAX_ROUNDS="${COX_TOOL_MAX_ROUNDS:-6}"
   export COX_COMPACT_POLICY="${COX_COMPACT_POLICY:-adaptive}"
@@ -350,19 +359,29 @@ __codexchange_start_local_proxy() {
   export COX_AGENT_LIVENESS_JUDGE_MODEL="${COX_AGENT_LIVENESS_JUDGE_MODEL:-v4-flash-no-thinking}"
   export COX_CODEX_TOOL_PROTOCOL_INSTRUCTION="${COX_CODEX_TOOL_PROTOCOL_INSTRUCTION:-1}"
   export COX_TOOL_BRIDGE="${COX_TOOL_BRIDGE:-1}"
+
   route="standard"
+  unset COX_REASONING COX_TOOL_OUTPUT_TRIM_MODE COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS
   case "$profile:$provider:$port" in
     *thinking*|*:cox*:*|*:*:8001)
       route="reasoning"
       export COX_REASONING=enabled
-      export COX_TOOL_OUTPUT_TRIM_MODE="${COX_TOOL_OUTPUT_TRIM_MODE:-enabled}"
-      export COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS="${COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS:-12000}"
+      export COX_TOOL_OUTPUT_TRIM_MODE=enabled
+      export COX_TOOL_OUTPUT_IMAGE_PAYLOAD_MAX_ITEM_CHARS=12000
       ;;
   esac
+
   if [ -n "$provider" ] && [ "${provider%deepseek*}" = "$provider" ]; then
-    export COX_MODEL_PROVIDER="${COX_MODEL_PROVIDER:-custom}"
-    case "$provider" in *-proxy) export COX_CUSTOM_PROVIDER_NAME="${COX_CUSTOM_PROVIDER_NAME:-${provider%-proxy}}" ;; esac
+    export COX_MODEL_PROVIDER=custom
+    case "$provider" in
+      *-proxy) export COX_CUSTOM_PROVIDER_NAME="${provider%-proxy}" ;;
+      *) export COX_CUSTOM_PROVIDER_NAME="$provider" ;;
+    esac
+  else
+    export COX_MODEL_PROVIDER=deepseek
+    unset COX_CUSTOM_PROVIDER_NAME
   fi
+
   install_dir="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}"
   python_bin="${install_dir}/.venv/bin/python"
   if [ ! -x "$python_bin" ]; then
@@ -419,9 +438,9 @@ __codexchange_start_local_proxy() {
   echo "CodeXchange: inspect log: ${log_file}" >&2
   echo "CodeXchange: recovery command: cox stop --port ${port}" >&2
   return 70
-}
+)
 
-__codexchange_profile_runtime_autostart() {
+__codexchange_profile_runtime_autostart() (
   local profile codex_dir profile_file config_file model provider base_url port
   profile="$(__codexchange_profile_arg "$@")"
   [ -n "$profile" ] || return 0
@@ -445,7 +464,6 @@ __codexchange_profile_runtime_autostart() {
   [ -n "$base_url" ] || return 0
   port="$(__codexchange_local_proxy_port_from_base_url "$base_url" 2>/dev/null || true)"
   [ -n "$port" ] || return 0
-  __codexchange_source_env_file
   export NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}"
   export no_proxy="127.0.0.1,localhost,${no_proxy:-}"
   if __codexchange_proxy_models_ok "$port"; then
@@ -478,12 +496,18 @@ __codexchange_profile_runtime_autostart() {
     "${__codexchange_profile_pricing_provider_id:-}" \
     "${__codexchange_profile_pricing_mode:-}" \
     "${__codexchange_profile_pricing_provider_path:-}"
-}
+)
 
 # BEGIN COX UNIFIED INVOCATION-MODE DISPATCH
 codex() {
   __codexchange_profile_runtime_autostart "$@" || return $?
-  command codex "$@"
+  local __codexchange_real_codex
+  __codexchange_real_codex="$(__codexchange_resolve_real_codex || true)"
+  if [ -n "$__codexchange_real_codex" ]; then
+    command "$__codexchange_real_codex" "$@"
+    return $?
+  fi
+  __codexchange_run_npm_codex_fallback "$@"
 }
 # END COX UNIFIED INVOCATION-MODE DISPATCH
 
@@ -503,6 +527,10 @@ __codexchange_emit_executable_if_not_self() {
   case "$resolved" in
     "$HOME/.local/bin/codex") return 1 ;;
   esac
+  if [ -r "$resolved" ] \
+    && grep -q "# CodeXchange codex wrapper" "$resolved" 2>/dev/null; then
+    return 1
+  fi
   printf '%s\n' "$resolved"
   return 0
 }
@@ -618,6 +646,22 @@ __codexchange_resolve_real_codex() {
 
   __codexchange_emit_npm_codex_bin && return 0
   return 1
+}
+
+__codexchange_run_npm_codex_fallback() {
+  if command -v npm >/dev/null 2>&1 \
+    && npm exec --offline --package @openai/codex -- codex --version >/dev/null 2>&1; then
+    command npm exec --offline --package @openai/codex -- codex "$@"
+    return $?
+  fi
+  if command -v npx >/dev/null 2>&1; then
+    echo "CodeXchange: native Codex binary not found; falling back to npx @openai/codex" >&2
+    command npx --yes @openai/codex "$@"
+    return $?
+  fi
+  echo "CodeXchange: cannot find native Codex binary." >&2
+  echo "CodeXchange: set COX_REAL_CODEX=/path/to/native/codex, or install @openai/codex globally." >&2
+  return 127
 }
 
 __codexchange_exec_npm_codex_fallback() {

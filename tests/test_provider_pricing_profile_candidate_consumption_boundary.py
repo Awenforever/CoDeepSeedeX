@@ -239,7 +239,10 @@ __codexchange_start_local_proxy 8123 sample example-model sample-proxy example_p
 
 def test_wrapper_consumption_has_no_pricing_environment_activation() -> None:
     text = WRAPPER.read_text(encoding="utf-8")
-    function_body = text.split("__codexchange_start_local_proxy() {", 1)[1].split("\n}", 1)[0]
+    function_body = text[
+        text.index("__codexchange_start_local_proxy() (") :
+        text.index("__codexchange_profile_runtime_autostart() (")
+    ]
     assert '"$python_bin" -m codexchange_proxy.cli "${start_args[@]}"' in function_body
     assert "codexchange_proxy.app:app" not in function_body
     assert "codexchange_proxy.runtime_app" not in function_body
