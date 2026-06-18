@@ -31,10 +31,17 @@ def test_install_script_writes_current_release_metadata_env() -> None:
     assert "p2.10a26-wrapper-start-plan-mode-hardening" not in text
     assert "resolve_install_internal_version_for_metadata()" in text
     assert 'INSTALL_TARGET_INTERNAL_VERSION="$(resolve_install_internal_version_for_metadata)"' in text
-    assert 'export COX_INTERNAL_VERSION=%q' in text
-    assert '"$INSTALL_TARGET_INTERNAL_VERSION"' in text
-    assert 'export COX_PUBLIC_COMMIT=%q' in text
-    assert 'export COX_INTERNAL_COMMIT=%q' in text
+
+    writer = text[text.index("write_env_file() {"):text.index("refresh_canonical_codex_wrapper_template() {")]
+    assert '"$env_python" "$env_data_tool" replace-exports-nul "$ENV_FILE"' in writer
+    assert r"printf 'COX_INTERNAL_VERSION\0%s\0'" in writer
+    assert '"$INSTALL_TARGET_INTERNAL_VERSION"' in writer
+    assert r"printf 'COX_PUBLIC_COMMIT\0%s\0'" in writer
+    assert r"printf 'COX_INTERNAL_COMMIT\0%s\0'" in writer
+    assert '"$INSTALL_TARGET_COMMIT"' in writer
+    assert 'export COX_INTERNAL_VERSION=%q' not in writer
+    assert 'export COX_PUBLIC_COMMIT=%q' not in writer
+    assert 'export COX_INTERNAL_COMMIT=%q' not in writer
 
 
 def test_bootstrap_unsets_stale_release_metadata_before_installer() -> None:
