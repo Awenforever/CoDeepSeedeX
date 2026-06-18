@@ -325,13 +325,16 @@ def test_codex_wrapper_uses_lifecycle_aware_cli_and_fails_closed_on_unhealthy_pr
     assert "profile \"deepseek\" is deprecated" in canonical
     assert "cox start thinking" not in canonical[canonical.index("# BEGIN COX EXECUTABLE WRAPPER DISPATCHER"):]
 
-def test_installer_uninstall_restores_previous_codex_command_from_manifest_backup() -> None:
+def test_installer_uninstall_restores_previous_codex_command_from_safe_manifest_data() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     install_body = _install_function_body("write_codex_wrapper", "uninstall")
     uninstall_start = text.index("uninstall() {")
     uninstall_body = text[uninstall_start:]
-    assert 'CODEX_WRAPPER_BACKUP="$backup_path"' in install_body
-    assert 'backup_path="${CODEX_WRAPPER_BACKUP:-}"' in uninstall_body
+    assert 'write_install_manifest_data \\' in install_body
+    assert 'CODEX_WRAPPER_BACKUP "$backup_path"' in install_body
+    assert 'read_install_manifest_data "$MANIFEST_FILE" "$manifest_data"' in uninstall_body
+    assert 'source "$MANIFEST_FILE"' not in uninstall_body
+    assert 'CODEX_WRAPPER_BACKUP) backup_path="$manifest_value"' in uninstall_body
     assert 'rm -f "$wrapper_path"' in uninstall_body
     assert 'mv "$backup_path" "$wrapper_path"' in uninstall_body
     assert 'ok "Previous codex command restored"' in uninstall_body

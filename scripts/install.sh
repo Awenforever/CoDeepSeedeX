@@ -3564,6 +3564,187 @@ EOF
   ok "cox command installed"
 }
 
+select_install_manifest_python_bin() {
+  local candidate=""
+  local resolved=""
+
+  for candidate in \
+    "$INSTALL_DIR/.venv/bin/python" \
+    "${PYTHON_BIN:-}" \
+    python3 \
+    python
+  do
+    [ -n "$candidate" ] || continue
+    case "$candidate" in
+      */*)
+        [ -x "$candidate" ] || continue
+        resolved="$candidate"
+        ;;
+      *)
+        resolved="$(command -v "$candidate" 2>/dev/null || true)"
+        [ -n "$resolved" ] || continue
+        ;;
+    esac
+    if "$resolved" - <<'PYCOX_MANIFEST_PYTHON_CHECK_P33A20A90' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 8) else 1)
+PYCOX_MANIFEST_PYTHON_CHECK_P33A20A90
+    then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+write_install_manifest_data() {
+  local python_bin=""
+  python_bin="$(select_install_manifest_python_bin || true)"
+  if [ -z "$python_bin" ]; then
+    warn "Python 3.8+ is required to write the CodeXchange install manifest safely."
+    return 1
+  fi
+
+  "$python_bin" - "$MANIFEST_FILE" "$@" <<'PYCOX_WRITE_INSTALL_MANIFEST_DATA_P33A20A90'
+from __future__ import annotations
+
+import os
+import re
+import shlex
+import sys
+import tempfile
+from pathlib import Path
+
+_ALLOWED_KEYS = {
+    "CODEX_WRAPPER_PATH",
+    "CODEX_WRAPPER_BACKUP",
+    "REAL_CODEX",
+    "ENV_FILE",
+    "INSTALL_DIR",
+    "BIN_DIR",
+    "SHELL_PROFILE_FILE",
+    "SHELL_PROFILE_STATE_FILE",
+    "STABLE_PORT",
+    "THINKING_PORT",
+}
+_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+manifest = Path(sys.argv[1]).expanduser()
+items = sys.argv[2:]
+if len(items) % 2:
+    raise SystemExit("invalid manifest key/value arguments")
+
+values = []
+for index in range(0, len(items), 2):
+    key = items[index]
+    value = items[index + 1]
+    if not _KEY_RE.fullmatch(key) or key not in _ALLOWED_KEYS:
+        raise SystemExit("invalid manifest key")
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise SystemExit("manifest values must not contain NUL or line breaks")
+    values.append((key, value))
+
+manifest.parent.mkdir(parents=True, exist_ok=True)
+text = "".join(f"{key}={shlex.quote(value)}\n" for key, value in values)
+fd, temporary_name = tempfile.mkstemp(prefix=f".{manifest.name}.tmp-", dir=str(manifest.parent))
+temporary = Path(temporary_name)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, manifest)
+    os.chmod(manifest, 0o600)
+finally:
+    try:
+        temporary.unlink()
+    except FileNotFoundError:
+        pass
+PYCOX_WRITE_INSTALL_MANIFEST_DATA_P33A20A90
+}
+
+read_install_manifest_data() {
+  local manifest_path="$1"
+  local output_path="$2"
+  local python_bin=""
+
+  : > "$output_path"
+  [ -f "$manifest_path" ] || return 0
+
+  python_bin="$(select_install_manifest_python_bin || true)"
+  if [ -z "$python_bin" ]; then
+    warn "Python 3.8+ is required to read the CodeXchange install manifest safely; ignoring manifest data."
+    return 1
+  fi
+
+  if ! "$python_bin" - "$manifest_path" > "$output_path" <<'PYCOX_READ_INSTALL_MANIFEST_DATA_P33A20A90'
+from __future__ import annotations
+
+import re
+import shlex
+import sys
+from pathlib import Path
+
+_ALLOWED_KEYS = {
+    "CODEX_WRAPPER_PATH",
+    "CODEX_WRAPPER_BACKUP",
+    "REAL_CODEX",
+    "ENV_FILE",
+    "INSTALL_DIR",
+    "BIN_DIR",
+    "SHELL_PROFILE_FILE",
+    "SHELL_PROFILE_STATE_FILE",
+    "STABLE_PORT",
+    "THINKING_PORT",
+}
+_ASSIGNMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+
+manifest = Path(sys.argv[1]).expanduser()
+try:
+    lines = manifest.read_text(encoding="utf-8").splitlines()
+except OSError:
+    raise SystemExit(70)
+
+values = {}
+for line_number, raw_line in enumerate(lines, start=1):
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    match = _ASSIGNMENT_RE.fullmatch(line)
+    if match is None:
+        # Manifest files are inert data. Unknown shell-like lines are ignored,
+        # never evaluated.
+        continue
+    key, raw_value = match.groups()
+    if key not in _ALLOWED_KEYS:
+        continue
+    try:
+        parsed = shlex.split(raw_value.strip(), comments=False, posix=True)
+    except ValueError:
+        raise SystemExit(70)
+    if len(parsed) != 1:
+        raise SystemExit(70)
+    value = parsed[0]
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise SystemExit(70)
+    values[key] = value
+
+output = sys.stdout.buffer
+for key in sorted(values):
+    output.write(key.encode("utf-8"))
+    output.write(b"\0")
+    output.write(values[key].encode("utf-8"))
+    output.write(b"\0")
+PYCOX_READ_INSTALL_MANIFEST_DATA_P33A20A90
+  then
+    : > "$output_path"
+    warn "Install manifest contains invalid data and was ignored; no manifest content was executed."
+    return 1
+  fi
+  return 0
+}
+
 write_codex_wrapper() {
   local stable_port="$1"
   local thinking_port="$2"
@@ -3637,20 +3818,22 @@ write_codex_wrapper() {
   cp "$template" "$wrapper_path"
   chmod +x "$wrapper_path"
 
-  cat > "$MANIFEST_FILE" <<EOF
-CODEX_WRAPPER_PATH="$wrapper_path"
-CODEX_WRAPPER_BACKUP="$backup_path"
-REAL_CODEX="$real_codex"
-ENV_FILE="$ENV_FILE"
-INSTALL_DIR="$INSTALL_DIR"
-BIN_DIR="$BIN_DIR"
-SHELL_PROFILE_FILE="$SHELL_PROFILE_FILE"
-SHELL_PROFILE_STATE_FILE="$SHELL_PROFILE_STATE_FILE"
-STABLE_PORT="$stable_port"
-THINKING_PORT="$thinking_port"
-EOF
+  if ! write_install_manifest_data \
+    CODEX_WRAPPER_PATH "$wrapper_path" \
+    CODEX_WRAPPER_BACKUP "$backup_path" \
+    REAL_CODEX "$real_codex" \
+    ENV_FILE "$ENV_FILE" \
+    INSTALL_DIR "$INSTALL_DIR" \
+    BIN_DIR "$BIN_DIR" \
+    SHELL_PROFILE_FILE "$SHELL_PROFILE_FILE" \
+    SHELL_PROFILE_STATE_FILE "$SHELL_PROFILE_STATE_FILE" \
+    STABLE_PORT "$stable_port" \
+    THINKING_PORT "$thinking_port"
+  then
+    warn "Codex wrapper was installed, but the install manifest could not be written safely."
+    return 1
+  fi
 
-  chmod 600 "$MANIFEST_FILE" 2>/dev/null || true
   ok "Codex wrapper installed from canonical scripts/codex-wrapper.bash"
 }
 
@@ -3662,10 +3845,19 @@ uninstall() {
   local backup_path=""
 
   if [ -f "$MANIFEST_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$MANIFEST_FILE" || true
-    wrapper_path="${CODEX_WRAPPER_PATH:-$wrapper_path}"
-    backup_path="${CODEX_WRAPPER_BACKUP:-}"
+    local manifest_data=""
+    local manifest_key=""
+    local manifest_value=""
+    manifest_data="$(mktemp /tmp/codexchange-install-manifest-data-XXXXXX)"
+    if read_install_manifest_data "$MANIFEST_FILE" "$manifest_data"; then
+      while IFS= read -r -d '' manifest_key && IFS= read -r -d '' manifest_value; do
+        case "$manifest_key" in
+          CODEX_WRAPPER_PATH) wrapper_path="$manifest_value" ;;
+          CODEX_WRAPPER_BACKUP) backup_path="$manifest_value" ;;
+        esac
+      done < "$manifest_data"
+    fi
+    rm -f "$manifest_data"
   fi
 
   if [ -x "$INSTALL_DIR/.venv/bin/cox" ]; then

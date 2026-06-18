@@ -108,7 +108,8 @@ def test_p84_shell_startup_block_is_path_only_and_runtime_env_stays_on_demand() 
     assert '. "$ENV_FILE"' not in ensure
     assert "remove_shell_profile_integrations" in uninstall
     assert uninstall.index("remove_shell_profile_integrations") < uninstall.index('rm -f "$wrapper_path"')
-    assert 'SHELL_PROFILE_STATE_FILE="$SHELL_PROFILE_STATE_FILE"' in INSTALLER_TEXT
+    assert 'SHELL_PROFILE_STATE_FILE "$SHELL_PROFILE_STATE_FILE"' in INSTALLER_TEXT
+    assert 'source "$MANIFEST_FILE"' not in uninstall
 
 
 def test_p84_fresh_install_adds_minimal_bootstrap_without_secret_inheritance(tmp_path: Path) -> None:
