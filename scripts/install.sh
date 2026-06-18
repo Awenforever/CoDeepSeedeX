@@ -3391,6 +3391,9 @@ write_codex_wrapper() {
   local wrapper_path="$BIN_DIR/codex"
   local real_codex=""
   local backup_path=""
+  local template=""
+  local script_dir=""
+  local candidate=""
 
   if [ "$INSTALL_CODEX_WRAPPER" != "1" ]; then
     ok "Codex wrapper skipped"
@@ -3410,16 +3413,37 @@ write_codex_wrapper() {
     return 0
   fi
 
-  local existing_wrapper_is_unknown="0"
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for candidate in \
+    "$INSTALL_DIR/scripts/codex-wrapper.bash" \
+    "$script_dir/codex-wrapper.bash" \
+    "$PWD/scripts/codex-wrapper.bash"; do
+    if [ -f "$candidate" ] \
+      && grep -q "# CodeXchange codex wrapper" "$candidate" 2>/dev/null \
+      && grep -q "BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART" "$candidate" 2>/dev/null \
+      && grep -q "BEGIN COX EXECUTABLE WRAPPER DISPATCHER" "$candidate" 2>/dev/null; then
+      template="$candidate"
+      break
+    fi
+  done
+  if [ -z "$template" ]; then
+    warn "Canonical scripts/codex-wrapper.bash is missing or incomplete; refusing to install a divergent Codex wrapper."
+    return 1
+  fi
+  if ! bash -n "$template" >> "$INSTALL_LOG" 2>&1; then
+    warn "Canonical scripts/codex-wrapper.bash failed bash syntax validation."
+    return 1
+  fi
 
+  local existing_wrapper_is_unknown="0"
   if [ -e "$wrapper_path" ] && ! is_codexchange_managed_local_bin "$wrapper_path" "codex"; then
     existing_wrapper_is_unknown="1"
   fi
 
   if [ "$DRY_RUN" = "1" ]; then
-    require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER"
-    printf '+ write %q\n' "$wrapper_path" >> "$INSTALL_LOG"
-    ok "Codex wrapper installed"
+    require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1
+    printf '+ cp %q %q\n' "$template" "$wrapper_path" >> "$INSTALL_LOG"
+    ok "Codex wrapper installed from canonical template"
     return 0
   fi
 
@@ -3429,296 +3453,9 @@ write_codex_wrapper() {
   if [ "$existing_wrapper_is_unknown" = "1" ]; then
     backup_path="$wrapper_path.codexchange.bak.$(date +%Y%m%d_%H%M%S)"
     mv "$wrapper_path" "$backup_path"
-    if [ -z "$real_codex" ]; then
-      real_codex="$backup_path"
-    fi
   fi
 
-  cat > "$wrapper_path" <<EOF
-#!/usr/bin/env bash
-# CodeXchange codex wrapper
-set -euo pipefail
-
-REAL_CODEX="$real_codex"
-COX="\${COX_COMMAND:-$BIN_DIR/cox}"
-if [ ! -x "\$COX" ] && [ -x "$INSTALL_DIR/.venv/bin/cox" ]; then
-  COX="$INSTALL_DIR/.venv/bin/cox"
-fi
-ENV_FILE="\${COX_ENV_FILE:-$ENV_FILE}"
-
-if [ -f "\$ENV_FILE" ]; then
-  source "\$ENV_FILE"
-fi
-
-profile=""
-prev=""
-for arg in "\$@"; do
-  if [ "\$prev" = "--profile" ] || [ "\$prev" = "-p" ]; then
-    profile="\$arg"
-    break
-  fi
-  case "\$arg" in
-    --profile=*) profile="\${arg#--profile=}"; break ;;
-    -p*) profile="\${arg#-p}"; break ;;
-  esac
-  prev="\$arg"
-done
-
-set_codexchange_terminal_title() {
-  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
-    return 0
-  fi
-  case "\${TERM:-}" in
-    ""|dumb)
-      return 0
-      ;;
-  esac
-
-  local title="\${COX_TERMINAL_TITLE:-}"
-  if [ -z "\$title" ]; then
-    local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")
-    local idx=\$((RANDOM % \${#emojis[@]}))
-    title="\${emojis[\$idx]}CodeXchange"
-    COX_TERMINAL_TITLE="\$title"
-  fi
-
-  if [ -w /dev/tty ]; then
-    printf '\033]0;%s\007\033]2;%s\007' "\$title" "\$title" > /dev/tty 2>/dev/null || true
-  else
-    printf '\033]0;%s\007\033]2;%s\007' "\$title" "\$title" 2>/dev/null || true
-  fi
-}
-
-COX_TITLE_KEEPER_PID=""
-
-schedule_codexchange_terminal_title_refresh() {
-  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
-    return 0
-  fi
-  case "\${TERM:-}" in
-    ""|dumb)
-      return 0
-      ;;
-  esac
-
-  (
-    i=1
-    max_seconds="\${COX_TITLE_KEEPER_SECONDS:-60}"
-    interval_seconds="\${COX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
-    while [ "\$i" -le "\$max_seconds" ]; do
-      sleep "\$interval_seconds"
-      set_codexchange_terminal_title
-      i=\$((i + interval_seconds))
-    done
-  ) >/dev/null 2>&1 &
-  COX_TITLE_KEEPER_PID="\$!"
-}
-
-stop_codexchange_terminal_title_keeper() {
-  if [ -n "\${COX_TITLE_KEEPER_PID:-}" ]; then
-    kill "\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    wait "\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    COX_TITLE_KEEPER_PID=""
-  fi
-}
-
-codex_runtime_preflight() {
-  if [ ! -x "\$REAL_CODEX" ]; then
-    printf 'CodeXchange error: real Codex command is not executable: %s\n' "\$REAL_CODEX" >&2
-    return 127
-  fi
-
-  if ! command -v node >/dev/null 2>&1; then
-    if head -n 1 "\$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "\$REAL_CODEX" 2>/dev/null; then
-      printf 'CodeXchange error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "\$REAL_CODEX" >&2
-      printf 'Install Node.js/Codex CLI first, then rerun the CodeXchange installer or: %s profile refresh-wrapper\n' "\$COX" >&2
-      printf 'Boundary: CodeXchange detects this dependency but does not install or patch Node automatically.\n' >&2
-      return 127
-    fi
-  fi
-}
-
-codex_requires_legacy_profile_tables() {
-  local version_text=""
-  version_text="\$("\$REAL_CODEX" --version 2>/dev/null || true)"
-  case "\$version_text" in
-    *" 0.130."*|*" 0.131."*|*" 0.132."*|*" 0.133."*|*"v0.130."*|*"v0.131."*|*"v0.132."*|*"v0.133."*)
-      return 0
-      ;;
-  esac
-  return 1
-}
-
-repair_codexchange_legacy_managed_profiles() {
-  local thinking_port="\${COX_THINKING_PORT:-8001}"
-  local model="\${COX_THINKING_MODEL:-\${COX_MODEL:-deepseek-v4-pro}}"
-  local catalog_args=()
-  local catalog=""
-
-  catalog="\${COX_MODEL_CATALOG_JSON:-}"
-  if [ -z "\$catalog" ]; then
-    catalog="$INSTALL_DIR/experiments/model-catalog/cox-proxy-models.json"
-  fi
-  if [ -n "\$catalog" ] && [ -f "\$catalog" ]; then
-    catalog_args=(--model-catalog-json "\$catalog")
-  fi
-
-  "\$COX" install-codex-profile \
-    --name cox \
-    --provider-name cox-proxy \
-    --base-url "http://127.0.0.1:\${thinking_port}/v1" \
-    --model "\$model" \
-    --reasoning-effort xhigh \
-    --profile-layout legacy_profile_tables \
-    --no-backup \
-    "\${catalog_args[@]}" >/dev/null
-}
-
-repair_codexchange_managed_profile_contract() {
-  local profile_name="\$1"
-  local status_json=""
-
-  case "\$profile_name" in
-    cox)
-      ;;
-    deepseek)
-      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
-      return 2
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  if [ "\${COX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
-    return 0
-  fi
-
-  if [ ! -x "\$COX" ]; then
-    printf 'CodeXchange error: cox command is not executable: %s\n' "\$COX" >&2
-    return 1
-  fi
-
-  if codex_requires_legacy_profile_tables; then
-    if status_json="\$("\$COX" profile status "\$profile_name" --json 2>/dev/null)"; then
-      if printf '%s' "\$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
-        && ! printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-        return 0
-      fi
-    fi
-
-    if ! repair_codexchange_legacy_managed_profiles; then
-      printf 'CodeXchange error: failed to repair legacy managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "\$COX" "\$profile_name" >&2
-      return 1
-    fi
-  else
-    if ! "\$COX" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CodeXchange error: failed to repair managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s profile repair --managed-only --json\n' "\$COX" >&2
-      return 1
-    fi
-  fi
-
-  if ! status_json="\$("\$COX" profile status "\$profile_name" --json 2>/dev/null)"; then
-    printf 'CodeXchange error: failed to verify managed Codex profile %s after repair.\n' "\$profile_name" >&2
-    return 1
-  fi
-
-  if printf '%s' "\$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-    if [ "\${COX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CodeXchange warning: managed Codex profile %s still has a model conflict; continuing because COX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "\$profile_name" >&2
-      return 0
-    fi
-    printf 'CodeXchange error: managed Codex profile %s still has a model conflict after repair.\n' "\$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "\$COX" "\$profile_name" >&2
-    return 1
-  fi
-}
-
-activate_codexchange_custom_provider_profile() {
-  local profile_name="\$1"
-  if [ -z "\$profile_name" ] || [ ! -x "\$COX" ]; then
-    return 1
-  fi
-  "\$COX" config custom-provider use --name "\$profile_name" --no-profile-sync >/dev/null 2>&1
-}
-
-start_cox_profile() {
-  local profile_name="\$1"
-  local start_args=()
-  local status_args=()
-
-  if [ ! -x "\$COX" ]; then
-    printf 'CodeXchange error: cox command is not executable: %s\n' "\$COX" >&2
-    return 1
-  fi
-
-  case "\$profile_name" in
-    cox)
-      start_args=(start reasoning)
-      status_args=(status reasoning)
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  if ! "\$COX" "\${start_args[@]}" >/dev/null 2>&1; then
-    if ! "\$COX" "\${status_args[@]}" >/dev/null 2>&1; then
-      printf 'CodeXchange error: failed to start cox for profile %s.\n' "\$profile_name" >&2
-      printf 'Run for details: %s %s\n' "\$COX" "\${start_args[*]}" >&2
-      return 1
-    fi
-    return 0
-  fi
-
-  if ! "\$COX" "\${status_args[@]}" >/dev/null 2>&1; then
-    printf 'CodeXchange error: cox started but status check failed for profile %s.\n' "\$profile_name" >&2
-    printf 'Run for details: %s %s\n' "\$COX" "\${status_args[*]}" >&2
-    return 1
-  fi
-}
-
-run_codexchange_codex() {
-  case "\$profile" in
-    deepseek)
-      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
-      return 2
-      ;;
-    cox)
-      repair_codexchange_managed_profile_contract "\$profile"
-      start_cox_profile "\$profile"
-      schedule_codexchange_terminal_title_refresh
-      ;;
-    "")
-      ;;
-    *)
-      if activate_codexchange_custom_provider_profile "\$profile"; then
-        start_cox_profile "cox"
-        schedule_codexchange_terminal_title_refresh
-      fi
-      ;;
-  esac
-
-  if ! codex_runtime_preflight; then
-    local preflight_rc=\$?
-    stop_codexchange_terminal_title_keeper
-    return "\$preflight_rc"
-  fi
-
-  set +e
-  "\$REAL_CODEX" "\$@"
-  local codex_rc=\$?
-  set -e
-  stop_codexchange_terminal_title_keeper
-  return "\$codex_rc"
-}
-
-trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP
-run_codexchange_codex "\$@"
-EOF
-
+  cp "$template" "$wrapper_path"
   chmod +x "$wrapper_path"
 
   cat > "$MANIFEST_FILE" <<EOF
@@ -3733,7 +3470,7 @@ THINKING_PORT="$thinking_port"
 EOF
 
   chmod 600 "$MANIFEST_FILE" 2>/dev/null || true
-  ok "Codex wrapper installed"
+  ok "Codex wrapper installed from canonical scripts/codex-wrapper.bash"
 }
 
 uninstall() {

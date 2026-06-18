@@ -1,5 +1,6 @@
 from __future__ import annotations
 import shlex
+from pathlib import Path
 
 import json
 
@@ -3224,69 +3225,23 @@ def test_cli_profile_repair_managed_regenerates_provider_profile_and_clears_glm_
 
 
 
-def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_with_title(tmp_path, capsys):
+def test_cli_profile_refresh_wrapper_rewrites_managed_wrapper_from_canonical_source(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
     cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
+    canonical = Path(cli_module.__file__).resolve().parents[1] / "scripts" / "codex-wrapper.bash"
 
-    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
     cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
-    for p in (real_codex, cox, wrapper):
-        p.chmod(0o755)
-
-    manifest.write_text(
-        f"CODEX_WRAPPER_PATH={wrapper}\n"
-        "CODEX_WRAPPER_BACKUP=\n"
-        f"REAL_CODEX={real_codex}\n"
-        f"ENV_FILE={tmp_path / 'env'}\n"
-        f"INSTALL_DIR={tmp_path}\n"
-        f"BIN_DIR={bin_dir}\n",
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        "# BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART\n"
+        "# BEGIN COX EXECUTABLE WRAPPER DISPATCHER\n",
         encoding="utf-8",
     )
-
-    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
-
-    result = json.loads(capsys.readouterr().out)
-    text = wrapper.read_text(encoding="utf-8")
-    assert result["status"] == "ok"
-    assert result["emoji_firebird_count"] == 1
-    assert "COX_TITLE_KEEPER_PID" in text
-    assert "stop_codexchange_terminal_title_keeper()" in text
-    assert 'kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert 'wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert "run_codexchange_codex()" in text
-    assert "set +e" in text
-    assert "local codex_rc=$?" in text
-    assert "return \"$codex_rc\"" in text
-    assert "trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP" in text
-    assert "COX_TITLE_KEEPER_SECONDS:-60" in text
-    assert "COX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
-    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    case_idx = text.index('case "$profile" in')
-    start_call_idx = text.index('start_cox_profile "$profile"', case_idx)
-    schedule_call_idx = text.index("schedule_codexchange_terminal_title_refresh", start_call_idx)
-    real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    cleanup_idx = text.index("stop_codexchange_terminal_title_keeper", real_codex_idx)
-    return_idx = text.index('return "$codex_rc"', cleanup_idx)
-    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
-
-
-def test_cli_profile_refresh_wrapper_repairs_and_fail_closes_managed_profiles_before_launch(tmp_path, capsys):
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    wrapper = bin_dir / "codex"
-    real_codex = bin_dir / "real-codex"
-    cox = bin_dir / "cox"
-    manifest = tmp_path / "install-manifest.env"
-
-    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
-    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
     for item in (real_codex, cox, wrapper):
         item.chmod(0o755)
 
@@ -3296,24 +3251,59 @@ def test_cli_profile_refresh_wrapper_repairs_and_fail_closes_managed_profiles_be
         f"REAL_CODEX={real_codex}\n"
         f"ENV_FILE={tmp_path / 'env'}\n"
         f"INSTALL_DIR={tmp_path}\n"
+        f"BIN_DIR={bin_dir}\n"
+        "STABLE_PORT=8000\n"
+        "THINKING_PORT=8001\n",
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["status"] == "ok"
+    assert result["canonical_parity"] is True
+    assert result["canonical_template_sha256"] == result["wrapper_sha256"]
+    assert result["backup"] is None
+    assert wrapper.read_bytes() == canonical.read_bytes()
+    assert wrapper.stat().st_mode & 0o111
+    manifest_text = manifest.read_text(encoding="utf-8")
+    assert "STABLE_PORT=8000" in manifest_text
+    assert "THINKING_PORT=8001" in manifest_text
+
+
+def test_cli_profile_refresh_wrapper_preserves_p76_lifecycle_and_pricing_markers(tmp_path, capsys):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wrapper = bin_dir / "codex"
+    real_codex = bin_dir / "real-codex"
+    manifest = tmp_path / "install-manifest.env"
+
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
+    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
+    for item in (real_codex, wrapper):
+        item.chmod(0o755)
+    manifest.write_text(
+        f"CODEX_WRAPPER_PATH={wrapper}\n"
+        "CODEX_WRAPPER_BACKUP=\n"
+        f"REAL_CODEX={real_codex}\n"
+        f"ENV_FILE={tmp_path / 'env'}\n"
+        f"INSTALL_DIR={tmp_path}\n"
         f"BIN_DIR={bin_dir}\n",
         encoding="utf-8",
     )
 
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
-
-    _result = json.loads(capsys.readouterr().out)
+    result = json.loads(capsys.readouterr().out)
     text = wrapper.read_text(encoding="utf-8")
-    assert "repair_codexchange_managed_profile_contract()" in text
-    assert 'profile repair --managed-only --json' in text
-    assert 'profile status "$profile_name" --json' in text
-    assert '"model_conflict"[[:space:]]*:[[:space:]]*true' in text
-    assert 'COX_ALLOW_PROFILE_MODEL_CONFLICT' in text
-    assert 'Refusing to launch Codex with a stale or incompatible profile' in text
-    repair_idx = text.index('repair_codexchange_managed_profile_contract "$profile"')
-    start_idx = text.index('start_cox_profile "$profile"')
-    real_idx = text.index('"$REAL_CODEX" "$@"')
-    assert repair_idx < start_idx < real_idx
+
+    assert result["status"] == "ok"
+    assert "__codexchange_profile_pricing_candidate()" in text
+    assert "__codexchange_profile_runtime_autostart()" in text
+    assert "__codexchange_proxy_runtime_identity_matches()" in text
+    assert 'pid_file="${state_dir}/profile-${safe_profile}-proxy-${port}.pid"' in text
+    assert '--owner-profile "${profile:-default}"' in text
+    assert "--pricing-provider-id" in text
+    assert "recovery command: cox stop --port ${port}" in text
 
 
 def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_path, capsys):
@@ -3323,7 +3313,7 @@ def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_p
     real_codex = bin_dir / "real-codex"
     manifest = tmp_path / "install-manifest.env"
 
-    real_codex.write_text("#!/usr/bin/env bash\nprintf real\n", encoding="utf-8")
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
     real_codex.chmod(0o755)
     wrapper.write_text("#!/usr/bin/env bash\nprintf user-wrapper\n", encoding="utf-8")
     wrapper.chmod(0o755)
@@ -3337,11 +3327,11 @@ def test_cli_profile_refresh_wrapper_refuses_unknown_wrapper_without_force(tmp_p
     )
 
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 1
-
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "error"
     assert result["error"] == "unknown_existing_codex_wrapper"
     assert "user-wrapper" in wrapper.read_text(encoding="utf-8")
+    assert not list(bin_dir.glob("codex.codexchange.bak.*"))
 
 
 def test_cli_status_weclaw_json_marks_runtime_unavailable_when_proxy_down(monkeypatch, tmp_path, capsys):
@@ -3453,56 +3443,40 @@ def test_cli_profile_repair_clears_model_conflict(tmp_path, capsys):
 
 
 
-def test_cli_profile_refresh_wrapper_uses_delayed_terminal_title_refresh(tmp_path, capsys):
+def test_cli_profile_refresh_wrapper_force_dry_run_is_non_mutating(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
-    cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
+    original = "#!/usr/bin/env bash\nprintf user-wrapper\n"
 
-    real_codex.write_text("#!/usr/bin/env bash\nprintf real-codex\n", encoding="utf-8")
-    cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
-    wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
-    for p in (real_codex, cox, wrapper):
-        p.chmod(0o755)
-
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
+    wrapper.write_text(original, encoding="utf-8")
+    for item in (real_codex, wrapper):
+        item.chmod(0o755)
     manifest.write_text(
         f"CODEX_WRAPPER_PATH={wrapper}\n"
-        "CODEX_WRAPPER_BACKUP=\n"
         f"REAL_CODEX={real_codex}\n"
         f"ENV_FILE={tmp_path / 'env'}\n"
         f"INSTALL_DIR={tmp_path}\n"
         f"BIN_DIR={bin_dir}\n",
         encoding="utf-8",
     )
+    manifest_before = manifest.read_text(encoding="utf-8")
 
-    assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
-
+    assert main([
+        "profile", "refresh-wrapper", "--manifest", str(manifest), "--json", "--force", "--dry-run"
+    ]) == 0
     result = json.loads(capsys.readouterr().out)
-    text = wrapper.read_text(encoding="utf-8")
+
     assert result["status"] == "ok"
-    assert result["emoji_firebird_count"] == 1
-    assert "COX_TITLE_KEEPER_PID" in text
-    assert "stop_codexchange_terminal_title_keeper()" in text
-    assert 'kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert 'wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in text
-    assert "run_codexchange_codex()" in text
-    assert "set +e" in text
-    assert "local codex_rc=$?" in text
-    assert "return \"$codex_rc\"" in text
-    assert "trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP" in text
-    assert "COX_TITLE_KEEPER_SECONDS:-60" in text
-    assert "COX_TITLE_KEEPER_INTERVAL_SECONDS:-1" in text
-    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in text
-    assert 'exec "$REAL_CODEX" "$@"' not in text
-    case_idx = text.index('case "$profile" in')
-    start_call_idx = text.index('start_cox_profile "$profile"', case_idx)
-    schedule_call_idx = text.index("schedule_codexchange_terminal_title_refresh", start_call_idx)
-    real_codex_idx = text.index('"$REAL_CODEX" "$@"', schedule_call_idx)
-    cleanup_idx = text.index("stop_codexchange_terminal_title_keeper", real_codex_idx)
-    return_idx = text.index('return "$codex_rc"', cleanup_idx)
-    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
+    assert result["dry_run"] is True
+    assert result["canonical_parity"] is True
+    assert result["backup"]
+    assert wrapper.read_text(encoding="utf-8") == original
+    assert manifest.read_text(encoding="utf-8") == manifest_before
+    assert not list(bin_dir.glob("codex.codexchange.bak.*"))
 
 
 def test_cli_profile_status_round3_context_diagnostics_and_model_catalog(tmp_path, capsys):
@@ -4171,20 +4145,20 @@ def test_p219a8_refresh_wrapper_rejects_manifest_real_codex_that_is_managed_wrap
     assert "safe real Codex binary" in payload["hint"]
     assert payload["real_codex_resolution"]["attempts"][0]["reason"] == "real_codex_points_to_codexchange_wrapper"
 
-def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path, capsys):
+def test_p219a8_refresh_wrapper_records_resolved_real_codex_in_manifest(tmp_path, capsys):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     wrapper = bin_dir / "codex"
     real_codex = bin_dir / "real-codex"
     cox = bin_dir / "cox"
     manifest = tmp_path / "install-manifest.env"
+    canonical = Path(cli_module.__file__).resolve().parents[1] / "scripts" / "codex-wrapper.bash"
 
     real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.130.0\\n'\n", encoding="utf-8")
     cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
     wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
     for item in (real_codex, cox, wrapper):
         item.chmod(0o755)
-
     manifest.write_text(
         f"CODEX_WRAPPER_PATH={wrapper}\n"
         "CODEX_WRAPPER_BACKUP=\n"
@@ -4197,12 +4171,13 @@ def test_p219a8_refresh_wrapper_writes_resolved_real_codex_not_wrapper(tmp_path,
 
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    text = wrapper.read_text(encoding="utf-8")
+    manifest_values = cli_module._read_manifest_exports(manifest)
 
     assert result["status"] == "ok"
     assert result["real_codex"] == str(real_codex.resolve(strict=False))
-    assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve(strict=False)))}" in text
-    assert "CodeXchange codex wrapper" in text
+    assert manifest_values["REAL_CODEX"] == str(real_codex.resolve(strict=False))
+    assert wrapper.read_bytes() == canonical.read_bytes()
+    assert "__codexchange_manifest_real_codex()" in wrapper.read_text(encoding="utf-8")
 
 
 def test_p219a9_profile_status_context_window_source_follows_legacy_profile_table(tmp_path, capsys):
@@ -4257,8 +4232,6 @@ def test_p219a15_set_api_key_help_marks_deprecated(capsys):
     assert "prefer set-model" in captured.out
 
 def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_to_wrapper(tmp_path, monkeypatch, capsys):
-    from codexchange_proxy.cli import main
-
     wrapper_bin = tmp_path / "wrapper-bin"
     real_bin = tmp_path / "real-bin"
     wrapper_bin.mkdir()
@@ -4269,12 +4242,13 @@ def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_t
     real_codex = real_bin / "codex"
     cox = wrapper_bin / "cox"
     manifest = tmp_path / "install-manifest.env"
+    canonical = Path(cli_module.__file__).resolve().parents[1] / "scripts" / "codex-wrapper.bash"
 
     stale_wrapper.write_text(
         "#!/usr/bin/env bash\n# CodeXchange codex wrapper\nprintf stale\n",
         encoding="utf-8",
     )
-    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.134.0\n'\n", encoding="utf-8")
+    real_codex.write_text("#!/usr/bin/env bash\nprintf 'codex-cli 0.134.0\\n'\n", encoding="utf-8")
     cox.write_text("#!/usr/bin/env bash\nprintf cox\n", encoding="utf-8")
     wrapper.write_text("#!/usr/bin/env bash\n# CodeXchange codex wrapper\n", encoding="utf-8")
     for item in (stale_wrapper, real_codex, cox, wrapper):
@@ -4293,14 +4267,14 @@ def test_p219a17_refresh_wrapper_recovers_safe_real_codex_when_manifest_points_t
 
     assert main(["profile", "refresh-wrapper", "--manifest", str(manifest), "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
+    manifest_values = cli_module._read_manifest_exports(manifest)
+
     assert result["status"] == "ok"
     assert result["real_codex"] == str(real_codex.resolve())
     assert result["real_codex_recovered"] is True
-
-    wrapper_text = wrapper.read_text(encoding="utf-8")
-    assert f"REAL_CODEX={shlex.quote(str(real_codex.resolve()))}" in wrapper_text
-    assert str(stale_wrapper) not in wrapper_text
-    assert "REAL_CODEX=/tmp/codexchange-" not in wrapper_text
+    assert manifest_values["REAL_CODEX"] == str(real_codex.resolve())
+    assert wrapper.read_bytes() == canonical.read_bytes()
+    assert str(stale_wrapper) not in wrapper.read_text(encoding="utf-8")
 
 
 def test_p219a17_refresh_wrapper_still_fails_closed_when_no_safe_real_codex(tmp_path, monkeypatch, capsys):

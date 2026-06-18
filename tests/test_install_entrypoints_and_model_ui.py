@@ -228,19 +228,16 @@ def _install_function_body(function_name: str, next_function_name: str) -> str:
 
 def test_installer_codex_unknown_backup_happens_only_after_ownership_gate() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
-    gate = body.index('require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1')
-    move = body.index('mv "$wrapper_path" "$backup_path"')
-    write = body.index('cat > "$wrapper_path" <<EOF')
     empty_real_check = body.index('if [ -z "$real_codex" ]; then')
     skip = body.index('ok "Codex wrapper skipped"', empty_real_check)
+    template_check = body.index('if [ -z "$template" ]; then')
+    gate = body.index('require_safe_local_bin_overwrite "$wrapper_path" "codex command wrapper" "codex" "$FORCE_CODEX_WRAPPER" || return 1')
+    move = body.index('mv "$wrapper_path" "$backup_path"')
+    copy = body.index('cp "$template" "$wrapper_path"')
 
-    # p2.21a4: when no real Codex launcher exists, the optional wrapper must
-    # be skipped before any ownership gate, backup, or overwrite can touch
-    # ~/.local/bin/codex. Unknown existing binaries are still gated before
-    # backup/overwrite on the path that has a real Codex launcher.
-    assert empty_real_check < skip < gate < move < write
+    assert empty_real_check < skip < template_check < gate < move < copy
+    assert 'cat > "$wrapper_path" <<EOF' not in body
     assert "real codex command not found; Codex wrapper skipped" in body
-    assert "refusing to install Codex wrapper" not in body
 
 def test_installer_cox_overwrite_gate_blocks_wrapper_write() -> None:
     body = _install_function_body("write_cox_wrapper", "write_codex_wrapper")
@@ -264,17 +261,17 @@ def test_installer_gates_unknown_local_bin_overwrites() -> None:
 
 
 
-def test_installer_codex_wrapper_repairs_managed_profile_before_launch() -> None:
+def test_installer_uses_canonical_wrapper_with_profile_scoped_lifecycle_contract() -> None:
     body = _install_function_body("write_codex_wrapper", "uninstall")
-    assert "repair_codexchange_managed_profile_contract()" in body
-    assert "profile repair --managed-only --json" in body
-    assert r'profile status "\$profile_name" --json' in body
-    assert "COX_ALLOW_PROFILE_MODEL_CONFLICT" in body
-    assert "Refusing to launch Codex with a stale or incompatible profile" in body
-    repair_idx = body.index(r'repair_codexchange_managed_profile_contract "\$profile"')
-    start_idx = body.index(r'start_cox_profile "\$profile"')
-    real_idx = body.index(r'"\$REAL_CODEX" "\$@"')
-    assert repair_idx < start_idx < real_idx
+    canonical = (ROOT / "scripts" / "codex-wrapper.bash").read_text(encoding="utf-8")
+
+    assert 'cp "$template" "$wrapper_path"' in body
+    assert 'cat > "$wrapper_path" <<EOF' not in body
+    assert "__codexchange_profile_runtime_autostart()" in canonical
+    assert "__codexchange_profile_pricing_candidate()" in canonical
+    assert "__codexchange_proxy_runtime_identity_matches()" in canonical
+    assert '--owner-profile "${profile:-default}"' in canonical
+    assert "recovery command: cox stop --port ${port}" in canonical
 
 def test_installer_recognizes_only_codexchange_managed_local_bins() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -317,33 +314,16 @@ def test_installer_backs_up_local_files_before_refreshing_wrappers_and_config() 
     assert 'write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"' in text
 
 
-def test_codex_wrapper_prefers_public_cox_and_fails_closed_on_unhealthy_proxy() -> None:
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    body = _install_function_body("write_codex_wrapper", "uninstall")
+def test_codex_wrapper_uses_lifecycle_aware_cli_and_fails_closed_on_unhealthy_proxy() -> None:
+    canonical = (ROOT / "scripts" / "codex-wrapper.bash").read_text(encoding="utf-8")
 
-    start_idx = body.index("start_cox_profile() {")
-    run_idx = body.index("run_codexchange_codex() {", start_idx)
-    start_fn = body[start_idx:run_idx]
-    run_end_idx = body.index("\n}\n\ntrap", run_idx) + len("\n}")
-    run_fn = body[run_idx:run_end_idx]
-
-    assert "COX_COMMAND" in body
-    assert "COX=" in body
-    assert 'if [ ! -x "\\$COX" ]' in body
-    assert 'start_args=(start)' not in start_fn
-    assert 'status_args=(status)' not in start_fn
-    assert 'start_args=(start reasoning)' in start_fn
-    legacy_start_args = 'start_args=(start ' + 'thinking)'
-    assert legacy_start_args not in start_fn
-    assert 'status_args=(status reasoning)' in start_fn
-    legacy_status_args = 'status_args=(status ' + 'thinking)'
-    assert legacy_status_args not in start_fn
-    assert 'profile "deepseek" is deprecated' in run_fn
-    assert 'activate_codexchange_custom_provider_profile' in body
-    assert '"\\$COX" "\\${start_args[@]}" >/dev/null 2>&1' in start_fn
-    assert '"\\$COX" "\\${status_args[@]}" >/dev/null 2>&1' in start_fn
-    assert 'return 1' in start_fn
-    assert 'return "\\$codex_rc"' in run_fn
+    assert 'start_args=(start "$route" --port "$port"' in canonical
+    assert '"$python_bin" -m codexchange_proxy.cli "${start_args[@]}"' in canonical
+    assert "__codexchange_proxy_models_ok" in canonical
+    assert "__codexchange_port_open" in canonical
+    assert "refusing to enter Codex to avoid stream disconnected failures" in canonical
+    assert "profile \"deepseek\" is deprecated" in canonical
+    assert "cox start thinking" not in canonical[canonical.index("# BEGIN COX EXECUTABLE WRAPPER DISPATCHER"):]
 
 def test_installer_uninstall_restores_previous_codex_command_from_manifest_backup() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
@@ -392,38 +372,16 @@ def test_installer_guided_model_provider_catalogs_include_openai_compatible_opti
 
 
 
-def test_installer_codex_wrapper_sets_random_terminal_title_for_deepseek_profiles() -> None:
-    body = _install_function_body("write_codex_wrapper", "uninstall")
-    assert "set_codexchange_terminal_title()" in body
-    assert "schedule_codexchange_terminal_title_refresh()" in body
-    assert "COX_TITLE_KEEPER_PID" in body
-    assert "stop_codexchange_terminal_title_keeper()" in body
-    assert 'kill "\\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in body
-    assert 'wait "\\$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true' in body
-    assert "run_codexchange_codex()" in body
-    assert "set +e" in body
-    assert "local codex_rc=\\$?" in body
-    assert 'return "\\$codex_rc"' in body
-    assert "trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP" in body
-    assert body.count("🐦‍🔥") == 1
-    assert 'local emojis=("✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻")' in body
-    assert r'local title="\${COX_TERMINAL_TITLE:-}"' in body
-    assert "if [ ! -w /dev/tty ] && [ ! -t 1 ]; then" in body
-    assert r'max_seconds="\${COX_TITLE_KEEPER_SECONDS:-60}"' in body
-    assert r'interval_seconds="\${COX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"' in body
-    assert r'while [ "\$i" -le "\$max_seconds" ]; do' in body
-    assert r'sleep "\$interval_seconds"' in body
-    assert "sleep 8" not in body
-    assert "sleep 4" not in body
-    assert "printf '\\033]0;%s\\007\\033]2;%s\\007' \"\\$title\" \"\\$title\" > /dev/tty 2>/dev/null || true" in body
-    assert r'exec "\$REAL_CODEX" "\$@"' not in body
-    case_idx = body.index(r'case "\$profile" in')
-    start_call_idx = body.index(r'start_cox_profile "\$profile"', case_idx)
-    schedule_call_idx = body.index("schedule_codexchange_terminal_title_refresh", start_call_idx)
-    real_codex_idx = body.index(r'"\$REAL_CODEX" "\$@"', schedule_call_idx)
-    cleanup_idx = body.index("stop_codexchange_terminal_title_keeper", real_codex_idx)
-    return_idx = body.index(r'return "\$codex_rc"', cleanup_idx)
-    assert start_call_idx < schedule_call_idx < real_codex_idx < cleanup_idx < return_idx
+def test_installer_and_refresh_do_not_embed_a_second_terminal_title_wrapper() -> None:
+    install_body = _install_function_body("write_codex_wrapper", "uninstall")
+    cli_text = (ROOT / "codexchange_proxy" / "cli.py").read_text(encoding="utf-8")
+    canonical = (ROOT / "scripts" / "codex-wrapper.bash").read_text(encoding="utf-8")
+
+    assert 'cp "$template" "$wrapper_path"' in install_body
+    assert "wrapper_template = r\"\"\"" not in cli_text
+    assert "set_codexchange_terminal_title()" not in canonical
+    assert "COX_TITLE_KEEPER_PID" not in canonical
+    assert "🐦‍🔥" not in canonical
 
 
 def test_installer_guided_provider_menus_use_arrow_selector() -> None:
@@ -1202,16 +1160,14 @@ def test_p219a6_default_install_no_long_legacy_command_dump() -> None:
     assert "COX_VERBOSE_INSTALL_SUMMARY" in text
 
 
-def test_p219a7_codex_wrapper_preserves_legacy_profiles_for_old_codex() -> None:
-    body = _install_function_body("write_codex_wrapper", "uninstall")
+def test_p219a7_canonical_wrapper_uses_split_profile_runtime_contract() -> None:
+    canonical = (ROOT / "scripts" / "codex-wrapper.bash").read_text(encoding="utf-8")
 
-    assert "codex_requires_legacy_profile_tables()" in body
-    assert "repair_codexchange_legacy_managed_profiles()" in body
-    assert "--profile-layout legacy_profile_tables" in body
-    assert "profile_source" in body
-    assert "legacy_profile_table" in body
-    assert "profile repair --managed-only --json" in body
-    assert body.index("repair_codexchange_managed_profile_contract()") < body.index("start_cox_profile()")
+    assert 'profile_file="$codex_dir/${profile}.config.toml"' in canonical
+    assert "__codexchange_toml_value" in canonical
+    assert "__codexchange_provider_base_url" in canonical
+    assert "__codexchange_profile_runtime_autostart" in canonical
+    assert 'profile "deepseek" is deprecated' in canonical
 
 
 def test_p219a8_installer_skips_managed_wrappers_when_resolving_real_codex() -> None:
@@ -1320,27 +1276,16 @@ def test_p221a1_installer_persists_wrapper_path_and_diagnoses_entrypoints() -> N
     assert "Current shell does not resolve codex to the CodeXchange wrapper" in text
 
 
-def test_p221a1_codex_wrapper_reports_missing_node_without_installing_node() -> None:
+def test_p221a1_codex_wrapper_resolution_does_not_install_or_patch_node() -> None:
     install_text = INSTALL_SH.read_text(encoding="utf-8")
-    cli_text = (ROOT / "codexchange_proxy" / "cli.py").read_text(encoding="utf-8")
-    for text in (install_text, cli_text):
-        assert "codex_runtime_preflight()" in text
-        assert "Node.js is not on PATH" in text
-        assert "does not install or patch Node automatically" in text
-        assert "profile refresh-wrapper" in text
-    forbidden_auto_install_markers = [
-        "apt-get install",
-        "apt install",
-        "dnf install",
-        "yum install",
-        "brew install",
-        "pacman -S",
-        "npm install -g @openai/codex",
-        "npx @openai/codex",
-        "nodesource.com",
-    ]
-    for marker in forbidden_auto_install_markers:
-        assert marker.lower() not in install_text.lower()
+    canonical = (ROOT / "scripts" / "codex-wrapper.bash").read_text(encoding="utf-8")
+
+    assert "CodeXchange does not install or patch Node automatically" in install_text
+    assert "Node.js is not on PATH" in install_text
+    assert "__codexchange_resolve_real_codex()" in canonical
+    assert "__codexchange_manifest_real_codex()" in canonical
+    assert "npm install" not in canonical
+    assert "apt install" not in canonical
 
 
 def test_p221a1_config_wizard_uses_cbreak_menu_rendering() -> None:
@@ -1444,12 +1389,13 @@ def test_p221a4_installer_skips_optional_codex_wrapper_without_real_codex_and_ke
     assert "CodeXchange install can continue without the optional Codex wrapper" in text
     assert 'ok "Codex wrapper skipped"\n    return 0' in text
 
-    write_wrapper = text[text.index("write_codex_wrapper() {"):text.index('cat > "$wrapper_path"', text.index("write_codex_wrapper() {"))]
-    assert 'real_codex="$(find_real_codex "$wrapper_path" || true)' in write_wrapper
+    write_wrapper = text[text.index("write_codex_wrapper() {"):text.index("uninstall() {", text.index("write_codex_wrapper() {"))]
+    assert 'real_codex="$(find_real_codex "$wrapper_path" || true)"' in write_wrapper
     assert write_wrapper.index('if [ -z "$real_codex" ]; then') < write_wrapper.index('require_safe_local_bin_overwrite "$wrapper_path"')
-    assert "refusing to install Codex wrapper" not in write_wrapper
+    assert 'cp "$template" "$wrapper_path"' in write_wrapper
+    assert 'cat > "$wrapper_path" <<EOF' not in write_wrapper
 
-    install_profile_marker = '"$INSTALL_DIR/.venv/bin/cox" install-codex-profile \\'
+    install_profile_marker = '"$INSTALL_DIR/.venv/bin/cox" install-codex-profile \\\n'
     main_install = text[text.index(install_profile_marker):text.index('write_codex_wrapper "$STABLE_PORT" "$THINKING_PORT"')]
     assert "--name cox" in main_install
     assert "--profile-layout split_profile_files" in main_install
@@ -1467,11 +1413,14 @@ def test_installer_refreshes_codex_wrapper_from_canonical_template() -> None:
     assert call_idx > helper_idx
 
 
-def test_cli_records_canonical_codex_wrapper_paths_for_propagation_audits() -> None:
+def test_cli_uses_canonical_codex_wrapper_paths_for_refresh() -> None:
     text = (ROOT / "codexchange_proxy" / "cli.py").read_text(encoding="utf-8")
     assert 'CODEX_WRAPPER_TEMPLATE_RELATIVE_PATH = "scripts/codex-wrapper.bash"' in text
     assert 'CODEX_WRAPPER_TARGET_RELATIVE_PATH = ".local/bin/codex"' in text
     assert "_canonical_codex_wrapper_template_candidates" in text
+    assert "_load_canonical_codex_wrapper_template" in text
+    assert "canonical_path, wrapper_template, canonical_attempts = _load_canonical_codex_wrapper_template(install_dir)" in text
+    assert "wrapper_template = r\"\"\"" not in text
 
 def test_installer_completion_holds_skip_in_noninteractive_or_ci_mode() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")

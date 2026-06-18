@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# CodeXchange codex wrapper
 # Auto-start CodeXchange when using CodeXchange Codex profiles.
 #
 # Add this function to ~/.bashrc after ~/bin is on PATH.
@@ -585,6 +586,50 @@ PY_COX_NPM_BIN
   return 1
 }
 
+__codexchange_manifest_real_codex() {
+  local manifest python_bin candidate
+  manifest="${COX_INSTALL_MANIFEST:-$HOME/.config/codexchange/install-manifest.env}"
+  [ -r "$manifest" ] || return 1
+
+  python_bin="${COX_INSTALL_DIR:-$HOME/.local/share/codexchange}/.venv/bin/python"
+  if [ ! -x "$python_bin" ]; then
+    python_bin="$(command -v python3 || command -v python || true)"
+  fi
+  [ -n "$python_bin" ] || return 1
+
+  candidate="$($python_bin - "$manifest" <<'PY_COX_MANIFEST_REAL_CODEX'
+import shlex
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    lines = path.read_text(encoding="utf-8").splitlines()
+except OSError:
+    raise SystemExit(1)
+
+for raw_line in lines:
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, raw_value = line.split("=", 1)
+    if key.strip() != "REAL_CODEX":
+        continue
+    try:
+        parts = shlex.split(raw_value, comments=False, posix=True)
+    except ValueError:
+        raise SystemExit(1)
+    if len(parts) != 1 or not parts[0]:
+        raise SystemExit(1)
+    print(parts[0])
+    raise SystemExit(0)
+raise SystemExit(1)
+PY_COX_MANIFEST_REAL_CODEX
+  )" || return 1
+  [ -n "$candidate" ] || return 1
+  printf '%s\n' "$candidate"
+}
+
 __codexchange_resolve_real_codex() {
   if [ -n "${COX_REAL_CODEX:-}" ]; then
     __codexchange_emit_executable_if_not_self "${COX_REAL_CODEX}" && return 0
@@ -592,6 +637,11 @@ __codexchange_resolve_real_codex() {
   fi
 
   local candidate
+  candidate="$(__codexchange_manifest_real_codex || true)"
+  if [ -n "$candidate" ]; then
+    __codexchange_emit_executable_if_not_self "$candidate" && return 0
+  fi
+
   while IFS= read -r candidate; do
     __codexchange_emit_executable_if_not_self "$candidate" && return 0
   done < <(type -P -a codex 2>/dev/null | awk '!seen[$0]++')

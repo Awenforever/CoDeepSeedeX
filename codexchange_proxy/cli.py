@@ -53,6 +53,53 @@ def _canonical_codex_wrapper_template_candidates(install_dir=None):
     return candidates
 
 
+def _load_canonical_codex_wrapper_template(install_dir=None) -> tuple[Path | None, str, list[dict[str, object]]]:
+    required_markers = (
+        "# CodeXchange codex wrapper",
+        "BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART",
+        "BEGIN COX EXECUTABLE WRAPPER DISPATCHER",
+        "__codexchange_profile_pricing_candidate",
+        "__codexchange_proxy_runtime_identity_matches",
+        "--owner-profile",
+        "cox stop --port ${port}",
+    )
+    attempts: list[dict[str, object]] = []
+    for candidate in _canonical_codex_wrapper_template_candidates(install_dir):
+        expanded = candidate.expanduser()
+        record: dict[str, object] = {"path": str(expanded), "exists": expanded.is_file()}
+        if not expanded.is_file():
+            record["reason"] = "missing"
+            attempts.append(record)
+            continue
+        try:
+            template = expanded.read_text(encoding="utf-8")
+        except OSError as exc:
+            record["reason"] = "read_failed"
+            record["error"] = str(exc)
+            attempts.append(record)
+            continue
+        missing = [marker for marker in required_markers if marker not in template]
+        if missing:
+            record["reason"] = "required_markers_missing"
+            record["missing_markers"] = missing
+            attempts.append(record)
+            continue
+        record["reason"] = "ok"
+        record["sha256"] = hashlib.sha256(template.encode("utf-8")).hexdigest()
+        attempts.append(record)
+        return expanded.resolve(strict=False), template, attempts
+    return None, "", attempts
+
+
+def _is_managed_codex_wrapper_text(text: str) -> bool:
+    if "# CodeXchange codex wrapper" in text:
+        return True
+    return (
+        "BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART" in text
+        and "BEGIN COX EXECUTABLE WRAPPER DISPATCHER" in text
+    )
+
+
 def _normalize_auto_compact_ratio(value: object, default: float = DEFAULT_AUTO_COMPACT_RATIO) -> float:
     try:
         ratio = float(value)
@@ -2002,6 +2049,8 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
     env_file = values.get("ENV_FILE") or str(default_env_file_path())
     install_dir = values.get("INSTALL_DIR") or str(Path.home() / ".local" / "share" / "codexchange")
     bin_dir = values.get("BIN_DIR") or str(wrapper_path.parent)
+    dry_run = bool(getattr(args, "dry_run", False))
+    force = bool(getattr(args, "force", False))
 
     result: dict[str, object] = {
         "status": "ok",
@@ -2041,9 +2090,53 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
         })
         return result
 
+    canonical_path, wrapper_template, canonical_attempts = _load_canonical_codex_wrapper_template(install_dir)
+    result["canonical_template_attempts"] = canonical_attempts
+    if canonical_path is None:
+        result.update({
+            "status": "error",
+            "error": "canonical_codex_wrapper_template_missing",
+            "hint": "The canonical scripts/codex-wrapper.bash template is missing or incomplete; refusing to generate a divergent wrapper.",
+        })
+        return result
+
+    canonical_sha256 = hashlib.sha256(wrapper_template.encode("utf-8")).hexdigest()
+    result["canonical_template_path"] = str(canonical_path)
+    result["canonical_template_sha256"] = canonical_sha256
+
+    bash = shutil.which("bash") or ("/bin/bash" if Path("/bin/bash").is_file() else None)
+    if not bash:
+        result.update({"status": "error", "error": "bash_not_found_for_wrapper_validation"})
+        return result
+    syntax_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".bash", delete=False) as handle:
+            handle.write(wrapper_template)
+            syntax_path = Path(handle.name)
+        syntax = subprocess.run(
+            [bash, "-n", str(syntax_path)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=10,
+        )
+    except Exception as exc:
+        result.update({"status": "error", "error": "canonical_wrapper_syntax_validation_failed", "detail": str(exc)})
+        return result
+    finally:
+        if syntax_path is not None:
+            syntax_path.unlink(missing_ok=True)
+    if syntax.returncode != 0:
+        result.update({
+            "status": "error",
+            "error": "canonical_wrapper_bash_syntax_invalid",
+            "detail": (syntax.stdout or "").strip(),
+        })
+        return result
+
     existing = wrapper_path.read_text(encoding="utf-8", errors="replace") if wrapper_path.exists() else ""
-    is_managed = "CodeXchange codex wrapper" in existing
-    if wrapper_path.exists() and not is_managed and not bool(getattr(args, "force", False)):
+    is_managed = _is_managed_codex_wrapper_text(existing)
+    if wrapper_path.exists() and not is_managed and not force:
         result.update({
             "status": "error",
             "error": "unknown_existing_codex_wrapper",
@@ -2051,346 +2144,81 @@ def _write_managed_codex_wrapper_from_manifest(args: argparse.Namespace) -> dict
         })
         return result
 
+    planned_backup: Path | None = None
     if wrapper_path.exists() and not is_managed:
-        backup = wrapper_path.with_name(wrapper_path.name + f".codexchange.bak.{int(time.time())}")
-        shutil.move(str(wrapper_path), str(backup))
-        backup_path = str(backup)
-        result["backup"] = backup_path
+        stamp = int(time.time())
+        planned_backup = wrapper_path.with_name(wrapper_path.name + f".codexchange.bak.{stamp}")
+        counter = 1
+        while planned_backup.exists():
+            planned_backup = wrapper_path.with_name(wrapper_path.name + f".codexchange.bak.{stamp}.{counter}")
+            counter += 1
+        result["backup"] = str(planned_backup)
 
-    title_emojis = '"✨" "💞" "🐦‍🔥" "🔥" "❄️" "💫" "🌈" "⚡" "🌀" "🚀" "🍁" "🍒" "🧬" "🪄" "💎" "🦞" "🐋" "😻"'
-    wrapper_template = r"""#!/usr/bin/env bash
-# CodeXchange codex wrapper
-set -euo pipefail
+    result["refreshed"] = True
+    result["dry_run"] = dry_run
+    result["real_codex"] = str(real_resolved)
+    result["contains_terminal_title"] = "set_codexchange_terminal_title" in wrapper_template
+    result["emoji_firebird_count"] = wrapper_template.count("🐦‍🔥")
+    result["wrapper_sha256"] = canonical_sha256
+    result["canonical_parity"] = True
 
-REAL_CODEX=__REAL_CODEX__
-COX="${COX_COMMAND:-__BIN_DIR__/cox}"
-if [ ! -x "$COX" ] && [ -x "__INSTALL_DIR__/.venv/bin/cox" ]; then
-  COX="__INSTALL_DIR__/.venv/bin/cox"
-fi
-ENV_FILE="${COX_ENV_FILE:-__ENV_FILE__}"
-
-if [ -f "$ENV_FILE" ]; then
-  source "$ENV_FILE"
-fi
-
-profile=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "--profile" ] || [ "$prev" = "-p" ]; then
-    profile="$arg"
-    break
-  fi
-  case "$arg" in
-    --profile=*) profile="${arg#--profile=}"; break ;;
-    -p*) profile="${arg#-p}"; break ;;
-  esac
-  prev="$arg"
-done
-
-set_codexchange_terminal_title() {
-  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
-    return 0
-  fi
-  case "${TERM:-}" in
-    ""|dumb)
-      return 0
-      ;;
-  esac
-
-  local title="${COX_TERMINAL_TITLE:-}"
-  if [ -z "$title" ]; then
-    local emojis=(__TITLE_EMOJIS__)
-    local idx=$((RANDOM % ${#emojis[@]}))
-    title="${emojis[$idx]}CodeXchange"
-    COX_TERMINAL_TITLE="$title"
-  fi
-
-  if [ -w /dev/tty ]; then
-    printf '\033]0;%s\007\033]2;%s\007' "$title" "$title" > /dev/tty 2>/dev/null || true
-  else
-    printf '\033]0;%s\007\033]2;%s\007' "$title" "$title" 2>/dev/null || true
-  fi
-}
-
-COX_TITLE_KEEPER_PID=""
-
-schedule_codexchange_terminal_title_refresh() {
-  if [ ! -w /dev/tty ] && [ ! -t 1 ]; then
-    return 0
-  fi
-  case "${TERM:-}" in
-    ""|dumb)
-      return 0
-      ;;
-  esac
-
-  (
-    i=1
-    max_seconds="${COX_TITLE_KEEPER_SECONDS:-60}"
-    interval_seconds="${COX_TITLE_KEEPER_INTERVAL_SECONDS:-1}"
-    while [ "$i" -le "$max_seconds" ]; do
-      sleep "$interval_seconds"
-      set_codexchange_terminal_title
-      i=$((i + interval_seconds))
-    done
-  ) >/dev/null 2>&1 &
-  COX_TITLE_KEEPER_PID="$!"
-}
-
-stop_codexchange_terminal_title_keeper() {
-  if [ -n "${COX_TITLE_KEEPER_PID:-}" ]; then
-    kill "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    wait "$COX_TITLE_KEEPER_PID" >/dev/null 2>&1 || true
-    COX_TITLE_KEEPER_PID=""
-  fi
-}
-
-codex_runtime_preflight() {
-  if [ ! -x "$REAL_CODEX" ]; then
-    printf 'CodeXchange error: real Codex command is not executable: %s\n' "$REAL_CODEX" >&2
-    return 127
-  fi
-
-  if ! command -v node >/dev/null 2>&1; then
-    if head -n 1 "$REAL_CODEX" 2>/dev/null | grep -Eq '(^#!.*node|/env[[:space:]]+node)' || grep -qE 'node|@openai/codex|codex-cli' "$REAL_CODEX" 2>/dev/null; then
-      printf 'CodeXchange error: Codex CLI was found at %s, but Node.js is not on PATH.\n' "$REAL_CODEX" >&2
-      printf 'Install Node.js/Codex CLI first, then rerun the CodeXchange installer or: %s profile refresh-wrapper\n' "$COX" >&2
-      printf 'Boundary: CodeXchange detects this dependency but does not install or patch Node automatically.\n' >&2
-      return 127
-    fi
-  fi
-}
-
-codex_requires_legacy_profile_tables() {
-  local version_text=""
-  version_text="$("$REAL_CODEX" --version 2>/dev/null || true)"
-  case "$version_text" in
-    *" 0.130."*|*" 0.131."*|*" 0.132."*|*" 0.133."*|*"v0.130."*|*"v0.131."*|*"v0.132."*|*"v0.133."*)
-      return 0
-      ;;
-  esac
-  return 1
-}
-
-repair_codexchange_legacy_managed_profiles() {
-  local thinking_port="${COX_THINKING_PORT:-8001}"
-  local model="${COX_THINKING_MODEL:-${COX_MODEL:-deepseek-v4-pro}}"
-  local catalog_args=()
-  local catalog=""
-
-  catalog="${COX_MODEL_CATALOG_JSON:-}"
-  if [ -z "$catalog" ]; then
-    catalog="__INSTALL_DIR__/experiments/model-catalog/cox-proxy-models.json"
-  fi
-  if [ -n "$catalog" ] && [ -f "$catalog" ]; then
-    catalog_args=(--model-catalog-json "$catalog")
-  fi
-
-  "$COX" install-codex-profile \
-    --name cox \
-    --provider-name cox-proxy \
-    --base-url "http://127.0.0.1:${thinking_port}/v1" \
-    --model "$model" \
-    --reasoning-effort xhigh \
-    --profile-layout legacy_profile_tables \
-    --no-backup \
-    "${catalog_args[@]}" >/dev/null
-}
-
-repair_codexchange_managed_profile_contract() {
-  local profile_name="$1"
-  local status_json=""
-
-  case "$profile_name" in
-    cox)
-      ;;
-    deepseek)
-      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
-      return 2
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  if [ "${COX_PROFILE_REPAIR_ON_LAUNCH:-1}" = "0" ]; then
-    return 0
-  fi
-
-  if [ ! -x "$COX" ]; then
-    printf 'CodeXchange error: cox command is not executable: %s\n' "$COX" >&2
-    return 1
-  fi
-
-  if codex_requires_legacy_profile_tables; then
-    if status_json="$("$COX" profile status "$profile_name" --json 2>/dev/null)"; then
-      if printf '%s' "$status_json" | grep -q '"profile_source"[[:space:]]*:[[:space:]]*"legacy_profile_table"' \
-        && ! printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-        return 0
-      fi
-    fi
-
-    if ! repair_codexchange_legacy_managed_profiles; then
-      printf 'CodeXchange error: failed to repair legacy managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s install-codex-profile --profile-layout legacy_profile_tables --name %s\n' "$COX" "$profile_name" >&2
-      return 1
-    fi
-  else
-    if ! "$COX" profile repair --managed-only --json >/dev/null 2>&1; then
-      printf 'CodeXchange error: failed to repair managed Codex profile before launch.\n' >&2
-      printf 'Run for details: %s profile repair --managed-only --json\n' "$COX" >&2
-      return 1
-    fi
-  fi
-
-  if ! status_json="$("$COX" profile status "$profile_name" --json 2>/dev/null)"; then
-    printf 'CodeXchange error: failed to verify managed Codex profile %s after repair.\n' "$profile_name" >&2
-    return 1
-  fi
-
-  if printf '%s' "$status_json" | grep -q '"model_conflict"[[:space:]]*:[[:space:]]*true'; then
-    if [ "${COX_ALLOW_PROFILE_MODEL_CONFLICT:-0}" = "1" ]; then
-      printf 'CodeXchange warning: managed Codex profile %s still has a model conflict; continuing because COX_ALLOW_PROFILE_MODEL_CONFLICT=1.\n' "$profile_name" >&2
-      return 0
-    fi
-    printf 'CodeXchange error: managed Codex profile %s still has a model conflict after repair.\n' "$profile_name" >&2
-    printf 'Refusing to launch Codex with a stale or incompatible profile. Run: %s profile status %s --json\n' "$COX" "$profile_name" >&2
-    return 1
-  fi
-}
-
-activate_codexchange_custom_provider_profile() {
-  local profile_name="$1"
-  if [ -z "$profile_name" ] || [ ! -x "$COX" ]; then
-    return 1
-  fi
-  if ! "$COX" config custom-provider use --name "$profile_name" --no-profile-sync >/dev/null 2>&1; then
-    return 1
-  fi
-  "$COX" provider install-profile --name "$profile_name" --profile-name "$profile_name" >/dev/null 2>&1
-}
-
-start_cox_profile() {
-  local profile_name="$1"
-  local start_args=()
-  local status_args=()
-
-  if [ ! -x "$COX" ]; then
-    printf 'CodeXchange error: cox command is not executable: %s\n' "$COX" >&2
-    return 1
-  fi
-
-  case "$profile_name" in
-    cox)
-      start_args=(start reasoning)
-      status_args=(status reasoning)
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-
-  if ! "$COX" "${start_args[@]}" >/dev/null 2>&1; then
-    if ! "$COX" "${status_args[@]}" >/dev/null 2>&1; then
-      printf 'CodeXchange error: failed to start cox for profile %s.\n' "$profile_name" >&2
-      printf 'Run for details: %s %s\n' "$COX" "${start_args[*]}" >&2
-      return 1
-    fi
-    return 0
-  fi
-
-  if ! "$COX" "${status_args[@]}" >/dev/null 2>&1; then
-    printf 'CodeXchange error: cox started but status check failed for profile %s.\n' "$profile_name" >&2
-    printf 'Run for details: %s %s\n' "$COX" "${status_args[*]}" >&2
-    return 1
-  fi
-}
-
-run_codexchange_codex() {
-  case "$profile" in
-    deepseek)
-      printf 'CodeXchange error: profile "deepseek" is deprecated. Use: codex --profile cox\n' >&2
-      return 2
-      ;;
-    cox)
-      repair_codexchange_managed_profile_contract "$profile"
-      start_cox_profile "$profile"
-      schedule_codexchange_terminal_title_refresh
-      ;;
-    "")
-      ;;
-    *)
-      if activate_codexchange_custom_provider_profile "$profile"; then
-        start_cox_profile "cox"
-        schedule_codexchange_terminal_title_refresh
-      elif [ -f "$HOME/.codex/${profile}.config.toml" ]; then
-        :
-      else
-        printf 'CodeXchange error: unknown Codex profile "%s". No custom provider or split profile file was found.\n' "$profile" >&2
-        printf 'Add/sync it first: %s provider install-profile --name %s --profile-name %s\n' "$COX" "$profile" "$profile" >&2
-        return 2
-      fi
-      ;;
-  esac
-
-  if ! codex_runtime_preflight; then
-    local preflight_rc=$?
-    stop_codexchange_terminal_title_keeper
-    return "$preflight_rc"
-  fi
-
-  set +e
-  "$REAL_CODEX" "$@"
-  local codex_rc=$?
-  set -e
-  stop_codexchange_terminal_title_keeper
-  return "$codex_rc"
-}
-
-trap 'stop_codexchange_terminal_title_keeper' INT TERM HUP
-run_codexchange_codex "$@"
-"""
-    wrapper = (
-        wrapper_template
-        .replace("__REAL_CODEX__", _shell_quote(str(real_resolved)))
-        .replace("__BIN_DIR__", bin_dir)
-        .replace("__INSTALL_DIR__", install_dir)
-        .replace("__ENV_FILE__", env_file)
-        .replace("__TITLE_EMOJIS__", title_emojis)
-    )
-
-    wrapper_path.parent.mkdir(parents=True, exist_ok=True)
-    if bool(getattr(args, "dry_run", False)):
-        result["refreshed"] = True
-        result["dry_run"] = True
-        result["contains_terminal_title"] = "set_codexchange_terminal_title" in wrapper
-        result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
+    if dry_run:
         return result
 
-    wrapper_path.write_text(wrapper, encoding="utf-8")
-    wrapper_path.chmod(0o755)
+    wrapper_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_wrapper = wrapper_path.with_name(f".{wrapper_path.name}.codexchange.tmp.{os.getpid()}.{time.time_ns()}")
+    moved_backup = False
+    try:
+        temp_wrapper.write_text(wrapper_template, encoding="utf-8")
+        temp_wrapper.chmod(0o755)
+        if planned_backup is not None:
+            shutil.move(str(wrapper_path), str(planned_backup))
+            backup_path = str(planned_backup)
+            moved_backup = True
+        os.replace(temp_wrapper, wrapper_path)
+        wrapper_path.chmod(0o755)
+    except Exception as exc:
+        temp_wrapper.unlink(missing_ok=True)
+        if moved_backup and planned_backup is not None and planned_backup.exists() and not wrapper_path.exists():
+            shutil.move(str(planned_backup), str(wrapper_path))
+        result.update({"status": "error", "refreshed": False, "canonical_parity": False, "error": "wrapper_write_failed", "detail": str(exc)})
+        return result
 
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_text = "\n".join([
+    manifest_lines = [
         f"CODEX_WRAPPER_PATH={_shell_quote(str(wrapper_path))}",
         f"CODEX_WRAPPER_BACKUP={_shell_quote(backup_path)}",
         f"REAL_CODEX={_shell_quote(str(real_resolved))}",
         f"ENV_FILE={_shell_quote(env_file)}",
         f"INSTALL_DIR={_shell_quote(install_dir)}",
         f"BIN_DIR={_shell_quote(bin_dir)}",
-        "",
-    ])
-    manifest_path.write_text(manifest_text, encoding="utf-8")
+    ]
+    for optional_key in ("STABLE_PORT", "THINKING_PORT"):
+        if optional_key in values:
+            manifest_lines.append(f"{optional_key}={_shell_quote(values[optional_key])}")
+    manifest_text = "\n".join([*manifest_lines, ""])
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_manifest = manifest_path.with_name(f".{manifest_path.name}.tmp.{os.getpid()}.{time.time_ns()}")
     try:
-        manifest_path.chmod(0o600)
-    except OSError:
-        pass
+        temp_manifest.write_text(manifest_text, encoding="utf-8")
+        try:
+            temp_manifest.chmod(0o600)
+        except OSError:
+            pass
+        os.replace(temp_manifest, manifest_path)
+        try:
+            manifest_path.chmod(0o600)
+        except OSError:
+            pass
+    except Exception as exc:
+        temp_manifest.unlink(missing_ok=True)
+        result.update({"status": "error", "error": "manifest_write_failed", "detail": str(exc)})
+        return result
 
-    result["refreshed"] = True
-    result["dry_run"] = False
-    result["real_codex"] = str(real_resolved)
-    result["contains_terminal_title"] = "set_codexchange_terminal_title" in wrapper
-    result["emoji_firebird_count"] = wrapper.count("🐦‍🔥")
+    installed_text = wrapper_path.read_text(encoding="utf-8")
+    result["wrapper_sha256"] = hashlib.sha256(installed_text.encode("utf-8")).hexdigest()
+    result["canonical_parity"] = installed_text == wrapper_template
+    if not result["canonical_parity"]:
+        result.update({"status": "error", "error": "canonical_wrapper_parity_check_failed"})
     return result
 
 def _refresh_codex_wrapper(args: argparse.Namespace) -> int:
