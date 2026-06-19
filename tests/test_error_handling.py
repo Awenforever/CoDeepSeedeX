@@ -157,7 +157,8 @@ async def test_malformed_deepseek_response_is_returned_as_502():
 
     assert response.status_code == 502
     detail = response.json()["detail"]
-    assert "invalid DeepSeek response" in str(detail)
+    assert "invalid provider response" in str(detail)
+    assert "invalid DeepSeek response" not in str(detail)
 
 
 @pytest.mark.asyncio

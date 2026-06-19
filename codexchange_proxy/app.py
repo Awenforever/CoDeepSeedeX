@@ -25599,7 +25599,7 @@ def create_app(
         try:
             assistant_message = deepseek_response["choices"][0]["message"]
         except (KeyError, IndexError) as exc:
-            raise HTTPException(status_code=502, detail="invalid DeepSeek response") from exc
+            raise HTTPException(status_code=502, detail="invalid provider response") from exc
 
         output_items = _deepseek_message_to_output_items(assistant_message, mcp_tool_mapping)
         output_items.extend(_image_result_output_items_from_messages(messages))
