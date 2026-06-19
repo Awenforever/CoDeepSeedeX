@@ -96,7 +96,7 @@ for i in {1..10}; do
 done
 
 if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/v1/models" >/dev/null 2>&1; then
-  echo "ERROR: DeepSeek proxy failed to start after 10 seconds. Last logs:" >&2
+  echo "ERROR: CodeXchange standard runtime failed to start after 10 seconds. Last logs:" >&2
   tail -80 "$LOG_FILE" >&2
   exit 1
 fi

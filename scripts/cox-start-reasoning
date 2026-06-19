@@ -101,11 +101,11 @@ for i in {1..10}; do
 done
 
 if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/v1/models" >/dev/null 2>&1; then
-  echo "ERROR: DeepSeek thinking proxy failed to start after 10 seconds. Last logs:" >&2
+  echo "ERROR: CodeXchange reasoning runtime failed to start after 10 seconds. Last logs:" >&2
   tail -80 "$LOG_FILE" >&2
   exit 1
 fi
 
-echo "DeepSeek thinking proxy started on port ${PORT}, pid=$(cat "$PID_FILE")"
+echo "CodeXchange reasoning runtime started on port ${PORT}, pid=$(cat "$PID_FILE")"
 echo "Log: $LOG_FILE"
 echo "DB: $DB_FILE"
