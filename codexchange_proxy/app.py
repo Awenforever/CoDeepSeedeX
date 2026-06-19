@@ -14696,7 +14696,7 @@ def _normalize_response_tool(
                     for item in nested_tools
                     if item.get("name")
                 ],
-                "reason": "MCP tools are owned by Codex local MCP runtime and are not forwarded to DeepSeek",
+                "reason": "MCP tools are owned by Codex local MCP runtime and are not forwarded to the configured provider",
             }
             if compat_warnings is not None:
                 compat_warnings.append(warning)
@@ -14777,7 +14777,7 @@ def _normalize_response_tool(
                 "type": custom_format.get("type"),
                 "syntax": custom_format.get("syntax"),
             },
-            "reason": "custom freeform tools are executed by Codex locally and are not forwarded to DeepSeek",
+            "reason": "custom freeform tools are executed by Codex locally and are not forwarded to the configured provider",
         }
         if compat_warnings is not None:
             compat_warnings.append(warning)

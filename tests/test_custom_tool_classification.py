@@ -28,7 +28,7 @@ def test_custom_apply_patch_is_ignored_without_large_grammar_payload(monkeypatch
                 "type": "grammar",
                 "syntax": "lark",
             },
-            "reason": "custom freeform tools are executed by Codex locally and are not forwarded to DeepSeek",
+            "reason": "custom freeform tools are executed by Codex locally and are not forwarded to the configured provider",
         }
     ]
     assert "definition" not in warnings[0]["format"]

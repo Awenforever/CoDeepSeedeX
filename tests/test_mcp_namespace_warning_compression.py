@@ -44,7 +44,7 @@ def test_mcp_namespace_warning_is_compressed_without_full_schema():
             "namespace": "mcp__cheap_llm__",
             "tool_count": 2,
             "tool_names": ["cheap_ask", "cheap_read_file"],
-            "reason": "MCP tools are owned by Codex local MCP runtime and are not forwarded to DeepSeek",
+            "reason": "MCP tools are owned by Codex local MCP runtime and are not forwarded to the configured provider",
         }
     ]
     assert "tool" not in warnings[0]
