@@ -24393,7 +24393,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
             "currency": target_currency,
             "source_currency": source_currency,
             "reason": "provider_pricing_not_split_by_reasoning_content",
-            "action": "treat provider completion_tokens as billable output tokens unless DeepSeek exposes separate reasoning output pricing",
+            "action": "treat provider completion_tokens as billable output tokens unless the configured provider exposes separate reasoning output pricing",
         },
         "all_models": all_models,
         "missing": [] if model_prices else ["model_pricing_entry"],
@@ -24437,7 +24437,7 @@ def _weclaw_pricing_contract(model: str | None, *, display_currency: str | None 
         "refresh": {
             "available": True,
             "reason": None,
-            "action": "run cox pricing refresh --json to fetch and validate official DeepSeek pricing HTML; add --write-cache to persist it",
+            "action": "run cox pricing refresh --json to fetch and validate the configured provider pricing source; add --write-cache to persist it",
             "source_kind": "official_docs_html",
             "source_url": official_reference_url,
             "requires_live_network": True,
