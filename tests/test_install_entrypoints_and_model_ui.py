@@ -1207,7 +1207,7 @@ def test_p219a10_guided_module_prompts_use_step_local_hints() -> None:
     expectations = [
         (
             "Configure model API now?",
-            "Model API is required for Codex/DeepSeek requests.",
+            "Model API is required for Codex through CodeXchange.",
             "cox config wizard",
         ),
         (
@@ -1230,6 +1230,8 @@ def test_p219a10_guided_module_prompts_use_step_local_hints() -> None:
         assert f'COX_NEXT_MENU_DETAIL="{hint_prefix}' in local_context
         assert later_command in local_context
         assert 'COX_NEXT_MENU_DETAIL=""' in local_context
+
+    assert "Model API is required for Codex/DeepSeek requests" not in text
 
     web_idx = text.index('read_yes_no_menu "Configure web search API now?"')
     web_context = text[max(0, web_idx - 500): web_idx + 260]

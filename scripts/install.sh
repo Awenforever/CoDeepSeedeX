@@ -2623,7 +2623,7 @@ prompt_deepseek_api_key() {
   local field_step="provider"
   local field_rc=0
 
-  COX_NEXT_MENU_DETAIL="Model API is required for Codex/DeepSeek requests. Choose Yes to configure a provider now, or No to skip and configure later with cox config wizard."
+  COX_NEXT_MENU_DETAIL="Model API is required for Codex through CodeXchange. Choose Yes to configure a provider now, or No to skip and configure later with cox config wizard."
 
   configure="$(read_yes_no_menu "Configure model API now?" "Y")"
 
