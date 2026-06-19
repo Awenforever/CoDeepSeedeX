@@ -4371,8 +4371,8 @@ def _provider_pricing_refresh_writer_single_write_execution(
             ),
             (
                 "re-run the explicit activation "
-                "contract with a provider-owned "
-                "DeepSeek path"
+                "contract with an explicit "
+                "provider-owned pricing path"
             ),
         )
 
