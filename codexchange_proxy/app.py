@@ -12894,7 +12894,7 @@ def _write_upstream_payload_trace(
             "schema_version": 1,
             "event_id": event_id,
             "observed_at": observed_at,
-            "source": "DeepSeekClient.chat_completions",
+            "source": "provider_client.chat_completions",
             "metadata": _payload_trace_metadata(metadata),
             "payload_sha256": payload_sha256,
             "payload_bytes": len(serialized_payload.encode("utf-8")),

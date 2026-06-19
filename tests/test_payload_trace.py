@@ -56,7 +56,8 @@ async def test_append_only_payload_trace_records_each_upstream_call(tmp_path, mo
     second = json.loads(trace_files[1].read_text(encoding="utf-8"))
 
     assert first["schema_version"] == 1
-    assert first["source"] == "DeepSeekClient.chat_completions"
+    assert first["source"] == "provider_client.chat_completions"
+    assert "DeepSeek" not in first["source"]
     assert first["metadata"]["purpose"] == "primary"
     assert first["metadata"]["request_id"] == "req-1"
     assert first["payload"]["messages"][0]["content"] == "hello trace"
