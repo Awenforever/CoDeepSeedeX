@@ -6323,7 +6323,7 @@ def _context_budget_breakdown(
         "chat_payload_tools_chars": _debug_trace_json_chars({"tools": chat_payload_tools}),
         "messages_before_compaction": _debug_trace_message_budget(messages_before_compaction),
         "messages_after_compaction": _debug_trace_message_budget(messages_after_compaction),
-        "messages_for_deepseek": _debug_trace_message_budget(messages_for_deepseek),
+        "messages_for_provider": _debug_trace_message_budget(messages_for_deepseek),
         "compaction": {
             "compacted": context_compaction_report.get("compacted"),
             "reason": context_compaction_report.get("reason"),
@@ -25557,7 +25557,7 @@ def create_app(
         )
         _debug_trace_event(
             response_id,
-            "messages_prepared_for_deepseek",
+            "messages_prepared_for_provider",
             model=model,
             reasoning_effort=reasoning_effort,
             message_count=len(messages_for_deepseek),

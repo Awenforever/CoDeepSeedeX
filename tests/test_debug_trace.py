@@ -492,7 +492,8 @@ def test_context_budget_breakdown_splits_tools_messages_and_compaction():
     assert budget["chat_payload_tool_count"] == 1
     assert budget["messages_before_compaction"]["message_count"] == 3
     assert budget["messages_before_compaction"]["roles"]["system"]["count"] == 1
-    assert budget["messages_for_deepseek"]["roles"]["tool"]["count"] == 1
+    assert budget["messages_for_provider"]["roles"]["tool"]["count"] == 1
+    assert "messages_for_deepseek" not in budget
     assert budget["compaction"]["reason"] == "not_triggered"
     assert budget["compaction"]["effective_trigger_chars"] == 1250000
     assert budget["compaction"]["compact_audit"]["available"] is True

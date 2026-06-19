@@ -906,7 +906,7 @@ def test_cli_debug_budget_extracts_context_budget(monkeypatch, capsys):
                         "response_id": "resp_budget",
                         "chat_payload_chars": 247930,
                         "chat_payload_tool_count": 37,
-                        "messages_for_deepseek": {
+                        "messages_for_provider": {
                             "message_count": 128,
                             "total_chars": 212783,
                             "roles": {
