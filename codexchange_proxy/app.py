@@ -12938,7 +12938,7 @@ class DeepSeekClient:
 
         if response.status_code >= 400:
             body = response.text
-            print("[codexchange] DeepSeek balance upstream error")
+            print("[codexchange] provider balance upstream error")
             print(f"[codexchange] status={response.status_code}")
             print(f"[codexchange] body={body}")
             raise HTTPException(

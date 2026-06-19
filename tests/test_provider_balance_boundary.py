@@ -71,3 +71,11 @@ def test_runtime_balance_network_behavior_unchanged_in_first_patch() -> None:
     source = inspect.getsource(proxy_app.DeepSeekClient.user_balance)
 
     assert 'f"{self.base_url}/user/balance"' in source
+
+def test_runtime_balance_upstream_error_log_is_provider_neutral() -> None:
+    source = inspect.getsource(proxy_app.DeepSeekClient.user_balance)
+
+    assert 'print("[codexchange] DeepSeek balance upstream error")' not in source
+    assert 'print("[codexchange] provider balance upstream error")' in source
+    assert 'f"{self.base_url}/user/balance"' in source
+    assert '"upstream": "deepseek"' in source
