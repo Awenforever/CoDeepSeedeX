@@ -21232,6 +21232,40 @@ def _profile_tokenizer_json_candidates(
         "deepseek",
         kind,
     )
+
+
+def _profile_tokenizer_cli_provider_arg(provider: str | None) -> str:
+    raw = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "").strip().lower()
+    if not raw:
+        return "<provider>"
+    normalized = re.sub(r"[^a-z0-9_.-]+", "_", raw).strip("_")
+    return normalized or "<provider>"
+
+
+def _profile_tokenizer_cli_env_var(provider: str | None) -> str:
+    provider_arg = _profile_tokenizer_cli_provider_arg(provider)
+    if provider_arg == "<provider>":
+        return "COX_<PROVIDER>_TOKENIZER_JSON"
+    normalized = re.sub(r"[^A-Z0-9]+", "_", provider_arg.upper()).strip("_")
+    return f"COX_{normalized or 'PROVIDER'}_TOKENIZER_JSON"
+
+
+def _profile_tokenizer_sync_action(
+    provider: str | None,
+    *,
+    include_env: bool = False,
+) -> str:
+    provider_arg = _profile_tokenizer_cli_provider_arg(provider)
+    action = f"run cox tokenizer sync {provider_arg} --json"
+    if include_env:
+        action = f"{action} or set {_profile_tokenizer_cli_env_var(provider)}"
+    return action
+
+
+def _profile_tokenizer_status_action(provider: str | None) -> str:
+    return f"run cox tokenizer status {_profile_tokenizer_cli_provider_arg(provider)} --json"
+
+
 def _profile_tokenizer_contract(model: str | None, provider: str | None = None) -> dict[str, Any]:
     provider_value = str(provider or os.environ.get("COX_MODEL_PROVIDER") or "deepseek")
     tokenizers_error: str | None = None
@@ -21289,7 +21323,7 @@ def _profile_tokenizer_contract(model: str | None, provider: str | None = None) 
             "source": None,
             "source_kind": None,
             "reason": "profile_tokenizer_json_not_found",
-            "action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+            "action": _profile_tokenizer_sync_action(provider_value, include_env=True),
             "checked": checked,
         }
 
@@ -21523,7 +21557,7 @@ def _profile_tokenizer_unavailable_report(
             "action": (
                 "send one model request through this route, then re-check cox status --weclaw-json"
                 if tokenizer_available
-                else str(contract.get("action") or "run cox tokenizer sync deepseek --json")
+                else str(contract.get("action") or _profile_tokenizer_sync_action(provider))
             ),
             "total_content_tokens": None,
             "message_count": 0,
@@ -22923,7 +22957,7 @@ def _weclaw_prompt_subcategory_split_contract(
             "source": "profile_tokenizer_contract",
             "source_kind": tokenizer_contract.get("source_kind"),
             "reason": str(tokenizer_contract.get("reason") or "profile_tokenizer_resource_unavailable"),
-            "action": str(tokenizer_contract.get("action") or "run cox tokenizer sync deepseek --json"),
+            "action": str(tokenizer_contract.get("action") or _profile_tokenizer_sync_action(None)),
             "categories": {},
             "requested_categories": _profile_tokenizer_requested_categories(),
             "missing": [
@@ -22942,7 +22976,7 @@ def _weclaw_prompt_subcategory_split_contract(
         "precision": "unavailable",
         "source": "profile_tokenizer_contract_missing",
         "reason": "profile_tokenizer_contract_unavailable",
-        "action": "run cox tokenizer status deepseek --json and verify the running route exposes tokenizer_contract",
+        "action": f"{_profile_tokenizer_status_action(None)} and verify the running route exposes tokenizer_contract",
         "categories": {},
         "requested_categories": _profile_tokenizer_requested_categories(),
         "missing": [
