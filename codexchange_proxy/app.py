@@ -5864,41 +5864,41 @@ def _debug_runtime_payload_json(filename: str) -> Any:
 
 def _debug_runtime_payload_summary() -> dict[str, Any]:
     responses = _debug_runtime_payload_file_summary("last_responses_payload.json")
-    deepseek = _debug_runtime_payload_file_summary("last_deepseek_payload.json")
+    provider = _debug_runtime_payload_file_summary("last_deepseek_payload.json")
     compaction = _context_report_summary("context_compaction_report.json")
     trimming = _context_report_summary("context_trimming_report.json")
 
     response_payload = _debug_runtime_payload_json("last_responses_payload.json")
-    deepseek_payload = _debug_runtime_payload_json("last_deepseek_payload.json")
+    provider_payload = _debug_runtime_payload_json("last_deepseek_payload.json")
 
     marker_summary = _debug_runtime_trim_marker_summary(
         {
             "last_responses_payload": response_payload,
-            "last_deepseek_payload": deepseek_payload,
+            "last_provider_payload": provider_payload,
         }
     )
 
     payload_mtimes = [
         float(item.get("mtime"))
-        for item in [responses, deepseek]
+        for item in [responses, provider]
         if isinstance(item.get("mtime"), (int, float))
     ]
     latest_payload_mtime = max(payload_mtimes) if payload_mtimes else None
 
-    current_runtime_payload_seen = bool(responses.get("exists") or deepseek.get("exists"))
+    current_runtime_payload_seen = bool(responses.get("exists") or provider.get("exists"))
 
     summary: dict[str, Any] = {
         "current_runtime_payload_seen": current_runtime_payload_seen,
         "latest_payload_mtime": latest_payload_mtime,
         "last_responses_payload": responses,
-        "last_deepseek_payload": deepseek,
+        "last_provider_payload": provider,
         "context_compaction_report": compaction,
         "context_trimming_report": trimming,
         "tool_output_trim_marker_summary": marker_summary,
         "last_responses_payload_mtime": responses.get("mtime"),
         "last_responses_payload_size": responses.get("size_bytes"),
-        "last_deepseek_payload_mtime": deepseek.get("mtime"),
-        "last_deepseek_payload_size": deepseek.get("size_bytes"),
+        "last_provider_payload_mtime": provider.get("mtime"),
+        "last_provider_payload_size": provider.get("size_bytes"),
     }
 
     if latest_payload_mtime is not None:
@@ -6279,8 +6279,8 @@ def _long_session_observability_report(*, limit: int = 200, mode: str = "aggrega
             "current_runtime_payload_seen": current_runtime_payload_seen,
             "last_responses_payload_mtime": runtime_payload.get("last_responses_payload_mtime"),
             "last_responses_payload_size": runtime_payload.get("last_responses_payload_size"),
-            "last_deepseek_payload_mtime": runtime_payload.get("last_deepseek_payload_mtime"),
-            "last_deepseek_payload_size": runtime_payload.get("last_deepseek_payload_size"),
+            "last_provider_payload_mtime": runtime_payload.get("last_provider_payload_mtime"),
+            "last_provider_payload_size": runtime_payload.get("last_provider_payload_size"),
             "recommendation": recommendation,
         }
     )

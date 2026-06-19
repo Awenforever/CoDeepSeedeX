@@ -1395,8 +1395,8 @@ def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
         "current_runtime_payload_seen": True,
         "last_responses_payload_mtime": 1778420320.0,
         "last_responses_payload_size": 835048,
-        "last_deepseek_payload_mtime": 1778420330.0,
-        "last_deepseek_payload_size": 274166,
+        "last_provider_payload_mtime": 1778420330.0,
+        "last_provider_payload_size": 274166,
         "runtime_payload": {
             "tool_output_trim_marker_summary": {
                 "marker_count": 2,
@@ -1414,7 +1414,7 @@ def test_debug_behavioral_check_marks_stale_payload_monitor_not_ready():
     assert behavioral["metrics"]["current_runtime_payload_seen"] is True
     assert behavioral["metrics"]["monitor_state"] == "trace_stale"
     assert behavioral["metrics"]["last_responses_payload_size"] == 835048
-    assert behavioral["metrics"]["last_deepseek_payload_size"] == 274166
+    assert behavioral["metrics"]["last_provider_payload_size"] == 274166
     assert behavioral["metrics"]["runtime_payload_image_payload_trim_count"] == 2
 
 

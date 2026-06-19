@@ -1759,9 +1759,9 @@ def test_long_session_report_marks_last_payload_fallback_when_trace_disabled(tmp
     assert report["trace_stale"] is True
     assert report["current_runtime_payload_seen"] is True
     assert report["last_responses_payload_size"] is not None
-    assert report["last_deepseek_payload_size"] is not None
+    assert report["last_provider_payload_size"] is not None
     assert report["runtime_payload"]["last_responses_payload"]["input_item_count"] == 2
-    assert report["runtime_payload"]["last_deepseek_payload"]["messages_count"] == 1
+    assert report["runtime_payload"]["last_provider_payload"]["messages_count"] == 1
     marker_summary = report["runtime_payload"]["tool_output_trim_marker_summary"]
     assert marker_summary["marker_count"] == 1
     assert marker_summary["image_payload_trim_count"] == 1
