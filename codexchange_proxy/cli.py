@@ -1473,8 +1473,8 @@ def _reasoning_effort_contract(value: object) -> dict[str, object] | None:
         "codex_model_reasoning_effort": codex_effort,
         "normalized": requested != deepseek_effort or codex_effort != deepseek_effort,
         "compatibility_note": (
-            "low/medium/minimal are accepted compatibility inputs and normalize to DeepSeek high; "
-            "xhigh is accepted as Codex-compatible input and normalizes to DeepSeek max while Codex profile stores xhigh."
+            "low/medium/minimal are accepted compatibility inputs and normalize to CodeXchange high; "
+            "xhigh is accepted as Codex-compatible input and normalizes to CodeXchange max while Codex profile stores xhigh."
         ),
     }
 
@@ -11212,7 +11212,11 @@ def build_parser() -> argparse.ArgumentParser:
     config_custom_provider.add_argument("--no-profile-sync", action="store_true", help="do not write/remove Codex profile files")
     config_custom_provider.set_defaults(func=_config)
 
-    config_set_effort = config_sub.add_parser("set-effort", help="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for DeepSeek compatibility")
+    config_set_effort = config_sub.add_parser(
+        "set-effort",
+        help="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for provider compatibility",
+        description="set Codex reasoning effort; low/medium are stored as high and Plan mode is pinned to high for provider compatibility",
+    )
     config_set_effort.add_argument("effort")
     config_set_effort.add_argument("--json", action="store_true", help="accepted for explicit machine-readable output")
     config_set_effort.add_argument("--env-file")
