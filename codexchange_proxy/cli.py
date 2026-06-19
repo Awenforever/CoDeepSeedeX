@@ -6647,7 +6647,7 @@ def _doctor_tool_routing_summary(args: argparse.Namespace) -> dict[str, object]:
     return {
         "status": "ok" if runtime_available else "runtime_unavailable",
         "command": "doctor tool-routing",
-        "target": "thinking" if thinking else "stable",
+        "target": _lifecycle_route_name(thinking),
         "port": port,
         "env_file": str(env_file),
         "runtime": {
@@ -6697,7 +6697,7 @@ def _doctor(args: argparse.Namespace) -> int:
         "config_exists": config_path.exists(),
         "state_dir": str(state_dir),
         "deepseek_api_key_configured": bool(os.environ.get("COX_MODEL_API_KEY")),
-        "target": "thinking" if thinking else "stable",
+        "target": _lifecycle_route_name(thinking),
         "port": port,
     }
 

@@ -99,7 +99,7 @@ def test_cli_doctor_allow_down_returns_zero(monkeypatch, tmp_path, capsys):
 
     data = json.loads(capsys.readouterr().out)
     assert data["proxy_version"] == cli_module.PROXY_VERSION
-    assert data["target"] == "thinking"
+    assert data["target"] == "reasoning"
     assert data["port"] == 9
     assert data["ok"] is False
 
