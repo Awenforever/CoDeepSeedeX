@@ -12074,7 +12074,7 @@ def _codex_native_compact_observation(
         "remote_compact_guard": {
             "responses_compact_seen": False,
             "unexpected_remote_compact_call_seen": False,
-            "expected_for_managed_deepseek_profile": False,
+            "expected_for_managed_provider_profile": False,
             "status": "not_seen",
             "action_if_seen": "report unsupported remote compaction for the provider-routed third-party route and audit provider capability drift",
         },
@@ -12133,7 +12133,7 @@ def _codex_native_compact_status_from_report(
         "remote_compact_guard": {
             "responses_compact_seen": False,
             "unexpected_remote_compact_call_seen": False,
-            "expected_for_managed_deepseek_profile": False,
+            "expected_for_managed_provider_profile": False,
             "status": "not_seen",
             "action_if_seen": "report unsupported remote compaction for the provider-routed third-party route and audit provider capability drift",
         },
