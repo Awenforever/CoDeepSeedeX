@@ -5,8 +5,8 @@
 # Add this function to ~/.bashrc after ~/bin is on PATH.
 #
 # Behavior:
-# - codex --profile cox starts the thinking proxy on port 8001.
-# - codex --profile <custom-provider-id> uses its pre-generated split profile and starts the required proxy.
+# - codex --profile cox starts the CodeXchange reasoning runtime on port 8001.
+# - codex --profile <custom-provider-id> uses its pre-generated split profile and starts the required CodeXchange runtime.
 # - codex --profile deepseek is deprecated and fails closed.
 
 # BEGIN COX PROFILE-AGNOSTIC RUNTIME AUTOSTART
