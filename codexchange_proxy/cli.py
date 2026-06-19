@@ -10974,7 +10974,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     start = sub.add_parser("start", help="start the local proxy")
     start.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: standard or reasoning; legacy aliases: thinking, non-thinking")
-    start.add_argument("--thinking", action="store_true", help="legacy alias for reasoning route on port 8001")
+    start.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route on port 8001; legacy alias for reasoning route on port 8001: --thinking")
     start.add_argument("--port", type=int)
     start.add_argument("--state-dir")
     start.add_argument("--pid-file")
@@ -11003,7 +11003,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     stop = sub.add_parser("stop", help="stop the local proxy")
     stop.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: standard or reasoning; legacy aliases: thinking, non-thinking")
-    stop.add_argument("--thinking", action="store_true")
+    stop.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route; legacy alias: --thinking")
     stop.add_argument("--state-dir")
     stop.add_argument("--pid-file")
     stop.add_argument("--port", type=int, help="stop the verified CodeXchange lifecycle owner bound to this local port")
@@ -11011,7 +11011,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="print /v1/proxy/status")
     status.add_argument("target", nargs="?", choices=COX_ROUTE_TARGET_CHOICES, help="optional target: standard or reasoning; legacy aliases: thinking, non-thinking")
-    status.add_argument("--thinking", action="store_true")
+    status.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route; legacy alias: --thinking")
     status.add_argument("--port", type=int)
     status.add_argument("--timeout", type=float, default=3.0)
     status.add_argument("--json", action="store_true", help="print machine-readable proxy status JSON; alias for default status output")
@@ -11020,7 +11020,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=_status)
 
     doctor = sub.add_parser("doctor", help="diagnose local proxy setup")
-    doctor.add_argument("--thinking", action="store_true")
+    doctor.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route; legacy alias: --thinking")
     doctor.add_argument("--port", type=int)
     doctor.add_argument("--timeout", type=float, default=3.0)
     doctor.add_argument("--allow-down", action="store_true", help="exit 0 even when proxy is not running")
@@ -11035,19 +11035,19 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_providers.add_argument("--prompt", default=_PROVIDER_PROBE_PROMPT, help="prompt for live image generation probes")
     doctor_tool_routing = doctor_sub.add_parser("tool-routing", help="summarize managed native tool routing status without live provider calls")
     doctor_tool_routing.add_argument("--env-file")
-    doctor_tool_routing.add_argument("--thinking", action="store_true", default=argparse.SUPPRESS)
+    doctor_tool_routing.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", default=argparse.SUPPRESS, help="use reasoning route; legacy alias: --thinking")
     doctor_tool_routing.add_argument("--port", type=int, default=argparse.SUPPRESS)
     doctor_tool_routing.add_argument("--timeout", type=float, default=argparse.SUPPRESS)
     doctor.set_defaults(func=_doctor)
 
     logs = sub.add_parser("logs", help="print recent proxy logs")
-    logs.add_argument("--thinking", action="store_true")
+    logs.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route; legacy alias: --thinking")
     logs.add_argument("--log-file")
     logs.add_argument("--lines", type=int, default=120)
     logs.set_defaults(func=_logs)
 
     usage = sub.add_parser("usage", help="print usage ledger")
-    usage.add_argument("--thinking", action="store_true")
+    usage.add_argument("--reasoning", "--thinking", dest="thinking", action="store_true", help="use reasoning route; legacy alias: --thinking")
     usage.add_argument("--port", type=int)
     usage.add_argument("--timeout", type=float, default=3.0)
     usage.add_argument("--summary", action="store_true")
