@@ -10995,7 +10995,7 @@ def _compact_old_message_prefix(
         f"compacted_chars: {compacted_chars}\n"
         f"role_counts: {json.dumps(role_counts, ensure_ascii=False, sort_keys=True)}\n"
         "Older messages were summarized by the proxy to avoid exceeding the "
-        "DeepSeek upstream context limit. Recent messages and protected static/image "
+        "configured provider upstream context limit. Recent messages and protected static/image "
         "structure are retained."
     )
     summary_message = {"role": "user", "content": summary_text}
@@ -11016,7 +11016,6 @@ def _compact_old_message_prefix(
     )
 
     return leading_system + protected_prefix + [summary_message] + retained
-
 
 def _iter_payload_string_fields(payload: dict[str, Any], *, protected_message_indexes: set[int] | None = None):
     protected_message_indexes = protected_message_indexes or set()
