@@ -297,7 +297,7 @@ Scope:
 
 - Make `cox` the only primary managed Codex profile.
 - Stop custom provider activation from synchronizing deprecated `deepseek` or managed DeepSeek profiles.
-- Keep provider-backed custom profiles independent: `codex --profile <provider-id>` activates that provider and starts the thinking proxy.
+- Keep provider-backed custom profiles independent: `codex --profile <provider-id>` activates that provider and starts the matching CodeXchange reasoning runtime.
 - Make wrapper entry fail closed for deprecated `codex --profile deepseek`.
 - Remove stable-profile installation from installer and upgrade profile refresh paths.
 - Keep Codex TUI `/model` integration unclaimed until real Codex behavior proves profile-level model catalog injection.
@@ -1367,7 +1367,7 @@ Date: 2026-05-25
 Scope:
 
 - Start the p2.14 managed tool routing line without moving the public `v0.3.9-alpha` Release.
-- Add a cox-owned managed tool routing core for native Responses web/image tools on DeepSeek/Codex third-party profiles.
+- Add a cox-owned managed tool routing core for native Responses web/image tools on provider-routed Codex profiles.
 - Add policy normalization for `auto`, `managed_only`, `native_only`, and `disabled`.
 - Map native `web_search` to `codexchange_web_search` and native `image_generation` to `codexchange_generate_image` when the policy is `auto` or `managed_only`.
 - Keep legacy `proxy_web_search` and `proxy_image_generate` execution aliases working for compatibility.
@@ -2224,7 +2224,7 @@ Boundary:
 ## p2.10a2-config-refresh-and-effort-ux
 
 - Added a CodeXchange-only post-config apply hook for successful config writes.
-- API key, model, and effort config updates refresh already-running local stable/thinking proxy processes instead of requiring users to infer whether a restart is needed.
+- API key, model, and effort config updates refresh already-running local standard/reasoning runtime processes instead of requiring users to infer whether a restart is needed.
 - The hook reports `all updates applied` when the local apply path completes.
 - WeClaw stop/start/resume automation remains out of scope for this repository line.
 - User-facing effort guidance no longer recommends `medium`; compatibility inputs `low` and `medium` are stored as `high` for the DeepSeek proxy path.
@@ -2260,7 +2260,7 @@ Boundary:
 
 ### p2.10a26-wrapper-start-plan-mode-hardening
 
-- Made the CodeXchange Codex wrapper fail closed: it now starts the matching stable/thinking proxy route, verifies `cox status`, and refuses to enter Codex if the backend remains unavailable.
+- Made the CodeXchange Codex wrapper fail closed: it now starts the matching standard/reasoning runtime route, verifies `cox status`, and refuses to enter Codex if the backend remains unavailable.
 - Added `plan_mode_reasoning_effort = "high"` to generated Codex profiles so native Codex Plan mode uses the DeepSeek-compatible high effort.
 - Kept proxy-side compatibility normalization for legacy or Codex-originated `low` and `medium` inputs, which still map to DeepSeek `high`.
 - Added explicit uninstall rollback coverage to ensure a previous Codex command backup is restored after the CodeXchange wrapper is removed.
