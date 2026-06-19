@@ -76,7 +76,7 @@ def test_native_web_search_maps_to_managed_tool_by_default(monkeypatch):
     assert normalized["function"]["name"] == "codexchange_web_search"
     assert any(item.get("mapped_to") == "codexchange_web_search" for item in warnings)
     assert report["fallback_triggered"] is True
-    assert report["decisions"][0]["reason"] == "native_responses_tool_not_supported_by_deepseek_chat_completions"
+    assert report["decisions"][0]["reason"] == "native_responses_hosted_tool_not_available_on_provider_routed_codex_profile"
 
 
 def test_native_image_generation_maps_to_managed_tool_by_default(monkeypatch):
@@ -96,7 +96,7 @@ def test_managed_tool_routing_policy_native_only_does_not_inject_managed_tool(mo
     assert normalized is None
     assert report["decisions"][0]["action"] == "not_mapped"
     assert report["decisions"][0]["policy"] == "native_only"
-    assert any(item.get("reason") == "routing_policy_native_only_but_deepseek_native_tool_unavailable" for item in warnings)
+    assert any(item.get("reason") == "routing_policy_native_only_but_native_responses_tool_unavailable" for item in warnings)
 
 
 def test_managed_tool_routing_policy_disabled_drops_native_tool_with_action(monkeypatch):

@@ -14035,13 +14035,13 @@ def _managed_tool_schema(kind: str) -> dict[str, Any]:
     if kind == "web_search":
         schema["function"]["description"] = (
             "Managed CodeXchange web search. Use this instead of native Responses "
-            "web_search when the DeepSeek/Codex third-party profile cannot execute "
+            "web_search when the provider-routed Codex profile cannot execute "
             "native hosted web tools."
         )
     elif kind == "image_generation":
         schema["function"]["description"] = (
             "Managed CodeXchange image generation. Use this instead of native "
-            "Responses image_generation when the DeepSeek/Codex third-party profile "
+            "Responses image_generation when the provider-routed Codex profile "
             "cannot execute native hosted image tools."
         )
     return schema
@@ -14111,7 +14111,7 @@ def _managed_tool_capability(kind: str) -> dict[str, Any]:
     provider_status = _managed_tool_provider_status(kind)
     policy = _managed_tool_routing_policy(kind)
     native_available = False
-    native_reason = "native_responses_tool_not_supported_by_deepseek_chat_completions"
+    native_reason = "native_responses_hosted_tool_not_available_on_provider_routed_codex_profile"
     managed_available = bool(provider_status.get("configured")) and not bool(provider_status.get("disabled"))
     return {
         "kind": kind,
@@ -14242,7 +14242,7 @@ def _normalize_managed_native_tool(
             "tool_type": tool_type,
             "policy": policy,
             "action": "not_mapped",
-            "reason": "routing_policy_native_only_but_deepseek_native_tool_unavailable",
+            "reason": "routing_policy_native_only_but_native_responses_tool_unavailable",
             "native_available": capability.get("native_available"),
             "native_unavailable_reason": capability.get("native_unavailable_reason"),
             "managed_function_name": managed_name,
@@ -14305,7 +14305,7 @@ def _managed_tool_routing_instruction_message(tools: list[dict[str, Any]] | None
 
     instructions = [
         _MANAGED_TOOL_ROUTING_MARKER,
-        "Native hosted Responses tools are not available on this DeepSeek/Codex third-party profile.",
+        "Native hosted Responses tools are not available on this provider-routed Codex profile.",
         "Use the managed CodeXchange function tools below when the user asks for the corresponding capability.",
     ]
     if _MANAGED_TOOL_FUNCTION_NAMES["web_search"] in managed_names:
