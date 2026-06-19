@@ -27,7 +27,7 @@ proxy.pid
 *.sqlite3
 *.db
 
-# Thinking proxy runtime files
+# CodeXchange runtime files
 proxy-thinking.log
 proxy-thinking.pid
 .generated/
