@@ -12076,7 +12076,7 @@ def _codex_native_compact_observation(
             "unexpected_remote_compact_call_seen": False,
             "expected_for_managed_deepseek_profile": False,
             "status": "not_seen",
-            "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
+            "action_if_seen": "report unsupported remote compaction for the provider-routed third-party route and audit provider capability drift",
         },
         "fallback_policy": {
             "cox_runtime_compact_role": "fallback_only",
@@ -12135,7 +12135,7 @@ def _codex_native_compact_status_from_report(
             "unexpected_remote_compact_call_seen": False,
             "expected_for_managed_deepseek_profile": False,
             "status": "not_seen",
-            "action_if_seen": "report unsupported_remote_compaction_for_deepseek_proxy and audit provider capability drift",
+            "action_if_seen": "report unsupported remote compaction for the provider-routed third-party route and audit provider capability drift",
         },
         "fallback_policy": {
             "cox_runtime_compact_role": "fallback_only",
