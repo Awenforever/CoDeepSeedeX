@@ -5182,7 +5182,7 @@ def _tokenizer_resource_metadata(provider: str = "deepseek") -> dict[str, Any]:
             "source_zip_sha256": DEEPSEEK_TOKENIZER_ZIP_SHA256,
             "source_zip_entries": DEEPSEEK_TOKENIZER_ZIP_ENTRIES,
             "source_archive_name": "deepseek_v3_tokenizer.zip",
-            "sync_action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+            "sync_action": "run cox tokenizer sync custom --json or configure the provider tokenizer JSON",
         }
 
     return {
