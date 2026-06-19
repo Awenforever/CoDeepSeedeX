@@ -7,11 +7,12 @@ install-runtime-scripts.sh is deprecated.
 Use scripts/install.sh for normal installation, or use the installed cox CLI directly:
 
   cox start
-  cox start thinking
+  cox start reasoning
   cox stop
-  cox stop thinking
+  cox stop reasoning
   cox status
-  cox status thinking
+  cox status reasoning
 
-The old standalone shortcut scripts are no longer the recommended runtime entrypoints.
+Legacy aliases such as thinking and non-thinking remain accepted for compatibility,
+but new scripts and user-facing examples should use reasoning and standard.
 __COX_RUNTIME_SCRIPT_DEPRECATED_MESSAGE__
