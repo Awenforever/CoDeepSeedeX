@@ -341,7 +341,7 @@ CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状
 - token-first TRIM dry-run、类型枚举、first-image保护和静态块保护；
 - 低风险文本payload的类型感知生产TRIM，并通过脱敏状态metadata暴露；
 - 非保护image payload的图像语义信封，并保留first-image原文；
-- GitHub源码支撑的Codex原生本地Compact prompt对齐，同时明确remote `responses/compact`受provider门控，不声称第三方DeepSeek route具备该能力。
+- GitHub源码支撑的Codex原生本地Compact prompt对齐，同时明确remote `responses/compact`受provider门控，不声称通过provider路由的第三方route具备该能力。
 
 WeClaw应消费cox提供的结构化JSON字段，不应自行重算token分类、币种换算或session费用。
 

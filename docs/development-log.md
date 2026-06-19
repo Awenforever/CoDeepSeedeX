@@ -2639,12 +2639,12 @@ Scope:
 - Recorded `prompt.md` sha256 `ab0c334d4faca17e3afbb9b16967c1b2fdcc7242a9a0880af57949fa236d6d07`.
 - Recorded `summary_prefix.md` sha256 `e9b088e794a6bb9082ac053fcc760bd818d7e720ee4bcdc72c6e480de7b7cb0e`.
 - Exposed `codex_native_source_evidence`, `compact_prompt_alignment`, and `codex_summary_prefix` through Compact metadata, compact audit, runtime payload guard, and WeClaw status paths.
-- Preserved the boundary that Codex remote `responses/compact` is provider-gated and is not claimed for the third-party DeepSeek route.
+- Preserved the boundary that Codex remote `responses/compact` is provider-gated and is not claimed for provider-routed third-party routes.
 
 Boundary:
 
 - This node does not implement the remote `responses/compact` endpoint locally.
-- This node does not claim DeepSeek route native remote compaction support.
+- This node does not claim native remote compaction support for provider-routed third-party routes.
 - Public `v0.3.9-alpha` remains unmoved.
 
 ## p2.10a94 Plan closure contract

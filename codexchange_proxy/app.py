@@ -12177,7 +12177,7 @@ def _codex_native_compact_source_evidence_contract() -> dict[str, Any]:
         "local_prompt_alignment": "exact_prompt_md_text",
         "summary_prefix_alignment": "exact_summary_prefix_md_text",
         "remote_compaction_claimed_for_cox_provider": False,
-        "remote_compaction_claim_reason": "Codex remote compaction is provider-gated by supports_remote_compaction(); cox third-party DeepSeek route must not claim native remote compaction.",
+        "remote_compaction_claim_reason": "Codex remote compaction is provider-gated by supports_remote_compaction(); cox provider-routed third-party route must not claim native remote compaction.",
         "raw_prompt_exposed": False,
         "raw_material_exposed": False,
         "redacted": True,
@@ -12245,7 +12245,7 @@ def _compaction_prompt_fingerprint(
         "notes": [
             "The digest identifies the compact prompt and material boundary without exposing raw conversation content.",
             "The local compact request includes Codex prompt.md text exactly; role layout remains cox-local and is not claimed to be Codex-native.",
-            "Remote responses/compact is provider-gated and is not claimed for the third-party DeepSeek route.",
+            "Remote responses/compact is provider-gated and is not claimed for provider-routed third-party routes.",
         ],
     }
 
@@ -19786,7 +19786,7 @@ def _compaction_audit_metadata_from_report(report: Any) -> dict[str, Any]:
         "notes": [
             "This section is display-safe metadata for Compact auditability.",
             "It does not expose raw prompt, raw compact material, or retained recent message content.",
-            "The local compact request includes Codex prompt.md text exactly; remote responses/compact remains provider-gated and is not claimed for the third-party DeepSeek route.",
+            "The local compact request includes Codex prompt.md text exactly; remote responses/compact remains provider-gated and is not claimed for provider-routed third-party routes.",
         ],
     }
 
