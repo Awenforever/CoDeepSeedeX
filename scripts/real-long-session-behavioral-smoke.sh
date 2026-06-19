@@ -15,7 +15,7 @@ Usage:
   scripts/real-long-session-behavioral-smoke.sh --allow-bypass [--limit 200] [--timeout 5] [--prefix /tmp/name]
 
 Purpose:
-  Run a controlled real Codex long-session behavioral smoke test against the local thinking proxy.
+  Run a controlled real Codex long-session behavioral smoke test against the local CodeXchange reasoning runtime.
 
 Safety:
   The real smoke uses:
@@ -141,7 +141,7 @@ run_ok=1
   echo "===== proxy preflight ====="
   curl -sS --max-time "$timeout_seconds" http://127.0.0.1:8001/healthz
   echo
-  .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "${prefix}.pre-behavioral.json"
+  .venv/bin/python -m codexchange_proxy.cli debug behavioral --reasoning --limit "$limit" --timeout "$timeout_seconds" > "${prefix}.pre-behavioral.json"
 
   echo
   echo "===== write codex prompt ====="
@@ -167,7 +167,7 @@ for i in range(3000):
     print(f"REAL_LONG_SESSION_TRIM_TRIGGER line={i:04d} " + ("controlled-output-" * 8))
 print("REAL_LONG_SESSION_TRIM_TRIGGER_END")
 PY_TRIM_TRIGGER
-5. .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit 200 --timeout 5
+5. .venv/bin/python -m codexchange_proxy.cli debug behavioral --reasoning --limit 200 --timeout 5
 6. git status --short
 
 Your final answer must be valid compact JSON only. The first character must be `{` and the last character must be `}`. Do not wrap it in Markdown fences.
@@ -203,7 +203,7 @@ PROMPT
 
   echo
   echo "===== post behavioral check ====="
-  .venv/bin/python -m codexchange_proxy.cli debug behavioral --thinking --limit "$limit" --timeout "$timeout_seconds" > "$post_behavioral_json"
+  .venv/bin/python -m codexchange_proxy.cli debug behavioral --reasoning --limit "$limit" --timeout "$timeout_seconds" > "$post_behavioral_json"
 
   .venv/bin/python - "$post_behavioral_json" "$post_behavioral_summary" <<'PY_POST_SUMMARY'
 import json
