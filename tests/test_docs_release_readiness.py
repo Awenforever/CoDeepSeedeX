@@ -17,9 +17,17 @@ def test_docs_do_not_describe_model_api_as_deepseek_only() -> None:
 
 
 def test_operations_uses_current_cox_config_command_name() -> None:
-    ops = _read("docs/developer-handbook.zh-CN.md")
-    assert "cox-config" not in ops
-    assert "cox config set-model deepseek-v4-pro" in ops
+    zh_ops = _read("docs/developer-handbook.zh-CN.md")
+    en_ops = _read("docs/developer-handbook.md")
+
+    for ops in (zh_ops, en_ops):
+        assert "cox-config" not in ops
+        assert "cox config set-model --provider deepseek" in ops
+        assert (
+            "cox config set-model provider-model-name --provider custom "
+            "--base-url https://api.example.com/v1 --skip-validation"
+        ) in ops
+        assert "cox config set-model deepseek-v4-pro" not in ops
 
 
 def test_developer_handbook_current_release_state_is_synced_to_latest_release_note_node() -> None:

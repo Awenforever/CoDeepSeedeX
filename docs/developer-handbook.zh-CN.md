@@ -273,13 +273,14 @@ cox doctor providers --live --allow-spend
 
 智谱和Z.AI图像端点必须区分。Provider诊断不能把通用图像API key误判为所有图像provider均已配置。Qwen/DashScope provider诊断必须尊重区域图像endpoint。
 
-文档和测试必须保留当前模型配置命令示例：
+文档和测试必须保留当前provider-neutral模型配置命令示例：
 
 ```bash
-cox config set-model deepseek-v4-pro
+cox config set-model --provider deepseek
+cox config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
 ```
 
-不要恢复旧式带连字符的配置命令。
+legacy model-only形式仍作为兼容输入保留，但用户可见指引必须优先使用显式provider命令。不要恢复旧式带连字符的配置命令。
 
 ## 10. Codex profile和wrapper契约
 

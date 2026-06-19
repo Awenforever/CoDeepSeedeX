@@ -294,13 +294,14 @@ Do not add a separate `cox config test-provider --kind web-search|image --provid
 
 Zhipu and Z.AI image endpoints must remain separated. Provider diagnostics must not treat a generic image API key as proof that every image provider is configured. Qwen/DashScope provider diagnostics must respect regional image endpoints.
 
-Model configuration command example that documentation and tests must preserve:
+Provider-neutral model configuration command examples that documentation and tests must preserve:
 
 ```bash
-cox config set-model deepseek-v4-pro
+cox config set-model --provider deepseek
+cox config set-model provider-model-name --provider custom --base-url https://api.example.com/v1 --skip-validation
 ```
 
-Do not restore old hyphenated configuration commands.
+The legacy model-only form remains compatibility input, but user-facing guidance must prefer provider-explicit commands. Do not restore old hyphenated configuration commands.
 
 ## 10. Codex profile and wrapper contract
 
