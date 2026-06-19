@@ -8,16 +8,16 @@ Check local proxy processes:
 
 ```bash
 cox status
-cox status thinking
+cox status reasoning
 ```
 
 Stop and restart:
 
 ```bash
 cox stop
-cox stop thinking
+cox stop reasoning
 cox start
-cox start thinking
+cox start reasoning
 ```
 
 ## CLI version and service version mismatch
@@ -62,8 +62,9 @@ cox doctor providers --live --allow-spend
 Reinstall profiles by rerunning the installer, then verify:
 
 ```bash
-codex --profile deepseek
 codex --profile cox
+cox config status
+cox provider list
 ```
 
 ## Codex still shows GPT models
@@ -75,7 +76,7 @@ command -v codex
 codex --profile cox
 ```
 
-Inside Codex TUI, `/model` should reflect the configured DeepSeek profile. If it does not, check `~/.codex/config.toml` and the wrapper path.
+Inside Codex TUI, `/model` should reflect the model configured for the active CodeXchange provider/profile. If it does not, check `~/.codex/config.toml`, `cox config status`, and the wrapper path.
 
 ## VM GitHub access is unstable
 
