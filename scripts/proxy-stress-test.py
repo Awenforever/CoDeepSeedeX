@@ -27,6 +27,7 @@ class CaseResult:
     request_keys: list[str]
     upstream_keys: list[str]
     upstream_model: str | None
+    upstream_reasoning: Any
     upstream_thinking: Any
     upstream_reasoning_effort: Any
     upstream_tools_count: int
@@ -304,6 +305,7 @@ def run_case(base_url: str, name: str, payload: dict[str, Any], stream: bool) ->
         request_keys=sorted(request_payload.keys()),
         upstream_keys=sorted(upstream.keys()),
         upstream_model=upstream.get("model"),
+        upstream_reasoning=upstream.get("reasoning") or upstream.get("thinking"),
         upstream_thinking=upstream.get("thinking"),
         upstream_reasoning_effort=upstream.get("reasoning_effort"),
         upstream_tools_count=len(upstream.get("tools") or []),
@@ -343,20 +345,51 @@ def run_previous_response_case(base_url: str) -> list[CaseResult]:
     return [first, second]
 
 
+def normalize_profile_targets(profile: str) -> list[str]:
+    route = str(profile or "both").strip().lower().replace("_", "-")
+    if route == "both":
+        return ["standard", "reasoning"]
+    if route in {"standard", "stable", "non-thinking", "nonthinking"}:
+        return ["standard"]
+    if route in {"reasoning", "thinking"}:
+        return ["reasoning"]
+    raise argparse.ArgumentTypeError(
+        "profile must be standard, reasoning, or both; legacy aliases: stable, thinking"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stable-url", default="http://127.0.0.1:8000/v1")
-    parser.add_argument("--thinking-url", default="http://127.0.0.1:8001/v1")
-    parser.add_argument("--profile", choices=["stable", "thinking", "both"], default="both")
+    parser.add_argument(
+        "--standard-url",
+        "--stable-url",
+        dest="standard_url",
+        default="http://127.0.0.1:8000/v1",
+        help="CodeXchange standard route URL; legacy alias: --stable-url",
+    )
+    parser.add_argument(
+        "--reasoning-url",
+        "--thinking-url",
+        dest="reasoning_url",
+        default="http://127.0.0.1:8001/v1",
+        help="CodeXchange reasoning route URL; legacy alias: --thinking-url",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=["standard", "reasoning", "both", "stable", "thinking"],
+        default="both",
+        help="target route: standard, reasoning, or both; legacy aliases: stable, thinking",
+    )
     parser.add_argument("--scale", choices=["small", "medium", "large"], default="medium")
     parser.add_argument("--output", default="")
     args = parser.parse_args()
 
     urls: list[tuple[str, str]] = []
-    if args.profile in {"stable", "both"}:
-        urls.append(("stable", args.stable_url))
-    if args.profile in {"thinking", "both"}:
-        urls.append(("thinking", args.thinking_url))
+    targets = normalize_profile_targets(args.profile)
+    if "standard" in targets:
+        urls.append(("standard", args.standard_url))
+    if "reasoning" in targets:
+        urls.append(("reasoning", args.reasoning_url))
 
     results: list[dict[str, Any]] = []
     started_at = int(time.time())
