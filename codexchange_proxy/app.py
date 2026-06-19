@@ -12402,7 +12402,7 @@ def _build_persistent_compacted_history(
         "content": (
             "[cox-proxy persistent compaction summary]\n"
             "The older conversation history was compacted to keep the Codex-like "
-            "agent loop within the DeepSeek context budget. Treat this summary as "
+            "agent loop within the configured provider context budget. Treat this summary as "
             "authoritative for earlier work, and treat the following recent messages "
             "as verbatim continuation context.\n\n"
             f"{summary_text}"
