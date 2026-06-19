@@ -128,6 +128,7 @@ async def test_persistent_compaction_replaces_stored_previous_history(tmp_path, 
         second_body = second.json()
 
         assert fake.compaction_calls == 1
+        assert app.state.last_context_compaction_report["summary_source"] == "provider"
         assert app.state.last_context_compaction_report["runtime_trigger_source"] == "token_first"
         assert app.state.last_context_compaction_report["reason"] == "token_first_auto_compact_triggered"
         assert app.state.last_context_compaction_report["tokens_to_auto_compact"] <= 0
@@ -202,6 +203,7 @@ async def test_compaction_helper_preserves_recent_tool_pair(tmp_path, monkeypatc
     )
 
     assert report["compacted"] is True
+    assert report["summary_source"] == "provider"
     assert report["runtime_trigger_source"] == "token_first"
     assert report["reason"] == "token_first_auto_compact_triggered"
     assert report["estimated_context_tokens"] >= report["auto_compact_threshold_tokens"]

@@ -173,7 +173,7 @@ async def test_proxy_status_reports_context_config_and_last_reports(tmp_path, mo
 
     assert compaction["last_report"]["exists"] is True
     assert compaction["last_report"]["compacted"] is True
-    assert compaction["last_report"]["summary_source"] == "deepseek"
+    assert compaction["last_report"]["summary_source"] == "provider"
     assert compaction["last_report"]["chars_removed"] == 80000
     assert compaction["last_report"]["material"]["compactable_message_count"] == 40
     assert compaction["last_report"]["compact_audit"]["available"] is True

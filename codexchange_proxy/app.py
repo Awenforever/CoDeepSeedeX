@@ -12660,7 +12660,7 @@ async def _compact_chat_history_for_codex_like_persistence(
             pricing_provider_path=pricing_provider_path,
         )
         summary_text = _extract_deepseek_message_text(deepseek_response)
-        report["summary_source"] = "deepseek"
+        report["summary_source"] = "provider"
     except Exception as exc:
         report["summary_source"] = "fallback"
         report["summary_error_type"] = type(exc).__name__
@@ -19871,7 +19871,10 @@ def _context_report_summary(data: Any) -> dict[str, Any]:
         "compacted_message_count",
     ]:
         if key in data:
-            summary[key] = data.get(key)
+            value = data.get(key)
+            if key == "summary_source" and value == "deepseek":
+                value = "provider"
+            summary[key] = value
 
     material = data.get("material")
     if isinstance(material, dict):
