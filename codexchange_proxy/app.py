@@ -8732,7 +8732,7 @@ def _normalize_deepseek_role(role: Any) -> str:
     if role_str in {"system", "user", "assistant", "tool", "latest_reminder"}:
         return role_str
 
-    print(f"[codexchange] mapped unsupported DeepSeek message role {role_str!r} to 'user'")
+    print(f"[codexchange] mapped unsupported provider message role {role_str!r} to 'user'")
     return "user"
 
 
