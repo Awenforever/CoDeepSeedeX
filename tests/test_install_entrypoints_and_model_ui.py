@@ -410,7 +410,9 @@ def test_installer_marks_non_deepseek_model_providers_experimental() -> None:
     assert '"5|Qwen / DashScope|experimental"' in text
     assert '"6|Mimo|unsupported"' in text
     assert '"7|Baichuan|unsupported"' in text
-    assert "Only DeepSeek is marked Supported" in text
+    assert "Only DeepSeek is marked Supported" not in text
+    assert "Choose a model provider." in text
+    assert "custom OpenAI-compatible providers" in text
     assert "Domestic Token API / general endpoint|experimental" in text
     assert "Domestic Coding Plan API endpoint|experimental" in text
     assert "International Token API / general endpoint|experimental" in text

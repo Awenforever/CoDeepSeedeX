@@ -2485,7 +2485,7 @@ prompt_model_api_key_field() {
 choose_model_provider_family() {
   local family=""
   sub_title "Model providers"
-  printf '  %s\n' "Only DeepSeek is marked Supported. Other implemented model providers are Experimental until full Codex workflow validation passes."
+  printf '  %s\n' "Choose a model provider. DeepSeek is fully validated; Kimi, ZhipuAI, Z.AI, Qwen, and custom OpenAI-compatible providers are available through explicit provider routing."
   family="$(read_menu_choice_from_tty "Select model provider family" "1" \
     "1|DeepSeek|supported" \
     "2|Kimi / Moonshot|experimental" \
