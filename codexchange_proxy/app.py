@@ -21662,7 +21662,7 @@ def _profile_tokenizer_observable_payload_report(
         "available": True,
         "unit": "tokens",
         "precision": "local_profile_tokenizer_json_serialized_estimate",
-        "source": "deepseek_chat_payload_after_cox_build_chat_payload",
+        "source": "provider_chat_payload_after_cox_build_chat_payload",
         "components": components,
         "semantic_prompt_component_names": semantic_prompt_component_names,
         "semantic_prompt_candidate_tokens": semantic_prompt_candidate_tokens,
@@ -21723,7 +21723,7 @@ def _profile_tokenizer_report_for_messages(
             latest_plain_user_index = index
 
     categories = {
-        category: {"tokens": 0, "message_count": 0, "source": "cox_deepseek_messages_after_payload_assembly"}
+        category: {"tokens": 0, "message_count": 0, "source": "cox_provider_messages_after_payload_assembly"}
         for category in _profile_tokenizer_requested_categories()
     }
     message_reports: list[dict[str, Any]] = []
@@ -21740,7 +21740,7 @@ def _profile_tokenizer_report_for_messages(
         )
         text = _profile_tokenizer_message_text(message)
         token_count = _profile_tokenizer_count_text(tokenizer, text)
-        categories.setdefault(category, {"tokens": 0, "message_count": 0, "source": "cox_deepseek_messages_after_payload_assembly"})
+        categories.setdefault(category, {"tokens": 0, "message_count": 0, "source": "cox_provider_messages_after_payload_assembly"})
         categories[category]["tokens"] += token_count
         categories[category]["message_count"] += 1
         total_tokens += token_count
@@ -23856,7 +23856,7 @@ def _weclaw_tokens_contract(
         "cache": {
             "available": True,
             "unit": "tokens",
-            "source": "deepseek_usage.prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_via_cox_usage_ledger",
+            "source": "provider_usage.prompt_cache_hit_tokens_and_prompt_cache_miss_tokens_via_cox_usage_ledger",
             "provider_authoritative": True,
             "session": current_session_section.get("cache") if isinstance(current_session_section, dict) else None,
             "last_turn": latest_primary_section.get("cache") if isinstance(latest_primary_section, dict) else None,
