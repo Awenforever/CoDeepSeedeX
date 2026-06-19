@@ -14,13 +14,22 @@ CODEX_DIR="$(dirname "$CODEX_CONFIG")"
 
 mkdir -p "$(dirname "$ENV_FILE")"
 
-ensure_env_file() {
-  if [ -z "$PYTHON_BIN" ] || [ ! -f "$ENV_DATA_TOOL" ]; then
+ensure_runtime_tools() {
+  if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+    echo "ERROR: CodeXchange Python runtime is unavailable" >&2
+    return 1
+  fi
+  if [ ! -f "$ENV_DATA_TOOL" ]; then
     echo "ERROR: CodeXchange env data writer is unavailable" >&2
     return 1
   fi
+}
+
+ensure_env_file() {
+  ensure_runtime_tools
   {
     printf 'COX_MODEL_API_KEY\0%s\0' ""
+    printf 'COX_MODEL_PROVIDER\0%s\0' "deepseek"
     printf 'COX_MODEL\0%s\0' "deepseek-v4-pro"
     printf 'COX_REASONING_EFFORT\0%s\0' "high"
   } | "$PYTHON_BIN" "$ENV_DATA_TOOL" ensure-exports-nul "$ENV_FILE" \
@@ -33,20 +42,18 @@ set_export_var() {
   local value="$2"
 
   ensure_env_file
-  if [ -z "$PYTHON_BIN" ] || [ ! -f "$ENV_DATA_TOOL" ]; then
-    echo "ERROR: CodeXchange env data writer is unavailable" >&2
-    return 1
-  fi
+  ensure_runtime_tools
   "$PYTHON_BIN" "$ENV_DATA_TOOL" set-export "$ENV_FILE" "$key" "$value"
 }
 
-codex_effort_for_deepseek_effort() {
+codex_effort_for_cox_effort() {
   case "$1" in
     high) echo "high" ;;
     max) echo "xhigh" ;;
+    xhigh) echo "xhigh" ;;
     *)
       echo "ERROR: effort must be high or max" >&2
-      exit 2
+      return 2
       ;;
   esac
 }
@@ -65,13 +72,19 @@ patch_profile_file_key() {
 
   [ -f "$profile_file" ] || return 0
 
-  python3 - "$profile_file" "$key" "$value" <<'PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH'
+  "$PYTHON_BIN" - "$profile_file" "$key" "$value" <<'PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH_P101'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 key = sys.argv[2]
 value = sys.argv[3]
+
+def quote_basic(value: str) -> str:
+    value = value.replace("\\", "\\\\").replace('"', '\\"')
+    value = value.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return f'"{value}"'
+
 text = path.read_text(encoding="utf-8")
 lines = text.splitlines()
 out = []
@@ -79,14 +92,14 @@ found = False
 for line in lines:
     stripped = line.strip()
     if stripped.startswith(f"{key} = "):
-        out.append(f'{key} = "{value}"')
+        out.append(f"{key} = {quote_basic(value)}")
         found = True
     else:
         out.append(line)
 if not found:
-    out.append(f'{key} = "{value}"')
+    out.append(f"{key} = {quote_basic(value)}")
 path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
-PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH
+PYCOX_COMMAND_CONFIG_SPLIT_PROFILE_PATCH_P101
 }
 
 patch_codex_model() {
@@ -96,22 +109,84 @@ patch_codex_model() {
 }
 
 patch_codex_effort() {
-  local deepseek_effort="$1"
+  local cox_effort="$1"
   local codex_effort
-  codex_effort="$(codex_effort_for_deepseek_effort "$deepseek_effort")"
+  codex_effort="$(codex_effort_for_cox_effort "$cox_effort")"
 
   patch_profile_file_key "cox" "model_reasoning_effort" "$codex_effort"
   patch_profile_file_key "cox" "plan_mode_reasoning_effort" "high"
 }
 
+run_cox_cli() {
+  ensure_runtime_tools
+  PYTHONPATH="$PROJECT${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m codexchange_proxy.cli "$@"
+}
+
+runtime_refresh_disabled() {
+  case "${COX_CONFIG_RESTART_THINKING:-}" in
+    0|false|FALSE|no|NO|off|OFF|disabled|DISABLED|never|NEVER) return 0 ;;
+  esac
+  case "${COX_CONFIG_REFRESH_RUNTIME:-}" in
+    0|false|FALSE|no|NO|off|OFF|disabled|DISABLED|never|NEVER) return 0 ;;
+  esac
+  case "${COX_POST_CONFIG_APPLY:-}" in
+    0|false|FALSE|no|NO|off|OFF|disabled|DISABLED|never|NEVER) return 0 ;;
+  esac
+  return 1
+}
+
+apply_runtime_refresh() {
+  if runtime_refresh_disabled; then
+    echo "CodeXchange runtime refresh skipped by configuration."
+    return 0
+  fi
+
+  ensure_runtime_tools
+  PYTHONPATH="$PROJECT${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - "$PROJECT" <<'PYCOX_COMMAND_CONFIG_RUNTIME_REFRESH_P101'
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from codexchange_proxy.cli import _post_config_apply
+
+print(json.dumps(_post_config_apply(), ensure_ascii=False, indent=2))
+PYCOX_COMMAND_CONFIG_RUNTIME_REFRESH_P101
+}
+
+print_env_exports() {
+  ensure_runtime_tools
+  PYTHONPATH="$PROJECT${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - "$PROJECT" "$ENV_FILE" <<'PYCOX_COMMAND_CONFIG_PRINT_ENV_P101'
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from codexchange_proxy.env_file import read_env_exports, render_env_exports
+
+path = Path(sys.argv[2])
+values = read_env_exports(path)
+selected = {
+    key: value
+    for key, value in values.items()
+    if key in {
+        "COX_MODEL_API_KEY",
+        "COX_MODEL_PROVIDER",
+        "COX_MODEL_BASE_URL",
+        "COX_MODEL",
+        "COX_REASONING_EFFORT",
+    }
+}
+print(render_env_exports(selected), end="")
+PYCOX_COMMAND_CONFIG_PRINT_ENV_P101
+}
+
 show_config() {
   ensure_env_file
   echo "ENV_FILE=$ENV_FILE"
-  grep -E '^export DEEPSEEK_(PROXY_MODEL|REASONING_EFFORT)=' "$ENV_FILE" || true
+  print_env_exports || true
   echo
   echo "CODEX_MAIN_CONFIG=$CODEX_CONFIG"
   if [ -f "$CODEX_CONFIG" ]; then
-    grep -nA8 -E '^\[model_providers\.deepseek|^\[model_providers\.cox' "$CODEX_CONFIG" || true
+    grep -nA8 -E '^\[model_providers\.(deepseek|cox|[^]]+-proxy)' "$CODEX_CONFIG" || true
   else
     echo "missing"
   fi
@@ -120,111 +195,108 @@ show_config() {
     echo
     echo "CODEX_PROFILE_FILE=$profile_file"
     if [ -f "$profile_file" ]; then
-      grep -nE '^(model|model_provider|model_reasoning_effort|plan_mode_reasoning_effort|model_context_window|model_auto_compact_token_limit) = ' "$profile_file" || true
+      grep -nE '^(model|model_provider|model_reasoning_effort|plan_mode_reasoning_effort|model_context_window|model_auto_compact_token_limit|pricing_provider_id|pricing_provider_owned|pricing_mode|pricing_provider_path) = ' "$profile_file" || true
     else
       echo "missing"
     fi
   done
 }
 
-restart_thinking_proxy() {
-  if [ "${COX_CONFIG_RESTART_THINKING:-1}" = "0" ]; then
-    echo "thinking proxy restart skipped because COX_CONFIG_RESTART_THINKING=0"
-    return 0
-  fi
-
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-  echo "restarting DeepSeek thinking proxy..."
-
-  if command -v cox-stop-thinking >/dev/null 2>&1; then
-    cox-stop-thinking || true
-  elif [ -x "$script_dir/cox-stop-thinking" ]; then
-    "$script_dir/cox-stop-thinking" || true
-  else
-    echo "WARNING: cox-stop-thinking not found; skipping stop step" >&2
-  fi
-
-  if command -v cox-start-thinking >/dev/null 2>&1; then
-    cox-start-thinking
-  elif [ -x "$script_dir/cox-start-thinking" ]; then
-    "$script_dir/cox-start-thinking"
-  else
-    echo "ERROR: cox-start-thinking not found" >&2
-    exit 1
-  fi
-}
-
 usage() {
   cat <<'USAGE'
 Usage:
   cox-config show
-  cox-config set-model deepseek-v4-pro
-  cox-config set-model deepseek-v4-flash
-  cox-config set-effort max
-  cox-config set-effort high
+  cox-config set-model <model>
+  cox-config set-effort <high|max>
   cox-config set model <model> effort <high|max>
+  cox-config config <cox-config-subcommand> [args...]
 
-Configuration-changing commands automatically restart the thinking proxy.
-Set COX_CONFIG_RESTART_THINKING=0 to skip the restart.
+This compatibility shim keeps legacy cox-config commands working while the
+provider-neutral product surface is the cox CLI:
+
+  cox config set-model <model> --provider <provider>
+  cox provider add --name <provider-id> --base-url <url> --model <model>
+  cox profile status <profile>
+
+Configuration-changing legacy commands refresh already-running CodeXchange
+standard/reasoning proxies through the cox runtime lifecycle. Set
+COX_CONFIG_RESTART_THINKING=0, COX_CONFIG_REFRESH_RUNTIME=0, or
+COX_POST_CONFIG_APPLY=disabled to skip this compatibility refresh.
 USAGE
 }
 
-cmd="${1:-show}"
+main() {
+  local cmd="${1:-show}"
+  local model=""
+  local effort=""
 
-case "$cmd" in
-  show)
-    show_config
-    restart_thinking_proxy
-    ;;
-  set-model)
-    model="${2:-}"
-    [ -n "$model" ] || { usage >&2; exit 2; }
-    set_export_var "COX_MODEL" "$model"
-    patch_codex_model "$model"
-    echo "model set to $model"
-    restart_thinking_proxy
-    ;;
-  set-effort)
-    effort="${2:-}"
-    [ -n "$effort" ] || { usage >&2; exit 2; }
-    case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
-    set_export_var "COX_REASONING_EFFORT" "$effort"
-    patch_codex_effort "$effort"
-    echo "reasoning effort set to $effort"
-    restart_thinking_proxy
-    ;;
-  set)
-    shift
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        model)
-          shift
-          model="${1:-}"
-          [ -n "$model" ] || { usage >&2; exit 2; }
-          set_export_var "COX_MODEL" "$model"
-          patch_codex_model "$model"
-          ;;
-        effort)
-          shift
-          effort="${1:-}"
-          [ -n "$effort" ] || { usage >&2; exit 2; }
-          case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; exit 2 ;; esac
-          set_export_var "COX_REASONING_EFFORT" "$effort"
-          patch_codex_effort "$effort"
-          ;;
-        *)
-          usage >&2
-          exit 2
-          ;;
-      esac
-      shift
-    done
-    show_config
-    ;;
-  *)
-    usage >&2
-    exit 2
-    ;;
-esac
+  case "$cmd" in
+    show)
+      show_config
+      ;;
+    set-model)
+      shift || true
+      [ "$#" -gt 0 ] || { usage >&2; return 2; }
+      model="$1"
+      shift || true
+      set_export_var "COX_MODEL" "$model"
+      patch_codex_model "$model"
+      echo "model set to $model"
+      apply_runtime_refresh
+      ;;
+    set-effort)
+      shift || true
+      [ "$#" -gt 0 ] || { usage >&2; return 2; }
+      effort="$1"
+      shift || true
+      case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; return 2 ;; esac
+      set_export_var "COX_REASONING_EFFORT" "$effort"
+      patch_codex_effort "$effort"
+      echo "reasoning effort set to $effort"
+      apply_runtime_refresh
+      ;;
+    set)
+      shift || true
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          model)
+            shift || true
+            model="${1:-}"
+            [ -n "$model" ] || { usage >&2; return 2; }
+            set_export_var "COX_MODEL" "$model"
+            patch_codex_model "$model"
+            ;;
+          effort)
+            shift || true
+            effort="${1:-}"
+            [ -n "$effort" ] || { usage >&2; return 2; }
+            case "$effort" in high|max) ;; *) echo "ERROR: effort must be high or max" >&2; return 2 ;; esac
+            set_export_var "COX_REASONING_EFFORT" "$effort"
+            patch_codex_effort "$effort"
+            ;;
+          *)
+            usage >&2
+            return 2
+            ;;
+        esac
+        shift || true
+      done
+      show_config
+      apply_runtime_refresh
+      ;;
+    config)
+      shift || true
+      run_cox_cli config "$@" --env-file "$ENV_FILE" --codex-config "$CODEX_CONFIG"
+      ;;
+    wizard|set-api-key|test-api-key|set-web-search-api-key|set-image-api-key|set-tool-routing|custom-provider)
+      shift || true
+      run_cox_cli config "$cmd" "$@" --env-file "$ENV_FILE"
+      ;;
+    *)
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"
