@@ -21736,7 +21736,7 @@ def _profile_tokenizer_report_for_messages(
             "available": False,
             "reason": "profile_tokenizer_load_failed",
             "error": f"{type(exc).__name__}: {exc}",
-            "action": "verify the synced official DeepSeek tokenizer.json and tokenizers package",
+            "action": "verify the synced provider tokenizer.json and tokenizers package",
         }
         return {
             "available": False,
