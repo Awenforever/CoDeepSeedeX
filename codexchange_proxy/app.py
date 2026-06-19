@@ -25371,7 +25371,7 @@ def create_app(
                 else:
                     print(
                         "[codexchange] flattened self-contained "
-                        "tool messages because no DeepSeek tools were available"
+                        "tool messages because no configured provider tools were available"
                     )
 
         messages_before_compaction = deepcopy(messages)
