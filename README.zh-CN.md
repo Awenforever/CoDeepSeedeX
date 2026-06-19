@@ -265,7 +265,7 @@ bash ~/.local/share/codexchange/scripts/install.sh --uninstall --remove-files
 
 ## WeClaw联动
 
-CodeXchange可以作为`weclaw_dev`的DeepSeek/Codex运行后端。
+CodeXchange可以作为`weclaw_dev`的provider-routed Codex运行后端。
 
 如果WeClaw联动使用当前CodeXchange公开Release，WeClaw版本必须不低于：
 
@@ -328,7 +328,7 @@ CodeXchange通过`cox status reasoning --weclaw-json`向WeClaw提供结构化状
 
 当前面向WeClaw的字段包括：
 - 来自provider usage的token用量；
-- 基于本地DeepSeekprofile tokenizer的Details估算；
+- 当tokenizer resource可用时，提供面向Details的本地provider/profile tokenizer估算；
 - 面向`user`、`user_history`、`tool_output`、`environment`等桶的脱敏prompt分段；
 - 基于DeepSeek中文官方价格页的CNY优先Pricing/Cost字段；
 - 逐turn费用账本，避免混合模型或route的session被当前active model价格重新计算；

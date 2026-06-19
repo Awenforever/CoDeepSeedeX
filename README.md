@@ -265,7 +265,7 @@ The uninstaller must not delete unrelated user files or non-CodeXchange configur
 
 ## WeClaw integration
 
-CodeXchange can serve as the DeepSeek/Codex runtime backend for `weclaw_dev`.
+CodeXchange can serve as the provider-routed Codex runtime backend for `weclaw_dev`.
 
 If WeClaw integration is used with the current CodeXchange public Release, WeClaw must be at least:
 
@@ -328,7 +328,7 @@ CodeXchange exposes structured WeClaw status telemetry through `cox status reaso
 
 Current WeClaw-facing fields include:
 - token usage from provider-reported usage totals,
-- local DeepSeek profile-tokenizer estimates for Details,
+- local provider/profile tokenizer estimates for Details when a tokenizer resource is available,
 - sanitized prompt segmentation for `user`, `user_history`, `tool_output`, `environment`, and related buckets,
 - CNY-first Pricing/Cost fields based on DeepSeek's Chinese official pricing page,
 - per-turn cost ledger semantics so mixed model or route sessions are not recalculated using the current active model price,
