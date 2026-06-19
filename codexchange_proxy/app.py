@@ -25211,7 +25211,7 @@ def create_app(
                     "id": DEFAULT_MODEL,
                     "object": "model",
                     "created": created,
-                    "owned_by": "deepseek",
+                    "owned_by": _configured_model_provider(),
                 }
             ],
         }
