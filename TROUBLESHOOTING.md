@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This is the user-facing troubleshooting entry for CodeXchange. Maintainer-only workflow notes are kept in `docs/developer-handbook.zh-CN.md`.
+This is the user-facing troubleshooting entry for CodeXchange. It focuses on installation, configuration, runtime, provider, and Codex-profile issues that end users can diagnose locally.
 
 ## Port already in use
 
@@ -95,10 +95,6 @@ Then configure GitHub-specific proxy settings in the VM.
 - Do not publish local env files.
 - Review tool execution carefully because Codex may run commands and modify files depending on profile configuration.
 
-## Maintainer notes
-
-For release, tag, handoff, and development workflow troubleshooting, see `docs/developer-handbook.zh-CN.md`.
-
 ## Install and repair entrypoint
 
 Use the Latest Release bootstrap entrypoint:
@@ -107,19 +103,14 @@ Use the Latest Release bootstrap entrypoint:
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/releases/latest/download/bootstrap.sh | bash
 ```
 
+### Install a specific release if Latest Release is unavailable
 
-### Release tag fallback
-
-When the Latest Release asset path is unavailable, use the resolved release tag fallback. Replace the tag below with the exact release you intend to install:
+When the Latest Release asset path is unavailable, install a specific released version explicitly:
 
 ```bash
-tag="v0.3.8-alpha"
+tag="v0.4.41-alpha"
 curl -fsSL https://github.com/Awenforever/CoDeepSeedeX/raw/refs/tags/${tag}/bootstrap.sh | bash
 ```
-
-## Maintainer documentation
-
-Maintainer notes are kept in `docs/developer-handbook.md`. The Chinese mirror is `docs/developer-handbook.zh-CN.md`. Detailed long-term records are in `docs/development-log.md`.
 
 ## Codex entrypoint, PATH, and Node.js
 

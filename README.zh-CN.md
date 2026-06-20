@@ -303,24 +303,16 @@ CodeXchange把本地配置保存在当前用户账号下。只有安装、升级
 
 除非明确接受风险，不要把真实API key直接写进shell历史。优先使用隐藏输入或安全密钥工作流。
 
+
 ## 文档入口
 
-用户入口：
+用户文档：
 
 ```text
 README.md
 README.zh-CN.md
+TROUBLESHOOTING.md
 ```
-
-维护入口：
-
-```text
-docs/developer-handbook.md
-docs/developer-handbook.zh-CN.md
-docs/development-log.md
-```
-
-历史Release说明和长期开发记录应放在`docs/development-log.md`，不要继续堆进README。
 
 ## WeClaw状态遥测
 

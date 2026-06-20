@@ -303,24 +303,16 @@ CodeXchange stores local configuration under your user account and modifies user
 
 Do not put real API keys directly in shell history unless you intentionally accept that risk. Prefer hidden prompts or a secure secret workflow.
 
+
 ## Documentation
 
-User entry points:
+User-facing help:
 
 ```text
 README.md
 README.zh-CN.md
+TROUBLESHOOTING.md
 ```
-
-Maintainer entry points:
-
-```text
-docs/developer-handbook.md
-docs/developer-handbook.zh-CN.md
-docs/development-log.md
-```
-
-Historical release notes and long development records belong in `docs/development-log.md`, not in this README.
 
 ## WeClaw status telemetry
 
