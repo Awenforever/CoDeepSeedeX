@@ -169,7 +169,7 @@ class DeepSeekProviderAdapter:
             "unit": "tokens",
             "precision": "local_profile_tokenizer_estimate",
             "billing_authoritative": False,
-            "sync_action": "run cox tokenizer sync deepseek --json or set COX_DEEPSEEK_TOKENIZER_JSON",
+            "sync_action": "run cox tokenizer sync <provider> --json or set COX_DEEPSEEK_TOKENIZER_JSON",
         }
 
     def profile_tokenizer_kind_for_model(self, model: str | None, provider: str | None = None) -> str | None:
@@ -552,7 +552,7 @@ class DeepSeekProviderAdapter:
             "status": "ok",
             "available": True,
             "reason": None,
-            "action": "validated official DeepSeek pricing HTML; add --write-cache to persist the cache" if not cache_written else "validated and persisted official DeepSeek pricing cache",
+            "action": "validated official provider pricing source; add --write-cache to persist the cache" if not cache_written else "validated and persisted official DeepSeek pricing cache",
             "source_url": effective_source_url,
             "source_kind": "official_docs_html",
             "fetched_at": fetched_at,

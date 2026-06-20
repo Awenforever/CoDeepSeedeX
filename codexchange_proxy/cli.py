@@ -5194,7 +5194,7 @@ def _tokenizer_resource_metadata(provider: str = "deepseek") -> dict[str, Any]:
 
 
 def _deepseek_tokenizer_resource_metadata() -> dict[str, Any]:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral tokenizer seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral tokenizer seam."""
     return _tokenizer_resource_metadata("deepseek")
 
 def _tokenizer_resource_root(value: str | None = None) -> Path:
@@ -5426,7 +5426,7 @@ def _sync_deepseek_tokenizer_resource(
     timeout: float = 60.0,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral tokenizer seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral tokenizer seam."""
     return _sync_provider_tokenizer_resource(
         "deepseek",
         source_url=source_url,

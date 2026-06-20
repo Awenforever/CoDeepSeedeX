@@ -192,7 +192,7 @@ def _normalize_provider_reasoning_effort(provider_id: str, value: Any) -> str | 
 
 
 def _normalize_deepseek_reasoning_effort(value: Any) -> str | None:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral adapter seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral adapter seam."""
     return _normalize_provider_reasoning_effort("deepseek", value)
 
 
@@ -221,7 +221,7 @@ def _extract_provider_request_reasoning_effort(provider_id: str, payload: dict[s
 
 
 def _extract_request_reasoning_effort(payload: dict[str, Any]) -> str | None:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral seam."""
     return _extract_provider_request_reasoning_effort("deepseek", payload)
 
 
@@ -250,7 +250,7 @@ def _provider_reasoning_effort_config(provider_id: str, payload: dict[str, Any] 
 
 
 def _deepseek_reasoning_effort_config(payload: dict[str, Any] | None = None) -> str | None:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral seam."""
     return _provider_reasoning_effort_config("deepseek", payload)
 
 
@@ -328,7 +328,7 @@ def _extract_provider_usage_numbers(provider_id: str, provider_response: dict[st
 
 
 def _extract_usage_numbers(deepseek_response: dict[str, Any]) -> dict[str, int]:
-    """Legacy DeepSeek compatibility wrapper backed by the provider-neutral adapter seam."""
+    """Legacy provider compatibility wrapper backed by the provider-neutral adapter seam."""
     return _extract_provider_usage_numbers("deepseek", deepseek_response)
 
 
@@ -1888,7 +1888,7 @@ def _deepseek_pricing_reader_selection_profile(
     mode: str | None = None,
     provider_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """DeepSeek compatibility wrapper for reader selection."""
+    """provider compatibility wrapper for reader selection."""
     return (
         _provider_pricing_reader_selection_profile(
             "deepseek",
@@ -21129,7 +21129,7 @@ def _provider_profile_tokenizer_json_candidates(
     Provider adapters receive the first opportunity to resolve their own
     tokenizer resources. The fallback remains provider-neutral, while the
     legacy DeepSeek-specific environment variables and resource aliases are
-    enabled only for the DeepSeek compatibility route.
+    enabled only for the provider compatibility route.
     """
     provider_value = str(
         provider_id

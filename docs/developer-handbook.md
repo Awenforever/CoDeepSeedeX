@@ -482,7 +482,7 @@ unsupported profile without DeepSeek URLs, currency, parser, or cache ownership.
 
 This boundary is diagnostic-only in this release. Daily refresh, the legacy
 shared pricing cache, usage-ledger pricing context, WeClaw pricing output, and
-the DeepSeek compatibility wrappers retain their previous behavior.
+the provider compatibility wrappers retain their previous behavior.
 
 ## Provider pricing resource metadata completion
 
@@ -503,7 +503,7 @@ incomplete providers fail explicitly instead of inheriting DeepSeek metadata.
 `_build_deepseek_pricing_cache_metadata(...)` preserves the legacy DeepSeek
 contract. `_write_pricing_cache_atomic(...)` retains its existing signature,
 call routing, cache path behavior and serialized payload while delegating
-metadata construction to the DeepSeek compatibility builder.
+metadata construction to the provider compatibility builder.
 
 ## Provider pricing cache path profile
 
@@ -514,7 +514,7 @@ routing. DeepSeek currently resolves through the legacy shared
 
 `_provider_pricing_cache_path(provider_id)` rejects providers without an
 audited cache-path contract. `_deepseek_pricing_cache_path()` is the explicit
-DeepSeek compatibility wrapper. Existing readers, writers, refresh routing,
+provider compatibility wrapper. Existing readers, writers, refresh routing,
 config precedence, usage pricing and WeClaw continue to call the legacy
 `_pricing_cache_path()` and `_pricing_config_path()` functions.
 
@@ -529,7 +529,7 @@ The classifier reports `none`, `legacy_only`, `provider_only`,
 uses raw-byte SHA-256, so formatting differences are treated conservatively as
 a conflict. It never copies, moves, deletes, writes, selects, or activates a
 cache. `_deepseek_pricing_cache_migration_status(...)` is the explicit
-DeepSeek compatibility wrapper.
+provider compatibility wrapper.
 
 ## Provider-owned pricing cache writer
 
